@@ -217,10 +217,12 @@ Independent review confirms the state and reporting gap; no real credential stor
 The generic joined error does not preserve whether failed restoration left the replacement configuration installed.
 A separate correction receives explicit maintainer approval with regression tests and must distinguish restoration failure before replacement from failure after installation.
 The independently reviewed seven-path correction preserves both failure causes and reports persistence phase with unknown outcome without changing storage ordering.
-It names an orphan only when failed deletion leaves the cleared-reference configuration installed.
+When deletion is unconfirmed and the cleared-reference configuration remains installed, guidance identifies the entry to inspect and remove if present.
 If restoration installs the previous reference but directory synchronization fails, recovery guidance describes uncertain durability without claiming an orphan.
 The Windows fake-store CLI fixture fails before correction and passes afterward; portable configuration branch tests and logout action tests also pass.
-A negative classifier test rejects an unrelated store error that happens to expose similar methods.
+A subsequent independently reviewed reporting follow-up narrows both app and action classification to concrete configuration errors.
+Negative fake-store tests reject unrelated errors that expose similar methods.
+The follow-up also removes inherited wording that treats a deletion error as proof the credential remains.
 The correction is integrated separately before auth consolidation from reviewed source fingerprint `9809a68028de6b6b3240d07afe9b427213c4702f1f3a115937adc62c6efe2483`.
 Complete integrated and native-platform verification remains pending.
 Catalog revision `556a1fdc5bedf7e2e0f9cdd3d2042aedbd4825a5d223a5bf061c4f31b519f56b` removes eight redundant public entry points used only by tests.

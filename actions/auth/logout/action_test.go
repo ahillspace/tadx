@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
 	logout "github.com/ahillspace/tadx/actions/auth/logout"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
@@ -83,18 +83,40 @@ func TestExecuteWrapsRemovalFailure(t *testing.T) {
 	}
 }
 
-type installedConfigurationError struct{ deleteFailed bool }
+type unrelatedInstalledStoreError struct{}
 
-func (installedConfigurationError) Error() string {
-	return "configuration took effect but was not synced"
+func (unrelatedInstalledStoreError) Error() string { return "unrelated installed-state claim" }
+
+func (unrelatedInstalledStoreError) ConfigurationInstalled() bool { return true }
+
+func (unrelatedInstalledStoreError) ExternalCommitConfirmed() bool { return false }
+
+type unrelatedRestoredStoreError struct{}
+
+func (unrelatedRestoredStoreError) Error() string { return "unrelated restored-state claim" }
+
+func (unrelatedRestoredStoreError) PriorConfigurationReinstalled() bool { return true }
+
+func TestExecuteIgnoresUnrelatedStoreStateClaims(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "installed", err: unrelatedInstalledStoreError{}},
+		{name: "restored", err: unrelatedRestoredStoreError{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: test.err}).Execute(t.Context(), logout.Input{Environment: "dev"})
+			payload := errs.Structure(err).Error
+			if payload.Phase != "" || payload.Outcome != "" || strings.Contains(payload.Summary, "reference") || strings.Contains(strings.ToLower(payload.CorrectiveAction), "orphan") {
+				t.Fatalf("unrelated store failure was classified as config state: %#v", payload)
+			}
+		})
+	}
 }
 
-func (installedConfigurationError) ConfigurationInstalled() bool { return true }
-
-func (e installedConfigurationError) ExternalCommitConfirmed() bool { return !e.deleteFailed }
-
 func TestExecuteReportsRemovalWhenConfigurationIsNotDurable(t *testing.T) {
-	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: fmt.Errorf("install configuration: %w", installedConfigurationError{})}).Execute(context.Background(), logout.Input{Environment: "dev"})
+	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: &config.InstalledError{Err: errors.New("sync failed")}}).Execute(context.Background(), logout.Input{Environment: "dev"})
 	payload := errs.Structure(err).Error
 	if payload.ID != "auth.logout.remove" || payload.Outcome != errs.OutcomeConfirmed || payload.Phase != errs.PhasePersistence || strings.Contains(payload.Summary, "failed") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
 		t.Fatalf("error = %#v", payload)
@@ -102,29 +124,22 @@ func TestExecuteReportsRemovalWhenConfigurationIsNotDurable(t *testing.T) {
 }
 
 func TestExecuteDoesNotConfirmRemovalWhenCredentialDeletionFailedAfterInstall(t *testing.T) {
-	cause := &errs.Error{Kind: errs.KindOperation, Summary: "credential delete denied", CorrectiveAction: "Delete the orphaned entry by hand."}
-	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: errors.Join(cause, installedConfigurationError{deleteFailed: true})}).Execute(context.Background(), logout.Input{Environment: "dev"})
+	cause := &errs.Error{Kind: errs.KindOperation, Summary: "credential deletion unconfirmed", CorrectiveAction: "Inspect the named entry; remove it if present."}
+	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: errors.Join(cause, &config.InstalledError{Err: errors.New("sync failed"), ExternalErr: errors.New("delete denied")})}).Execute(context.Background(), logout.Input{Environment: "dev"})
 	payload := errs.Structure(err).Error
-	if payload.ID != "auth.logout.remove" || payload.Outcome == errs.OutcomeConfirmed || payload.Phase != errs.PhasePersistence || strings.Contains(payload.Summary, "was removed") || !strings.Contains(payload.CorrectiveAction, "orphaned entry") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
+	if payload.ID != "auth.logout.remove" || payload.Outcome == errs.OutcomeConfirmed || payload.Phase != errs.PhasePersistence || !strings.Contains(payload.Summary, "not confirmed") || !strings.Contains(payload.CorrectiveAction, "remove it if present") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
 		t.Fatalf("error = %#v", payload)
 	}
 }
 
-type priorConfigurationReinstalledError struct{}
-
-func (priorConfigurationReinstalledError) Error() string {
-	return "prior configuration reinstalled without durable directory sync"
-}
-
-func (priorConfigurationReinstalledError) PriorConfigurationReinstalled() bool { return true }
-
 func TestExecuteReportsUncertainRestoredReferenceWithoutOrphanClaim(t *testing.T) {
-	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: priorConfigurationReinstalledError{}}).Execute(t.Context(), logout.Input{Environment: "dev"})
+	restored := &config.PostSaveRestoreError{ExternalErr: errors.New("delete denied"), RestoreErr: errors.New("sync failed"), PriorConfigurationInstalled: true}
+	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: restored}).Execute(t.Context(), logout.Input{Environment: "dev"})
 	payload := errs.Structure(err).Error
 	if payload.ID != "auth.logout.remove" || payload.Phase != errs.PhasePersistence || payload.Outcome != errs.OutcomeUnknown {
 		t.Fatalf("failure classification: %#v", payload)
 	}
-	if !strings.Contains(payload.Summary, "durable") || strings.Contains(strings.ToLower(payload.CorrectiveAction), "orphan") || !strings.Contains(payload.CorrectiveAction, "stored reference") || !strings.Contains(payload.CorrectiveAction, "OS credential store entry") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
+	if !strings.Contains(payload.Summary, "durable") || !strings.Contains(payload.Summary, "not confirmed") || strings.Contains(strings.ToLower(payload.CorrectiveAction), "orphan") || !strings.Contains(payload.CorrectiveAction, "stored reference") || !strings.Contains(payload.CorrectiveAction, "OS credential store entry") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
 		t.Fatalf("failure guidance: %#v", payload)
 	}
 }

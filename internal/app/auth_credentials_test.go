@@ -181,7 +181,7 @@ func TestAuthCredentialStoreNamesOrphanedEntryWhenDeletionFailsAfterInstall(t *t
 	reference := coreauth.CredentialReference("cred_88888888888888888888888888888888")
 	failed := orphanedCredentialError(&config.InstalledError{Err: errors.New("sync failed"), ExternalErr: errors.New("delete denied")}, reference)
 	_, advice := errs.RetryAdvice(failed)
-	if !strings.Contains(advice, coreauth.CredentialStoreEntry(reference)) {
+	if !strings.Contains(advice, coreauth.CredentialStoreEntry(reference)) || !strings.Contains(advice, "remove it if present") {
 		t.Fatalf("corrective action = %q, want the orphaned entry", advice)
 	}
 	for _, err := range []error{errors.New("plain failure"), &config.InstalledError{Err: errors.New("sync failed")}, unrelatedInstalledCredentialError{}} {

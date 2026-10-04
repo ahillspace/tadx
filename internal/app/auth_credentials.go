@@ -148,7 +148,7 @@ func orphanedCredentialError(err error, reference coreauth.CredentialReference) 
 	if !(installedOK && !installed.ExternalCommitConfirmed() || restoredOK && restored.ConfigurationInstalled()) {
 		return err
 	}
-	return &errs.Error{Kind: errs.KindOperation, Summary: "The stored PAT could not be deleted after its reference was cleared.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Remove the OS credential store entry " + coreauth.CredentialStoreEntry(reference) + " by hand; logout no longer references it."}
+	return &errs.Error{Kind: errs.KindOperation, Summary: "The credential reference was cleared, but stored PAT deletion was not confirmed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the OS credential store entry " + coreauth.CredentialStoreEntry(reference) + " and remove it if present; logout no longer references it."}
 }
 
 func credentialNotFound(err error) bool {

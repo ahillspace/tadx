@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -50,8 +51,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	removed, err := a.store.Remove(ctx, target)
 	if installed, ok := installedConfiguration(err); ok {
 		if !installed.ExternalCommitConfirmed() {
-			retryable, advice := errs.CompleteRetryAdvice(err, "Remove the orphaned TADX entry from the OS credential store by hand; logout no longer references it.")
-			return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored credential reference was cleared, but the stored PAT could not be deleted.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+			retryable, advice := errs.CompleteRetryAdvice(err, "Inspect the OS credential store entry and remove it if present; logout no longer references it.")
+			return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored credential reference was cleared, but stored PAT deletion was not confirmed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
 		}
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair access to the configuration directory, then confirm the removal.")
 		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored PAT was removed, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
@@ -59,11 +60,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if priorConfigurationReinstalled(err) {
 		retryable, _ := errs.CompleteRetryAdvice(err, "")
 		advice := "Repair access to the configuration directory, then inspect the selected environment's stored reference and OS credential store entry before another logout."
-		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT deletion failed, and the restored credential reference may not be durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT deletion was not confirmed, and the restored credential reference may not be durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
 	}
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair the OS credential store, then retry. The Tableau PAT was not revoked.")
-		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT removal failed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice)}
+		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT removal was not confirmed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice)}
 	}
 	status := "unchanged"
 	if removed.Removed {
@@ -81,20 +82,21 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 }
 
 func priorConfigurationReinstalled(err error) bool {
-	var restored interface{ PriorConfigurationReinstalled() bool }
-	return errors.As(err, &restored) && restored.PriorConfigurationReinstalled()
+	restored, ok := errors.AsType[*config.PostSaveRestoreError](err)
+	return ok && restored.PriorConfigurationReinstalled()
 }
 
 // installedConfiguration reports a store failure after the configuration change
 // took effect. Credential deletion is confirmed separately, because an
 // installed configuration does not prove the stored PAT was deleted.
 func installedConfiguration(err error) (interface{ ExternalCommitConfirmed() bool }, bool) {
-	var installed interface {
-		ConfigurationInstalled() bool
-		ExternalCommitConfirmed() bool
-	}
-	if errors.As(err, &installed) && installed.ConfigurationInstalled() {
+	installed, ok := errors.AsType[*config.InstalledError](err)
+	if ok && installed.ConfigurationInstalled() {
 		return installed, true
+	}
+	restored, ok := errors.AsType[*config.PostSaveRestoreError](err)
+	if ok && restored.ConfigurationInstalled() {
+		return restored, true
 	}
 	return nil, false
 }

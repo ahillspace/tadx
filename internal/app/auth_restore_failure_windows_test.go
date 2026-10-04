@@ -67,7 +67,7 @@ func TestAuthLogoutReportsOrphanWhenDeletionAndRestoreFail(t *testing.T) {
 	}
 	phase := strings.Contains(result, `"phase":"persistence"`)
 	outcome := strings.Contains(result, `"outcome":"unknown"`)
-	orphan := strings.Contains(result, "OS credential store entry") && strings.Contains(result, "logout no longer references it")
+	orphan := strings.Contains(result, "Inspect the OS credential store entry") && strings.Contains(result, "remove it if present") && strings.Contains(result, "logout no longer references it")
 	if !phase || !outcome || !orphan {
 		t.Fatalf("reference cleared and credential retained, but phase=%t outcome=%t orphan_guidance=%t", phase, outcome, orphan)
 	}
