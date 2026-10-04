@@ -6,6 +6,21 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Job service and shared observation
+
+The job Service owns exact inspection, cancellation, and durable receipt recovery.
+App constructs native readers, command-scoped authentication, storage, and CLI dependencies.
+The old public projection entry points are private helpers beneath the Service.
+The job-monitor Observer owns repeated authentication, exact target and job-type checks, and cancellation-independent coordination release.
+Publication and explicit job recovery share this mechanism without sharing their distinct error messages or resubmitting accepted work.
+
+Independent review passes the 16-path exact `2d160f08d04c11094ee1648e0b9e7758dcbebeb0` snapshot.
+Its 1,471-file fingerprint is `9bf0bb484157b10e79aa53d2724f0e27f552fa9d9c1c79b39db85d9b212ef8ea`.
+Job action, monitoring, CLI, architecture, focused app job/cross-site/publication recovery tests, full compilation, and scoped vet pass.
+New tests cover validation before dependency access, preview without submission, retained cancellation acknowledgement, and per-receipt release ordering.
+Evidence remains in `.tadx-refactor/job-service-2d1/`.
+Detached-operation inspection remains a separate pending move from app; final integrated and live acceptance remain outstanding.
+
 ## Search routing ownership
 
 The search action owns native-versus-dedicated routing, combined continuations, and result normalization through explicit page-reader ports.

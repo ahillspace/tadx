@@ -1,29 +1,28 @@
-package job_test
+package job
 
 import (
 	"context"
 	"encoding/json"
 	"testing"
 
-	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
 func TestValidateInputRequiresExactlyOneSelector(t *testing.T) {
 	cases := []struct {
 		name  string
-		input jobactions.InspectInput
+		input InspectInput
 		want  bool
 	}{
-		{name: "job", input: jobactions.InspectInput{ID: "job-1"}, want: true},
-		{name: "operation", input: jobactions.InspectInput{OperationID: "run-1"}, want: true},
-		{name: "none", input: jobactions.InspectInput{}, want: false},
-		{name: "both", input: jobactions.InspectInput{ID: "job-1", OperationID: "run-1"}, want: false},
-		{name: "operation whitespace", input: jobactions.InspectInput{OperationID: " run-1"}, want: false},
+		{name: "job", input: InspectInput{ID: "job-1"}, want: true},
+		{name: "operation", input: InspectInput{OperationID: "run-1"}, want: true},
+		{name: "none", input: InspectInput{}, want: false},
+		{name: "both", input: InspectInput{ID: "job-1", OperationID: "run-1"}, want: false},
+		{name: "operation whitespace", input: InspectInput{OperationID: " run-1"}, want: false},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			err := jobactions.ValidateInspectInput(test.input)
+			err := ValidateInspectInput(test.input)
 			if (err == nil) != test.want {
 				t.Fatalf("ValidateInput(%+v) error = %v, want valid=%t", test.input, err, test.want)
 			}
@@ -32,10 +31,10 @@ func TestValidateInputRequiresExactlyOneSelector(t *testing.T) {
 }
 
 func TestExecuteProjectsLocalOperationWithoutRemoteJob(t *testing.T) {
-	view := &jobactions.OperationView{ID: "run-1", Phase: "running", Status: "running", Alive: true}
-	output, err := jobactions.Inspect(t.Context(), func(context.Context, jobactions.InspectInput) (jobactions.InspectResult, error) {
-		return jobactions.InspectResult{Operation: view}, nil
-	}, jobactions.InspectInput{OperationID: "run-1"})
+	view := &OperationView{ID: "run-1", Phase: "running", Status: "running", Alive: true}
+	output, err := inspectOutput(t.Context(), func(context.Context, InspectInput) (InspectResult, error) {
+		return InspectResult{Operation: view}, nil
+	}, InspectInput{OperationID: "run-1"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -45,10 +44,10 @@ func TestExecuteProjectsLocalOperationWithoutRemoteJob(t *testing.T) {
 }
 
 func TestOperationOutputProjectsCompactAndFullSnapshots(t *testing.T) {
-	view := &jobactions.OperationView{ID: "run-1", Phase: "completed", Status: "succeeded", Snapshot: map[string]any{"status": "succeeded"}, FullSnapshot: map[string]any{"status": "succeeded", "diagnostics": "details"}}
-	output, err := jobactions.Inspect(t.Context(), func(context.Context, jobactions.InspectInput) (jobactions.InspectResult, error) {
-		return jobactions.InspectResult{Operation: view}, nil
-	}, jobactions.InspectInput{OperationID: "run-1"})
+	view := &OperationView{ID: "run-1", Phase: "completed", Status: "succeeded", Snapshot: map[string]any{"status": "succeeded"}, FullSnapshot: map[string]any{"status": "succeeded", "diagnostics": "details"}}
+	output, err := inspectOutput(t.Context(), func(context.Context, InspectInput) (InspectResult, error) {
+		return InspectResult{Operation: view}, nil
+	}, InspectInput{OperationID: "run-1"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -77,7 +76,7 @@ func TestOperationOutputProjectsCompactAndFullSnapshots(t *testing.T) {
 }
 
 func TestOperationRequestIDAppearsOnlyInInterruptedRecovery(t *testing.T) {
-	item := jobactions.OperationItem{Status: "pending", JobID: "job-1", TableauRequestID: "request-1"}
+	item := OperationItem{Status: "pending", JobID: "job-1", TableauRequestID: "request-1"}
 	for _, test := range []struct {
 		name, status, phase string
 		wantRequestID       bool
@@ -86,8 +85,8 @@ func TestOperationRequestIDAppearsOnlyInInterruptedRecovery(t *testing.T) {
 		{name: "interrupted", status: "interrupted", phase: "running", wantRequestID: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			view := &jobactions.OperationView{ID: "run-1", Operation: "workbook.publish", Status: test.status, Phase: test.phase, Items: []jobactions.OperationItem{item}}
-			output := jobactions.InspectOutput{Status: test.status, Operation: view}
+			view := &OperationView{ID: "run-1", Operation: "workbook.publish", Status: test.status, Phase: test.phase, Items: []OperationItem{item}}
+			output := InspectOutput{Status: test.status, Operation: view}
 			projected, ok := output.FullOutput().(map[string]any)
 			if !ok {
 				t.Fatalf("full projection is not an object: %#v", output.FullOutput())

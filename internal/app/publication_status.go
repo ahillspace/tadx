@@ -509,7 +509,7 @@ func (r *runtimeDependencies) receiptConnection(ctx context.Context, receipt job
 	if err != nil {
 		return connection, err
 	}
-	serverMismatch := receipt.Server != "" && normalizeServer(connection.environment.URL) != normalizeServer(receipt.Server)
+	serverMismatch := receipt.Server != "" && jobmonitor.NormalizeServer(connection.environment.URL) != jobmonitor.NormalizeServer(receipt.Server)
 	// An empty content URL is the Tableau default site. It is a real target,
 	// not a wildcard, so a receipt for that site must not be checked through a
 	// named site. Legacy receipts may omit SiteID, but a present ID is exact.

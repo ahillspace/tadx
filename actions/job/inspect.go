@@ -11,7 +11,7 @@ import (
 )
 
 // Inspect inspects the requested exact job without changing remote state.
-func Inspect(ctx context.Context, inspect func(context.Context, InspectInput) (InspectResult, error), input InspectInput) (InspectOutput, error) {
+func inspectOutput(ctx context.Context, inspect func(context.Context, InspectInput) (InspectResult, error), input InspectInput) (InspectOutput, error) {
 	if err := ValidateInspectInput(input); err != nil {
 		return InspectOutput{}, err
 	}

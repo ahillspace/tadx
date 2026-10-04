@@ -184,6 +184,10 @@ func localImportAllowed(file, imported string) bool {
 	}
 	switch layerForFile(file) {
 	case layerAction:
+		// Exact job recovery consumes durable receipts and bounded observation.
+		if path.Dir(file) == "actions/job" && imported == "internal/jobmonitor" {
+			return true
+		}
 		// Only the cohesive policy workflow coordinates native policy mechanisms.
 		if path.Dir(file) == "actions/policy" && imported == "internal/managedpolicy" {
 			return true

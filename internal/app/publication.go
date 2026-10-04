@@ -14,8 +14,6 @@ import (
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/output"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
-	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
-	tableaujob "github.com/ahillspace/tadx/internal/tableau/job"
 )
 
 // publication owns one accepted write's durable identity, never the write itself.
@@ -109,27 +107,7 @@ func (r *runtimeDependencies) publication(ctx context.Context, environment, kind
 }
 
 func (p *publication) observe(ctx context.Context, jobs []jobmonitor.Receipt) []jobmonitor.CheckResult {
-	results := make([]jobmonitor.CheckResult, len(jobs))
-	sessions := p.runtime.commandSessions()
-	for i, job := range jobs {
-		session, err := sessions.AuthenticateMonitor(ctx, authTarget(p.connection), tableauauth.NewClient(p.connection.transport))
-		if err != nil {
-			results[i].Err = errors.Join(err, sessions.Suspend(context.WithoutCancel(ctx)))
-			continue
-		}
-		client := tableaujob.NewClient(p.connection.transport, session, p.connection.environment.URL)
-		if normalizeServer(job.Server) != normalizeServer(p.Base.Server) || job.SiteID != session.SiteLUID() {
-			results[i].Err = errors.New("job monitoring target does not match the authenticated site")
-		} else {
-			results[i].Status, results[i].Err = client.Inspect(ctx, job.Observation.ID)
-			if results[i].Err == nil && job.Observation.Type != "" && results[i].Status.Type != job.Observation.Type {
-				results[i].Err = errors.New("job observation changed the accepted job type")
-			}
-		}
-		// Foreground requests may enter between individual exact observations.
-		results[i].Err = errors.Join(results[i].Err, sessions.Suspend(context.WithoutCancel(ctx)))
-	}
-	return results
+	return p.runtime.jobObserver(p.connection, p.Base.Server, "job monitoring target does not match the authenticated site").Observe(ctx, jobs)
 }
 
 func publicationError(operation, environment, site, id string, status string, cause error) error {

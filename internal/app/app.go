@@ -161,7 +161,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		LastReader: lastaction.New(func(ctx context.Context) (value.SavedExecution, error) {
 			return capture.store().Read(ctx)
 		}, runtime.checkManagedCapability),
-		Jobs: (&jobCommands{runtime: runtime}).dependencies(),
+		Jobs: newJobDependencies(runtime),
 		ResolveWriteTarget: func(alias string) (string, error) {
 			_, environment, err := runtime.environment(alias, true)
 			var pathError *os.PathError
