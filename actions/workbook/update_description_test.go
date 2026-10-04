@@ -44,7 +44,7 @@ func TestUpdateDescriptionChangesPreserveUntouchedPropertiesAndUnknownOutcome(t 
 	for _, description := range []string{"new", "", "old"} {
 		r := &updateDescriptionResolver{}
 		u := &updateDescriptionUpdater{}
-		out, err := workbookops.Update(context.Background(), r, u, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: identity.Selector{LUID: "wb"}, Description: &description}, false)
+		out, err := runUpdate(context.Background(), r, u, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: identity.Selector{LUID: "wb"}, Description: &description}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,12 +60,12 @@ func TestUpdateDescriptionChangesPreserveUntouchedPropertiesAndUnknownOutcome(t 
 	}
 	description := "new"
 	u := &updateDescriptionUpdater{fail: true}
-	out, err := workbookops.Update(context.Background(), &updateDescriptionResolver{}, u, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: identity.Selector{LUID: "wb"}, Description: &description}, false)
+	out, err := runUpdate(context.Background(), &updateDescriptionResolver{}, u, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: identity.Selector{LUID: "wb"}, Description: &description}, false)
 	if err == nil || out.Result == nil || out.Result.WorkbookLUID != "wb" || out.Result.Status != "unknown" {
 		t.Fatalf("lost unknown result: %#v %v", out, err)
 	}
 	u = &updateDescriptionUpdater{}
-	_, err = workbookops.Update(context.Background(), &updateDescriptionResolver{drift: true}, u, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: identity.Selector{LUID: "wb"}, Description: &description}, false)
+	_, err = runUpdate(context.Background(), &updateDescriptionResolver{drift: true}, u, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: identity.Selector{LUID: "wb"}, Description: &description}, false)
 	if err == nil || !strings.Contains(err.Error(), "changed") || u.calls != 0 {
 		t.Fatalf("drift accepted: %v", err)
 	}

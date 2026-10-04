@@ -17,12 +17,12 @@ type Updater interface {
 	UpdateDatasource(context.Context, UpdateRequest) (UpdateResult, error)
 }
 
-func Update(ctx context.Context, resolver UpdateResolver, updater Updater, in UpdateInput, preview bool) (UpdateOutput, error) {
+func updateValidated(ctx context.Context, resolver UpdateResolver, updater Updater, in UpdateInput, preview bool) (UpdateOutput, error) {
 	if resolver == nil || updater == nil {
 		return UpdateOutput{}, &errs.Error{ID: "datasource.update.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.update", Summary: "Datasource update is not configured.", Retryable: new(false), CorrectiveAction: "Configure datasource update before retrying."}
 	}
-	if err := updateValidate(in); err != nil {
-		return UpdateOutput{}, err
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
+		return UpdateOutput{}, updateUsage("environment", "datasource update requires an explicit resolved environment and site")
 	}
 	target, err := resolver.ResolveDatasource(ctx, in.Selector)
 	if err != nil {
@@ -88,12 +88,6 @@ func updateCollision(ctx context.Context, resolver UpdateResolver, in UpdateInpu
 		}
 	}
 	return nil
-}
-func updateValidate(in UpdateInput) error {
-	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
-		return updateUsage("environment", "datasource update requires an explicit resolved environment and site")
-	}
-	return ValidateUpdateInput(in)
 }
 func updateUsage(field, message string) error {
 	return &errs.Error{ID: "datasource.update.usage", Kind: errs.KindUsage, Operation: "datasource.update", Summary: message, Retryable: new(false), CorrectiveAction: "Correct the datasource update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}

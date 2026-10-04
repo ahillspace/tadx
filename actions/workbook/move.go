@@ -14,19 +14,20 @@ type MoveResolver interface {
 	Resolver
 	ProjectResolver
 	CollisionReader
+	BeginProjectResolution(context.Context) context.Context
 }
 
 type Mover interface {
 	MoveWorkbook(context.Context, string, string) (MoveResult, error)
 }
 
-func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInput, preview bool) (MoveOutput, error) {
-	ctx = beginProjectResolution(ctx, resolver)
+func moveValidated(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInput, preview bool) (MoveOutput, error) {
 	if resolver == nil || mover == nil {
 		return MoveOutput{}, moveRuntimeError()
 	}
-	if err := moveValidate(input); err != nil {
-		return MoveOutput{}, err
+	ctx = resolver.BeginProjectResolution(ctx)
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
+		return MoveOutput{}, moveUsage("environment", "workbook move requires an explicit resolved environment and site")
 	}
 	source, destination, err := moveResolve(ctx, resolver, input)
 	if err != nil {
@@ -40,7 +41,7 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInp
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
-	ctx = beginProjectResolution(ctx, resolver)
+	ctx = resolver.BeginProjectResolution(ctx)
 	current, currentDestination, err := moveResolveByLUID(ctx, resolver, input, source.LUID, destination.LUID)
 	if err != nil {
 		return MoveOutput{}, err
@@ -97,13 +98,6 @@ func moveRejectCollision(ctx context.Context, resolver MoveResolver, input MoveI
 		}
 	}
 	return nil
-}
-
-func moveValidate(input MoveInput) error {
-	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
-		return moveUsage("environment", "workbook move requires an explicit resolved environment and site")
-	}
-	return ValidateMoveInput(input)
 }
 
 func moveRuntimeError() error {

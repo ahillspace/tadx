@@ -42,7 +42,7 @@ func TestDeleteDeletePreviewsWithoutMutation(t *testing.T) {
 	target := workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"}
 	r := &deleteResolver{results: []workbookops.Record{target}}
 	d := &deleteDeleter{}
-	output, err := workbookops.Delete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, true)
+	output, err := runDelete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestDeleteDeleteRevalidatesAuthoritativeLUIDAndAllowsMetadataChange(t *test
 	current := workbookops.Record{LUID: "wb-1", Name: "Finance Renamed", ProjectLUID: "project-2", ProjectPath: "Archive"}
 	r := &deleteResolver{results: []workbookops.Record{planned, current}}
 	d := &deleteDeleter{}
-	output, err := workbookops.Delete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}, false)
+	output, err := runDelete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,14 +71,14 @@ func TestDeleteDeleteRevalidatesAuthoritativeLUIDAndAllowsMetadataChange(t *test
 func TestDeleteDeleteRejectsAuthoritativeIdentityChange(t *testing.T) {
 	r := &deleteResolver{results: []workbookops.Record{{LUID: "wb-1", Name: "Finance"}, {LUID: "wb-2", Name: "Finance"}}}
 	d := &deleteDeleter{}
-	_, err := workbookops.Delete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, false)
+	_, err := runDelete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, false)
 	if err == nil || len(d.calls) != 0 {
 		t.Fatalf("err=%v delete_calls=%v", err, d.calls)
 	}
 }
 
 func TestDeleteDeleteRequiresExplicitEnvironmentAndSite(t *testing.T) {
-	_, err := workbookops.Delete(context.Background(), &deleteResolver{}, &deleteDeleter{}, workbookops.DeleteInput{}, false)
+	_, err := runDelete(context.Background(), &deleteResolver{}, &deleteDeleter{}, workbookops.DeleteInput{}, false)
 	if err == nil {
 		t.Fatal("expected explicit target error")
 	}
@@ -98,7 +98,7 @@ func TestDeleteDeleteRejectsInvalidSelectorAtSeam(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &deleteResolver{}
 			d := &deleteDeleter{}
-			_, err := workbookops.Delete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: tc.selector}, false)
+			_, err := runDelete(context.Background(), r, d, workbookops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: tc.selector}, false)
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.delete.usage" {
 				t.Fatalf("error = %#v", structured)

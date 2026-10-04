@@ -40,6 +40,39 @@ func (p projectPaths) ResolveProjectPath(_ context.Context, luid string) (string
 	return p[luid], nil
 }
 
+type exactProjectIdentities struct {
+	selectors []identity.Selector
+	phases    int
+}
+
+func (p *exactProjectIdentities) ResolveProjectPath(context.Context, string) (string, error) {
+	return "Department/Ops", nil
+}
+
+func (p *exactProjectIdentities) ResolveProjectIdentity(_ context.Context, selector identity.Selector) (resource.Project, error) {
+	p.selectors = append(p.selectors, selector)
+	return resource.Project{LUID: "child", Name: "Ops", Path: "Department/Ops"}, nil
+}
+
+func (p *exactProjectIdentities) BeginProjectResolution(ctx context.Context) context.Context {
+	p.phases++
+	return ctx
+}
+
+func TestAdapterUsesExplicitProjectIdentityResolverAndPhase(t *testing.T) {
+	projects := &exactProjectIdentities{}
+	adapter := resource.NewAdapterWithProjectIdentityResolver(client{}, projects)
+	selector := identity.Selector{ProjectPath: "Department/Ops"}
+	phase := adapter.BeginProjectResolution(t.Context())
+	project, err := adapter.ResolveProject(phase, selector)
+	if err != nil || project.LUID != "child" || project.Path != selector.ProjectPath {
+		t.Fatalf("project=%#v err=%v", project, err)
+	}
+	if projects.phases != 1 || len(projects.selectors) != 1 || projects.selectors[0] != selector {
+		t.Fatalf("phases=%d selectors=%#v", projects.phases, projects.selectors)
+	}
+}
+
 type batchedProjectPaths struct {
 	projectPaths
 	calls int

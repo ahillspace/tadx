@@ -14,6 +14,8 @@ type moveResolver struct {
 	calls    int
 }
 
+func (r *moveResolver) BeginProjectResolution(ctx context.Context) context.Context { return ctx }
+
 func (r *moveResolver) ResolveWorkbook(context.Context, identity.Selector) (workbookops.Record, error) {
 	r.calls++
 	return r.workbook, nil
@@ -37,37 +39,37 @@ func TestMovePreviewsThenRevalidatesAndMoves(t *testing.T) {
 	m := &moveMover{}
 	aResolver, aMover := r, m
 	in := workbookops.MoveInput{Environment: "dev", Site: "site", WorkbookSelector: identity.Selector{LUID: "wb-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}
-	if out, err := workbookops.Move(context.Background(), aResolver, aMover, in, true); err != nil || out.Result != nil || m.calls != 0 {
+	if out, err := runMove(context.Background(), aResolver, aMover, in, true); err != nil || out.Result != nil || m.calls != 0 {
 		t.Fatalf("preview=%#v err=%v calls=%d", out, err, m.calls)
 	}
-	if out, err := workbookops.Move(context.Background(), aResolver, aMover, in, false); err != nil || out.Result == nil || m.calls != 1 {
+	if out, err := runMove(context.Background(), aResolver, aMover, in, false); err != nil || out.Result == nil || m.calls != 1 {
 		t.Fatalf("execute=%#v err=%v calls=%d", out, err, m.calls)
 	}
 }
 
 func TestMoveRejectsDestinationCollision(t *testing.T) {
 	r := &moveResolver{workbook: workbookops.Record{LUID: "wb-1", Name: "Sales", ProjectLUID: "p-1"}, project: workbookops.Project{LUID: "p-2"}, matches: []workbookops.Record{{LUID: "wb-2", Name: "Sales", ProjectLUID: "p-2"}}}
-	_, err := workbookops.Move(context.Background(), r, &moveMover{}, workbookops.MoveInput{Environment: "dev", Site: "site", WorkbookSelector: identity.Selector{LUID: "wb-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false)
+	_, err := runMove(context.Background(), r, &moveMover{}, workbookops.MoveInput{Environment: "dev", Site: "site", WorkbookSelector: identity.Selector{LUID: "wb-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false)
 	if err == nil {
 		t.Fatal("expected collision error")
 	}
 }
 
-func TestMoveDefaultSiteRequiresResolvedTarget(t *testing.T) {
+func TestMoveDefaultSiteUsesProviderResolution(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		environment string
 		resolved    bool
 		wantError   bool
 	}{
-		{"unresolved", "dev", false, true},
+		{"caller has no site", "dev", false, false},
 		{"resolved default", "dev", true, false},
 		{"missing environment", "", true, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			r := &moveResolver{workbook: workbookops.Record{LUID: "wb-1", Name: "Sales", ProjectLUID: "p-1"}, project: workbookops.Project{LUID: "p-2", Path: "New"}}
 			in := workbookops.MoveInput{Environment: test.environment, TargetResolved: test.resolved, WorkbookSelector: identity.Selector{LUID: "wb-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}
-			out, err := workbookops.Move(context.Background(), r, &moveMover{}, in, true)
+			out, err := runMove(context.Background(), r, &moveMover{}, in, true)
 			if (err != nil) != test.wantError {
 				t.Fatalf("output=%#v err=%v", out, err)
 			}

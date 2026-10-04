@@ -17,17 +17,12 @@ type Deleter interface {
 }
 
 // Delete previews or deletes a workbook after revalidating its authoritative LUID.
-func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input DeleteInput, preview bool) (DeleteOutput, error) {
+func deleteValidated(ctx context.Context, resolver Resolver, deleter Deleter, input DeleteInput, preview bool) (DeleteOutput, error) {
 	if resolver == nil || deleter == nil {
 		return DeleteOutput{}, &errs.Error{ID: "workbook.delete.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.delete", Summary: "Workbook delete is not configured.", Retryable: new(false), CorrectiveAction: "Configure workbook delete before retrying."}
 	}
 	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return DeleteOutput{}, deleteUsage("environment", "workbook delete requires an explicit resolved environment and site")
-	}
-	var validationErr error
-	input, validationErr = deleteNormalizeInput(input)
-	if validationErr != nil {
-		return DeleteOutput{}, validationErr
 	}
 	target, err := resolver.ResolveWorkbook(ctx, input.Selector)
 	if err != nil {

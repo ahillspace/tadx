@@ -11,16 +11,16 @@ import (
 )
 
 type Updater interface {
-	UpdateFlow(context.Context, UpdateRequest) (UpdateResult, error)
+	UpdateFlow(context.Context, Record, UpdateRequest) (UpdateResult, error)
 }
 
 // Update previews or updates the owner of one exact flow.
-func Update(ctx context.Context, resolver Resolver, updater Updater, in UpdateInput, preview bool) (UpdateOutput, error) {
+func updateValidated(ctx context.Context, resolver Resolver, updater Updater, in UpdateInput, preview bool) (UpdateOutput, error) {
 	if resolver == nil || updater == nil {
 		return UpdateOutput{}, &errs.Error{ID: "flow.update.unconfigured", Kind: errs.KindRuntime, Operation: "flow.update", Summary: "Flow update is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow update before retrying."}
 	}
-	if err := updateValidate(in); err != nil {
-		return UpdateOutput{}, err
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
+		return UpdateOutput{}, updateUsage("environment", "flow update requires an explicit resolved environment and site")
 	}
 	target, err := resolver.ResolveFlow(ctx, in.Selector)
 	if err != nil {
@@ -45,7 +45,7 @@ func Update(ctx context.Context, resolver Resolver, updater Updater, in UpdateIn
 		out.Result = &UpdateResult{Status: "unchanged", FlowLUID: current.LUID, FlowName: current.Name, ProjectLUID: current.ProjectLUID, OwnerLUID: current.OwnerLUID}
 		return out, nil
 	}
-	result, err := updater.UpdateFlow(ctx, request)
+	result, err := updater.UpdateFlow(ctx, current, request)
 	if err != nil {
 		return UpdateOutput{}, updateOperationError("flow.update.failed", in, current.LUID, "Flow update failed.", "Inspect the exact flow before retrying: "+commandhint.Environment(in.Environment, "content", "flow", "inspect", "--id", current.LUID), err)
 	}
@@ -73,12 +73,6 @@ func updateChangedRequest(target Record, in UpdateInput) (UpdateRequest, []Updat
 		changes = append(changes, UpdateChange{Field: "owner_luid", Before: target.OwnerLUID, After: *in.OwnerLUID})
 	}
 	return r, changes
-}
-func updateValidate(in UpdateInput) error {
-	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
-		return updateUsage("environment", "flow update requires an explicit resolved environment and site")
-	}
-	return ValidateUpdateInput(in)
 }
 func updateUsage(field, message string) error {
 	return &errs.Error{ID: "flow.update.usage", Kind: errs.KindUsage, Operation: "flow.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the flow update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}

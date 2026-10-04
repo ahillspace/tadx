@@ -29,7 +29,7 @@ func (c *mutationClient) Delete(context.Context, string) (tableauflow.MutationRe
 	return tableauflow.MutationResult{Status: "succeeded", FlowLUID: "f-1"}, nil
 }
 
-func TestMutationAdapterPassesOnlyExplicitFlowChanges(t *testing.T) {
+func TestPublicationPrepareSeamPreservesFlowRequest(t *testing.T) {
 	client := &mutationClient{}
 	adapter := resourceflow.NewMutationAdapter(client)
 	prepared, err := adapter.PrepareFlow(context.Background(), tableauflow.PublishRequest{Name: "Daily", ProjectLUID: "p-1", Filename: "Daily.tflx"})
@@ -39,13 +39,7 @@ func TestMutationAdapterPassesOnlyExplicitFlowChanges(t *testing.T) {
 	if _, err := prepared.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adapter.MoveFlow(context.Background(), "f-1", "p-2"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := adapter.DeleteFlow(context.Background(), "f-1"); err != nil {
-		t.Fatal(err)
-	}
-	if client.prepared != 1 || client.moved != 1 || client.deleted != 1 {
+	if client.prepared != 1 {
 		t.Fatalf("client=%#v", client)
 	}
 }

@@ -18,12 +18,12 @@ type Updater interface {
 	UpdateWorkbook(context.Context, UpdateRequest) (UpdateResult, error)
 }
 
-func Update(ctx context.Context, resolver UpdateResolver, updater Updater, input UpdateInput, preview bool) (UpdateOutput, error) {
+func updateValidated(ctx context.Context, resolver UpdateResolver, updater Updater, input UpdateInput, preview bool) (UpdateOutput, error) {
 	if resolver == nil || updater == nil {
 		return UpdateOutput{}, &errs.Error{ID: "workbook.update.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.update", Summary: "Workbook update is not configured.", Retryable: new(false), CorrectiveAction: "Configure workbook update before retrying."}
 	}
-	if err := updateValidate(input); err != nil {
-		return UpdateOutput{}, err
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
+		return UpdateOutput{}, updateUsage("environment", "workbook update requires an explicit resolved environment and site")
 	}
 	target, err := resolver.ResolveWorkbook(ctx, input.Selector)
 	if err != nil {
@@ -95,13 +95,6 @@ func updateRejectCollision(ctx context.Context, resolver UpdateResolver, input U
 		}
 	}
 	return nil
-}
-
-func updateValidate(input UpdateInput) error {
-	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
-		return updateUsage("environment", "workbook update requires an explicit resolved environment and site")
-	}
-	return ValidateUpdateInput(input)
 }
 
 func updateUsage(field, message string) error {

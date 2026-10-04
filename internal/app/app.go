@@ -460,7 +460,7 @@ func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string,
 	}
 	clients := r.clients(connection)
 	projects := resourceproject.NewAdapter(clients.projects)
-	return connection.configuration, connection.environment, resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, workbookProjectResolver{projects}), connection.session.SiteLUID(), nil
+	return connection.configuration, connection.environment, resourceworkbook.NewAdapterWithProjectIdentityResolver(clients.workbooks, projects), connection.session.SiteLUID(), nil
 }
 
 type authenticatedTableau struct {

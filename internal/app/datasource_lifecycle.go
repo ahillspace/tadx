@@ -100,20 +100,6 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	return out, err
 }
 
-func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourceops.DeleteInput, preview bool) (datasourceops.DeleteOutput, error) {
-	if err := datasourceops.ValidateDeleteInput(input); err != nil {
-		return datasourceops.DeleteOutput{}, err
-	}
-	connection, err := c.connect(ctx, input.Environment, true)
-	if err != nil {
-		return datasourceops.DeleteOutput{}, remoteSetupError("datasource.delete", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
-	adapter := datasourceMutationAdapter{Adapter: connection.datasources, changes: connection.datasourceChanges}
-	return datasourceops.Delete(ctx, adapter, adapter, input, preview)
-}
-
 type datasourcePullReader struct {
 	datasources *resourcedatasource.Adapter
 	lineage     *resourcelineage.Adapter
@@ -280,9 +266,4 @@ func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourceops.Pu
 	progress.SetLabel(ctx, "Uploading and submitting datasource")
 	result, err := p.prepared.Commit(ctx)
 	return datasourceops.PublishResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
-}
-
-func (a datasourceMutationAdapter) DeleteDatasource(ctx context.Context, luid string) (datasourceops.DeleteResult, error) {
-	result, err := a.changes.DeleteDatasource(ctx, luid)
-	return datasourceops.DeleteResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, TableauRequestID: result.TableauRequestID}, err
 }

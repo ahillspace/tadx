@@ -33,30 +33,16 @@ type InventoryClient interface {
 	ListWorkbooks(context.Context, tableauworkbook.ListRequest) (tableauworkbook.WorkbookPage, error)
 }
 
-// MutationClient is the exact workbook mutation seam.
-type MutationClient interface {
-	Delete(context.Context, string) (tableauworkbook.MutationResult, error)
-}
-
-type updateClient interface {
-	Update(context.Context, tableauworkbook.UpdateRequest) (tableauworkbook.MutationResult, error)
-}
-
-// UpdateWorkbook changes explicit fields on one exact authoritative workbook.
-func (a *Adapter) UpdateWorkbook(ctx context.Context, input tableauworkbook.UpdateRequest) (tableauworkbook.MutationResult, error) {
-	if a == nil || a.client == nil || strings.TrimSpace(input.LUID) == "" {
-		return tableauworkbook.MutationResult{}, errors.New("workbook LUID and configured client are required")
-	}
-	client, ok := a.client.(updateClient)
-	if !ok {
-		return tableauworkbook.MutationResult{}, errors.New("workbook mutation client is not configured")
-	}
-	return client.Update(ctx, input)
-}
-
 // ProjectPathResolver supplies canonical hierarchy paths without a resource-package dependency.
 type ProjectPathResolver interface {
 	ResolveProjectPath(context.Context, string) (string, error)
+}
+
+// ProjectIdentityResolver also supplies exact destination identities and phase freshness.
+type ProjectIdentityResolver interface {
+	ProjectPathResolver
+	ResolveProjectIdentity(context.Context, identity.Selector) (value.ProjectIdentity, error)
+	BeginProjectResolution(context.Context) context.Context
 }
 
 type projectPathBatchResolver interface {
@@ -82,8 +68,9 @@ type Project = value.ProjectIdentity
 
 // Adapter isolates workbook-specific Tableau API behavior.
 type Adapter struct {
-	client   Client
-	projects ProjectPathResolver
+	client            Client
+	projects          ProjectPathResolver
+	projectIdentities ProjectIdentityResolver
 }
 
 // NewAdapter creates the first resource adapter.
@@ -92,6 +79,11 @@ func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
 // NewAdapterWithProjectResolver uses the shared canonical project hierarchy resolver.
 func NewAdapterWithProjectResolver(client Client, projects ProjectPathResolver) *Adapter {
 	return &Adapter{client: client, projects: projects}
+}
+
+// NewAdapterWithProjectIdentityResolver binds exact project identities without app conversion.
+func NewAdapterWithProjectIdentityResolver(client Client, projects ProjectIdentityResolver) *Adapter {
+	return &Adapter{client: client, projects: projects, projectIdentities: projects}
 }
 
 // ListWorkbooks returns one validated, bounded page.
@@ -434,10 +426,8 @@ func recordWorkbookIdentity(byLUID map[string]tableauworkbook.Workbook, item tab
 
 // ResolveProject resolves a LUID or exact slash-delimited project path.
 func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector) (Project, error) {
-	if resolver, ok := a.projects.(interface {
-		ResolveProject(context.Context, identity.Selector) (Project, error)
-	}); ok {
-		return resolver.ResolveProject(ctx, selector)
+	if a != nil && a.projectIdentities != nil {
+		return a.projectIdentities.ResolveProjectIdentity(ctx, selector)
 	}
 	items, err := a.allProjects(ctx)
 	if err != nil {
@@ -478,6 +468,9 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
 	if a == nil {
 		return ctx
+	}
+	if a.projectIdentities != nil {
+		return a.projectIdentities.BeginProjectResolution(ctx)
 	}
 	if resolver, ok := a.projects.(interface {
 		BeginProjectResolution(context.Context) context.Context
@@ -536,18 +529,6 @@ func (a *Adapter) DownloadWorkbook(ctx context.Context, luid string, includeExtr
 // PrepareWorkbook uploads and validates content before the final publish request.
 func (a *Adapter) PrepareWorkbook(ctx context.Context, input tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error) {
 	return a.client.Prepare(ctx, input)
-}
-
-// DeleteWorkbook removes one exact authoritative workbook LUID.
-func (a *Adapter) DeleteWorkbook(ctx context.Context, luid string) (tableauworkbook.MutationResult, error) {
-	if a == nil || a.client == nil || strings.TrimSpace(luid) == "" {
-		return tableauworkbook.MutationResult{}, errors.New("workbook LUID and configured client are required")
-	}
-	client, ok := a.client.(MutationClient)
-	if !ok {
-		return tableauworkbook.MutationResult{}, errors.New("workbook mutation client is not configured")
-	}
-	return client.Delete(ctx, luid)
 }
 
 func (a *Adapter) scanWorkbooks(ctx context.Context, request tableauworkbook.ListRequest, visit func(tableauworkbook.Workbook) error) error {

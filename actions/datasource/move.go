@@ -13,18 +13,19 @@ type MoveResolver interface {
 	Resolver
 	ProjectResolver
 	CollisionReader
+	BeginProjectResolution(context.Context) context.Context
 }
 type Mover interface {
 	MoveDatasource(context.Context, string, string) (MoveResult, error)
 }
 
-func Move(ctx context.Context, resolver MoveResolver, mover Mover, in MoveInput, preview bool) (MoveOutput, error) {
-	ctx = beginProjectResolution(ctx, resolver)
+func moveValidated(ctx context.Context, resolver MoveResolver, mover Mover, in MoveInput, preview bool) (MoveOutput, error) {
 	if resolver == nil || mover == nil {
 		return MoveOutput{}, moveRuntimeError()
 	}
-	if err := moveValidate(in); err != nil {
-		return MoveOutput{}, err
+	ctx = resolver.BeginProjectResolution(ctx)
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
+		return MoveOutput{}, moveUsage("environment", "datasource move requires an explicit resolved environment and site")
 	}
 	source, destination, err := moveResolve(ctx, resolver, in, in.DatasourceSelector, in.ProjectSelector)
 	if err != nil {
@@ -38,7 +39,7 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, in MoveInput,
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
-	ctx = beginProjectResolution(ctx, resolver)
+	ctx = resolver.BeginProjectResolution(ctx)
 	current, currentDestination, err := moveResolve(ctx, resolver, in, identity.Selector{LUID: identity.LUID(source.LUID)}, identity.Selector{LUID: identity.LUID(destination.LUID)})
 	if err != nil {
 		return MoveOutput{}, err
@@ -86,12 +87,6 @@ func moveCollision(ctx context.Context, resolver MoveResolver, in MoveInput, sou
 		}
 	}
 	return nil
-}
-func moveValidate(in MoveInput) error {
-	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
-		return moveUsage("environment", "datasource move requires an explicit resolved environment and site")
-	}
-	return ValidateMoveInput(in)
 }
 func moveRuntimeError() error {
 	return &errs.Error{ID: "datasource.move.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.move", Summary: "Datasource move is not configured.", Retryable: new(false), CorrectiveAction: "Configure datasource move before retrying."}

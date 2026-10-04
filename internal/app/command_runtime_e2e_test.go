@@ -174,6 +174,10 @@ func TestContentMovesShareSourceAndDestinationHierarchyWithinPhase(t *testing.T)
 						_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="source" name="Source"/><project id="destination" name="Destination"/></projects></tsResponse>`)
 					case r.Method == http.MethodPut:
 						writes.Add(1)
+						body, err := io.ReadAll(r.Body)
+						if err != nil || r.URL.Path != "/api/3.29/sites/site-1/"+kind+"s/item" || !strings.Contains(string(body), `id="destination"`) || strings.Contains(string(body), `id="source"`) {
+							t.Errorf("wrong %s move request path=%s body=%s err=%v", kind, r.URL.Path, body, err)
+						}
 						_, _ = fmt.Fprintf(w, `<tsResponse><%s id="item" name="Item"><project id="destination" name="Destination"/><owner id="owner"/></%s></tsResponse>`, kind, kind)
 					case strings.HasSuffix(r.URL.Path, "/item"):
 						_, _ = fmt.Fprintf(w, `<tsResponse><%s id="item" name="Item"><project id="source" name="Source"/><owner id="owner"/></%s></tsResponse>`, kind, kind)
@@ -204,5 +208,46 @@ func TestContentMovesShareSourceAndDestinationHierarchyWithinPhase(t *testing.T)
 				}
 			})
 		}
+	}
+}
+
+func TestContentMovesRefuseLateSourceDriftWithoutWrite(t *testing.T) {
+	for _, kind := range []string{"workbook", "datasource", "flow"} {
+		t.Run(kind, func(t *testing.T) {
+			var reads, projects, writes atomic.Int32
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
+					_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects"):
+					projects.Add(1)
+					_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="source" name="Source"/><project id="destination" name="Destination"/></projects></tsResponse>`)
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/"+kind+"s/item"):
+					name := "Item"
+					if reads.Add(1) > 1 {
+						name = "Changed"
+					}
+					_, _ = fmt.Fprintf(w, `<tsResponse><%s id="item" name="%s"><project id="source" name="Source"/><owner id="owner"/></%s></tsResponse>`, kind, name, kind)
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/"+kind+"s"):
+					_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="0"/><%ss/></tsResponse>`, kind)
+				case r.Method == http.MethodPut:
+					writes.Add(1)
+					_, _ = fmt.Fprintf(w, `<tsResponse><%s id="item" name="Item"><project id="destination" name="Destination"/><owner id="owner"/></%s></tsResponse>`, kind, kind)
+				default:
+					t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+			options := withSiteMutationConsent(t, cacheResilienceOptions(t, server), true)
+			var output strings.Builder
+			exit := app.Run(t.Context(), []string{"content", kind, "move", "--environment", "production", "--id", "item", "--destination-project-id", "destination"}, &output, options)
+			if exit == 0 || writes.Load() != 0 || !strings.Contains(output.String(), "target_changed") {
+				t.Fatalf("exit=%d writes=%d output=%s", exit, writes.Load(), output.String())
+			}
+			if reads.Load() != 2 || projects.Load() != 2 {
+				t.Fatalf("resource reads=%d hierarchy reads=%d", reads.Load(), projects.Load())
+			}
+		})
 	}
 }

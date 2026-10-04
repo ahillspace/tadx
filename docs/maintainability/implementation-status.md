@@ -274,6 +274,31 @@ Mechanical integration copies 13 unchanged reviewed paths and the checked archit
 Typed page readers, cache-only reads, full-generation refresh, and search routing remain explicitly pending; this slice is not full D4 completion.
 Complete integrated gates remain pending.
 
+## Content mutation integration
+
+The independently reviewed content mutation candidate starts from exact commit `1a9ee346696d4e5f1da19fce23e1022f607d01dc`.
+Its 1,380-file source fingerprint is `10654c6784c8b0712dfba609fe27466d7a7251ee91f4e84441bf6179bf597072`.
+Integration verifies actual-base and candidate hashes for all 49 changed paths before copying 46 paths and removing three obsolete app files.
+The removed files remain recoverable from Git; their behavior assertions move to the owning action and resource tests.
+Workbook, datasource, and flow Services own mutation validation, canonical target binding, and move, update, and delete sequencing.
+Direct resource ports replace nine app operation facades and copy-only adapters while preserving fresh prewrite checks, request IDs, and partial evidence.
+The two overlapping app files preserve the previously integrated auth and inventory changes.
+Workbook deletion rejects whitespace-only environments before opening a provider and still binds an omitted site to the selected canonical site.
+Independent review checks the complete manifest, overlap diffs, focused behavior tests, and CLI wiring.
+Full compile, affected package tests, focused app and CLI tests, and scoped vet pass on the isolated candidate.
+Integrated full gates remain pending.
+Publication preparation, content reads, cache routing, pull, and publication recovery remain separate unfinished ownership moves.
+
+## Integrated verification update
+
+Historical commit `f23b59560370f13009ff33e04ac4092d59fceee2` passes the full local race suite, vet, module and generated-file checks, tooling suites, and 12 controls plus 14 seeded-defect checks.
+Its formatting check fails on one catalog help fixture; commit `1a9ee346696d4e5f1da19fce23e1022f607d01dc` corrects that fixture.
+Exact `1a9ee3` passes formatting across 1,102 Go files and the controls and seeded-defect checks with unchanged source fingerprints.
+Those results do not transfer to later commits.
+Hosted Windows standard tests on `1a9ee3` fail `TestCachedGroupMembersRequireObservedCoverageThroughCLI`: three cached-member output modes return `cache.uninitialized` unexpectedly.
+The failure remains under investigation; later steps skipped by that job are not passes.
+No integrated checkpoint is accepted.
+
 ## Acceptance dependencies
 
 The current executable catalog contains 124 action IDs.
@@ -313,7 +338,11 @@ Two bounded networked text-only setup probes use the pinned runtime with no TADX
 Both fail before completion and establish no successful model access or live verification.
 Same-thread rollout records expose provider, model, and effort as effective per-turn configuration; requested settings alone remain insufficient evidence.
 The final probe reports an availability/access-related phrase without a retained structured code or HTTP status; the precise cause is unproven.
-Further speculative probes are deferred while offline implementation continues.
+Subsequent diagnostics improve error capture through six synthetic tests and independent review before one additional bounded probe.
+The sanitized, same-thread result establishes that the pinned Codex 0.154.0 ChatGPT-authenticated route rejects `gpt-6-luna` with HTTP 400 and `invalid_request_error`.
+This establishes failure of that route, not universal model unavailability or successful inference.
+The requested model and medium effort appear in effective rollout configuration, but the task never completes.
+A separately isolated current-client setup diagnostic is authorized; no model substitution or live acceptance follows from this authorization.
 The OpenAI Docs check confirms [Luna supports medium reasoning](https://developers.openai.com/api/docs/models/gpt-6-luna), but requested flags alone do not establish actual runtime configuration.
 The [documented noninteractive JSON event stream](https://learn.chatgpt.com/docs/non-interactive-mode) does not establish those actual values by itself.
 

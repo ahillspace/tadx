@@ -32,11 +32,11 @@ func TestDeleteDeletePreviewsWithoutMutationAndRevalidatesOnApply(t *testing.T) 
 	resolver := &deleteDeleteResolver{items: []datasourceops.Record{item, item, item}}
 	deleter := &deleteDeleter{}
 	actionResolver, actionDeleter := resolver, deleter
-	preview, err := datasourceops.Delete(context.Background(), actionResolver, actionDeleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, true)
+	preview, err := runDelete(context.Background(), actionResolver, actionDeleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, true)
 	if err != nil || preview.Result != nil || deleter.calls != 0 {
 		t.Fatalf("preview = %#v, error = %v, delete calls = %d", preview, err, deleter.calls)
 	}
-	result, err := datasourceops.Delete(context.Background(), actionResolver, actionDeleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
+	result, err := runDelete(context.Background(), actionResolver, actionDeleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	if err != nil || result.Result == nil || deleter.calls != 1 || resolver.calls != 3 {
 		t.Fatalf("result = %#v, error = %v, resolver calls = %d", result, err, resolver.calls)
 	}
@@ -48,7 +48,7 @@ func TestDeleteDeleteStopsWhenExactTargetChanges(t *testing.T) {
 	second.ProjectPath = "Moved"
 	resolver := &deleteDeleteResolver{items: []datasourceops.Record{first, second}}
 	deleter := &deleteDeleter{}
-	_, err := datasourceops.Delete(context.Background(), resolver, deleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
+	_, err := runDelete(context.Background(), resolver, deleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.delete.target_changed" || deleter.calls != 0 {
 		t.Fatalf("error = %#v, delete calls = %d", err, deleter.calls)
@@ -56,7 +56,7 @@ func TestDeleteDeleteStopsWhenExactTargetChanges(t *testing.T) {
 }
 
 func TestDeleteDeleteRequiresExplicitEnvironmentAndSite(t *testing.T) {
-	_, err := datasourceops.Delete(context.Background(), &deleteDeleteResolver{items: []datasourceops.Record{{}}}, &deleteDeleter{}, datasourceops.DeleteInput{}, false)
+	_, err := runDelete(context.Background(), &deleteDeleteResolver{items: []datasourceops.Record{{}}}, &deleteDeleter{}, datasourceops.DeleteInput{}, false)
 	if err == nil {
 		t.Fatal("delete without explicit target succeeded")
 	}
@@ -68,7 +68,7 @@ func TestDeleteIgnoresNonIdentityMetadataChanges(t *testing.T) {
 	second.Tags, second.OwnerLUID, second.Description = []string{"second"}, "second-owner", "changed metadata"
 	resolver := &deleteDeleteResolver{items: []datasourceops.Record{first, second}}
 	deleter := &deleteDeleter{}
-	_, err := datasourceops.Delete(t.Context(), resolver, deleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
+	_, err := runDelete(t.Context(), resolver, deleter, datasourceops.DeleteInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	if err != nil || deleter.calls != 1 || resolver.calls != 2 {
 		t.Fatalf("err=%v deletes=%d resolutions=%d", err, deleter.calls, resolver.calls)
 	}

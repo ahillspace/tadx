@@ -35,17 +35,17 @@ func TestUpdateUpdatePreviewsThenRevalidatesRename(t *testing.T) {
 	u := &updateUpdater{}
 	aResolver, aUpdater := r, u
 	in := datasourceops.UpdateInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "ds-1"}, Name: &name}
-	if out, err := datasourceops.Update(context.Background(), aResolver, aUpdater, in, true); err != nil || out.Result != nil || u.calls != 0 {
+	if out, err := runUpdate(context.Background(), aResolver, aUpdater, in, true); err != nil || out.Result != nil || u.calls != 0 {
 		t.Fatalf("preview=%#v err=%v", out, err)
 	}
-	if out, err := datasourceops.Update(context.Background(), aResolver, aUpdater, in, false); err != nil || out.Result == nil || u.calls != 1 {
+	if out, err := runUpdate(context.Background(), aResolver, aUpdater, in, false); err != nil || out.Result == nil || u.calls != 1 {
 		t.Fatalf("execute=%#v err=%v", out, err)
 	}
 }
 func TestUpdateUpdateRejectsRenameCollision(t *testing.T) {
 	name := "Taken"
 	r := updateResolver{item: datasourceops.Record{LUID: "ds-1", Name: "Old", ProjectLUID: "p-1"}, matches: []datasourceops.Record{{LUID: "ds-2"}}}
-	if _, err := datasourceops.Update(context.Background(), r, &updateUpdater{}, datasourceops.UpdateInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "ds-1"}, Name: &name}, false); err == nil {
+	if _, err := runUpdate(context.Background(), r, &updateUpdater{}, datasourceops.UpdateInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "ds-1"}, Name: &name}, false); err == nil {
 		t.Fatal("expected collision error")
 	}
 }

@@ -51,14 +51,14 @@ func (d *deleteDeleter) DeleteFlow(context.Context, string) (flowdelete.DeleteRe
 func TestDeleteDeletePreviewsThenRevalidatesOnApply(t *testing.T) {
 	r := &deleteResolver{flow: flowdelete.Record{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectPath: "Ops"}}
 	d := &deleteDeleter{}
-	preview, err := flowdelete.Delete(context.Background(), r, d, flowdelete.DeleteInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, true)
+	preview, err := runDelete(context.Background(), r, d, flowdelete.DeleteInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if preview.Result != nil || d.calls != 0 {
 		t.Fatalf("preview=%#v", preview)
 	}
-	result, err := flowdelete.Delete(context.Background(), r, d, flowdelete.DeleteInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, false)
+	result, err := runDelete(context.Background(), r, d, flowdelete.DeleteInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestDeleteDeletePreviewsThenRevalidatesOnApply(t *testing.T) {
 }
 
 func TestDeleteDeleteRequiresExplicitEnvironmentAndSite(t *testing.T) {
-	_, err := flowdelete.Delete(context.Background(), &deleteResolver{}, &deleteDeleter{}, flowdelete.DeleteInput{}, false)
+	_, err := runDelete(context.Background(), &deleteResolver{}, &deleteDeleter{}, flowdelete.DeleteInput{}, false)
 	if err == nil {
 		t.Fatal("expected explicit target error")
 	}

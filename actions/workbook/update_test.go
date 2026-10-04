@@ -35,17 +35,17 @@ func TestUpdatePreviewsThenRevalidatesExplicitRename(t *testing.T) {
 	u := &updateUpdater{}
 	aResolver, aUpdater := r, u
 	in := workbookops.UpdateInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "wb-1"}, Name: &name}
-	if out, err := workbookops.Update(context.Background(), aResolver, aUpdater, in, true); err != nil || out.Result != nil || u.calls != 0 {
+	if out, err := runUpdate(context.Background(), aResolver, aUpdater, in, true); err != nil || out.Result != nil || u.calls != 0 {
 		t.Fatalf("preview=%#v err=%v", out, err)
 	}
-	if out, err := workbookops.Update(context.Background(), aResolver, aUpdater, in, false); err != nil || out.Result == nil || u.calls != 1 || u.request.Name == nil {
+	if out, err := runUpdate(context.Background(), aResolver, aUpdater, in, false); err != nil || out.Result == nil || u.calls != 1 || u.request.Name == nil {
 		t.Fatalf("execute=%#v err=%v request=%#v", out, err, u.request)
 	}
 }
 func TestUpdateRejectsRenameCollision(t *testing.T) {
 	name := "Taken"
 	r := updateResolver{item: workbookops.Record{LUID: "wb-1", Name: "Old", ProjectLUID: "p-1"}, matches: []workbookops.Record{{LUID: "wb-2", Name: "Taken", ProjectLUID: "p-1"}}}
-	if _, err := workbookops.Update(context.Background(), r, &updateUpdater{}, workbookops.UpdateInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "wb-1"}, Name: &name}, false); err == nil {
+	if _, err := runUpdate(context.Background(), r, &updateUpdater{}, workbookops.UpdateInput{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "wb-1"}, Name: &name}, false); err == nil {
 		t.Fatal("expected collision error")
 	}
 }

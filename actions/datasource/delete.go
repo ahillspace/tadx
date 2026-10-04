@@ -12,10 +12,7 @@ type Deleter interface {
 	DeleteDatasource(context.Context, string) (DeleteResult, error)
 }
 
-func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input DeleteInput, preview bool) (DeleteOutput, error) {
-	if err := ValidateDeleteInput(input); err != nil {
-		return DeleteOutput{}, err
-	}
+func deleteValidated(ctx context.Context, resolver Resolver, deleter Deleter, input DeleteInput, preview bool) (DeleteOutput, error) {
 	if resolver == nil || deleter == nil {
 		return DeleteOutput{}, &errs.Error{ID: "datasource.delete.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.delete", Summary: "Datasource delete is not configured.", Retryable: new(false), CorrectiveAction: "Configure datasource delete before retrying."}
 	}

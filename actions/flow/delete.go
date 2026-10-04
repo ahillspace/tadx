@@ -14,10 +14,7 @@ type Deleter interface {
 }
 
 // Delete previews or deletes one exact flow.
-func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input DeleteInput, preview bool) (DeleteOutput, error) {
-	if err := ValidateDeleteInput(input); err != nil {
-		return DeleteOutput{}, err
-	}
+func deleteValidated(ctx context.Context, resolver Resolver, deleter Deleter, input DeleteInput, preview bool) (DeleteOutput, error) {
 	if resolver == nil || deleter == nil {
 		return DeleteOutput{}, &errs.Error{ID: "flow.delete.unconfigured", Kind: errs.KindRuntime, Operation: "flow.delete", Summary: "Flow delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow delete before retrying."}
 	}

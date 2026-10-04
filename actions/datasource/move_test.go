@@ -13,6 +13,8 @@ type moveResolver struct {
 	matches []datasourceops.Record
 }
 
+func (r moveResolver) BeginProjectResolution(ctx context.Context) context.Context { return ctx }
+
 func (r moveResolver) ResolveDatasource(context.Context, identity.Selector) (datasourceops.Record, error) {
 	return r.item, nil
 }
@@ -34,16 +36,16 @@ func TestMoveMovePreviewsThenRevalidatesAndMoves(t *testing.T) {
 	m := &moveMover{}
 	aResolver, aMover := r, m
 	in := datasourceops.MoveInput{Environment: "dev", Site: "site", DatasourceSelector: identity.Selector{LUID: "ds-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}
-	if out, err := datasourceops.Move(context.Background(), aResolver, aMover, in, true); err != nil || out.Result != nil || m.calls != 0 {
+	if out, err := runMove(context.Background(), aResolver, aMover, in, true); err != nil || out.Result != nil || m.calls != 0 {
 		t.Fatalf("preview=%#v err=%v", out, err)
 	}
-	if out, err := datasourceops.Move(context.Background(), aResolver, aMover, in, false); err != nil || out.Result == nil || m.calls != 1 {
+	if out, err := runMove(context.Background(), aResolver, aMover, in, false); err != nil || out.Result == nil || m.calls != 1 {
 		t.Fatalf("execute=%#v err=%v", out, err)
 	}
 }
 func TestMoveMoveRejectsCollision(t *testing.T) {
 	r := moveResolver{item: datasourceops.Record{LUID: "ds-1", Name: "Sales", ProjectLUID: "p-1"}, project: datasourceops.Project{LUID: "p-2"}, matches: []datasourceops.Record{{LUID: "ds-2"}}}
-	if _, err := datasourceops.Move(context.Background(), r, &moveMover{}, datasourceops.MoveInput{Environment: "dev", Site: "site", DatasourceSelector: identity.Selector{LUID: "ds-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false); err == nil {
+	if _, err := runMove(context.Background(), r, &moveMover{}, datasourceops.MoveInput{Environment: "dev", Site: "site", DatasourceSelector: identity.Selector{LUID: "ds-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false); err == nil {
 		t.Fatal("expected collision error")
 	}
 }

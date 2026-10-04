@@ -8,31 +8,13 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 )
 
-// MutationClient is the narrow flow mutation seam, now covered by a live
-// contract test (internal/tableau/flow live_contract_test.go).
+// MutationClient is the temporary publication Prepare seam.
+// The publication and recovery slice removes it after receipt fixtures cover that boundary.
 type MutationClient interface {
 	Prepare(context.Context, tableauflow.PublishRequest) (tableauflow.PreparedPublish, error)
-	Move(context.Context, string, string) (tableauflow.MutationResult, error)
-	Delete(context.Context, string) (tableauflow.MutationResult, error)
 }
 
-type updateClient interface {
-	Update(context.Context, tableauflow.UpdateRequest) (tableauflow.MutationResult, error)
-}
-
-// UpdateFlow changes the owner of one exact flow.
-func (a *MutationAdapter) UpdateFlow(ctx context.Context, input tableauflow.UpdateRequest) (tableauflow.MutationResult, error) {
-	if a == nil || a.client == nil || strings.TrimSpace(input.LUID) == "" || input.OwnerLUID == nil || strings.TrimSpace(*input.OwnerLUID) == "" {
-		return tableauflow.MutationResult{}, errors.New("flow update requires configured client and exact flow and owner LUIDs")
-	}
-	client, ok := a.client.(updateClient)
-	if !ok {
-		return tableauflow.MutationResult{}, errors.New("flow update client is not configured")
-	}
-	return client.Update(ctx, input)
-}
-
-// MutationAdapter validates exact mutation identities before delegation.
+// MutationAdapter validates publication preparation before delegation.
 type MutationAdapter struct{ client MutationClient }
 
 // NewMutationAdapter creates a flow mutation adapter.
@@ -46,20 +28,4 @@ func (a *MutationAdapter) PrepareFlow(ctx context.Context, input tableauflow.Pub
 		return nil, errors.New("flow publish requires a configured client, name, and project LUID")
 	}
 	return a.client.Prepare(ctx, input)
-}
-
-// MoveFlow moves one exact flow to one exact project on the current site.
-func (a *MutationAdapter) MoveFlow(ctx context.Context, flowLUID, projectLUID string) (tableauflow.MutationResult, error) {
-	if a == nil || a.client == nil || strings.TrimSpace(flowLUID) == "" || strings.TrimSpace(projectLUID) == "" {
-		return tableauflow.MutationResult{}, errors.New("flow move requires configured client and exact flow and project LUIDs")
-	}
-	return a.client.Move(ctx, flowLUID, projectLUID)
-}
-
-// DeleteFlow deletes one exact flow.
-func (a *MutationAdapter) DeleteFlow(ctx context.Context, flowLUID string) (tableauflow.MutationResult, error) {
-	if a == nil || a.client == nil || strings.TrimSpace(flowLUID) == "" {
-		return tableauflow.MutationResult{}, errors.New("flow delete requires a configured client and exact flow LUID")
-	}
-	return a.client.Delete(ctx, flowLUID)
 }

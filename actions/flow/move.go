@@ -12,20 +12,18 @@ import (
 type MoveResolver interface {
 	Resolver
 	ProjectResolver
+	BeginProjectResolution(context.Context) context.Context
 }
 type Mover interface {
 	MoveFlow(context.Context, string, string) (MoveResult, error)
 }
 
 // Move previews or moves one exact flow.
-func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInput, preview bool) (MoveOutput, error) {
-	if err := ValidateMoveInput(input); err != nil {
-		return MoveOutput{}, err
-	}
-	ctx = beginProjectResolution(ctx, resolver)
+func moveValidated(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInput, preview bool) (MoveOutput, error) {
 	if resolver == nil || mover == nil {
 		return MoveOutput{}, &errs.Error{ID: "flow.move.unconfigured", Kind: errs.KindRuntime, Operation: "flow.move", Summary: "Flow move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow move before retrying."}
 	}
+	ctx = resolver.BeginProjectResolution(ctx)
 	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return MoveOutput{}, moveUsage("environment", "flow move requires an explicit resolved environment and site")
 	}
@@ -45,7 +43,7 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInp
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
-	ctx = beginProjectResolution(ctx, resolver)
+	ctx = resolver.BeginProjectResolution(ctx)
 	current, err := resolver.ResolveFlow(ctx, input.FlowSelector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")

@@ -17,6 +17,8 @@ type moveResolver struct {
 	flowCalls, projectCalls int
 }
 
+func (r *moveResolver) BeginProjectResolution(ctx context.Context) context.Context { return ctx }
+
 func TestMoveOutputGolden(t *testing.T) {
 	output := flowmove.MoveOutput{Plan: flowmove.MovePlan{Mode: "execute", Operation: "flow.move", Environment: "dev", Site: "sandbox", Source: flowmove.MoveFlow{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectPath: "Old"}, Destination: flowmove.Project{LUID: "project-2", Name: "New", Path: "New"}}, Result: &flowmove.MoveResult{Status: "succeeded", FlowLUID: "flow-1", ProjectLUID: "project-2", TableauRequestID: "request-1"}, Help: []string{"tadx content flow inspect --id flow-1"}}
 	moveAssertGolden(t, "compact.toon", output, false)
@@ -56,14 +58,14 @@ func (m *moveMover) MoveFlow(context.Context, string, string) (flowmove.MoveResu
 func TestMoveMovePreviewsThenRevalidatesOnApply(t *testing.T) {
 	r := &moveResolver{flow: flowmove.Record{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectPath: "Old"}, project: flowmove.Project{LUID: "p-2", Path: "New"}}
 	m := &moveMover{}
-	preview, err := flowmove.Move(context.Background(), r, m, flowmove.MoveInput{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, true)
+	preview, err := runMove(context.Background(), r, m, flowmove.MoveInput{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if preview.Result != nil || m.calls != 0 {
 		t.Fatalf("preview=%#v", preview)
 	}
-	result, err := flowmove.Move(context.Background(), r, m, flowmove.MoveInput{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false)
+	result, err := runMove(context.Background(), r, m, flowmove.MoveInput{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +75,7 @@ func TestMoveMovePreviewsThenRevalidatesOnApply(t *testing.T) {
 }
 
 func TestMoveMoveRequiresExplicitEnvironmentAndSite(t *testing.T) {
-	_, err := flowmove.Move(context.Background(), &moveResolver{}, &moveMover{}, flowmove.MoveInput{}, false)
+	_, err := runMove(context.Background(), &moveResolver{}, &moveMover{}, flowmove.MoveInput{}, false)
 	if err == nil {
 		t.Fatal("expected explicit target error")
 	}

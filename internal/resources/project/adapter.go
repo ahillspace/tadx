@@ -11,6 +11,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const resolutionPageSize = 1000
@@ -43,6 +44,12 @@ type Project struct {
 	ViewCount                       *int
 	DatasourceCount                 *int
 	RequestID                       string
+}
+
+// ResolveProjectIdentity returns the exact action-neutral destination fields.
+func (a *Adapter) ResolveProjectIdentity(ctx context.Context, selector identity.Selector) (value.ProjectIdentity, error) {
+	project, err := a.ResolveProject(ctx, selector)
+	return value.ProjectIdentity{LUID: project.LUID, Name: project.Name, Path: project.Path}, err
 }
 
 // Page is one bounded normalized project page.

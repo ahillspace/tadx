@@ -12,15 +12,15 @@ import (
 func TestSharedRecordDoesNotWidenMutationOrPullProjections(t *testing.T) {
 	record := workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "p-1", ProjectPath: "Ops", OwnerLUID: "owner", Description: "description", ContentURL: "content", Tags: []string{"tag"}, RequestID: "request"}
 	selector := identity.Selector{LUID: "wb-1"}
-	deleted, err := workbookops.Delete(t.Context(), &deleteResolver{results: []workbookops.Record{record}}, &deleteDeleter{}, workbookops.DeleteInput{Environment: "test", Site: "site", Selector: selector}, true)
+	deleted, err := runDelete(t.Context(), &deleteResolver{results: []workbookops.Record{record}}, &deleteDeleter{}, workbookops.DeleteInput{Environment: "test", Site: "site", Selector: selector}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	moved, err := workbookops.Move(t.Context(), &moveResolver{workbook: record, project: workbookops.Project{LUID: "p-2", Path: "Destination"}}, &moveMover{}, workbookops.MoveInput{Environment: "test", Site: "site", WorkbookSelector: selector, ProjectSelector: identity.Selector{LUID: "p-2"}}, true)
+	moved, err := runMove(t.Context(), &moveResolver{workbook: record, project: workbookops.Project{LUID: "p-2", Path: "Destination"}}, &moveMover{}, workbookops.MoveInput{Environment: "test", Site: "site", WorkbookSelector: selector, ProjectSelector: identity.Selector{LUID: "p-2"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := workbookops.Update(t.Context(), updateResolver{item: record}, &updateUpdater{}, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: selector, Name: new("Renamed")}, true)
+	updated, err := runUpdate(t.Context(), updateResolver{item: record}, &updateUpdater{}, workbookops.UpdateInput{Environment: "test", Site: "site", Selector: selector, Name: new("Renamed")}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

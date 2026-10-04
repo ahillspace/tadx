@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectops "github.com/ahillspace/tadx/actions/project"
@@ -36,28 +37,35 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	projects := projectops.New(projectops.Ports{Provider: projectProvider{commands: c}})
+	mutations := contentMutationProvider{commands: c}
+	workbooks := workbookops.New(mutations)
+	datasources := datasourceops.New(mutations)
+	flows := flowops.New(mutations)
 	return &contentcli.Dependencies{
-		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: c, WorkbookMover: c, WorkbookUpdater: c,
-		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c, DatasourceMover: c, DatasourceUpdater: c,
+		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: workbooks, WorkbookMover: workbooks, WorkbookUpdater: workbooks,
+		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
 		ProjectLister: projects, ProjectInspector: projects, ProjectCreator: projects, ProjectUpdater: projects, ProjectDeleter: projects, ProjectMover: projects,
-		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c, FlowUpdater: c,
+		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
 		LineagePuller: c,
 	}
 }
 
 type remoteConnection struct {
-	metadataAssets    *metadataassets.Client
-	environment       config.Environment
-	siteLUID          string
-	projects          *resourceproject.Adapter
-	projectChanges    resourceproject.MutationClient
-	flows             *resourceflow.Adapter
-	flowChanges       *resourceflow.MutationAdapter
-	lineage           *resourcelineage.Adapter
-	workbooks         *resourceworkbook.Adapter
-	datasources       *resourcedatasource.Adapter
-	datasourceChanges *resourcedatasource.MutationAdapter
-	inventory         tableaucache.Executor
+	metadataAssets          *metadataassets.Client
+	environment             config.Environment
+	siteLUID                string
+	projects                *resourceproject.Adapter
+	projectChanges          resourceproject.MutationClient
+	flows                   *resourceflow.Adapter
+	flowChanges             *resourceflow.MutationAdapter
+	flowNativeChanges       resourceflow.FlowChanges
+	lineage                 *resourcelineage.Adapter
+	workbooks               *resourceworkbook.Adapter
+	workbookChanges         resourceworkbook.WorkbookChanges
+	datasources             *resourcedatasource.Adapter
+	datasourceChanges       *resourcedatasource.MutationAdapter
+	datasourceNativeChanges resourcedatasource.DatasourceChanges
+	inventory               tableaucache.Executor
 }
 
 func (c *remoteContentCommands) connect(ctx context.Context, alias string, explicit bool) (remoteConnection, error) {
@@ -68,24 +76,31 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	clients := c.runtime.clients(connection)
 	projectClient := clients.projects
 	projects := resourceproject.NewAdapter(projectClient)
-	var paths resourceworkbook.ProjectPathResolver = workbookProjectResolver{projects}
+	var paths resourceworkbook.ProjectPathResolver = projects
 	if !explicit {
 		paths = c.runtime.discoveryPaths(connection)
 	}
+	workbooks := resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, paths)
+	if explicit {
+		workbooks = resourceworkbook.NewAdapterWithProjectIdentityResolver(clients.workbooks, projects)
+	}
 	flowClient, datasourceClient := clients.flows, clients.datasources
 	return remoteConnection{
-		metadataAssets:    clients.metadataAssets,
-		environment:       connection.environment,
-		siteLUID:          connection.session.SiteLUID(),
-		projects:          projects,
-		projectChanges:    projectClient,
-		flows:             resourceflow.NewAdapter(flowClient, paths),
-		flowChanges:       resourceflow.NewMutationAdapter(flowClient),
-		lineage:           resourcelineage.NewAdapter(clients.metadata),
-		workbooks:         resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, paths),
-		datasources:       resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, paths),
-		datasourceChanges: resourcedatasource.NewMutationAdapter(datasourceClient),
-		inventory:         cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
+		metadataAssets:          clients.metadataAssets,
+		environment:             connection.environment,
+		siteLUID:                connection.session.SiteLUID(),
+		projects:                projects,
+		projectChanges:          projectClient,
+		flows:                   resourceflow.NewAdapter(flowClient, paths),
+		flowChanges:             resourceflow.NewMutationAdapter(flowClient),
+		flowNativeChanges:       flowClient,
+		lineage:                 resourcelineage.NewAdapter(clients.metadata),
+		workbooks:               workbooks,
+		workbookChanges:         clients.workbooks,
+		datasources:             resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, paths),
+		datasourceChanges:       resourcedatasource.NewMutationAdapter(datasourceClient),
+		datasourceNativeChanges: datasourceClient,
+		inventory:               cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
 	}, nil
 }
 
@@ -273,47 +288,6 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 	return out, err
 }
 
-func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowops.MoveInput, preview bool) (flowops.MoveOutput, error) {
-	if err := flowops.ValidateMoveInput(input); err != nil {
-		return flowops.MoveOutput{}, err
-	}
-	connection, err := c.connect(ctx, input.Environment, true)
-	if err != nil {
-		return flowops.MoveOutput{}, remoteSetupError("flow.move", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
-	adapter := flowMoveAdapter{Adapter: connection.flows, projects: connection.projects, changes: connection.flowChanges}
-	return flowops.Move(ctx, adapter, adapter, input, preview)
-}
-
-func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowops.DeleteInput, preview bool) (flowops.DeleteOutput, error) {
-	if err := flowops.ValidateDeleteInput(input); err != nil {
-		return flowops.DeleteOutput{}, err
-	}
-	connection, err := c.connect(ctx, input.Environment, true)
-	if err != nil {
-		return flowops.DeleteOutput{}, remoteSetupError("flow.delete", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
-	adapter := flowDeleteAdapter{Adapter: connection.flows, changes: connection.flowChanges}
-	return flowops.Delete(ctx, adapter, adapter, input, preview)
-}
-
-func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbookops.DeleteInput, preview bool) (workbookops.DeleteOutput, error) {
-	if err := workbookops.ValidateDeleteInput(input); err != nil {
-		return workbookops.DeleteOutput{}, err
-	}
-	connection, err := c.connect(ctx, input.Environment, true)
-	if err != nil {
-		return workbookops.DeleteOutput{}, remoteSetupError("workbook.delete", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
-	return workbookops.Delete(ctx, connection.workbooks, workbookMutationAdapter{connection.workbooks}, input, preview)
-}
-
 func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
 	input, err := lineagepull.NormalizeInput(input)
 	if err != nil {
@@ -481,37 +455,6 @@ func (p preparedFlowPublish) Commit(ctx context.Context) (flowops.PublishResult,
 	progress.SetLabel(ctx, "Uploading and submitting flow")
 	result, err := p.prepared.Commit(ctx)
 	return flowops.PublishResult{Status: result.Status, FlowLUID: result.FlowLUID, FlowName: result.FlowName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
-}
-
-type flowMoveAdapter struct {
-	*resourceflow.Adapter
-	projects *resourceproject.Adapter
-	changes  *resourceflow.MutationAdapter
-}
-
-func (a flowMoveAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (flowops.Project, error) {
-	item, err := a.projects.ResolveProject(ctx, selector)
-	return flowops.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
-}
-
-func (a flowMoveAdapter) MoveFlow(ctx context.Context, flowLUID, projectLUID string) (flowops.MoveResult, error) {
-	result, err := a.changes.MoveFlow(ctx, flowLUID, projectLUID)
-	return flowops.MoveResult{Status: result.Status, FlowLUID: result.FlowLUID, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
-}
-
-type flowDeleteAdapter struct {
-	*resourceflow.Adapter
-	changes *resourceflow.MutationAdapter
-}
-
-func (a workbookMutationAdapter) DeleteWorkbook(ctx context.Context, luid string) (workbookops.DeleteResult, error) {
-	result, err := a.workbooks.DeleteWorkbook(ctx, luid)
-	return workbookops.DeleteResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, TableauRequestID: result.TableauRequestID}, err
-}
-
-func (a flowDeleteAdapter) DeleteFlow(ctx context.Context, luid string) (flowops.DeleteResult, error) {
-	result, err := a.changes.DeleteFlow(ctx, luid)
-	return flowops.DeleteResult{Status: result.Status, FlowLUID: result.FlowLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
 type lineageResolver struct {
