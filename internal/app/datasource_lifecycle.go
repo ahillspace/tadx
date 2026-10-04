@@ -5,42 +5,15 @@ import (
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"path/filepath"
-	"strings"
 
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
-	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
-
-func (c *remoteContentCommands) PullDatasource(ctx context.Context, input datasourceops.PullInput) (datasourceops.PullOutput, error) {
-	if err := datasourceops.ValidatePullInput(input); err != nil {
-		return datasourceops.PullOutput{}, err
-	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return datasourceops.PullOutput{}, capabilitySetupError("datasource.pull.workspace", "datasource.pull", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
-	input.WorkspaceName = workspace.Name
-	connection, err := c.connect(ctx, input.Environment, false)
-	if err != nil {
-		return datasourceops.PullOutput{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.SiteLUID = connection.siteLUID
-	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
-	if err != nil {
-		return datasourceops.PullOutput{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
-	}
-
-	reader := datasourcePullReader{datasources: connection.datasources, lineage: connection.lineage}
-	return datasourceops.Pull(ctx, reader, datasourceArtifactWriter{artifact.NewDatasourceManager(c.runtime.now)}, input)
-}
 
 func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
 	if err := datasourceops.ValidatePublishInput(input); err != nil {
@@ -98,83 +71,6 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) { return lifecycle.completeDatasource(ctx, action, out) })
 	}
 	return out, err
-}
-
-type datasourcePullReader struct {
-	datasources *resourcedatasource.Adapter
-	lineage     *resourcelineage.Adapter
-}
-
-func (r datasourcePullReader) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceops.Record, error) {
-	return r.datasources.ResolveDatasource(ctx, selector)
-}
-
-func (r datasourcePullReader) DownloadDatasource(ctx context.Context, luid string) (datasourceops.Download, error) {
-	progress.SetLabel(ctx, "Downloading datasource")
-	item, err := r.datasources.DownloadDatasource(ctx, luid)
-	return datasourceops.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
-}
-
-func (r datasourcePullReader) CaptureLineage(ctx context.Context, input datasourceops.LineageRequest) (datasourceops.Lineage, error) {
-	progress.SetLabel(ctx, "Reading datasource metadata")
-	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
-	nodes := make([]datasourceops.LineageNode, len(graph.Nodes))
-	copy(nodes, graph.Nodes)
-	edges := make([]datasourceops.LineageEdge, len(graph.Edges))
-	copy(edges, graph.Edges)
-	return datasourceops.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
-}
-
-type datasourceArtifactWriter struct{ manager *artifact.DatasourceManager }
-
-func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input datasourceops.PullArtifact) (datasourceops.PullArtifactResult, error) {
-	progress.SetLabel(ctx, "Saving datasource files")
-	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
-	for index, node := range input.Lineage.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
-	edges := make([]artifact.LineageEdge, len(input.Lineage.Edges))
-	for index, edge := range input.Lineage.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
-	direction, depth := input.Lineage.Direction, input.Lineage.Depth
-	if direction == "" {
-		direction = "both"
-	}
-	if depth == 0 {
-		depth = 1
-	}
-	result, err := w.manager.Pull(ctx, artifact.DatasourcePull{
-		Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite,
-		Metadata: artifact.DatasourceMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID},
-		Lineage:  artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)},
-	})
-	if err != nil {
-		return datasourceops.PullArtifactResult{}, err
-	}
-	canonicalPath, err := containDatasourceWorkspacePath(input.Workspace, result.CanonicalPath, "canonical path")
-	if err != nil {
-		return datasourceops.PullArtifactResult{}, err
-	}
-	lineagePath, err := containDatasourceWorkspacePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "lineage path")
-	if err != nil {
-		return datasourceops.PullArtifactResult{}, err
-	}
-	// LineageStatus and CountsKnown are single-sourced from lineage completeness in the
-	// pull action; leave LineageStatus unset here so the two fields cannot diverge.
-	return datasourceops.PullArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, CompositionStatus: result.CompositionStatus, ParentDataSourceURLs: append([]string(nil), result.ParentDataSourceURLs...), Warnings: append([]string(nil), result.Warnings...)}, nil
-}
-
-func containDatasourceWorkspacePath(workspace, absolute, label string) (string, error) {
-	relative, err := filepath.Rel(workspace, absolute)
-	if err != nil {
-		return "", err
-	}
-	relative = filepath.ToSlash(filepath.Clean(relative))
-	if relative == ".." || strings.HasPrefix(relative, "../") {
-		return "", errors.New("datasource artifact " + label + " escapes the resolved workspace")
-	}
-	return relative, nil
 }
 
 type datasourceArtifactReader struct {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	jobactions "github.com/ahillspace/tadx/actions/job"
+	"github.com/ahillspace/tadx/internal/cli"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -17,10 +18,10 @@ import (
 
 func (r *runtimeDependencies) recoveryPorts() jobactions.RecoveryPorts {
 	return jobactions.RecoveryPorts{
-		OperationStore:    func() (operationrun.Store, error) { return publicationOperationStore(r.operationDirectory) },
+		OperationStore:    func() (operationrun.Store, error) { return operationrun.NewStore(r.operationDirectory) },
 		ReceiptStore:      r.publicationReceiptStore,
 		Open:              r.openRecoverySession,
-		SupportsOperation: nativeLongOperation,
+		SupportsOperation: cli.SupportsPublicationExecution,
 		ConfigPath:        r.configPath,
 		Now:               r.now,
 	}

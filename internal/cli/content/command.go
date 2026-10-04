@@ -18,9 +18,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Puller executes workbook.pull.
+// Puller enters the workbook pull Service.
 type Puller interface {
-	Execute(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
+	PullWorkbook(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
 }
 
 // Publisher executes workbook.publish or returns a preview.
@@ -185,7 +185,7 @@ func newPull(deps Dependencies) *cobra.Command {
 				if id != "" {
 					item.LUID = id
 				}
-				return deps.Puller.Execute(ctx, item)
+				return deps.Puller.PullWorkbook(ctx, item)
 			})
 		},
 	}

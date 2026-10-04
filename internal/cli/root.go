@@ -78,7 +78,7 @@ type SessionOverview interface {
 	Execute(context.Context) (sessionoverview.Output, error)
 }
 type WorkbookPuller interface {
-	Execute(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
+	PullWorkbook(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
 }
 type WorkbookPublisher interface {
 	Execute(context.Context, workbookops.PublishInput, bool) (workbookops.PublishOutput, error)

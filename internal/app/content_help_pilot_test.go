@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	lineageops "github.com/ahillspace/tadx/actions/lineage"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/cli"
 	"github.com/spf13/cobra"
@@ -29,7 +30,7 @@ func contentHelpPilotTree(t *testing.T, options Options) *cobra.Command {
 	remoteContent := newRemoteContentCommands(runtime)
 	root := cli.NewRoot(cli.Dependencies{
 		Content: remoteContent.dependencies(), CatalogLabels: contentLabelDependencies(runtime), CatalogLineage: lineageops.New(lineageWorkspace{runtime: runtime}, lineageProvider{commands: remoteContent}),
-		WorkbookPuller: &pullService{runtime: runtime}, WorkbookPublisher: &publishService{runtime: runtime},
+		WorkbookPuller: workbookops.New(workbookops.Ports{Pull: workbookPullProvider{runtime: runtime}}), WorkbookPublisher: &publishService{runtime: runtime},
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
 		BatchSelectors: capability.BatchSelectors(), BatchOptions: capability.BatchOptions(),

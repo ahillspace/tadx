@@ -6,6 +6,7 @@ import (
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/identity"
+	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,10 +67,10 @@ func TestWorkbookPullDependencyArtifactPassesDatasourcePublishPreflight(t *testi
 	}
 	now := func() time.Time { return time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) }
 	manager := artifact.NewDatasourceManager(now)
-	pulled, err := workbookops.Pull(context.Background(), workbookDependencyPullReader{}, artifactWriter{
-		workbooks: artifact.NewWorkbookManager(now),
-		bundles:   artifact.NewWorkbookBundleManager(now),
-	}, workbookops.PullInput{
+	pulled, err := runWorkbookPull(context.Background(), workbookDependencyPullReader{}, resourceworkbook.PullWriterPort{
+		Workbooks: artifact.NewWorkbookManager(now),
+		Bundles:   artifact.NewWorkbookBundleManager(now),
+	}, nil, workbookops.PullInput{
 		Environment: "source", Site: "source-site", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1",
 		Workspace: workspace, Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true,
 	})

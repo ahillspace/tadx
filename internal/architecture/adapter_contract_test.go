@@ -96,7 +96,7 @@ func TestAdminCachePortsAllowOnlyTheirRequiredInfrastructure(t *testing.T) {
 		name, file, imported string
 	}{
 		{"other resource inventory", "internal/resources/lineage/cache.go", "internal/inventory"},
-		{"other resource admin errors", "internal/resources/workbook/cache.go", "internal/errs"},
+		{"other resource admin errors", "internal/resources/project/cache.go", "internal/errs"},
 		{"nested admin package", "internal/resources/admin/nested/cache.go", "internal/cache"},
 		{"sibling action inventory", "actions/admin/group/action.go", "internal/inventory"},
 	} {
@@ -125,7 +125,7 @@ func TestLineageArtifactPortAllowsOnlyExactOwner(t *testing.T) {
 			}
 			assertViolationStrings(t, violations, nil)
 		})
-		for _, file := range []string{"internal/resources/workbook/ports.go", "internal/resources/lineage/nested/ports.go"} {
+		for _, file := range []string{"internal/resources/project/ports.go", "internal/resources/lineage/nested/ports.go"} {
 			t.Run("rejected/"+file+"/"+imported, func(t *testing.T) {
 				root := moduleFixture(t)
 				writeGo(t, root, file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+imported))
@@ -137,6 +137,76 @@ func TestLineageArtifactPortAllowsOnlyExactOwner(t *testing.T) {
 					t.Fatalf("violations=%v", violations)
 				}
 			})
+		}
+	}
+}
+
+func TestWorkbookPullCannotImportDatasourceResource(t *testing.T) {
+	root := moduleFixture(t)
+	file := "internal/resources/workbook/pull_reader.go"
+	imported := "example.test/tadx/internal/resources/datasource"
+	writeGo(t, root, file, fmt.Sprintf("package workbook\nimport _ %q\n", imported))
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		file + " imports " + imported + ": resource adapters must not import unapproved local packages",
+	})
+}
+
+func TestFlowPullArtifactPortAllowsOnlyExactOwner(t *testing.T) {
+	for _, imported := range []string{"internal/artifact", "internal/errs"} {
+		t.Run("allowed/"+imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/flow/pull_ports.go", fmt.Sprintf("package flow\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+		for _, file := range []string{"internal/resources/project/pull_ports.go", "internal/resources/flow/nested/pull_ports.go"} {
+			t.Run("rejected/"+file+"/"+imported, func(t *testing.T) {
+				root := moduleFixture(t)
+				writeGo(t, root, file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+imported))
+				violations, err := architecture.Check(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(violations) != 1 || violations[0].File != file {
+					t.Fatalf("violations=%v", violations)
+				}
+			})
+		}
+	}
+}
+
+func TestContentPullArtifactPortsRequireExactResourceOwner(t *testing.T) {
+	for _, resource := range []string{"workbook", "datasource"} {
+		for _, imported := range []string{"internal/artifact", "internal/errs"} {
+			t.Run("allowed/"+resource+"/"+imported, func(t *testing.T) {
+				root := moduleFixture(t)
+				writeGo(t, root, "internal/resources/"+resource+"/pull_ports.go", fmt.Sprintf("package adapter\nimport _ %q\n", "example.test/tadx/"+imported))
+				violations, err := architecture.Check(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertViolationStrings(t, violations, nil)
+			})
+			for _, file := range []string{"internal/resources/project/pull_ports.go", "internal/resources/" + resource + "/nested/pull_ports.go"} {
+				t.Run("rejected/"+file+"/"+imported, func(t *testing.T) {
+					root := moduleFixture(t)
+					writeGo(t, root, file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+imported))
+					violations, err := architecture.Check(root)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(violations) != 1 || violations[0].File != file {
+						t.Fatalf("violations=%v", violations)
+					}
+				})
+			}
 		}
 	}
 }

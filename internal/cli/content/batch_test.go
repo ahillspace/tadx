@@ -40,7 +40,7 @@ func (b *batchCalls) call(selector, env, workspace string) error {
 	}
 	return nil
 }
-func (b *batchCalls) Execute(_ context.Context, in workbookops.PullInput) (workbookops.PullOutput, error) {
+func (b *batchCalls) PullWorkbook(_ context.Context, in workbookops.PullInput) (workbookops.PullOutput, error) {
 	return workbookops.PullOutput{}, b.call(in.LUID, in.Environment, in.Workspace)
 }
 

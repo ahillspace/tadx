@@ -6,6 +6,28 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Content pulls and detached worker ownership
+
+Workbook, datasource, and flow Services own pull validation, canonical session binding, and operation sequencing.
+Resource ports own native downloads, lineage translation, artifact persistence, and preview observations.
+The workbook CLI invokes the named PullWorkbook entry point; the app pull facade and intermediate record translations are removed.
+Distinct dependency downloads and resource-specific artifact/error contracts remain explicit.
+
+Operationrun owns startup acknowledgement, foreground leases, detached waiting, receipt intent persistence, progress state, and final snapshot storage.
+CLI owns Cobra decoration, progress presentation, and the exact supported-command selector.
+App retains construction and private worker dispatch; it binds the same selector for recovery admission.
+Accepted receipt identities and partial snapshots survive final capture failures without resubmission.
+
+Independent review accepts the combined 52-path integration against `36ecdc11491f48161dfcfbb1f0fc47a9a9ae9056`.
+The 1,551-file source fingerprint is `db707a7e002bde41aa9e00cc8b75e302abd49e524703cbe09968398896f8532a`.
+The archive SHA-256 is `b798e4d9c97058654b7ecbec97d549d2b01be67af3a8de1dc32d7d8f8705c0f1`.
+Focused action, resource, operationrun, CLI, architecture, and app pull/worker tests, full compilation, and scoped vet pass.
+The integration retains both datasource schema and pull providers and the current shared receipt-scope function.
+Two stale worker test fixtures are corrected in new immutable revisions: a valid receipt-scope digest and a nested-package rejection target.
+Their assertions and the exact-owner dependency controls remain enforced.
+Evidence remains in `.tadx-refactor/pull-merge-36e/`.
+Publication ownership, remaining Pulse lifecycle work, final live acceptance, and whole-architecture review remain pending.
+
 ## Operation recovery and typed search ownership
 
 The job Service owns exact local operation inspection, receipt linkage, target/type checks, reconciliation, and persisted recovery state.

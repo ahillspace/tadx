@@ -20,11 +20,7 @@ type PullWriter interface {
 	WriteFlow(context.Context, PullArtifact) (PullArtifactResult, error)
 }
 
-// Pull acquires one exact native flow artifact.
-func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullInput) (PullOutput, error) {
-	if err := ValidatePullInput(input); err != nil {
-		return PullOutput{}, err
-	}
+func pullValidated(ctx context.Context, reader PullReader, writer PullWriter, previewer PullPreviewer, input PullInput) (PullOutput, error) {
 	if reader == nil || writer == nil {
 		return PullOutput{}, &errs.Error{ID: "flow.pull.unconfigured", Kind: errs.KindRuntime, Operation: "flow.pull", Summary: "Flow pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow pull before retrying."}
 	}
@@ -37,10 +33,7 @@ func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullI
 		return PullOutput{}, &errs.Error{ID: "flow.pull.resolve", Kind: errs.KindOperation, Operation: "flow.pull", Environment: input.Environment, Site: input.Site, Summary: "Flow resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if input.Preview {
-		previewer, ok := writer.(interface {
-			PreviewFlow(context.Context, PullInput, Record) (value.AcquisitionPlan, error)
-		})
-		if !ok {
+		if previewer == nil {
 			return PullOutput{}, &errs.Error{ID: "flow.pull.preview", Kind: errs.KindRuntime, Operation: "flow.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
 		}
 		plan, err := previewer.PreviewFlow(ctx, input, flow)
@@ -123,8 +116,8 @@ func pullNormalizeArtifactPaths(result *PullArtifactResult) error {
 	return nil
 }
 
-// ValidatePullInput checks caller-controlled arguments before dependency setup.
-func ValidatePullInput(input PullInput) error {
+// validatePullInput checks caller-controlled arguments before dependency setup.
+func validatePullInput(input PullInput) error {
 	selector := input.Selector
 	if strings.TrimSpace(string(selector.LUID)) == "" && (strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "") {
 		return errs.New(errs.KindUsage, "flow selection requires a LUID or exact name and project path")

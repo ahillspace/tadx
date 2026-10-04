@@ -28,7 +28,7 @@ func (s *searcher) Execute(_ context.Context, input searchaction.Input) (searcha
 
 type puller struct{ input workbookops.PullInput }
 
-func (p *puller) Execute(_ context.Context, input workbookops.PullInput) (workbookops.PullOutput, error) {
+func (p *puller) PullWorkbook(_ context.Context, input workbookops.PullInput) (workbookops.PullOutput, error) {
 	p.input = input
 	return workbookops.PullOutput{Status: "pulled"}, nil
 }

@@ -72,15 +72,7 @@ type Page struct {
 }
 
 // Download is one authoritative datasource and its unchanged native package.
-type Download struct {
-	LUID             string
-	Name             string
-	ProjectLUID      string
-	ProjectPath      string
-	Filename         string
-	Content          []byte
-	TableauRequestID string
-}
+type Download = value.DatasourceNativeDownload
 
 // Adapter owns published datasource identity and download sequencing.
 type Adapter struct {

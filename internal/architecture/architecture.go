@@ -287,6 +287,16 @@ func localImportAllowed(file, imported string) bool {
 		if path.Dir(file) == "internal/resources/lineage" && matchesExact(imported, "internal/artifact", "internal/errs") {
 			return true
 		}
+		// Flow pull translates exact native artifacts and preflight failures;
+		// the shared lineage capture record remains in value, not a sibling adapter.
+		if path.Dir(file) == "internal/resources/flow" && matchesExact(imported, "internal/artifact", "internal/errs") {
+			return true
+		}
+		// Workbook and datasource pull ports translate exact managed artifact
+		// requests and preflight failures; shared storage stays in artifact.
+		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource") && matchesExact(imported, "internal/artifact", "internal/errs") {
+			return true
+		}
 		// Content read ports own typed cache and inventory projections. The
 		// collector and source policy remain in the neutral inventory package.
 		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow") &&
@@ -340,7 +350,7 @@ func localImportAllowed(file, imported string) bool {
 		// install records. The composition root is the only higher layer allowed
 		// to consume this durable boundary.
 		if hasPathPrefix(file, "internal/operationrun") {
-			return (path.Dir(file) == "internal/operationrun" && imported == "internal/value") ||
+			return (path.Dir(file) == "internal/operationrun" && matchesExact(imported, "internal/value", "internal/errs")) ||
 				matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
 		// Authentication holds the leaf advisory lock for a command's PAT session.

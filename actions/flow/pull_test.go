@@ -3,6 +3,7 @@ package flow_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,13 +11,53 @@ import (
 	"testing"
 
 	flowpull "github.com/ahillspace/tadx/actions/flow"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 type pullReader struct{}
 
+type pullProviderFixture struct {
+	reader flowpull.PullReader
+	writer flowpull.PullWriter
+	input  flowpull.PullInput
+}
+
+func (p pullProviderFixture) ResolveFlowWorkspace(context.Context, string, string, string) (flowpull.PullWorkspace, error) {
+	return flowpull.PullWorkspace{Root: p.input.Workspace, Name: p.input.WorkspaceName}, nil
+}
+
+func (p pullProviderFixture) OpenFlowPull(context.Context, string, string) (flowpull.PullSession, error) {
+	return flowpull.PullSession{Environment: p.input.Environment, Site: p.input.Site, SiteLUID: p.input.SiteLUID, ServerOrigin: p.input.ServerOrigin, Reader: p.reader, Writer: p.writer}, nil
+}
+
+func runPull(ctx context.Context, reader flowpull.PullReader, writer flowpull.PullWriter, input flowpull.PullInput) (flowpull.PullOutput, error) {
+	return flowpull.New(flowpull.Ports{Pull: pullProviderFixture{reader: reader, writer: writer, input: input}}).PullFlow(ctx, input)
+}
+
 type pullUnavailableLineageReader struct{ pullReader }
+
+type previewSpyReader struct {
+	pullReader
+	downloaded *bool
+}
+
+func (r previewSpyReader) DownloadFlow(context.Context, string) (flowpull.PullDownload, error) {
+	*r.downloaded = true
+	return flowpull.PullDownload{}, nil
+}
+
+func TestPullServiceRequiresDeclaredPreviewBeforeDownload(t *testing.T) {
+	input := flowpull.PullInput{Environment: "dev", Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}, Preview: true}
+	downloaded := false
+	writer := &pullWriter{}
+	_, err := runPull(t.Context(), previewSpyReader{downloaded: &downloaded}, writer, input)
+	var diagnostic *errs.Error
+	if !errors.As(err, &diagnostic) || diagnostic.ID != "flow.pull.preview" || downloaded || writer.input.Content != nil {
+		t.Fatalf("missing preview capability err=%v downloaded=%v writer=%+v", err, downloaded, writer)
+	}
+}
 
 func (pullUnavailableLineageReader) CaptureLineage(context.Context, flowpull.PullLineageRequest) (flowpull.PullLineage, error) {
 	return flowpull.PullLineage{}, fmt.Errorf("metadata unavailable")
@@ -37,7 +78,7 @@ func (pullPartialLineageReader) CaptureLineage(context.Context, flowpull.PullLin
 
 func TestPullPullPreservesPartialLineageWhenCaptureFails(t *testing.T) {
 	w := &pullWriter{}
-	output, err := flowpull.Pull(context.Background(), pullPartialLineageReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	output, err := runPull(context.Background(), pullPartialLineageReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +92,7 @@ func TestPullPullPreservesPartialLineageWhenCaptureFails(t *testing.T) {
 
 func TestPullQuietFlowPullPreservesNativeWarnings(t *testing.T) {
 	w := &pullWriter{result: flowpull.PullArtifactResult{Path: "artifacts/flow/Daily", Warnings: []string{"Local flow edits were replaced because --overwrite was set."}}}
-	output, err := flowpull.Pull(context.Background(), pullUnavailableLineageReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	output, err := runPull(context.Background(), pullUnavailableLineageReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +171,7 @@ func (w *pullWriter) WriteFlow(_ context.Context, input flowpull.PullArtifact) (
 
 func TestPullActionPullsNativeFlowWithBoundedLineage(t *testing.T) {
 	w := &pullWriter{}
-	output, err := flowpull.Pull(context.Background(), pullReader{}, w, flowpull.PullInput{Environment: "dev", Site: "site", Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	output, err := runPull(context.Background(), pullReader{}, w, flowpull.PullInput{Environment: "dev", Site: "site", Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +189,7 @@ func TestPullActionPullsNativeFlowWithBoundedLineage(t *testing.T) {
 
 func TestPullActionRejectsAbsoluteWriterPaths(t *testing.T) {
 	w := &pullWriter{result: flowpull.PullArtifactResult{Path: "artifacts/flow/Daily", CanonicalPath: `C:\workspace\artifacts\flow\Daily\Daily.tflx`}}
-	_, err := flowpull.Pull(context.Background(), pullReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	_, err := runPull(context.Background(), pullReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
 	if err == nil || !strings.Contains(err.Error(), "absolute canonical path") {
 		t.Fatalf("error = %v", err)
 	}
@@ -156,7 +197,7 @@ func TestPullActionRejectsAbsoluteWriterPaths(t *testing.T) {
 
 func TestPullActionNormalizesWriterPathsAndPropagatesWarnings(t *testing.T) {
 	w := &pullWriter{result: flowpull.PullArtifactResult{Path: `artifacts\flow\Daily`, CanonicalPath: `artifacts\flow\Daily\Daily.tflx`, LineagePath: `artifacts\flow\Daily\lineage.json`, Warnings: []string{"writer warning"}}}
-	output, err := flowpull.Pull(context.Background(), pullReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	output, err := runPull(context.Background(), pullReader{}, w, flowpull.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}

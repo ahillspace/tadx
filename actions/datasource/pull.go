@@ -23,10 +23,7 @@ type ArtifactWriter interface {
 	WriteDatasource(context.Context, PullArtifact) (PullArtifactResult, error)
 }
 
-func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input PullInput) (PullOutput, error) {
-	if err := ValidatePullInput(input); err != nil {
-		return PullOutput{}, err
-	}
+func pullValidated(ctx context.Context, reader PullReader, writer ArtifactWriter, previewer PullPreviewer, input PullInput) (PullOutput, error) {
 	if reader == nil || writer == nil {
 		return PullOutput{}, &errs.Error{ID: "datasource.pull.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.pull", Summary: "Datasource pull is not configured.", Retryable: new(false), CorrectiveAction: "Configure datasource pull before retrying."}
 	}
@@ -38,10 +35,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 		return PullOutput{}, pullOperationError("datasource.pull.resolve", "Datasource resolution failed.", "Review the exact datasource selector, then retry.", input, "", err)
 	}
 	if input.Preview {
-		previewer, ok := writer.(interface {
-			PreviewDatasource(context.Context, PullInput, Record) (value.AcquisitionPlan, error)
-		})
-		if !ok {
+		if previewer == nil {
 			return PullOutput{}, &errs.Error{ID: "datasource.pull.preview", Kind: errs.KindRuntime, Operation: "datasource.pull", Summary: "Acquisition preview is not configured.", Retryable: new(false), CorrectiveAction: "Configure read-only artifact preflight."}
 		}
 		plan, err := previewer.PreviewDatasource(ctx, input, item)
@@ -132,8 +126,8 @@ func pullOperationError(id, summary, corrective string, input PullInput, resourc
 	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "datasource.pull", Resource: resource, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: action, TableauRequestID: errs.TableauRequestID(cause)}
 }
 
-// ValidatePullInput checks caller-controlled arguments before dependency setup.
-func ValidatePullInput(input PullInput) error {
+// validatePullInput checks caller-controlled arguments before dependency setup.
+func validatePullInput(input PullInput) error {
 	selector := input.Selector
 	if strings.TrimSpace(string(selector.LUID)) == "" && (strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "") {
 		return errs.New(errs.KindUsage, "datasource selection requires a LUID or exact name and project path")

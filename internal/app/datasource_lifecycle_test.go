@@ -51,7 +51,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 
 	runtime, workspace := datasourceLifecycleRuntime(t, server)
 	commands := newRemoteContentCommands(runtime)
-	pulled, err := commands.PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
+	pulled, err := datasourceops.New(datasourceops.Ports{Pull: datasourcePullProvider{commands: commands}}).PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 
 func TestDatasourceLifecycleReturnsStructuredSetupErrors(t *testing.T) {
 	commands := newRemoteContentCommands(&runtimeDependencies{configPath: filepath.Join(t.TempDir(), "missing.yaml"), httpClient: http.DefaultClient, now: time.Now, correlationID: "datasource-test"})
-	_, err := commands.PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
+	_, err := datasourceops.New(datasourceops.Ports{Pull: datasourcePullProvider{commands: commands}}).PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.workspace" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
 		t.Fatalf("error = %#v", err)

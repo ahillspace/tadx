@@ -36,7 +36,7 @@ func TestDatasourcePullSavesFormEncodedDownloadFilenameDecoded(t *testing.T) {
 	defer server.Close()
 
 	runtime, workspace := datasourceLifecycleRuntime(t, server)
-	pulled, err := newRemoteContentCommands(runtime).PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-encoded"}})
+	pulled, err := datasourceops.New(datasourceops.Ports{Pull: datasourcePullProvider{commands: newRemoteContentCommands(runtime)}}).PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-encoded"}})
 	if err != nil {
 		t.Fatal(err)
 	}

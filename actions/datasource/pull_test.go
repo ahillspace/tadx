@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"reflect"
 	"strings"
@@ -43,6 +44,61 @@ type pullPullWriter struct {
 	warnings []string
 }
 
+type pullTestProvider struct {
+	input  datasourceops.PullInput
+	reader datasourceops.PullReader
+	writer datasourceops.ArtifactWriter
+}
+
+type pullCountingProvider struct {
+	workspaceCalls int
+	openCalls      int
+	reader         datasourceops.PullReader
+	writer         datasourceops.ArtifactWriter
+}
+
+func (p *pullCountingProvider) ResolveDatasourceWorkspace(context.Context, string, string, string) (datasourceops.PullWorkspace, error) {
+	p.workspaceCalls++
+	return datasourceops.PullWorkspace{Root: "workspace"}, nil
+}
+
+func (p *pullCountingProvider) OpenDatasourcePull(context.Context, string, string) (datasourceops.PullSession, error) {
+	p.openCalls++
+	return datasourceops.PullSession{Reader: p.reader, Writer: p.writer}, nil
+}
+
+func TestPullServiceRejectsInvalidInputBeforeProvider(t *testing.T) {
+	provider := &pullCountingProvider{}
+	_, err := datasourceops.New(datasourceops.Ports{Pull: provider}).PullDatasource(context.Background(), datasourceops.PullInput{})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || provider.workspaceCalls != 0 || provider.openCalls != 0 {
+		t.Fatalf("error = %v, workspace calls = %d, open calls = %d", err, provider.workspaceCalls, provider.openCalls)
+	}
+}
+
+func TestPullServiceMissingPreviewerDoesNotDownloadOrWrite(t *testing.T) {
+	reader := &pullPullReader{}
+	writer := &pullPullWriter{}
+	provider := &pullCountingProvider{reader: reader, writer: writer}
+	_, err := datasourceops.New(datasourceops.Ports{Pull: provider}).PullDatasource(context.Background(), datasourceops.PullInput{Selector: identity.Selector{LUID: "ds-1"}, Preview: true})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "datasource.pull.preview" || !reflect.DeepEqual(reader.calls, []string{"resolve:ds-1"}) || writer.input.Filename != "" {
+		t.Fatalf("error = %v, reader calls = %v, writer input = %#v", err, reader.calls, writer.input)
+	}
+}
+
+func (p pullTestProvider) ResolveDatasourceWorkspace(context.Context, string, string, string) (datasourceops.PullWorkspace, error) {
+	return datasourceops.PullWorkspace{Root: p.input.Workspace, Name: p.input.WorkspaceName}, nil
+}
+
+func (p pullTestProvider) OpenDatasourcePull(context.Context, string, string) (datasourceops.PullSession, error) {
+	return datasourceops.PullSession{Environment: p.input.Environment, Site: p.input.Site, SiteLUID: p.input.SiteLUID, ServerOrigin: p.input.ServerOrigin, Reader: p.reader, Writer: p.writer}, nil
+}
+
+func runDatasourcePull(ctx context.Context, reader datasourceops.PullReader, writer datasourceops.ArtifactWriter, input datasourceops.PullInput) (datasourceops.PullOutput, error) {
+	return datasourceops.New(datasourceops.Ports{Pull: pullTestProvider{input: input, reader: reader, writer: writer}}).PullDatasource(ctx, input)
+}
+
 func (w *pullPullWriter) WriteDatasource(_ context.Context, input datasourceops.PullArtifact) (datasourceops.PullArtifactResult, error) {
 	w.input = input
 	return datasourceops.PullArtifactResult{
@@ -57,7 +113,7 @@ func (w *pullPullWriter) WriteDatasource(_ context.Context, input datasourceops.
 func TestPullPullPreservesNativePackageAndCompositionReferences(t *testing.T) {
 	r := &pullPullReader{}
 	w := &pullPullWriter{}
-	output, err := datasourceops.Pull(context.Background(), r, w, datasourceops.PullInput{
+	output, err := runDatasourcePull(context.Background(), r, w, datasourceops.PullInput{
 		Environment: "dev", Site: "sandbox", ServerOrigin: "https://tableau.example", SiteLUID: "site-1",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"},
 	})
@@ -78,7 +134,7 @@ func TestPullPullPreservesNativePackageAndCompositionReferences(t *testing.T) {
 func TestPullPullKeepsSuccessfulDownloadWhenLineageIsUnavailable(t *testing.T) {
 	r := &pullPullReader{lineageErr: errors.New("metadata disabled")}
 	w := &pullPullWriter{}
-	output, err := datasourceops.Pull(context.Background(), r, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	output, err := runDatasourcePull(context.Background(), r, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +159,7 @@ func TestPullPullPreservesPartialLineageWhenCaptureFails(t *testing.T) {
 		lineageErr: errors.New("upstream database access was denied"),
 	}
 	w := &pullPullWriter{}
-	output, err := datasourceops.Pull(context.Background(), r, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	output, err := runDatasourcePull(context.Background(), r, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +173,7 @@ func TestPullPullPreservesPartialLineageWhenCaptureFails(t *testing.T) {
 
 func TestPullQuietDatasourcePullPreservesNativeWarnings(t *testing.T) {
 	w := &pullPullWriter{warnings: []string{"dirty datasource artifact replaced because --overwrite was provided"}}
-	output, err := datasourceops.Pull(context.Background(), &pullPullReader{lineageErr: errors.New("unavailable")}, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	output, err := runDatasourcePull(context.Background(), &pullPullReader{lineageErr: errors.New("unavailable")}, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +188,7 @@ func TestPullQuietDatasourcePullPreservesNativeWarnings(t *testing.T) {
 
 func TestPullPullRejectsAbsoluteArtifactPaths(t *testing.T) {
 	w := &pullAbsolutePullWriter{}
-	_, err := datasourceops.Pull(context.Background(), &pullPullReader{}, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	_, err := runDatasourcePull(context.Background(), &pullPullReader{}, w, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 	if err == nil || !strings.Contains(err.Error(), "absolute canonical path") {
 		t.Fatalf("error = %v", err)
 	}
@@ -166,7 +222,7 @@ func TestPullPullSingleSourcesLineageStatusAndCountsKnown(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			r := &pullPullReader{partialLineage: test.partial, lineageErr: test.lineageErr}
-			output, err := datasourceops.Pull(context.Background(), r, &pullPullWriter{}, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+			output, err := runDatasourcePull(context.Background(), r, &pullPullWriter{}, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -182,7 +238,7 @@ func TestPullPullSingleSourcesLineageStatusAndCountsKnown(t *testing.T) {
 }
 
 func TestPullPullNormalizesTraversalWithinWorkspaceAndRejectsEscapes(t *testing.T) {
-	output, err := datasourceops.Pull(context.Background(), &pullPullReader{}, &pullPathPullWriter{path: "a/b/../c"}, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	output, err := runDatasourcePull(context.Background(), &pullPullReader{}, &pullPathPullWriter{path: "a/b/../c"}, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 	if err != nil {
 		t.Fatalf("expected a/b/../c to be accepted, got error %v", err)
 	}
@@ -190,7 +246,7 @@ func TestPullPullNormalizesTraversalWithinWorkspaceAndRejectsEscapes(t *testing.
 		t.Fatalf("normalized path = %q, want %q", output.Artifact.Path, "a/c")
 	}
 	for _, escaping := range []string{"../x", "a/../../x"} {
-		_, err := datasourceops.Pull(context.Background(), &pullPullReader{}, &pullPathPullWriter{path: escaping}, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+		_, err := runDatasourcePull(context.Background(), &pullPullReader{}, &pullPathPullWriter{path: escaping}, datasourceops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
 		if err == nil || !strings.Contains(err.Error(), "escaping") {
 			t.Fatalf("path %q: error = %v, want escaping rejection", escaping, err)
 		}

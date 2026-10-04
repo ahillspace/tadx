@@ -8,7 +8,7 @@ import (
 
 func TestJobReceiptErrorsStayAtCoordinatorBoundary(t *testing.T) {
 	root := moduleFixture(t)
-	for _, file := range []string{"internal/jobmonitor/publication.go", "internal/jobmonitor/nested/publication.go", "internal/operationrun/record.go"} {
+	for _, file := range []string{"internal/jobmonitor/publication.go", "internal/jobmonitor/nested/publication.go", "internal/operationrun/nested/record.go"} {
 		writeGo(t, root, file, "package fixture\nimport _ \"example.test/tadx/internal/errs\"\n")
 	}
 	violations, err := architecture.Check(root)

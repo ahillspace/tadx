@@ -25,6 +25,7 @@ type Ports struct {
 	Mutation MutationProvider
 	Read     ReadProvider
 	Schema   SchemaProvider
+	Pull     PullProvider
 }
 
 type Service struct{ ports Ports }

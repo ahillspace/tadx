@@ -27,12 +27,7 @@ type Client interface {
 }
 
 // Request selects one exact authoritative REST root.
-type Request struct {
-	Kind      string
-	RESTLUID  string
-	Direction string
-	Depth     int
-}
+type Request = value.LineageCaptureRequest
 
 // Node preserves distinct Metadata and REST identities.
 type Node = value.LineageNode
@@ -41,18 +36,7 @@ type Node = value.LineageNode
 type Edge = value.LineageEdge
 
 // Graph is one deterministic bounded lineage result.
-type Graph struct {
-	RootRESTLUID   string
-	RootMetadataID string
-	Direction      string
-	Depth          int
-	Complete       bool
-	Failure        *value.LineageFailure
-	Nodes          []Node
-	Edges          []Edge
-	Warnings       []string
-	RequestIDs     []string
-}
+type Graph = value.LineageCaptureGraph
 
 // Adapter isolates Metadata API normalization from actions.
 type Adapter struct{ client Client }

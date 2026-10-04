@@ -32,11 +32,7 @@ type ArtifactWriter interface {
 	WriteBundle(context.Context, PullArtifact, []DatasourceArtifact) (PullArtifactResult, error)
 }
 
-// Pull resolves, downloads, and materializes one workbook artifact.
-func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input PullInput) (PullOutput, error) {
-	if err := ValidatePullInput(input); err != nil {
-		return PullOutput{}, err
-	}
+func pullValidated(ctx context.Context, reader PullReader, writer ArtifactWriter, previewer PullPreviewer, input PullInput) (PullOutput, error) {
 	if reader == nil || writer == nil {
 		return PullOutput{}, &errs.Error{ID: "workbook.pull.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.pull", Summary: "Workbook pull is not configured.", Retryable: new(false), CorrectiveAction: "Configure workbook pulling before retrying."}
 	}
@@ -60,10 +56,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 				return PullOutput{}, &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: err, Retryable: new(false), CorrectiveAction: "Wait for complete Tableau metadata visibility, then retry."}
 			}
 		}
-		previewer, ok := writer.(interface {
-			PreviewWorkbook(context.Context, PullInput, Record, []PublishedDatasource) (value.AcquisitionPlan, error)
-		})
-		if !ok {
+		if previewer == nil {
 			return PullOutput{}, &errs.Error{ID: "workbook.pull.preview", Kind: errs.KindRuntime, Operation: "workbook.pull", Summary: "Acquisition preview is not configured.", Retryable: new(false), CorrectiveAction: "Configure read-only artifact preflight."}
 		}
 		plan, err := previewer.PreviewWorkbook(ctx, input, workbook, references)
@@ -396,8 +389,8 @@ func pullNormalizePublishedDatasources(input []PublishedDatasource) ([]Published
 	return result, nil
 }
 
-// ValidatePullInput checks caller-controlled arguments before dependency setup.
-func ValidatePullInput(input PullInput) error {
+// validatePullInput checks caller-controlled arguments before dependency setup.
+func validatePullInput(input PullInput) error {
 	selector := input.Selector
 	if selector.LUID == "" && selector.Name == "" && selector.ProjectPath == "" {
 		selector = identity.Selector{LUID: identity.LUID(input.LUID), Name: input.Name, ProjectPath: input.ProjectPath}

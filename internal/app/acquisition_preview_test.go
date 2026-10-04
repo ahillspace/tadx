@@ -4,6 +4,7 @@ import (
 	"context"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
+	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,8 +35,8 @@ func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.
 		t.Fatal(err)
 	}
 	input := workbookops.PullInput{Preview: true, Workspace: root, WorkspaceName: "work", Environment: "source", Site: "source-site", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", LUID: "wb-1", IncludePDS: true, Overwrite: true}
-	actionReader, actionWriter := workbookPreviewReader{t: t}, artifactWriter{}
-	preview, err := workbookops.Pull(context.Background(), actionReader, actionWriter, input)
+	actionReader, actionWriter := workbookPreviewReader{t: t}, resourceworkbook.PullWriterPort{}
+	preview, err := runWorkbookPull(context.Background(), actionReader, actionWriter, actionWriter, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +53,11 @@ func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.
 	if err := os.WriteFile(dependency.CanonicalPath, []byte("local dependency edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workbookops.Pull(context.Background(), actionReader, actionWriter, input); err == nil || !strings.Contains(err.Error(), "dirty") {
+	if _, err := runWorkbookPull(context.Background(), actionReader, actionWriter, actionWriter, input); err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Fatalf("parent overwrite bypassed dependency dirty guard: %v", err)
 	}
 	input.IncludePDS = false
-	preview, err = workbookops.Pull(context.Background(), actionReader, actionWriter, input)
+	preview, err = runWorkbookPull(context.Background(), actionReader, actionWriter, actionWriter, input)
 	if err != nil || preview.Preview == nil || len(preview.Preview.Dependencies) != 0 {
 		t.Fatalf("unrequested dependencies included: %#v %v", preview.Preview, err)
 	}

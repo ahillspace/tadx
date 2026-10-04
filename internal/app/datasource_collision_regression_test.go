@@ -47,7 +47,7 @@ func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComp
 
 	runtime, _ := datasourceLifecycleRuntime(t, server)
 	commands := newRemoteContentCommands(runtime)
-	pulled, err := commands.PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-special"}})
+	pulled, err := datasourceops.New(datasourceops.Ports{Pull: datasourcePullProvider{commands: commands}}).PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-special"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ type contentActions struct {
 	publishInputs []workbookops.PublishInput
 }
 
-func (a *contentActions) Execute(_ context.Context, input workbookops.PullInput) (workbookops.PullOutput, error) {
+func (a *contentActions) PullWorkbook(_ context.Context, input workbookops.PullInput) (workbookops.PullOutput, error) {
 	return workbookops.PullOutput{}, nil
 }
 

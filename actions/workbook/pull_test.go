@@ -76,6 +76,61 @@ type pullWriter struct {
 	datasourceErr     error
 }
 
+type workbookPullTestProvider struct {
+	input  workbookops.PullInput
+	reader workbookops.PullReader
+	writer workbookops.ArtifactWriter
+}
+
+type workbookPullCountingProvider struct {
+	workspaceCalls int
+	openCalls      int
+	reader         workbookops.PullReader
+	writer         workbookops.ArtifactWriter
+}
+
+func (p *workbookPullCountingProvider) ResolveWorkbookWorkspace(context.Context, string, string, string) (workbookops.PullWorkspace, error) {
+	p.workspaceCalls++
+	return workbookops.PullWorkspace{Root: "workspace"}, nil
+}
+
+func (p *workbookPullCountingProvider) OpenWorkbookPull(context.Context, string, string) (workbookops.PullSession, error) {
+	p.openCalls++
+	return workbookops.PullSession{Reader: p.reader, Writer: p.writer}, nil
+}
+
+func TestPullServiceRejectsInvalidInputBeforeProvider(t *testing.T) {
+	provider := &workbookPullCountingProvider{}
+	_, err := workbookops.New(workbookops.Ports{Pull: provider}).PullWorkbook(context.Background(), workbookops.PullInput{})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || provider.workspaceCalls != 0 || provider.openCalls != 0 {
+		t.Fatalf("error = %v, workspace calls = %d, open calls = %d", err, provider.workspaceCalls, provider.openCalls)
+	}
+}
+
+func TestPullServiceMissingPreviewerDoesNotDownloadOrWrite(t *testing.T) {
+	reader := &pullReader{workbook: workbookops.Record{LUID: "wb-1"}}
+	writer := &pullWriter{}
+	provider := &workbookPullCountingProvider{reader: reader, writer: writer}
+	_, err := workbookops.New(workbookops.Ports{Pull: provider}).PullWorkbook(context.Background(), workbookops.PullInput{Selector: identity.Selector{LUID: "wb-1"}, Preview: true})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "workbook.pull.preview" || reader.resolveCalls != 1 || reader.downloadCalls != 0 || writer.calls != 0 {
+		t.Fatalf("error = %v, resolve calls = %d, download calls = %d, write calls = %d", err, reader.resolveCalls, reader.downloadCalls, writer.calls)
+	}
+}
+
+func (p workbookPullTestProvider) ResolveWorkbookWorkspace(context.Context, string, string, string) (workbookops.PullWorkspace, error) {
+	return workbookops.PullWorkspace{Root: p.input.Workspace, Name: p.input.WorkspaceName}, nil
+}
+
+func (p workbookPullTestProvider) OpenWorkbookPull(context.Context, string, string) (workbookops.PullSession, error) {
+	return workbookops.PullSession{Environment: p.input.Environment, Site: p.input.Site, SiteLUID: p.input.SiteLUID, ServerOrigin: p.input.ServerOrigin, Reader: p.reader, Writer: p.writer}, nil
+}
+
+func runWorkbookPull(ctx context.Context, reader workbookops.PullReader, writer workbookops.ArtifactWriter, input workbookops.PullInput) (workbookops.PullOutput, error) {
+	return workbookops.New(workbookops.Ports{Pull: workbookPullTestProvider{input: input, reader: reader, writer: writer}}).PullWorkbook(ctx, input)
+}
+
 type pullRetryableReadError struct{}
 
 func (pullRetryableReadError) Error() string            { return "Tableau unavailable" }
@@ -117,7 +172,7 @@ func TestPullActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
-	result, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{
+	result, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{
 		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
 	})
@@ -161,7 +216,7 @@ func TestPullActionCapturesBoundedWorkbookLineageAutomatically(t *testing.T) {
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
 
-	result, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{
+	result, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{
 		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
 	})
@@ -196,7 +251,7 @@ func TestPullActionPreservesDownloadWhenLineageCaptureIsUnavailable(t *testing.T
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
 
-	result, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{
+	result, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{
 		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
 	})
@@ -235,7 +290,7 @@ func TestPullActionPreservesPartialWorkbookLineageWhenCaptureFails(t *testing.T)
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
 
-	result, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{
+	result, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{
 		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
 	})
@@ -275,7 +330,7 @@ func TestPullActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T)
 		},
 	}
 
-	result, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{
+	result, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{
 		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true, Overwrite: true,
 	})
@@ -310,7 +365,7 @@ func TestPullActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
-	result, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
+	result, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +388,7 @@ func TestPullActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testi
 	}
 	w := &pullWriter{}
 
-	_, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true})
+	_, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true})
 	payload := errs.Structure(err).Error
 	if payload.ID != "workbook.pull.references" || payload.Retryable == nil || !*payload.Retryable {
 		t.Fatalf("structured error = %#v", payload)
@@ -346,7 +401,7 @@ func TestPullActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testi
 func TestPullQuietPullPreservesNativeArtifactWarnings(t *testing.T) {
 	r := &pullReader{workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"}, download: workbookops.Download{Filename: "Finance.twb", Content: []byte("native")}, lineageErr: errors.New("unavailable"), publishedDatasourcesErr: errors.New("unavailable")}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", Warnings: []string{"Local edits were replaced because --overwrite was set."}}}
-	output, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
+	output, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +421,7 @@ func TestPullActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native")},
 	}, w
 	include := false
-	output, err := workbookops.Pull(context.Background(), actionReader, actionWriter, workbookops.PullInput{
+	output, err := runWorkbookPull(context.Background(), actionReader, actionWriter, workbookops.PullInput{
 		Environment: "production", Site: "marketing", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", Workspace: filepath.FromSlash("C:/workspace"),
 		Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}, IncludeExtract: &include,
 	})
@@ -384,7 +439,7 @@ func TestPullActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 func TestPullActionRejectsMissingSelectorAsUsageBeforeResolving(t *testing.T) {
 	r := &pullReader{}
 	w := &pullWriter{}
-	_, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, ProjectPath: "Ops"})
+	_, err := runWorkbookPull(context.Background(), r, w, workbookops.PullInput{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, ProjectPath: "Ops"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("Execute() error = %#v", err)
@@ -398,7 +453,7 @@ func TestPullActionLeavesArtifactWriterUntouchedWhenDownloadFails(t *testing.T) 
 	r := &pullReader{workbook: workbookops.Record{LUID: "wb-1"}, downloadErr: errors.New("download forbidden")}
 	w := &pullWriter{}
 	actionReader, actionWriter := r, w
-	_, err := workbookops.Pull(context.Background(), actionReader, actionWriter, workbookops.PullInput{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, Selector: identity.Selector{LUID: "wb-1"}})
+	_, err := runWorkbookPull(context.Background(), actionReader, actionWriter, workbookops.PullInput{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, Selector: identity.Selector{LUID: "wb-1"}})
 	if err == nil || !strings.Contains(err.Error(), "download forbidden") || r.downloadCalls != 1 || w.calls != 0 {
 		t.Fatalf("error = %v, download calls = %d, write calls = %d", err, r.downloadCalls, w.calls)
 	}
@@ -413,7 +468,7 @@ func TestPullActionPreservesRetryAdviceForWorkbookReads(t *testing.T) {
 		{name: "download", reader: &pullReader{workbook: workbookops.Record{LUID: "wb-1"}, downloadErr: pullRetryableReadError{}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := workbookops.Pull(context.Background(), test.reader, &pullWriter{}, workbookops.PullInput{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
+			_, err := runWorkbookPull(context.Background(), test.reader, &pullWriter{}, workbookops.PullInput{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
 			payload := errs.Structure(err).Error
 			if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
 				t.Fatalf("structured error = %#v", payload)
@@ -427,7 +482,7 @@ func TestPullActionCompletesArtifactWriteErrorAdvice(t *testing.T) {
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
 		download: workbookops.Download{Filename: "Finance.twb", Content: []byte("native")},
 	}, &pullWriter{err: errors.New("artifact is dirty")}
-	_, err := workbookops.Pull(context.Background(), actionReader, actionWriter, workbookops.PullInput{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
+	_, err := runWorkbookPull(context.Background(), actionReader, actionWriter, workbookops.PullInput{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
 	payload := errs.Structure(err).Error
 	if payload.Retryable == nil || *payload.Retryable || payload.CorrectiveAction == "" || payload.Operation != "workbook.pull" {
 		t.Fatalf("structured error = %#v", payload)
@@ -435,7 +490,7 @@ func TestPullActionCompletesArtifactWriteErrorAdvice(t *testing.T) {
 }
 
 func TestPullActionGoldenOutput(t *testing.T) {
-	value, err := workbookops.Pull( // The artifact manager returns runtime absolute paths.
+	value, err := runWorkbookPull( // The artifact manager returns runtime absolute paths.
 		// Public output must project them relative to the selected workspace.
 
 		context.Background(), &pullReader{

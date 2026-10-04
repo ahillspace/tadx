@@ -229,7 +229,7 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
 		store := operationrun.Store{Directory: directory}
 		if _, err := store.Update(id, func(record *operationrun.Record) error {
-			record.RequestedAt = time.Now().UTC().Add(-publicationWaitLimit - time.Second)
+			record.RequestedAt = time.Now().UTC().Add(-operationrun.WaitLimit - time.Second)
 			return nil
 		}); err != nil {
 			return err

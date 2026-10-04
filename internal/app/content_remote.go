@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"strings"
 
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
@@ -37,13 +36,13 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	projects := projectops.New(projectops.Ports{Provider: projectProvider{commands: c}})
 	mutations := contentMutationProvider{commands: c}
 	workbooks := workbookops.New(workbookops.Ports{Mutation: mutations, Read: workbookReadProvider{commands: c}})
-	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}, Schema: datasourceSchemaProvider{commands: c}})
-	flows := flowops.New(flowops.Ports{Mutation: mutations, Read: flowReadProvider{commands: c}})
+	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}, Schema: datasourceSchemaProvider{commands: c}, Pull: datasourcePullProvider{commands: c}})
+	flows := flowops.New(flowops.Ports{Mutation: mutations, Read: flowReadProvider{commands: c}, Pull: flowPullProvider{commands: c}})
 	return &contentcli.Dependencies{
 		WorkbookLister: workbooks, WorkbookInspector: workbooks, WorkbookDeleter: workbooks, WorkbookMover: workbooks, WorkbookUpdater: workbooks,
-		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: datasources, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
+		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: datasources, DatasourcePuller: datasources, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
 		ProjectLister: projects, ProjectInspector: projects, ProjectCreator: projects, ProjectUpdater: projects, ProjectDeleter: projects, ProjectMover: projects,
-		FlowLister: flows, FlowInspector: flows, FlowPuller: c, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
+		FlowLister: flows, FlowInspector: flows, FlowPuller: flows, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
 	}
 }
 
@@ -99,31 +98,6 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 		datasourceNativeChanges: datasourceClient,
 		inventory:               tableaucache.AuthenticatedExecutor{Transport: connection.transport, Session: connection.session, ServerURL: connection.environment.URL, SiteLUID: connection.session.SiteLUID()},
 	}, nil
-}
-
-func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowops.PullInput) (flowops.PullOutput, error) {
-	if err := flowops.ValidatePullInput(input); err != nil {
-		return flowops.PullOutput{}, err
-	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return flowops.PullOutput{}, capabilitySetupError("flow.pull.workspace", "flow.pull", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
-	input.WorkspaceName = workspace.Name
-	connection, err := c.connect(ctx, input.Environment, false)
-	if err != nil {
-		return flowops.PullOutput{}, remoteSetupError("flow.pull", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.SiteLUID = connection.siteLUID
-	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
-	if err != nil {
-		return flowops.PullOutput{}, remoteSetupError("flow.pull", input.Environment, input.Site, connection.environment, err)
-	}
-
-	reader := flowPullReader{Adapter: connection.flows, lineage: connection.lineage}
-	return flowops.Pull(ctx, reader, flowArtifactWriter{artifact.NewFlowManager(c.runtime.now)}, input)
 }
 
 func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.PublishInput, preview bool) (flowops.PublishOutput, error) {
@@ -207,84 +181,6 @@ func (p lineageProvider) OpenLineage(ctx context.Context, environment string) (l
 func remoteSetupError(operation, environment, site string, resolved config.Environment, err error) error {
 	environment, site = resolvedTarget(environment, site, resolved)
 	return capabilitySetupError(operation+".setup", operation, environment, site, "Tableau operation setup failed.", "Review the selected environment, site, and PAT configuration.", err)
-}
-
-type flowPullReader struct {
-	*resourceflow.Adapter
-	lineage *resourcelineage.Adapter
-}
-
-func (r flowPullReader) DownloadFlow(ctx context.Context, luid string) (flowops.PullDownload, error) {
-	progress.SetLabel(ctx, "Downloading flow")
-	item, err := r.Adapter.DownloadFlow(ctx, luid)
-	return flowops.PullDownload{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
-}
-
-func (r flowPullReader) CaptureLineage(ctx context.Context, input flowops.PullLineageRequest) (flowops.PullLineage, error) {
-	progress.SetLabel(ctx, "Reading flow metadata")
-	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
-	return flowPullLineage(graph), err
-}
-
-func flowPullLineage(graph resourcelineage.Graph) flowops.PullLineage {
-	nodes := make([]flowops.PullLineageNode, len(graph.Nodes))
-	for index, node := range graph.Nodes {
-		nodes[index] = flowops.PullLineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
-	edges := make([]flowops.PullLineageEdge, len(graph.Edges))
-	for index, edge := range graph.Edges {
-		edges[index] = flowops.PullLineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
-	return flowops.PullLineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}
-}
-
-type flowArtifactWriter struct{ manager *artifact.FlowManager }
-
-func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowops.PullArtifact) (flowops.PullArtifactResult, error) {
-	progress.SetLabel(ctx, "Saving flow files")
-	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
-	for index, node := range input.Lineage.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
-	edges := make([]artifact.LineageEdge, len(input.Lineage.Edges))
-	for index, edge := range input.Lineage.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
-	direction, depth := input.Lineage.Direction, input.Lineage.Depth
-	if direction == "" {
-		direction = "both"
-	}
-	if depth == 0 {
-		depth = 1
-	}
-	result, err := w.manager.Pull(ctx, artifact.FlowPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.FlowMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, FileType: input.FileType}, Lineage: artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)}})
-	if err != nil {
-		return flowops.PullArtifactResult{}, err
-	}
-	canonicalPath, err := containWorkspacePath(input.Workspace, result.CanonicalPath, "canonical path")
-	if err != nil {
-		return flowops.PullArtifactResult{}, err
-	}
-	lineagePath, err := containWorkspacePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "lineage path")
-	if err != nil {
-		return flowops.PullArtifactResult{}, err
-	}
-	return flowops.PullArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, Warnings: append([]string(nil), result.Warnings...)}, nil
-}
-
-// containWorkspacePath normalizes an absolute artifact path to a
-// workspace-relative slash path and rejects any path that escapes the
-// resolved workspace tree.
-func containWorkspacePath(workspace, absolute, label string) (string, error) {
-	relative, err := filepath.Rel(workspace, absolute)
-	if err != nil {
-		return "", err
-	}
-	relative = filepath.ToSlash(filepath.Clean(relative))
-	if relative == ".." || strings.HasPrefix(relative, "../") {
-		return "", errors.New("flow artifact " + label + " escapes the resolved workspace")
-	}
-	return relative, nil
 }
 
 type flowArtifactReader struct {
