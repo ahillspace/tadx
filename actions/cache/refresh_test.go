@@ -31,8 +31,8 @@ type cacheTestProvider struct {
 func (p cacheTestProvider) ResolveEnvironment(alias string) (config.Environment, error) {
 	return config.Environment{Alias: alias, SiteContentURL: "marketing"}, nil
 }
-func (p cacheTestProvider) CheckScopes([]string) error { return nil }
-func (p cacheTestProvider) Hydrator(config.Environment, bool) refresh.Hydrator { return p.hydrator }
+func (p cacheTestProvider) CheckScopes([]string) error                           { return nil }
+func (p cacheTestProvider) Hydrator(config.Environment, bool) refresh.Hydrator   { return p.hydrator }
 func (p cacheTestProvider) StatusSource(config.Environment) refresh.StatusSource { return p.status }
 
 func refreshAction(ctx context.Context, hydrator refresh.Hydrator, input refresh.RefreshInput) (refresh.RefreshOutput, error) {

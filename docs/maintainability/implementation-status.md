@@ -6,6 +6,15 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Integrated verification corrections
+
+Hosted CI for `1ba1e6185ad8dee8532962e1a7beb77da0d8941e` fails its Linux and Windows formatting gate on `actions/cache/refresh_test.go`.
+Build and native policy jobs pass, but the failed quality jobs are not accepted.
+The cache-test formatting correction is separate from ownership changes and preserves its assertions.
+Exact `ec52b79e5a124608c65a3c7eac986130b630f2bf` local gates pass from a clean archive: 12 controls and 14 seeds across the three manifests, plus the exact-revision run.
+All 1,424 archive entries remain byte-identical after those checks.
+Those bounded contracts do not establish final integrated or live acceptance.
+
 ## Saved-result recording ownership
 
 `internal/lastcommand.Recorder` now owns snapshot, timestamp, prerequisite capture, unavailable tombstone, and bounded background persistence coordination.
