@@ -699,6 +699,44 @@ func (e *InstalledError) CorrectiveAction() string {
 	return "The configuration change took effect. Repair access to the configuration directory, then rerun the command to confirm its state."
 }
 
+// PostSaveRestoreError reports that an external commit and its configuration
+// restoration both failed. PriorConfigurationInstalled distinguishes a restore
+// that replaced the updated configuration but could not sync its directory from
+// a restore that failed before replacement and left the update in effect.
+type PostSaveRestoreError struct {
+	ExternalErr                 error
+	RestoreErr                  error
+	PriorConfigurationInstalled bool
+}
+
+func (e *PostSaveRestoreError) Error() string {
+	if e.PriorConfigurationInstalled {
+		return fmt.Sprintf("external commit failed; the prior configuration was reinstalled but could not be made durable: %v; external failure: %v", e.RestoreErr, e.ExternalErr)
+	}
+	return fmt.Sprintf("external commit failed; the prior configuration could not be reinstalled, so the updated configuration remains in effect: %v; external failure: %v", e.RestoreErr, e.ExternalErr)
+}
+
+func (e *PostSaveRestoreError) Unwrap() []error { return []error{e.RestoreErr, e.ExternalErr} }
+
+// ConfigurationInstalled reports whether the updated configuration remains in effect.
+func (e *PostSaveRestoreError) ConfigurationInstalled() bool { return !e.PriorConfigurationInstalled }
+
+// PriorConfigurationReinstalled reports whether restoration replaced the update.
+func (e *PostSaveRestoreError) PriorConfigurationReinstalled() bool {
+	return e.PriorConfigurationInstalled
+}
+
+// ExternalCommitConfirmed is false because the external commit failed.
+func (*PostSaveRestoreError) ExternalCommitConfirmed() bool { return false }
+
+// Retryable disallows an automatic retry before the two stores are inspected.
+func (*PostSaveRestoreError) Retryable() bool { return false }
+
+// CorrectiveAction requires inspection before a new mutation.
+func (*PostSaveRestoreError) CorrectiveAction() string {
+	return "Inspect the configuration and external state, repair access to the configuration directory, then complete recovery by hand."
+}
+
 // ErrNoChange lets an Update mutator report that the configuration is already
 // in the desired state so Update skips the write and leaves the file untouched.
 var ErrNoChange = errors.New("configuration unchanged")
@@ -757,9 +795,11 @@ func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (
 // UpdateWithPostSave serializes a configuration mutation and an irreversible
 // external commit. The callback runs after the new configuration is durable
 // while the configuration lock remains held. If the callback fails, the prior
-// configuration is restored before the lock is released. A save that cannot sync
-// its directory reinstalls the prior configuration and skips the callback; if
-// that also fails, the callback runs and the update returns an *InstalledError.
+// configuration is restored before the lock is released. If restoration fails,
+// a *PostSaveRestoreError records whether the prior configuration was installed.
+// A save that cannot sync its directory reinstalls the prior configuration and
+// skips the callback; if that also fails, the callback runs and the update
+// returns an *InstalledError.
 func UpdateWithPostSave(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
 	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
 		next, postSave, err := mutate(current)
@@ -853,7 +893,16 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		if err := postSave(); err != nil {
 			restoreErr := restore()
 			if restoreErr != nil {
-				return Config{}, errors.Join(err, fmt.Errorf("restore configuration after external commit failure: %w", restoreErr))
+				priorInstalled := isDurabilityError(restoreErr)
+				failure := &PostSaveRestoreError{
+					ExternalErr:                 err,
+					RestoreErr:                  fmt.Errorf("restore configuration after external commit failure: %w", restoreErr),
+					PriorConfigurationInstalled: priorInstalled,
+				}
+				if priorInstalled {
+					return current, failure
+				}
+				return next, failure
 			}
 			return current, err
 		}

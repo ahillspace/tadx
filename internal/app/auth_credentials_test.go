@@ -184,9 +184,17 @@ func TestAuthCredentialStoreNamesOrphanedEntryWhenDeletionFailsAfterInstall(t *t
 	if !strings.Contains(advice, coreauth.CredentialStoreEntry(reference)) {
 		t.Fatalf("corrective action = %q, want the orphaned entry", advice)
 	}
-	for _, err := range []error{errors.New("plain failure"), &config.InstalledError{Err: errors.New("sync failed")}} {
+	for _, err := range []error{errors.New("plain failure"), &config.InstalledError{Err: errors.New("sync failed")}, unrelatedInstalledCredentialError{}} {
 		if got := orphanedCredentialError(err, reference); got != err {
 			t.Fatalf("orphanedCredentialError(%v) = %v, want unchanged", err, got)
 		}
 	}
 }
+
+type unrelatedInstalledCredentialError struct{}
+
+func (unrelatedInstalledCredentialError) Error() string { return "unrelated credential-store failure" }
+
+func (unrelatedInstalledCredentialError) ConfigurationInstalled() bool { return true }
+
+func (unrelatedInstalledCredentialError) ExternalCommitConfirmed() bool { return false }

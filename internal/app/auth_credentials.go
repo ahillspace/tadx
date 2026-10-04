@@ -143,8 +143,9 @@ func (s authCredentialStore) Remove(ctx context.Context, target authlogout.Targe
 // orphanedCredentialError names the stored entry that remains when the cleared
 // reference took effect but its deletion failed, because logout no longer finds it.
 func orphanedCredentialError(err error, reference coreauth.CredentialReference) error {
-	var installed *config.InstalledError
-	if !errors.As(err, &installed) || installed.ExternalCommitConfirmed() {
+	installed, installedOK := errors.AsType[*config.InstalledError](err)
+	restored, restoredOK := errors.AsType[*config.PostSaveRestoreError](err)
+	if !(installedOK && !installed.ExternalCommitConfirmed() || restoredOK && restored.ConfigurationInstalled()) {
 		return err
 	}
 	return &errs.Error{Kind: errs.KindOperation, Summary: "The stored PAT could not be deleted after its reference was cleared.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Remove the OS credential store entry " + coreauth.CredentialStoreEntry(reference) + " by hand; logout no longer references it."}

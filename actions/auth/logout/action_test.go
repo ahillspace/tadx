@@ -109,3 +109,22 @@ func TestExecuteDoesNotConfirmRemovalWhenCredentialDeletionFailedAfterInstall(t 
 		t.Fatalf("error = %#v", payload)
 	}
 }
+
+type priorConfigurationReinstalledError struct{}
+
+func (priorConfigurationReinstalledError) Error() string {
+	return "prior configuration reinstalled without durable directory sync"
+}
+
+func (priorConfigurationReinstalledError) PriorConfigurationReinstalled() bool { return true }
+
+func TestExecuteReportsUncertainRestoredReferenceWithoutOrphanClaim(t *testing.T) {
+	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: priorConfigurationReinstalledError{}}).Execute(t.Context(), logout.Input{Environment: "dev"})
+	payload := errs.Structure(err).Error
+	if payload.ID != "auth.logout.remove" || payload.Phase != errs.PhasePersistence || payload.Outcome != errs.OutcomeUnknown {
+		t.Fatalf("failure classification: %#v", payload)
+	}
+	if !strings.Contains(payload.Summary, "durable") || strings.Contains(strings.ToLower(payload.CorrectiveAction), "orphan") || !strings.Contains(payload.CorrectiveAction, "stored reference") || !strings.Contains(payload.CorrectiveAction, "OS credential store entry") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
+		t.Fatalf("failure guidance: %#v", payload)
+	}
+}

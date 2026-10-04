@@ -56,6 +56,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair access to the configuration directory, then confirm the removal.")
 		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored PAT was removed, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
 	}
+	if priorConfigurationReinstalled(err) {
+		retryable, _ := errs.CompleteRetryAdvice(err, "")
+		advice := "Repair access to the configuration directory, then inspect the selected environment's stored reference and OS credential store entry before another logout."
+		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT deletion failed, and the restored credential reference may not be durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+	}
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair the OS credential store, then retry. The Tableau PAT was not revoked.")
 		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT removal failed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice)}
@@ -73,6 +78,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Status:   status, Environment: target.Environment, CredentialSource: CredentialSourceOS, TableauPATRevoked: false,
 		Help: []string{"The Tableau PAT remains valid until you revoke it in Tableau."},
 	}, nil
+}
+
+func priorConfigurationReinstalled(err error) bool {
+	var restored interface{ PriorConfigurationReinstalled() bool }
+	return errors.As(err, &restored) && restored.PriorConfigurationReinstalled()
 }
 
 // installedConfiguration reports a store failure after the configuration change
