@@ -6,6 +6,19 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Parser fixture isolation correction
+
+The exact `1ba1e61` default gate passed eight controls and nine seeded rejections but failed source-integrity verification.
+Its parser test supplied a relative `--config=portable/config.yaml`; the corrected saved-result behavior therefore created a result and lock inside the source snapshot.
+No tracked source bytes changed, but the new files correctly rejected the run.
+The failed evidence remains retained and is not relabeled as clean.
+Baseline-relative gates did not run against that tainted snapshot.
+
+A separate test-only correction supplies an absolute temporary configuration path while preserving flag order and parser assertions.
+Independent review and the focused test pass, with all 1,424 snapshot files unchanged and no extra result files.
+The production saved-result fix and source-integrity enforcement remain unchanged.
+Ignored evidence remains in `.tadx-refactor/last-testfix-1ba/`; new integrated gates require a fresh source archive.
+
 ## Selected-configuration saved-result correction
 
 An app.Run E2E test reproduced a pre-existing saved-result location bug for both `--config` and `--cfg`.
