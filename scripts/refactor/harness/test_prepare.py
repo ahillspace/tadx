@@ -199,6 +199,59 @@ class PrepareTests(unittest.TestCase):
             "         'pulse.metric.inspect', 'pulse.metric.followers'}\n")
         self.files["integration/fault_broker.cjs"] = "module.exports={};\n"
         self.files["integration/credential_pty.py"] = "\n"
+        self.files["tools/reset_site.py"] = (
+            "    def __init__(self, manifest_path, cli):\n"
+            "        self.path = Path(manifest_path).resolve()\n"
+            "            if exc.result.get(\"error\", {}).get(\"upstream_status\") == 404:\n"
+            "                return None\n"
+            """        retry_count = holder.get("unknown_retry_count", 0)
+        last_uncertain = next((event for event in reversed(self.manifest.get("journal", []))
+                               if event.get("event") == "publish_uncertain"
+                               and event.get("generation") == self.manifest.get("generation")
+                               and event.get("kind") == kind), None)
+        not_attempted = ((last_uncertain or {}).get("evidence") or {}).get("id") == "mutation.disabled" \\
+            and ((last_uncertain or {}).get("evidence") or {}).get("outcome") == "not_attempted"
+        if len(candidates) == 0 and (retry_count < 1 or not_attempted):
+            # A transport or container failure can leave a publish outcome
+            # unknown even though a complete remote inventory proves that no
+            # resource with the exact baseline name exists.  Permit one
+            # durable retry only after the deletion boundary is confirmed and
+            # the absence is independently observed twice.  A later unknown
+            # outcome remains quarantined, and an acknowledged identity is
+            # never replayed.
+            import time
+            time.sleep(2)
+            second = self.matching(kind, resource["state"]["name"], resource["state"]["project_luid"])
+            second = [item for item in second if item.get("luid") not in old_ids]
+            deleted = any(event.get("event") == "delete_confirmed"
+                          and event.get("kind") == kind
+                          and event.get("id") == holder.get("old_id")
+                          and event.get("generation") == self.manifest.get("generation")
+                          for event in self.manifest.get("journal", []))
+            if len(second) == 1 and second[0].get("luid"):
+                self.confirm_publish(kind, second[0]["luid"], holder, reconciled=True)
+                return
+            if not second and deleted:
+                holder["unknown_retry_count"] = 1
+                holder["phase"] = "deleted"
+                self.event("publish_retry_authorized", kind=kind,
+                           reason="complete exact-name inventory absent after uncertain publish")
+                self.publish(kind, holder)
+                return
+"""
+        )
+        self.files["integration/operator_reset.py"] = (
+            "import json\nfrom pathlib import Path\n"
+            "OPERATIONS = ('capture', 'plan', 'reset', 'verify')\n\n\n"
+            "            manager = reset_site.ResetSite(manifest_path, cli)\n"
+            "            _scope(manager, deployment, site)\n"
+            "            candidates = _save_candidates(deployment, site, base, deployment_path, settings_path, manager)\n"
+        )
+        self.files["integration/content_profiles.py"] = (
+            "        manager = reset_site.ResetSite(manifest_path, None)\n"
+            "        operator_reset._scope(manager, baseline['deployment'], baseline['site_key'])\n"
+            "        manager.cli = _reset_cli(root, binding, manager)\n"
+        )
         self.files["integration/project_profiles.py"] = "\n".join(before for before, _ in PROJECT_REPLACEMENTS)
         for case in prep.PROJECT_CASES:
             for folder in ("suite/exercises", "fixtures/profiles"):

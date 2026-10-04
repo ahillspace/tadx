@@ -1,9 +1,6 @@
 """A CLI 404 cannot settle a reset without a fresh independent exact GET."""
 
-import importlib.util
 import io
-import os
-from pathlib import Path
 import unittest
 from unittest.mock import patch
 import urllib.error
@@ -13,43 +10,39 @@ from integration import operator_reset
 from tools import reset_site
 
 
-def fake_suite():
-    source = Path(os.environ.get('TADX_SUITE_SOURCE', Path(__file__).resolve().parents[1]))
-    module_path = source / 'tests' / 'test_reset_site.py'
-    spec = importlib.util.spec_from_file_location('reset_absence_fake', module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.reset_site = reset_site
-    return module
-
-
 class ResetAbsenceTests(unittest.TestCase):
     def setUp(self):
-        case = fake_suite().ResetSiteTests('test_delete_timeout_after_success_reconciles_absence')
-        case.setUp()
-        self.addCleanup(case.doCleanups)
-        self.case = case
+        self.remote_present = True
+        self.calls = []
+        self.events = []
+
+        class CLI:
+            def run(cli, command):
+                self.calls.append(list(command))
+                if command[:3] == ['content', 'workbook', 'inspect']:
+                    raise reset_site.CLIError(command, {'error': {'upstream_status': 404}})
+                raise AssertionError('A deletion must not run after a CLI 404')
+
+        self.manager = reset_site.ResetSite.__new__(reset_site.ResetSite)
+        self.manager.cli = CLI()
+        self.manager.env = 'test-env'
+        self.manager.event = lambda event, **fields: self.events.append((event, fields))
+        self.manager.confirm_absence = lambda kind, luid: not self.remote_present
 
     def test_cli_404_with_present_exact_resource_blocks_delete(self):
-        original = self.case.cli.run
-
-        def misleading(command):
-            if command[:3] == ['content', 'workbook', 'inspect']:
-                raise reset_site.CLIError(command, {'error': {'upstream_status': 404}})
-            return original(command)
-
-        self.case.cli.run = misleading
-        manager = self.case.manager()
         with self.assertRaisesRegex(reset_site.ResetError, 'Independent exact GET 404'):
-            manager.delete_exact('workbook', 'workbook-original', {'phase': 'pending'})
-        self.assertFalse(any(call[1:3] == ['workbook', 'delete'] for call in self.case.cli.mutations()))
+            self.manager.delete_exact('workbook', 'workbook-original', {'phase': 'pending'})
+        self.assertEqual(self.events, [])
+        self.assertEqual([call[:3] for call in self.calls], [['content', 'workbook', 'inspect']])
 
     def test_cli_404_and_independent_404_confirms_absence(self):
-        self.case.cli.remote.pop(('workbook', 'workbook-original'))
+        self.remote_present = False
         holder = {'phase': 'pending'}
-        self.case.manager().delete_exact('workbook', 'workbook-original', holder)
+        self.manager.delete_exact('workbook', 'workbook-original', holder)
         self.assertEqual(holder['phase'], 'deleted')
-        self.assertFalse(any(call[1:3] == ['workbook', 'delete'] for call in self.case.cli.mutations()))
+        self.assertEqual(self.events[0][0], 'delete_confirmed')
+        self.assertTrue(self.events[0][1]['already_absent'])
+        self.assertEqual([call[:3] for call in self.calls], [['content', 'workbook', 'inspect']])
 
 
 class ObserverAbsenceTests(unittest.TestCase):
