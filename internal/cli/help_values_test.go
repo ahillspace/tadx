@@ -213,7 +213,9 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 		{"catalog search", "type", 3, func(v string) error {
 			return catalogsearch.ValidateSearchInput(catalogsearch.SearchInput{Query: "sales", Types: []string{v}, TableID: "table-id"})
 		}},
-		{"catalog audit", "type", 3, func(v string) error { return catalogaudit.ValidateAuditInput(catalogaudit.AuditInput{Type: v, ID: "scope-id"}) }},
+		{"catalog audit", "type", 3, func(v string) error {
+			return catalogaudit.ValidateAuditInput(catalogaudit.AuditInput{Type: v, ID: "scope-id"})
+		}},
 		{"catalog audit", "check", 2, func(v string) error {
 			return catalogaudit.ValidateAuditInput(catalogaudit.AuditInput{Type: "table", ID: "scope-id", Checks: []string{v}})
 		}},
