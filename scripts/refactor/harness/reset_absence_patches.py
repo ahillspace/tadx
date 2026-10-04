@@ -59,6 +59,12 @@ def patch_reset_site(source, replace_once):
 def patch_operator_reset(source, replace_once):
     source = replace_once(
         source,
+        "    serial = execution == {'mode': 'serial', 'concurrency': 1}\n",
+        "    serial = (isinstance(execution, dict) and execution.get('mode') == 'serial'\n"
+        "              and type(execution.get('concurrency')) is int and execution['concurrency'] == 1)\n",
+    )
+    source = replace_once(
+        source,
         "import json\nfrom pathlib import Path\n",
         "import json\nfrom pathlib import Path\nimport urllib.parse\n",
     )

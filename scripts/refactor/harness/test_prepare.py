@@ -243,6 +243,7 @@ class PrepareTests(unittest.TestCase):
         self.files["integration/operator_reset.py"] = (
             "import json\nfrom pathlib import Path\n"
             "OPERATIONS = ('capture', 'plan', 'reset', 'verify')\n\n\n"
+            "    serial = execution == {'mode': 'serial', 'concurrency': 1}\n"
             "            manager = reset_site.ResetSite(manifest_path, cli)\n"
             "            _scope(manager, deployment, site)\n"
             "            candidates = _save_candidates(deployment, site, base, deployment_path, settings_path, manager)\n"

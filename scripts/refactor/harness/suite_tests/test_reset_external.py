@@ -61,7 +61,7 @@ class ResetExternalTests(unittest.TestCase):
                 source = prepare.replace_once(
                     source,
                     "        for concurrency in (2, True):\n",
-                    "        for concurrency in (True,):\n",
+                    "        for concurrency in (True, 1.0):\n",
                 )
                 source = prepare.replace_once(
                     source,
