@@ -205,6 +205,10 @@ func localImportAllowed(file, imported string) bool {
 		if path.Dir(file) == "actions/version" && imported == "internal/version" {
 			return true
 		}
+		// Workspace operations use exact rooted artifact and registry mechanisms.
+		if path.Dir(file) == "actions/workspace" && matchesExact(imported, "internal/artifact", "internal/workspace") {
+			return true
+		}
 		// Pulse actions share raw-payload invariants through a standard-library
 		// leaf package; this does not authorize dependencies for other actions.
 		if hasPathPrefix(file, "actions/pulse") && imported == "internal/pulsecontract" {
@@ -353,6 +357,9 @@ func localImportAllowed(file, imported string) bool {
 		// paths cannot escape the workspace root, using the OS-independent pathspec
 		// predicates as defense in depth over the upstream Resolve invariant. It
 		// installs staged directories through the leaf replace package.
+		if path.Dir(file) == "internal/artifact" && matchesExact(imported, "internal/commandhint", "internal/errs") {
+			return true
+		}
 		if hasPathPrefix(file, "internal/artifact") {
 			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/pathspec")
 		}

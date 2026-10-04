@@ -146,7 +146,7 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-				return flowops.PublishOutput{}, mapArtifactResolutionError("flow.publish", workspace.Name, input.ArtifactID, err)
+				return flowops.PublishOutput{}, artifact.MapResolutionError("flow.publish", workspace.Name, input.ArtifactID, err)
 			}
 			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact resolution failed.", "Select one exact workspace-relative managed flow artifact, then retry.", err)
 		}

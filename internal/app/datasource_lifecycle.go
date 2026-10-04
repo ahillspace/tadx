@@ -62,7 +62,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-				return datasourceops.PublishOutput{}, mapArtifactResolutionError("datasource.publish", workspace.Name, input.ArtifactID, err)
+				return datasourceops.PublishOutput{}, artifact.MapResolutionError("datasource.publish", workspace.Name, input.ArtifactID, err)
 			}
 			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
 		}

@@ -1,4 +1,4 @@
-package app
+package artifact_test
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 
 func TestMapArtifactResolutionErrorAddsContextualStatusRoute(t *testing.T) {
 	cause := &artifact.AmbiguousSelectorError{Candidates: []artifact.AmbiguousCandidate{{Kind: "workbook", LUID: "wb-1", Path: "artifacts/workbook/Finance", SourceEnvironment: "production", SourceSite: "marketing", SiteLUID: "site-1"}}}
-	err := mapArtifactResolutionError("workspace.artifact.delete", "development", "", cause)
+	err := artifact.MapResolutionError("workspace.artifact.delete", "development", "", cause)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted {
 		t.Fatalf("mapped error = %#v", err)
@@ -41,7 +41,7 @@ func TestMapArtifactResolutionErrorCarriesBoundedCandidatesInJSON(t *testing.T) 
 		}
 	}
 	cause := &artifact.AmbiguousSelectorError{Kind: "workbook", Name: "Finance", Candidates: candidates, Truncated: 3}
-	err := mapArtifactResolutionError("workbook.publish", "ambiguous", "", cause)
+	err := artifact.MapResolutionError("workbook.publish", "ambiguous", "", cause)
 	var rendered bytes.Buffer
 	if renderErr := output.RenderError(&rendered, err, output.Options{JSON: true}); renderErr != nil {
 		t.Fatal(renderErr)

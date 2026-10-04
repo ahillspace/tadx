@@ -3,78 +3,15 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/config"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
-
-func TestWorkspaceDeletionInspectionTreatsUnmanagedFilesAsDirty(t *testing.T) {
-	root := t.TempDir()
-	for _, directory := range []string{"artifacts", ".tadx"} {
-		if err := os.MkdirAll(filepath.Join(root, directory), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(root, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	dirty, err := workspaceHasUnmanagedEntries(context.Background(), root, nil)
-	if err != nil || dirty {
-		t.Fatalf("clean workspace: dirty=%t err=%v", dirty, err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("keep"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	dirty, err = workspaceHasUnmanagedEntries(context.Background(), root, nil)
-	if err != nil || !dirty {
-		t.Fatalf("unmanaged file: dirty=%t err=%v", dirty, err)
-	}
-}
-
-func TestWorkspaceArtifactAdaptersPreserveCleanupWarnings(t *testing.T) {
-	item := artifact.Item{TreeFingerprint: "private-tree-fingerprint", Warnings: []string{"cleanup remains", "second warning"}}
-	moved, deleted := moveArtifact(item), deleteArtifact(item)
-	if got := moved.Warnings; !reflect.DeepEqual(got, item.Warnings) {
-		t.Fatalf("move warnings = %#v", got)
-	}
-	if got := deleted.Warnings; !reflect.DeepEqual(got, item.Warnings) {
-		t.Fatalf("delete warnings = %#v", got)
-	}
-	moved.Warnings[0], deleted.Warnings[1] = "changed move", "changed delete"
-	if !reflect.DeepEqual(item.Warnings, []string{"cleanup remains", "second warning"}) {
-		t.Fatalf("projections modified the source warnings: %v", item.Warnings)
-	}
-	if got := statusArtifact(item).Diagnostic; got != "cleanup remains" {
-		t.Fatalf("status diagnostic = %q", got)
-	}
-	encoded, err := json.Marshal(deleted)
-	if err != nil || bytes.Contains(encoded, []byte("private-tree-fingerprint")) || deleted.TreeFingerprint != item.TreeFingerprint {
-		t.Fatalf("delete fingerprint projection: JSON=%s target=%#v error=%v", encoded, deleted, err)
-	}
-}
-
-func TestWorkspaceRegistrationProjectionRequiresAvailableValidManifest(t *testing.T) {
-	for _, available := range []bool{false, true} {
-		for _, valid := range []bool{false, true} {
-			registration := workspaceRegistration(workspacecore.Record{Name: "example", ID: "ws_1", Root: "root", Available: available, ManifestValid: valid})
-			if registration.Registered != (available && valid) {
-				t.Fatalf("available=%t valid=%t registration=%#v", available, valid, registration)
-			}
-			encoded, err := json.Marshal(registration)
-			if err != nil || bytes.Contains(encoded, []byte("created_entries")) {
-				t.Fatalf("registration JSON=%s error=%v", encoded, err)
-			}
-		}
-	}
-}
 
 func TestMovedMetadataCapabilitiesAreClassifiedUnderCatalog(t *testing.T) {
 	for id, wantResource := range map[string]string{"lineage.pull": "lineage", "content.label.list": "label", "content.label.inspect": "label", "content.label.update": "label", "content.label.delete": "label"} {
@@ -132,6 +69,40 @@ func TestWorkspaceResolutionUsesSelectedEnvironmentDefault(t *testing.T) {
 	}
 	if resolved.Name != "production" {
 		t.Fatalf("resolved workspace = %#v", resolved)
+	}
+}
+
+func TestWorkspaceCreateUsesSelectedConfigAfterFlagParsing(t *testing.T) {
+	for _, flag := range []string{"--config", "--cfg"} {
+		t.Run(flag, func(t *testing.T) {
+			root := t.TempDir()
+			fallback := filepath.Join(root, "fallback.yaml")
+			selected := filepath.Join(root, "selected.yaml")
+			for _, path := range []string{fallback, selected} {
+				if err := config.Save(path, config.Config{Version: config.CurrentVersion}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var output bytes.Buffer
+			args := []string{"workspace", "create", "selected", "--path", filepath.Join(root, "selected-workspace"), flag, selected}
+			if code := Run(t.Context(), args, &output, Options{ConfigPath: fallback}); code != 0 {
+				t.Fatalf("code=%d output=%s", code, output.String())
+			}
+			selectedConfig, err := config.Load(selected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fallbackConfig, err := config.Load(fallback)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := selectedConfig.Workspaces["selected"]; !ok {
+				t.Fatalf("selected workspace missing: %#v", selectedConfig.Workspaces)
+			}
+			if _, ok := fallbackConfig.Workspaces["selected"]; ok {
+				t.Fatalf("fallback config was modified: %#v", fallbackConfig.Workspaces)
+			}
+		})
 	}
 }
 

@@ -6,6 +6,27 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Workspace ownership and integrated checkpoint
+
+The workspace Service owns operation sequencing through explicit native ports.
+Core workspace guards own root equivalence and bounded unmanaged-entry checks.
+The artifact package owns ambiguity errors and confirmed partial-result projection.
+App retains construction and lazy selected-configuration binding.
+The selected-configuration command tests remain end-to-end; pure guard and ambiguity tests follow their owners.
+
+Independent review passes the actual `9e3796b38c03463c75a84cfef976bd65657a4a36` merge with 15 changed paths.
+Its 1,462-file fingerprint is `5e816976088e179fa85a6de87d17e31003e1d780be27c6592c8ccfc69439fd2c`.
+Focused workspace, artifact, app ambiguity, CLI, and architecture tests pass.
+The four shared-file merges preserve publication recording, lineage, policy, session, and content-read boundaries.
+Evidence remains in `.tadx-refactor/workspace-merge-9e3/`.
+
+The earlier exact `e16b7f08423ea521b96dd8ec88d93002b9404d0d` checkpoint passes full race tests, vet, module verification, formatting, and generation cleanliness.
+Offline tooling suites pass with 24 runner, 29 live-gate, 7 capture, and 27 harness checks.
+Default, reporting, and baseline-fix controls pass against 610 explicit baseline-relative changed paths.
+Hosted CI run `37178194083` and gate-tooling run `37178193986` succeed, including native policy checks across Linux, Windows, and macOS.
+Evidence remains in `.tadx-refactor/integrated-e16-20261003215236/`.
+These checks cover that exact historical build, not later slices or final live acceptance.
+
 ## Search source-selection ownership
 
 The search Service owns input validation, administrative prerequisites, cursor preflight, source selection, canonical target binding, and setup errors.

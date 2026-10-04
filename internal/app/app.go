@@ -676,7 +676,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 		managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook", LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-				return workbookops.PublishOutput{}, mapArtifactResolutionError("workbook.publish", resolvedWorkspace.Name, input.ArtifactID, err)
+				return workbookops.PublishOutput{}, artifact.MapResolutionError("workbook.publish", resolvedWorkspace.Name, input.ArtifactID, err)
 			}
 			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
 		}
