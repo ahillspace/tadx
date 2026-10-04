@@ -27,7 +27,7 @@ func contentPresentationTree(resourceName string, actionNames ...string) (*cobra
 func contentPresentationOutput(t *testing.T, command *cobra.Command) string {
 	t.Helper()
 	var out bytes.Buffer
-	if !writeContentPilotHelp(&out, command) {
+	if !writeContentHelp(&out, command) {
 		t.Fatal("command did not resolve to content pilot")
 	}
 	return out.String()

@@ -6,6 +6,26 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Command-owned help facts
+
+Command-specific flag values, requirements, defaults, summaries, examples, and notes live beside their category constructors.
+Shared CLI traversal delegates category facts and retains generic syntax and rendering.
+The helpmeta package attaches presentation metadata without changing parsing or operation validation.
+Content-specific reference details also move to the content command owner.
+The former pilot helper receives a behavior-based name.
+
+Independent review accepts the help revision after relocating one existing rendering test to its content owner.
+Both original test cases and their required/forbidden output assertions remain intact.
+Fourteen representative baseline/candidate command routes produce byte-identical stdout and exit codes.
+The review covers root, content, catalog, admin, environment, mutation, Pulse, completion, search, and saved-result help.
+
+The actual integration contains 42 paths against `a20d16f33c730985f96d0c215c064d3776ffbe78`, with no overlapping changes.
+The 1,584-file source fingerprint is `bcc959a4e3c1918a3ee537eb28ed261e1c4d7b6e6bc9087ed2c3f75ab8c6c718`.
+The archive SHA-256 is `6c7d063f6119f602897b3401b7aeb9395f053791d605ac931640c346fb0551c0`.
+Current-base CLI and architecture tests, app help/golden tests, and full compilation pass.
+Evidence remains in `.tadx-refactor/help-merge-a20/`.
+This bounded confirmation does not replace the full suite or resolve the separately observed Windows CI failures on `36ecdc1`.
+
 ## Content pulls and detached worker ownership
 
 Workbook, datasource, and flow Services own pull validation, canonical session binding, and operation sequencing.

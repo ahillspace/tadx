@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -190,7 +191,7 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 	var rules strings.Builder
 	writeReferenceConstraints(&rules, actions)
 	if isContentReference(owner) {
-		writeCompactContentNotes(&rules, owner, actions)
+		contentcli.WriteCompactReferenceNotes(&rules, owner, actions)
 	}
 	for _, line := range referenceNotes(owner, actions) {
 		fmt.Fprintln(&rules, "  "+line)
@@ -427,7 +428,7 @@ func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 
 func referenceActionNotes(action *cobra.Command) []string {
 	if isContentReference(action.Parent()) {
-		return contentReferenceActionNotes(action)
+		return contentcli.ReferenceActionNotes(action)
 	}
 	path := strings.TrimPrefix(action.CommandPath(), action.Root().Name()+" ")
 	notes := map[string][]string{

@@ -37,7 +37,7 @@ func installCategoryHelp(root *cobra.Command) {
 	root.SetHelpCommand(helpCommand)
 	root.SetHelpFunc(func(command *cobra.Command, _ []string) {
 		out := command.OutOrStdout()
-		if writeContentPilotHelp(out, command) {
+		if writeContentHelp(out, command) {
 			return
 		}
 		writeStructuredHelp(out, command)
