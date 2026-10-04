@@ -41,6 +41,24 @@ func TestSchemaInvalidLocalArgumentsFailBeforeAuthentication(t *testing.T) {
 	}
 }
 
+func TestSchemaCachedCursorUnknownEnvironmentKeepsSelectionError(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	options := cacheResilienceOptions(t, server)
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`{"offset":0,"fingerprint":"valid-shape"}`))
+	args := []string{"content", "datasource", "schema", "--environment", "missing", "--id", "ds-1", "--cursor", cursor}
+	var live, cached strings.Builder
+	liveExit := app.Run(t.Context(), args, &live, options)
+	cachedExit := app.Run(t.Context(), append(append([]string(nil), args...), "--cache"), &cached, options)
+	if liveExit != cachedExit || live.String() != cached.String() || requests.Load() != 0 {
+		t.Fatalf("live exit=%d output=%q; cached exit=%d output=%q; requests=%d", liveExit, live.String(), cachedExit, cached.String(), requests.Load())
+	}
+}
+
 func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 	cases := [][]string{
 		{"content", "workbook", "list", "--limit", "-1"},

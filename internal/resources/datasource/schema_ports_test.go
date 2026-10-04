@@ -1,10 +1,9 @@
-package app
+package datasource
 
 import (
 	"context"
 	"testing"
 
-	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 )
@@ -26,7 +25,7 @@ func TestSharedSchemaValuesRetainSliceIsolation(t *testing.T) {
 		Fields:   []fieldcatalog.Field{{ID: "sales", Caption: "Sales", Role: "measure"}},
 		Warnings: []string{"Original warning"},
 	}}
-	reader := &datasourceSchemaReader{adapter: resourcedatasource.NewSchemaAdapter(fixture, fixture)}
+	reader := SchemaReadPort{Adapter: NewSchemaAdapter(fixture, fixture)}
 	result, err := reader.ReadDatasourceSchema(context.Background(), "ds-1")
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +34,7 @@ func TestSharedSchemaValuesRetainSliceIsolation(t *testing.T) {
 	fixture.result.Tables[0].Name = "Changed provider table"
 	fixture.result.Warnings[0] = "Changed provider warning"
 	if result.Fields[0].Caption != "Sales" || result.Tables[0].Name != "Orders" || result.Warnings[0] != "Original warning" {
-		t.Fatalf("composition root retained provider slice aliases: %+v", result)
+		t.Fatalf("resource port retained provider slice aliases: %+v", result)
 	}
 	fixture.result.Fields, fixture.result.Tables = nil, nil
 	empty, err := reader.ReadDatasourceSchema(context.Background(), "ds-1")

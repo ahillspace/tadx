@@ -18,18 +18,12 @@ type SchemaReader interface {
 	ReadDatasourceSchema(context.Context, string) (SchemaRecord, error)
 }
 
-// Schema reads, filters, and bounds one datasource schema.
-func Schema(ctx context.Context, reader SchemaReader, now func() time.Time, input SchemaInput) (SchemaOutput, error) {
+func schemaValidated(ctx context.Context, reader SchemaReader, now func() time.Time, input SchemaInput, offset int, observed *SchemaRecord) (SchemaOutput, error) {
 	if reader == nil {
 		return SchemaOutput{}, schemaSchemaError("datasource.schema.unconfigured", errs.KindRuntime, input, "Datasource schema discovery is not configured.", nil, "Configure the datasource schema reader before retrying.")
 	}
 	if now == nil {
 		now = time.Now
-	}
-	var err error
-	input, err = SchemaNormalizeInput(input)
-	if err != nil {
-		return SchemaOutput{}, err
 	}
 	limit := input.Limit
 	if limit == 0 {
@@ -39,10 +33,6 @@ func Schema(ctx context.Context, reader SchemaReader, now func() time.Time, inpu
 		limit = schemaMaxAllFields
 	}
 	fingerprint := schemaInputFingerprint(input)
-	offset, err := schemaDecodeCursor(input.Cursor, fingerprint)
-	if err != nil {
-		return SchemaOutput{}, schemaSchemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor is invalid for this query.", err, "Restart without --cursor; increase --limit or use --all to inspect more fields.")
-	}
 	value, err := reader.ReadDatasourceSchema(ctx, input.DatasourceLUID)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Verify datasource access and Metadata API availability, then retry.")
@@ -76,12 +66,8 @@ func Schema(ctx context.Context, reader SchemaReader, now func() time.Time, inpu
 		observedAt = now().UTC().Format(time.RFC3339Nano)
 	}
 	source := readsource.Live(schemaParseObservedAt(observedAt, now()))
-	if input.Cache {
-		// The composition root replaces this with authoritative cache generation
-		// metadata. This action has no generation provenance of its own, so the
-		// placeholder must not claim complete, fresh coverage: if it is ever
-		// surfaced unwrapped it stays honest as partial and stale.
-		source = readsource.Cached(schemaParseObservedAt(observedAt, now()), readsource.CoveragePartial, "", time.Time{}, true)
+	if observed != nil {
+		*observed = value
 	}
 	return SchemaOutput{
 		Status: "listed", Environment: input.Environment, Site: input.Site,
@@ -224,8 +210,8 @@ func schemaSchemaError(id string, kind errs.Kind, input SchemaInput, summary str
 	return &errs.Error{ID: id, Kind: kind, Operation: "datasource.schema", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: new(false), CorrectiveAction: corrective}
 }
 
-// SchemaNormalizeInput validates only caller-controlled values without dependencies.
-func SchemaNormalizeInput(input SchemaInput) (SchemaInput, error) {
+// schemaNormalizeInput validates only caller-controlled values without dependencies.
+func schemaNormalizeInput(input SchemaInput) (SchemaInput, error) {
 	input.Environment = strings.TrimSpace(input.Environment)
 	input.Site = strings.TrimSpace(input.Site)
 	input.DatasourceLUID = strings.TrimSpace(input.DatasourceLUID)
@@ -267,10 +253,10 @@ func SchemaNormalizeInput(input SchemaInput) (SchemaInput, error) {
 	return input, nil
 }
 
-// SchemaValidateContinuation checks a cursor against the locally resolved target.
-func SchemaValidateContinuation(input SchemaInput) error {
-	if _, err := schemaDecodeCursor(input.Cursor, schemaInputFingerprint(input)); err != nil {
-		return schemaSchemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor is invalid for this query.", err, "Restart without --cursor.")
+func schemaContinuationOffset(input SchemaInput) (int, error) {
+	offset, err := schemaDecodeCursor(input.Cursor, schemaInputFingerprint(input))
+	if err != nil {
+		return 0, schemaSchemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor is invalid for this query.", err, "Restart without --cursor.")
 	}
-	return nil
+	return offset, nil
 }

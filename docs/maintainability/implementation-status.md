@@ -6,6 +6,22 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Datasource schema ownership
+
+The datasource Service owns schema validation, continuation target selection, cache/live choice, and output sequencing.
+The datasource adapter owns native schema translation, metadata enrichment, deep-copy isolation, and typed schema-cache publication.
+App constructs providers and no longer implements the schema workflow or copy adapter.
+Test-only public schema entry points are removed; CLI help-value acceptance still invokes the public Service.
+
+Independent review finds and rejects changed error classification for a cached continuation with an unknown environment.
+A new command-level regression reproduces the difference before the corrected revision restores raw environment-selection errors.
+The exact `e1aa36078337e9d66bb6ae6334462392ca592b38` merge has 16 changed paths and 1,476 files.
+Its fingerprint is `7db3a38355fc4ce7028fbee3aaca84a447cd2efd9a975970e31c357a09df64dd`.
+Datasource action/resource, CLI, architecture, focused app schema/lineage/workspace tests, full compilation, and scoped vet pass.
+The intervening output commit leaves every schema preimage unchanged.
+Evidence remains in `.tadx-refactor/schema-merge-e1a/`.
+Pull, publication, and final integrated/live acceptance remain outstanding.
+
 ## Detached-operation output ownership
 
 Output owns saved-operation snapshot projection, bounded compact/full capture, receipt-result merging, and recovery-state predicates.

@@ -21,23 +21,68 @@ type schemaReader struct {
 	luid   string
 }
 
+type schemaTestProvider struct {
+	reader datasourceops.SchemaReader
+	now    func() time.Time
+	target datasourceops.SchemaTarget
+	source *readsource.Metadata
+}
+
+func (p schemaTestProvider) CursorTarget(string) (datasourceops.SchemaTarget, error) {
+	return p.target, nil
+}
+func (p schemaTestProvider) CacheTarget(string) (datasourceops.SchemaTarget, error) {
+	return p.target, nil
+}
+func (p schemaTestProvider) CachedSchema(datasourceops.SchemaTarget, bool) datasourceops.CachedSchemaReader {
+	return schemaTestCachedReader{SchemaReader: p.reader, source: p.source}
+}
+func (p schemaTestProvider) OpenDatasourceSchema(context.Context, string, bool) (datasourceops.SchemaSession, error) {
+	return datasourceops.SchemaSession{SchemaTarget: p.target, Reader: p.reader, Publisher: schemaTestPublisher{}}, nil
+}
+func (p schemaTestProvider) Now() time.Time {
+	if p.now != nil {
+		return p.now()
+	}
+	return time.Now()
+}
+
+type schemaTestCachedReader struct {
+	datasourceops.SchemaReader
+	source *readsource.Metadata
+}
+
+func (r schemaTestCachedReader) Source() *readsource.Metadata { return r.source }
+
+type schemaTestPublisher struct{}
+
+func (schemaTestPublisher) PublishDatasourceSchema(context.Context, datasourceops.SchemaRecord) string {
+	return ""
+}
+
+func runSchema(ctx context.Context, reader datasourceops.SchemaReader, now func() time.Time, input datasourceops.SchemaInput) (datasourceops.SchemaOutput, error) {
+	source := readsource.Cached(time.Time{}, readsource.CoveragePartial, "", time.Time{}, true)
+	provider := schemaTestProvider{reader: reader, now: now, target: datasourceops.SchemaTarget{Environment: input.Environment, Site: input.Site}, source: &source}
+	return datasourceops.New(datasourceops.Ports{Schema: provider}).GetDatasourceSchema(ctx, input)
+}
+
 func TestSchemaSchemaAllInventoryBoundAndConflicts(t *testing.T) {
 	r := &schemaReader{result: datasourceops.SchemaRecord{DatasourceLUID: "ds-1", DatasourceName: "Orders"}}
 	for index := 0; index < 10001; index++ {
 		r.result.Fields = append(r.result.Fields, datasourceops.Field{ID: fmt.Sprint(index), Caption: fmt.Sprint(index), Role: "dimension"})
 	}
 	actionReader, actionNow := r, time.Now
-	if _, err := datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{DatasourceLUID: "ds-1", All: true}); err == nil {
+	if _, err := runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{DatasourceLUID: "ds-1", All: true}); err == nil {
 		t.Fatal("oversized all inventory accepted")
 	}
 	r.result.Fields = r.result.Fields[:10000]
-	out, err := datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{DatasourceLUID: "ds-1", All: true})
+	out, err := runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{DatasourceLUID: "ds-1", All: true})
 	if err != nil || out.Page.Returned != 10000 || out.Page.MoreAvailable {
 		t.Fatalf("page=%+v err=%v", out.Page, err)
 	}
 	for _, input := range []datasourceops.SchemaInput{{DatasourceLUID: "ds-1", All: true, Limit: 20}, {DatasourceLUID: "ds-1", All: true, Cursor: "legacy"}} {
 		before := r.calls
-		if _, err := datasourceops.Schema(context.Background(), actionReader, actionNow, input); err == nil || r.calls != before {
+		if _, err := runSchema(context.Background(), actionReader, actionNow, input); err == nil || r.calls != before {
 			t.Fatalf("err=%v calls=%d", err, r.calls)
 		}
 	}
@@ -49,7 +94,7 @@ func TestSchemaSchemaRequestedLimitMatchesAllBound(t *testing.T) {
 		r.result.Fields = append(r.result.Fields, datasourceops.Field{ID: fmt.Sprint(index), Caption: fmt.Sprint(index), Role: "dimension"})
 	}
 	for _, limit := range []int{1000, 10000} {
-		out, err := datasourceops.Schema(context.Background(), r, time.Now, datasourceops.SchemaInput{DatasourceLUID: "ds-1", Limit: limit})
+		out, err := runSchema(context.Background(), r, time.Now, datasourceops.SchemaInput{DatasourceLUID: "ds-1", Limit: limit})
 		if err != nil || out.Page.Returned != limit || out.Page.MoreAvailable != (limit < 10000) {
 			t.Fatalf("limit=%d page=%+v err=%v", limit, out.Page, err)
 		}
@@ -73,7 +118,7 @@ func TestSchemaSchemaFiltersAndPaginatesDeterministically(t *testing.T) {
 		},
 	}}
 	actionReader, actionNow := r, func() time.Time { return time.Date(2026, 9, 4, 10, 1, 0, 0, time.UTC) }
-	first, err := datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Query: "amount", Role: "measure", Limit: 1})
+	first, err := runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Query: "amount", Role: "measure", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,18 +137,18 @@ func TestSchemaSchemaFiltersAndPaginatesDeterministically(t *testing.T) {
 func TestSchemaSchemaCursorBindsFiltersAndSource(t *testing.T) {
 	r := &schemaReader{result: datasourceops.SchemaRecord{DatasourceLUID: "ds-1", DatasourceName: "Sales", Fields: []datasourceops.Field{{ID: "a", Caption: "A", Role: "measure"}, {ID: "b", Caption: "B", Role: "measure"}}}}
 	actionReader, actionNow := r, time.Now
-	first, err := datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "measure", Limit: 1})
+	first, err := runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "measure", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.Page.NextCursor == "" {
 		t.Fatal("expected continuation cursor")
 	}
-	_, err = datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "date", Limit: 1, Cursor: first.Page.NextCursor})
+	_, err = runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "date", Limit: 1, Cursor: first.Page.NextCursor})
 	if err == nil {
 		t.Fatal("cursor accepted changed filter")
 	}
-	_, err = datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "measure", Limit: 1, Cursor: first.Page.NextCursor, Cache: true})
+	_, err = runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "measure", Limit: 1, Cursor: first.Page.NextCursor, Cache: true})
 	if err == nil {
 		t.Fatal("cursor accepted changed source")
 	}
@@ -117,7 +162,7 @@ func TestSchemaSchemaRejectsInvalidInputBeforeRead(t *testing.T) {
 		{DatasourceLUID: "ds-1", Role: "metric"},
 		{DatasourceLUID: "ds-1", Limit: 10001},
 	} {
-		if _, err := datasourceops.Schema(context.Background(), actionReader, actionNow, input); err == nil {
+		if _, err := runSchema(context.Background(), actionReader, actionNow, input); err == nil {
 			t.Fatalf("accepted %#v", input)
 		}
 	}
@@ -129,15 +174,14 @@ func TestSchemaSchemaRejectsInvalidInputBeforeRead(t *testing.T) {
 func TestSchemaSchemaCacheSourceIsHonest(t *testing.T) {
 	r := &schemaReader{result: datasourceops.SchemaRecord{DatasourceLUID: "ds-1", DatasourceName: "Sales", ObservedAt: "2026-09-04T10:00:00Z", Fields: []datasourceops.Field{{ID: "a", Caption: "A", Role: "measure"}}}}
 	actionReader, actionNow := r, func() time.Time { return time.Date(2026, 9, 4, 10, 1, 0, 0, time.UTC) }
-	out, err := datasourceops.Schema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Cache: true})
+	out, err := runSchema(context.Background(), actionReader, actionNow, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out.Source == nil || out.Source.Mode != readsource.Cache {
 		t.Fatalf("source = %#v", out.Source)
 	}
-	// The action has no generation provenance, so the unwrapped placeholder must
-	// never claim complete, fresh coverage.
+	// The action must preserve the reader's partial, stale provenance.
 	if out.Source.Coverage != readsource.CoveragePartial || !out.Source.Stale || out.Source.GenerationID != "" {
 		t.Fatalf("dishonest cache placeholder: %#v", out.Source)
 	}
@@ -179,7 +223,7 @@ func schemaAssertGolden(t *testing.T, name string, value any, full bool) {
 
 func TestSchemaSchemaWrapsReadFailure(t *testing.T) {
 	r := &schemaReader{err: errors.New("metadata unavailable")}
-	_, err := datasourceops.Schema(context.Background(), r, time.Now, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1"})
+	_, err := runSchema(context.Background(), r, time.Now, datasourceops.SchemaInput{Environment: "dev", Site: "site", DatasourceLUID: "ds-1"})
 	if err == nil || err.Error() == "metadata unavailable" {
 		t.Fatalf("error = %v", err)
 	}
@@ -195,7 +239,7 @@ func TestSchemaSchemaQueryMatchesFieldMetadataAndKeepsTableFilterSeparate(t *tes
 		{ID: "profit", Caption: "Profit", Table: "Sales"},
 		{ID: "other", Caption: "Sales elsewhere", Table: "Other"},
 	}}}
-	out, err := datasourceops.Schema(context.Background(), r, time.Now, datasourceops.SchemaInput{DatasourceLUID: "ds-1", Query: "sAlEs", Table: "Sales"})
+	out, err := runSchema(context.Background(), r, time.Now, datasourceops.SchemaInput{DatasourceLUID: "ds-1", Query: "sAlEs", Table: "Sales"})
 	if err != nil || out.Page.Total != 5 {
 		t.Fatalf("out=%+v err=%v", out, err)
 	}
@@ -204,7 +248,7 @@ func TestSchemaSchemaQueryMatchesFieldMetadataAndKeepsTableFilterSeparate(t *tes
 			t.Fatalf("unrelated field included: %+v", field)
 		}
 	}
-	unfiltered, err := datasourceops.Schema(context.Background(), r, time.Now, datasourceops.SchemaInput{DatasourceLUID: "ds-1", Table: "Sales"})
+	unfiltered, err := runSchema(context.Background(), r, time.Now, datasourceops.SchemaInput{DatasourceLUID: "ds-1", Table: "Sales"})
 	if err != nil || unfiltered.Page.Total != 6 {
 		t.Fatalf("table filter changed: out=%+v err=%v", unfiltered, err)
 	}

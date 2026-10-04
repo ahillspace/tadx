@@ -24,6 +24,7 @@ type MutationProvider interface {
 type Ports struct {
 	Mutation MutationProvider
 	Read     ReadProvider
+	Schema   SchemaProvider
 }
 
 type Service struct{ ports Ports }

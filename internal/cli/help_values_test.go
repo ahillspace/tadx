@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	updatecli "github.com/ahillspace/tadx/internal/cli/update"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
+	"github.com/ahillspace/tadx/internal/errs"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -347,7 +349,11 @@ func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 		validate   func(string) error
 	}{
 		{"content datasource schema", "role", 4, func(v string) error {
-			_, err := datasourceops.SchemaNormalizeInput(datasourceops.SchemaInput{DatasourceLUID: "datasource-id", Role: v})
+			_, err := datasourceops.New(datasourceops.Ports{}).GetDatasourceSchema(t.Context(), datasourceops.SchemaInput{DatasourceLUID: "datasource-id", Role: v})
+			var diagnostic *errs.Error
+			if errors.As(err, &diagnostic) && diagnostic.ID == "datasource.schema.unconfigured" {
+				return nil
+			}
 			return err
 		}},
 		{"cache refresh", "scope", 8, func(v string) error {

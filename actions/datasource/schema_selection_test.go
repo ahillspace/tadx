@@ -40,7 +40,7 @@ func TestSchemaSchemaExactSelectionAndErrors(t *testing.T) {
 				{ID: "duplicate", Caption: "D", Table: "Orders"},
 				{ID: "duplicate", Caption: "D", Table: "Customers"},
 			}}}
-			out, err := datasourceops.Schema(context.Background(), r, nil, datasourceops.SchemaInput{DatasourceLUID: "ds-1", FieldIDs: test.ids, Table: test.table})
+			out, err := runSchema(context.Background(), r, nil, datasourceops.SchemaInput{DatasourceLUID: "ds-1", FieldIDs: test.ids, Table: test.table})
 			if test.errorID != "" {
 				var diagnostic *errs.Error
 				if !errors.As(err, &diagnostic) || diagnostic.ID != test.errorID {
@@ -68,20 +68,20 @@ func TestSchemaSchemaCursorBindsEntireSelectionSet(t *testing.T) {
 	}}}
 	actionReader, actionNow := r, (func() time.Time)(nil)
 	input := datasourceops.SchemaInput{DatasourceLUID: "ds-1", FieldIDs: []string{"a", "b"}, Limit: 1}
-	first, err := datasourceops.Schema(context.Background(), actionReader, actionNow, input)
+	first, err := runSchema(context.Background(), actionReader, actionNow, input)
 	if err != nil || first.Page.NextCursor == "" || first.Fields[0].ID != "a" {
 		t.Fatalf("first=%+v err=%v", first, err)
 	}
 	input.Cursor = first.Page.NextCursor
 	input.FieldIDs = []string{"b", "a", "a"}
-	second, err := datasourceops.Schema(context.Background(), actionReader, actionNow, input)
+	second, err := runSchema(context.Background(), actionReader, actionNow, input)
 	if err != nil || len(second.Fields) != 1 || second.Fields[0].ID != "b" || second.Page.MoreAvailable {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
 	for _, ids := range [][]string{{"a", "c"}, {"a"}, nil} {
 		input.FieldIDs = ids
 		before := r.calls
-		_, err := datasourceops.Schema(context.Background(), actionReader, actionNow, input)
+		_, err := runSchema(context.Background(), actionReader, actionNow, input)
 		var diagnostic *errs.Error
 		if !errors.As(err, &diagnostic) || diagnostic.ID != "datasource.schema.cursor" || r.calls != before {
 			t.Fatalf("changed selection %v: err=%v calls=%d/%d", ids, err, before, r.calls)
@@ -99,7 +99,7 @@ func TestSchemaSchemaSingleSelectorPreservesLegacyCursorIdentity(t *testing.T) {
 	for _, input := range []datasourceops.SchemaInput{{FieldID: "a"}, {FieldIDs: []string{"a"}}} {
 		input.Environment, input.Site, input.DatasourceLUID = "dev", "site", "ds-1"
 		input.Cursor = base64.RawURLEncoding.EncodeToString(raw)
-		out, err := datasourceops.Schema(context.Background(), r, nil, input)
+		out, err := runSchema(context.Background(), r, nil, input)
 		if err != nil || len(out.Fields) != 1 || out.Fields[0].ID != "a" {
 			t.Fatalf("out=%+v err=%v", out, err)
 		}

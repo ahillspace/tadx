@@ -37,11 +37,11 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	projects := projectops.New(projectops.Ports{Provider: projectProvider{commands: c}})
 	mutations := contentMutationProvider{commands: c}
 	workbooks := workbookops.New(workbookops.Ports{Mutation: mutations, Read: workbookReadProvider{commands: c}})
-	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}})
+	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}, Schema: datasourceSchemaProvider{commands: c}})
 	flows := flowops.New(flowops.Ports{Mutation: mutations, Read: flowReadProvider{commands: c}})
 	return &contentcli.Dependencies{
 		WorkbookLister: workbooks, WorkbookInspector: workbooks, WorkbookDeleter: workbooks, WorkbookMover: workbooks, WorkbookUpdater: workbooks,
-		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
+		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: datasources, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
 		ProjectLister: projects, ProjectInspector: projects, ProjectCreator: projects, ProjectUpdater: projects, ProjectDeleter: projects, ProjectMover: projects,
 		FlowLister: flows, FlowInspector: flows, FlowPuller: c, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
 	}
