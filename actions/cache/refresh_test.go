@@ -1,4 +1,4 @@
-package refresh_test
+package cache_test
 
 import (
 	"bytes"
@@ -11,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	refresh "github.com/ahillspace/tadx/actions/cache/refresh"
+	refresh "github.com/ahillspace/tadx/actions/cache"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
@@ -20,6 +21,22 @@ type recordingHydrator struct {
 	requests []refresh.HydrationRequest
 	result   refresh.HydrationResult
 	err      error
+}
+
+type cacheTestProvider struct {
+	hydrator refresh.Hydrator
+	status   refresh.StatusSource
+}
+
+func (p cacheTestProvider) ResolveEnvironment(alias string) (config.Environment, error) {
+	return config.Environment{Alias: alias, SiteContentURL: "marketing"}, nil
+}
+func (p cacheTestProvider) CheckScopes([]string) error { return nil }
+func (p cacheTestProvider) Hydrator(config.Environment, bool) refresh.Hydrator { return p.hydrator }
+func (p cacheTestProvider) StatusSource(config.Environment) refresh.StatusSource { return p.status }
+
+func refreshAction(ctx context.Context, hydrator refresh.Hydrator, input refresh.RefreshInput) (refresh.RefreshOutput, error) {
+	return refresh.New(cacheTestProvider{hydrator: hydrator}).RefreshCache(ctx, input)
 }
 
 type retryableHydrationError struct{}
@@ -57,7 +74,7 @@ func completeResult() refresh.HydrationResult {
 
 func TestActionDefaultsToFullHydration(t *testing.T) {
 	hydrator := &recordingHydrator{result: completeResult()}
-	if _, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{Environment: "production", Site: "marketing"}); err != nil {
+	if _, err := refreshAction(t.Context(), hydrator, refresh.RefreshInput{Environment: "production", Site: "marketing"}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions"}
@@ -68,7 +85,7 @@ func TestActionDefaultsToFullHydration(t *testing.T) {
 
 func TestActionNormalizesRequestedScopesAndDependencyClosure(t *testing.T) {
 	hydrator := &recordingHydrator{result: completeResult()}
-	_, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{
+	_, err := refreshAction(t.Context(), hydrator, refresh.RefreshInput{
 		Environment: "production", Site: "marketing",
 		Scopes: []string{"permissions", "views", "datasources"},
 	})
@@ -95,7 +112,7 @@ func TestActionRejectsDuplicateAndUnknownScopesBeforeHydration(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			hydrator := &recordingHydrator{result: completeResult()}
-			_, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{Environment: "production", Site: "marketing", Scopes: test.scopes})
+			_, err := refreshAction(t.Context(), hydrator, refresh.RefreshInput{Environment: "production", Site: "marketing", Scopes: test.scopes})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.ID != "cache.refresh.usage" || structured.Kind != errs.KindUsage {
 				t.Fatalf("Execute() error = %#v", err)
@@ -110,7 +127,7 @@ func TestActionRejectsDuplicateAndUnknownScopesBeforeHydration(t *testing.T) {
 func TestActionRejectsIncompleteHydrationReceipt(t *testing.T) {
 	result := completeResult()
 	result.Complete = false
-	_, err := refresh.Refresh(t.Context(), &recordingHydrator{result: result}, refresh.Input{Environment: "production", Site: "marketing"})
+	_, err := refreshAction(t.Context(), &recordingHydrator{result: result}, refresh.RefreshInput{Environment: "production", Site: "marketing"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "cache.refresh.incomplete" {
 		t.Fatalf("Execute() error = %#v", err)
@@ -139,7 +156,7 @@ func TestActionRejectsInvalidHydrationReceipts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result := completeResult()
 			test.mutate(&result)
-			_, err := refresh.Refresh(t.Context(), &recordingHydrator{result: result}, refresh.Input{Environment: "production", Site: "marketing", Scopes: []string{"workbooks"}})
+			_, err := refreshAction(t.Context(), &recordingHydrator{result: result}, refresh.RefreshInput{Environment: "production", Site: "marketing", Scopes: []string{"workbooks"}})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.ID != "cache.refresh.incomplete" {
 				t.Fatalf("Execute() error = %#v", err)
@@ -149,7 +166,7 @@ func TestActionRejectsInvalidHydrationReceipts(t *testing.T) {
 }
 
 func TestActionPreservesHydrationRetryAdviceAndRequestID(t *testing.T) {
-	_, err := refresh.Refresh(t.Context(), &recordingHydrator{err: retryableHydrationError{}}, refresh.Input{Environment: "production", Site: "marketing"})
+	_, err := refreshAction(t.Context(), &recordingHydrator{err: retryableHydrationError{}}, refresh.RefreshInput{Environment: "production", Site: "marketing"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "cache.refresh.failed" || structured.Retryable == nil || !*structured.Retryable || structured.CorrectiveAction != "Retry after Tableau recovers." || structured.TableauRequestID != "request-1" {
 		t.Fatalf("Execute() error = %#v", err)
@@ -163,9 +180,9 @@ func TestActionCompactAndFullOutputContainOnlyBoundedOperationalMetadata(t *test
 	for _, test := range []struct {
 		name, golden string
 		full         bool
-	}{{"compact", "testdata/compact.toon", false}, {"full", "testdata/full.toon", true}} {
+	}{{"compact", "testdata/refresh/compact.toon", false}, {"full", "testdata/refresh/full.toon", true}} {
 		t.Run(test.name, func(t *testing.T) {
-			value, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{Environment: "production", Site: "marketing", Scopes: []string{"workbooks"}})
+			value, err := refreshAction(t.Context(), hydrator, refresh.RefreshInput{Environment: "production", Site: "marketing", Scopes: []string{"workbooks"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -186,7 +203,7 @@ func TestActionSeparatesSearchableRecordsFromWiderHydrationCounts(t *testing.T) 
 	result.HydratedRecordCount = 3
 	hydrator := &recordingHydrator{result: result}
 
-	value, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{
+	value, err := refreshAction(t.Context(), hydrator, refresh.RefreshInput{
 		Environment: "production", Site: "marketing", Scopes: []string{"workbooks"},
 	})
 	if err != nil {

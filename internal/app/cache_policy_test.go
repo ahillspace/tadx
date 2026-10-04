@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/lastcommand"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
@@ -192,7 +193,7 @@ func TestCacheExecutorRetainsAdministrativeAuthorization(t *testing.T) {
 	} {
 		t.Run(string(test.scope), func(t *testing.T) {
 			denied := errors.New("administrative inventory denied")
-			executor := cacheTableauExecutor{checkCapability: func(id string) error {
+			executor := inventory.AuthorizedExecutor{CheckScope: func(id string) error {
 				if id != test.id {
 					t.Fatalf("capability=%q want=%q", id, test.id)
 				}
@@ -202,6 +203,55 @@ func TestCacheExecutorRetainsAdministrativeAuthorization(t *testing.T) {
 				t.Fatalf("authorization must precede transport use: %v", err)
 			}
 		})
+	}
+}
+
+type oneTimeCacheScopePolicy struct {
+	fixtureManagedPolicy
+	mu         sync.Mutex
+	userChecks int
+}
+
+func (p *oneTimeCacheScopePolicy) CheckCapability(id string) error {
+	if id == "admin.user.list" {
+		p.mu.Lock()
+		p.userChecks++
+		checks := p.userChecks
+		p.mu.Unlock()
+		if checks > 1 {
+			return managedpolicy.ErrCapabilityDenied
+		}
+	}
+	return p.fixtureManagedPolicy.CheckCapability(id)
+}
+
+func TestCacheRefreshDoesNotRecheckScopePolicyDuringCollection(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
+			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/auth/signout"):
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(r.URL.Path, "/users"):
+			_, _ = io.WriteString(w, cacheListXML("users", "", ""))
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	options := cachePolicyOptions(t, server.URL)
+	options.HTTPClient = server.Client()
+	policy := &oneTimeCacheScopePolicy{fixtureManagedPolicy: cacheFixturePolicy()}
+	options.managedPolicy = policy
+	t.Setenv("TADX_DEV_PAT_NAME", "fixture-name")
+	t.Setenv("TADX_DEV_PAT_SECRET", "fixture-secret")
+	var out bytes.Buffer
+	code := Run(t.Context(), []string{"cache", "refresh", "--environment", "dev", "--scope", "users", "--json"}, &out, options)
+	policy.mu.Lock()
+	checks := policy.userChecks
+	policy.mu.Unlock()
+	if code != 0 || !strings.Contains(out.String(), `"status":"refreshed"`) || checks != 1 {
+		t.Fatalf("refresh code=%d policy checks=%d output=%s", code, checks, &out)
 	}
 }
 

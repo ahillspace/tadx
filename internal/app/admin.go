@@ -8,6 +8,7 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/inventory"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
@@ -48,7 +49,8 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 		return adminConnection{environment: connection.environment}, err
 	}
 	client := tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client, c.runtime.checkManagedCapability), inventory: cacheTableauExecutor{checkCapability: c.runtime.checkManagedCapability, transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, callerLUID: connection.session.UserLUID()}, nil
+	native := tableaucache.AuthenticatedExecutor{Transport: connection.transport, Session: connection.session, ServerURL: connection.environment.URL, SiteLUID: connection.session.SiteLUID()}
+	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client, c.runtime.checkManagedCapability), inventory: inventory.AuthorizedExecutor{Next: native, CheckScope: c.runtime.checkManagedCapability}, callerLUID: connection.session.UserLUID()}, nil
 }
 
 var _ admincli.UserLister = (*userops.Service)(nil)

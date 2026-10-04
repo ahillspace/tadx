@@ -12,13 +12,26 @@ import (
 	"testing"
 	"time"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
+	cacheaction "github.com/ahillspace/tadx/actions/cache"
 	corecache "github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 type cacheExecutorFunc func(context.Context, tableaucache.Request) (tableaucache.Response, error)
+
+type cacheActionProvider struct{ hydrator cacheaction.Hydrator }
+
+func (p cacheActionProvider) ResolveEnvironment(alias string) (config.Environment, error) {
+	return config.Environment{Alias: alias, SiteContentURL: "marketing"}, nil
+}
+func (p cacheActionProvider) CheckScopes([]string) error { return nil }
+func (p cacheActionProvider) Hydrator(config.Environment, bool) cacheaction.Hydrator {
+	return p.hydrator
+}
+func (p cacheActionProvider) StatusSource(config.Environment) cacheaction.StatusSource { return nil }
 
 func (f cacheExecutorFunc) Do(ctx context.Context, input tableaucache.Request) (tableaucache.Response, error) {
 	return f(ctx, input)
@@ -45,19 +58,19 @@ func TestCacheHydratorStreamsSQLiteAndReturnsOnlyReceipt(t *testing.T) {
 		return tableaucache.Response{StatusCode: http.StatusOK, Body: []byte(body), TableauRequestID: "request-" + string(input.Scope)}, nil
 	})
 	store := corecache.NewStore(t.TempDir(), func() time.Time { return now })
-	hydrator := cacheHydrator{
-		store: store, now: func() time.Time { return now },
-		executorFor: func(_ context.Context, environment, site string) (tableaucache.Executor, error) {
+	hydrator := inventory.GenerationHydrator{
+		Store: store, Now: func() time.Time { return now },
+		ExecutorFor: func(_ context.Context, environment, site string) (tableaucache.Executor, error) {
 			if environment != "production" || site != "marketing" {
 				t.Fatalf("target = %s/%s", environment, site)
 			}
 			return executor, nil
 		},
-		newRunner: func(executor tableaucache.Executor) (cacheRunner, error) {
+		NewRunner: func(executor tableaucache.Executor) (inventory.GenerationRunner, error) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: 2})
 		},
 	}
-	output, err := cacherefresh.Refresh(t.Context(), hydrator, cacherefresh.Input{
+	output, err := cacheaction.New(cacheActionProvider{hydrator: hydrator}).RefreshCache(t.Context(), cacheaction.RefreshInput{
 		Environment: "production", Site: "marketing", Scopes: []string{"workbooks"},
 	})
 	if err != nil {
@@ -108,18 +121,18 @@ func TestCacheHydratorReportsPersistedSearchableRecordCount(t *testing.T) {
 			},
 		}, nil
 	})
-	hydrator := cacheHydrator{
-		store: store,
-		now:   func() time.Time { return now },
-		executorFor: func(context.Context, string, string) (tableaucache.Executor, error) {
+	hydrator := inventory.GenerationHydrator{
+		Store: store,
+		Now:   func() time.Time { return now },
+		ExecutorFor: func(context.Context, string, string) (tableaucache.Executor, error) {
 			return cacheExecutorFunc(func(context.Context, tableaucache.Request) (tableaucache.Response, error) {
 				return tableaucache.Response{}, errors.New("unexpected request")
 			}), nil
 		},
-		newRunner: func(tableaucache.Executor) (cacheRunner, error) { return runner, nil },
+		NewRunner: func(tableaucache.Executor) (inventory.GenerationRunner, error) { return runner, nil },
 	}
 
-	result, err := hydrator.Hydrate(context.Background(), cacherefresh.HydrationRequest{
+	result, err := hydrator.Hydrate(context.Background(), cacheaction.HydrationRequest{
 		Environment: "production", Site: "marketing", RequestedScopes: []string{"permissions"}, ImplicitScopes: []string{"projects", "workbooks"},
 	})
 	if err != nil {
@@ -154,14 +167,14 @@ func TestCacheHydratorRollsBackPartialCollection(t *testing.T) {
 		}
 		return tableaucache.Response{StatusCode: http.StatusOK, Body: []byte(cacheListXML("projects", "project", `<project id="project-1" name="Operations"/>`))}, nil
 	})
-	hydrator := cacheHydrator{
-		store: store, now: time.Now,
-		executorFor: func(context.Context, string, string) (tableaucache.Executor, error) { return executor, nil },
-		newRunner: func(executor tableaucache.Executor) (cacheRunner, error) {
+	hydrator := inventory.GenerationHydrator{
+		Store: store, Now: time.Now,
+		ExecutorFor: func(context.Context, string, string) (tableaucache.Executor, error) { return executor, nil },
+		NewRunner: func(executor tableaucache.Executor) (inventory.GenerationRunner, error) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: 2})
 		},
 	}
-	_, err := hydrator.Hydrate(context.Background(), cacherefresh.HydrationRequest{
+	_, err := hydrator.Hydrate(context.Background(), cacheaction.HydrationRequest{
 		Environment: "production", Site: "marketing", RequestedScopes: []string{"workbooks"}, ImplicitScopes: []string{"projects"},
 	})
 	if err == nil {
@@ -194,7 +207,7 @@ func TestCacheExecutorUsesSharedAuthenticatedTransport(t *testing.T) {
 	}))
 	defer server.Close()
 	transport := tableau.NewTransport(server.Client(), "3.29", func() string { return "correlation-1" })
-	executor := cacheTableauExecutor{transport: transport, session: cacheTestSession{}, serverURL: server.URL, siteLUID: "site-luid"}
+	executor := tableaucache.AuthenticatedExecutor{Transport: transport, Session: cacheTestSession{}, ServerURL: server.URL, SiteLUID: "site-luid"}
 	response, err := executor.Do(context.Background(), tableaucache.Request{
 		Path: "/workbooks", Query: url.Values{"pageNumber": {"1"}, "pageSize": {"1000"}},
 		Operation: "cache.workbooks.list", MaxResponseBytes: 1024,

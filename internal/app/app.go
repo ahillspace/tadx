@@ -15,6 +15,7 @@ import (
 	"time"
 
 	authops "github.com/ahillspace/tadx/actions/auth"
+	cacheops "github.com/ahillspace/tadx/actions/cache"
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	lastaction "github.com/ahillspace/tadx/actions/last"
 	mutationops "github.com/ahillspace/tadx/actions/mutation"
@@ -124,6 +125,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	remoteAdmin := newRemoteAdminCommands(runtime)
 	pulseActions := newPulseCommands(runtime)
 	credentialStore := authops.NewCredentialPersistence(runtime.configPath, runtime.patStore, processEnvironment{})
+	cacheService := cacheops.New(cacheProvider{runtime: runtime})
 	authService := authops.New(authops.Ports{
 		CheckResolver: runtime, CheckAuthenticator: runtime,
 		LoginResolver: authCredentialResolver{runtime: runtime}, LoginAuthenticator: loginAuthenticator{runtime: runtime}, LoginStore: credentialStore,
@@ -168,8 +170,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetShort:            registryShort("capability.get"),
 		AuthChecker:         authService,
 		Searcher:            newSearchCommands(runtime),
-		CacheRefresher:      runtime,
-		CacheStatuser:       runtime,
+		CacheRefresher:      cacheService,
+		CacheStatuser:       cacheService,
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),

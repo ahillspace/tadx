@@ -10,7 +10,7 @@ import (
 	labelcategoryops "github.com/ahillspace/tadx/actions/admin/labelcategory"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
+	cacheaction "github.com/ahillspace/tadx/actions/cache"
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
@@ -350,7 +350,9 @@ func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 			_, err := datasourceops.SchemaNormalizeInput(datasourceops.SchemaInput{DatasourceLUID: "datasource-id", Role: v})
 			return err
 		}},
-		{"cache refresh", "scope", 8, func(v string) error { return cacherefresh.ValidateInput(cacherefresh.Input{Scopes: []string{v}}) }},
+		{"cache refresh", "scope", 8, func(v string) error {
+			return cacheaction.ValidateRefreshInput(cacheaction.RefreshInput{Scopes: []string{v}})
+		}},
 		{"content project create", "content-permissions", 3, func(v string) error {
 			return projectops.ValidateCreateInput(projectops.CreateInput{Environment: "dev", Name: "Project", ContentPermissions: v})
 		}},

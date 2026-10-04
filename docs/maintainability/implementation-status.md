@@ -6,6 +6,25 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Cache service and generation ownership
+
+Cache refresh and status now belong to one `actions/cache` Service.
+Neutral generation collection, scoped publication, and persisted status facts belong to `internal/inventory`; native request transport remains in the Tableau layer.
+App retains target, executor, storage, and clock construction instead of cache workflow algorithms.
+Moved tests retain streaming publication, row-free receipts, persisted counts, rollback, and shared transport contracts.
+All four relocated TOON goldens remain byte-identical.
+
+Independent review rejected an initial draft that added per-request policy rechecks to refresh.
+A separate corrected revision restores baseline one-time refresh preflight; admin inventory retains its existing request-level authorization.
+A regression test reproduced the extra check before that draft correction and passes afterward.
+The final merge preserves five overlapping admin, catalog, content, and architecture files.
+
+The independently reviewed candidate is based on `b1ed766aa21e616eb4bcba8b99d0dac26185074b`, changes 41 paths, and contains 1,421 files.
+Its ordinal fingerprint is `45d5f1783cfcc930dd67b67bb8273aa67db814bc467ab5154383f082ffe30115`.
+Focused owner, inventory, native, CLI, app, and architecture checks, full compilation, and scoped vet pass.
+Ignored evidence remains in `.tadx-refactor/cache-merge-b1/`; original and corrected drafts remain separate.
+Integrated full gates and live cache acceptance remain outstanding.
+
 ## Pulse subscription ownership
 
 Subscription discovery now uses one `actions/pulse/subscription` Service rather than a per-verb package and app operation facade.

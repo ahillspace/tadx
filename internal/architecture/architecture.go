@@ -267,7 +267,7 @@ func localImportAllowed(file, imported string) bool {
 		// Inventory coordinates only neutral cache collection and publication.
 		// Its native collector edge does not authorize other foundation packages.
 		if path.Dir(file) == "internal/inventory" {
-			return matchesExact(imported, "internal/cache", "internal/errs", "internal/readsource", "internal/tableau/cache")
+			return matchesExact(imported, "internal/cache", "internal/errs", "internal/readsource", "internal/tableau/cache", "internal/value")
 		}
 		// Metadata traversal consumes shared page records, never providers or actions.
 		if hasPathPrefix(file, "internal/paging") {

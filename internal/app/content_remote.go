@@ -99,7 +99,7 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 		datasources:             resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, paths),
 		datasourceChanges:       resourcedatasource.NewMutationAdapter(datasourceClient),
 		datasourceNativeChanges: datasourceClient,
-		inventory:               cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
+		inventory:               tableaucache.AuthenticatedExecutor{Transport: connection.transport, Session: connection.session, ServerURL: connection.environment.URL, SiteLUID: connection.session.SiteLUID()},
 	}, nil
 }
 

@@ -1,5 +1,5 @@
 // Package status reports bounded local cache generation status.
-package status
+package cache
 
 import (
 	"context"
@@ -11,31 +11,14 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-// Input selects one resolved local cache generation.
-type Input struct {
-	Environment string
-	Site        string
-}
+// StatusInput selects one canonical local cache generation.
+type StatusInput = value.CacheSelection
 
-// Result is the source-facing generation status.
-type Result struct {
-	Retained    []value.CachedObservation
-	Coverage    []value.CacheCoverage
-	ID          string
-	Environment string
-	Site        string
-	GeneratedAt string
-	Age         string
-	Complete    bool
-	Stale       bool
-	Source      string
-	Path        string
-	Records     int
-	Warnings    []string
-}
+// StatusObservation contains neutral local generation facts.
+type StatusObservation = value.CacheStatusObservation
 
-// Generation is the bounded status projection.
-type Generation struct {
+// StatusGeneration is the bounded status projection.
+type StatusGeneration struct {
 	Coverage    []value.CacheCoverage `json:"coverage,omitempty"`
 	ID          string                `json:"id"`
 	Environment string                `json:"environment"`
@@ -48,18 +31,18 @@ type Generation struct {
 	Source      string                `json:"source,omitempty"`
 }
 
-// Output is the stable cache.status document.
-type Output struct {
+// StatusOutput is the stable cache.status document.
+type StatusOutput struct {
 	Retained   []value.CachedObservation
 	Status     string
-	Generation Generation
+	Generation StatusGeneration
 	Path       string
 	Warnings   []string
 	Help       []string
 }
 
-// CompactGeneration contains status decision fields.
-type CompactGeneration struct {
+// StatusCompactGeneration contains status decision fields.
+type StatusCompactGeneration struct {
 	Coverage    []value.CacheCoverage `json:"coverage,omitempty"`
 	ID          string                `json:"id"`
 	Environment string                `json:"environment"`
@@ -70,28 +53,28 @@ type CompactGeneration struct {
 	Stale       bool                  `json:"stale"`
 }
 
-// CompactResult is the default bounded status projection.
-type CompactResult struct {
+// StatusCompactResult is the default bounded status projection.
+type StatusCompactResult struct {
 	Retained   []value.CachedObservation `json:"retained_observations,omitempty"`
 	Status     string                    `json:"status"`
-	Generation CompactGeneration         `json:"generation"`
+	Generation StatusCompactGeneration   `json:"generation"`
 	Warnings   []string                  `json:"warnings,omitempty"`
 	Details    string                    `json:"details"`
 	Help       []string                  `json:"help"`
 }
 
-// FullResult is the expanded bounded status projection.
-type FullResult struct {
+// StatusFullResult is the expanded bounded status projection.
+type StatusFullResult struct {
 	Retained   []value.CachedObservation `json:"retained_observations,omitempty"`
 	Status     string                    `json:"status"`
-	Generation Generation                `json:"generation"`
+	Generation StatusGeneration          `json:"generation"`
 	Path       string                    `json:"path,omitempty"`
 	Warnings   []string                  `json:"warnings,omitempty"`
 	Help       []string                  `json:"help"`
 }
 
-// UninitializedResult describes a selected cache without inventing a generation.
-type UninitializedResult struct {
+// StatusUninitializedResult describes a selected cache without inventing a generation.
+type StatusUninitializedResult struct {
 	Retained    []value.CachedObservation `json:"retained_observations,omitempty"`
 	Status      string                    `json:"status"`
 	Environment string                    `json:"environment"`
@@ -100,23 +83,23 @@ type UninitializedResult struct {
 }
 
 // CompactOutput returns freshness and completeness fields.
-func (o Output) CompactOutput() any {
+func (o StatusOutput) CompactOutput() any {
 	g := o.Generation
 	if o.Status == "uninitialized" {
-		return UninitializedResult{Retained: o.compactRetained(), Status: o.Status, Environment: g.Environment, Site: g.Site, Help: o.Help}
+		return StatusUninitializedResult{Retained: o.compactRetained(), Status: o.Status, Environment: g.Environment, Site: g.Site, Help: o.Help}
 	}
-	return CompactResult{Retained: o.compactRetained(), Status: o.Status, Generation: CompactGeneration{Coverage: g.Coverage, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records, Complete: g.Complete, Stale: g.Stale}, Warnings: o.Warnings, Details: "--full", Help: o.Help}
+	return StatusCompactResult{Retained: o.compactRetained(), Status: o.Status, Generation: StatusCompactGeneration{Coverage: g.Coverage, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records, Complete: g.Complete, Stale: g.Stale}, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded generation source details.
-func (o Output) FullOutput() any {
+func (o StatusOutput) FullOutput() any {
 	if o.Status == "uninitialized" {
-		return UninitializedResult{Retained: o.Retained, Status: o.Status, Environment: o.Generation.Environment, Site: o.Generation.Site, Help: o.Help}
+		return StatusUninitializedResult{Retained: o.Retained, Status: o.Status, Environment: o.Generation.Environment, Site: o.Generation.Site, Help: o.Help}
 	}
-	return FullResult{Retained: o.Retained, Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Help: o.Help}
+	return StatusFullResult{Retained: o.Retained, Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Help: o.Help}
 }
 
-func (o Output) compactRetained() []value.CachedObservation {
+func (o StatusOutput) compactRetained() []value.CachedObservation {
 	var retained []value.CachedObservation
 	for _, item := range o.Retained {
 		// Rows belonging to the selected generation already appear in coverage.
@@ -137,18 +120,18 @@ func (o Output) compactRetained() []value.CachedObservation {
 }
 
 // Source reads one local cache generation status.
-type Source interface {
-	Status(context.Context, Input) (Result, error)
+type StatusSource interface {
+	Status(context.Context, StatusInput) (StatusObservation, error)
 }
 
-// Read returns current generation age, completeness, source, and stale state.
-func Read(ctx context.Context, source Source, input Input) (Output, error) {
+// readStatus returns current generation age, completeness, source, and stale state.
+func readStatus(ctx context.Context, source StatusSource, input StatusInput) (StatusOutput, error) {
 	result, err := source.Status(ctx, input)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return Output{}, statusError("cache.status.cancelled", errs.KindOperation, input, "Cache status was canceled.", err)
+			return StatusOutput{}, statusError("cache.status.cancelled", errs.KindOperation, input, "Cache status was canceled.", err)
 		}
-		return Output{}, statusError("cache.status.failed", errs.KindOperation, input, "Cache status failed.", err)
+		return StatusOutput{}, statusError("cache.status.failed", errs.KindOperation, input, "Cache status failed.", err)
 	}
 	state := "current"
 	if result.Stale {
@@ -160,12 +143,12 @@ func Read(ctx context.Context, source Source, input Input) (Output, error) {
 	if result.ID == "" {
 		state = "uninitialized"
 	}
-	generation := Generation{ID: result.ID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Records: result.Records, Complete: result.Complete, Stale: result.Stale, Age: result.Age, Source: result.Source}
+	generation := StatusGeneration{ID: result.ID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Records: result.Records, Complete: result.Complete, Stale: result.Stale, Age: result.Age, Source: result.Source}
 	generation.Coverage = result.Coverage
-	return Output{Retained: result.Retained, Status: state, Generation: generation, Path: result.Path, Warnings: output.BoundWarnings(result.Warnings), Help: []string{commandhint.Environment(result.Environment, "cache", "refresh")}}, nil
+	return StatusOutput{Retained: result.Retained, Status: state, Generation: generation, Path: result.Path, Warnings: output.BoundWarnings(result.Warnings), Help: []string{commandhint.Environment(result.Environment, "cache", "refresh")}}, nil
 }
 
-func statusError(id string, kind errs.Kind, input Input, summary string, cause error) error {
+func statusError(id string, kind errs.Kind, input StatusInput, summary string, cause error) error {
 	advice := "Refresh or repair the selected cache generation, then retry."
 	if incompatible, ok := errors.AsType[interface {
 		error

@@ -30,6 +30,30 @@ func runSelectedConfig(t *testing.T, options Options, selectedPath string, args 
 	return code, output.String()
 }
 
+func TestSelectedConfigCacheOperationsBindAfterFlagParsing(t *testing.T) {
+	t.Setenv("TADX_ENVIRONMENT", "")
+	options := overviewOptions(t, t.TempDir())
+	selected := config.Config{Version: config.CurrentVersion, Environments: map[string]config.Environment{
+		"dev": {URL: "https://selected.example.test", SiteContentURL: "selected-site", Auth: config.Auth{Type: config.AuthTypePAT}},
+	}}
+	fallback := config.Config{Version: config.CurrentVersion, Environments: map[string]config.Environment{
+		"fallback": {URL: "https://fallback.example.test", SiteContentURL: "fallback-site", Auth: config.Auth{Type: config.AuthTypePAT}},
+	}}
+	path := selectedConfigFixture(t, options, selected, fallback)
+	for _, args := range [][]string{
+		{"cache", "refresh", "--environment", "dev", "--preview", "--json"},
+		{"cache", "status", "--environment", "dev", "--json"},
+	} {
+		code, out := runSelectedConfig(t, options, path, args...)
+		if code != 0 || !strings.Contains(out, `"site":"selected-site"`) || strings.Contains(out, "fallback-site") {
+			t.Fatalf("selected cache %v: code=%d output=%s", args, code, out)
+		}
+	}
+	if code, out := runSelectedConfig(t, options, path, "cache", "status", "--environment", "fallback", "--json"); code == 0 || !strings.Contains(out, `"id":"cache.status.setup"`) || !strings.Contains(out, "Available aliases: dev.") {
+		t.Fatalf("fallback-only alias accepted: code=%d output=%s", code, out)
+	}
+}
+
 func TestSelectedConfigEnvironmentReadsAndWritesOnlySelectedFile(t *testing.T) {
 	t.Setenv("TADX_ENVIRONMENT", "")
 	options := overviewOptions(t, t.TempDir())

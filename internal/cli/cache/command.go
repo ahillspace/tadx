@@ -4,20 +4,19 @@ package cache
 import (
 	"context"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
-	cachestatus "github.com/ahillspace/tadx/actions/cache/status"
+	cacheaction "github.com/ahillspace/tadx/actions/cache"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 // Refresher executes cache.refresh.
 type Refresher interface {
-	RefreshCache(context.Context, cacherefresh.Input) (cacherefresh.Output, error)
+	RefreshCache(context.Context, cacheaction.RefreshInput) (cacheaction.RefreshOutput, error)
 }
 
 // Statuser executes cache.status.
 type Statuser interface {
-	ReadCacheStatus(context.Context, cachestatus.Input) (cachestatus.Output, error)
+	ReadCacheStatus(context.Context, cacheaction.StatusInput) (cacheaction.StatusOutput, error)
 }
 
 // Renderer writes one structured result.
@@ -47,7 +46,7 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newRefreshCommand(deps Dependencies) *cobra.Command {
-	input := cacherefresh.Input{}
+	input := cacheaction.RefreshInput{}
 	use := deps.RefreshUse
 	if use == "" {
 		use = "refresh"
@@ -61,7 +60,7 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 			if err := noArgs("cache.refresh")(command, args); err != nil {
 				return err
 			}
-			return cacherefresh.ValidateInput(input)
+			return cacheaction.ValidateRefreshInput(input)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Refresher.RefreshCache(command.Context(), input)
@@ -79,7 +78,7 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 }
 
 func newStatusCommand(deps Dependencies) *cobra.Command {
-	var input cachestatus.Input
+	var input cacheaction.StatusInput
 	use := deps.StatusUse
 	if use == "" {
 		use = "status"

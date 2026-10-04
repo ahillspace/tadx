@@ -5,21 +5,20 @@ import (
 	"strings"
 	"testing"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
-	cachestatus "github.com/ahillspace/tadx/actions/cache/status"
+	cacheaction "github.com/ahillspace/tadx/actions/cache"
 	"github.com/ahillspace/tadx/internal/cli"
 )
 
 type cacheRefreshStub struct{}
 
-func (cacheRefreshStub) RefreshCache(context.Context, cacherefresh.Input) (cacherefresh.Output, error) {
-	return cacherefresh.Output{}, nil
+func (cacheRefreshStub) RefreshCache(context.Context, cacheaction.RefreshInput) (cacheaction.RefreshOutput, error) {
+	return cacheaction.RefreshOutput{}, nil
 }
 
 type cacheStatusStub struct{}
 
-func (cacheStatusStub) ReadCacheStatus(context.Context, cachestatus.Input) (cachestatus.Output, error) {
-	return cachestatus.Output{}, nil
+func (cacheStatusStub) ReadCacheStatus(context.Context, cacheaction.StatusInput) (cacheaction.StatusOutput, error) {
+	return cacheaction.StatusOutput{}, nil
 }
 
 func TestLocalCacheCommandsKeepDistinctRegistrations(t *testing.T) {

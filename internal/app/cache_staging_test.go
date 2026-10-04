@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
+	cacheaction "github.com/ahillspace/tadx/actions/cache"
 	corecache "github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/inventory"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
@@ -25,10 +26,10 @@ func TestCacheCollectionDoesNotLockUnrelatedEnvironmentWrites(t *testing.T) {
 		<-release
 		return tableaucache.Result{RequestedScopes: []tableaucache.Scope{tableaucache.ScopeProjects}, Counts: map[tableaucache.Scope]int64{tableaucache.ScopeProjects: 1}}, nil
 	})
-	hydrator := cacheHydrator{store: store, now: time.Now, executorFor: func(context.Context, string, string) (tableaucache.Executor, error) { return nil, nil }, newRunner: func(tableaucache.Executor) (cacheRunner, error) { return runner, nil }}
+	hydrator := inventory.GenerationHydrator{Store: store, Now: time.Now, ExecutorFor: func(context.Context, string, string) (tableaucache.Executor, error) { return nil, nil }, NewRunner: func(tableaucache.Executor) (inventory.GenerationRunner, error) { return runner, nil }}
 	hydrated := make(chan error, 1)
 	go func() {
-		_, err := hydrator.Hydrate(ctx, cacherefresh.HydrationRequest{Environment: "refresh", Site: "site", RequestedScopes: []string{"projects"}})
+		_, err := hydrator.Hydrate(ctx, cacheaction.HydrationRequest{Environment: "refresh", Site: "site", RequestedScopes: []string{"projects"}})
 		hydrated <- err
 	}()
 	select {

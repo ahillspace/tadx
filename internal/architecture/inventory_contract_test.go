@@ -16,6 +16,7 @@ func TestInventoryBoundaryAllowsOnlyExactRequiredEdges(t *testing.T) {
 		{"inventory errors", "internal/inventory/collector.go", "internal/errs"},
 		{"inventory source", "internal/inventory/collector.go", "internal/readsource"},
 		{"inventory native collector", "internal/inventory/collector.go", "internal/tableau/cache"},
+		{"inventory neutral facts", "internal/inventory/generation.go", "internal/value"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := moduleFixture(t)
@@ -40,6 +41,7 @@ func TestInventoryBoundaryRejectsUnapprovedDirections(t *testing.T) {
 		{"inventory other native", "internal/inventory/collector.go", "internal/tableau/project", "foundation packages must not import higher layers"},
 		{"inventory config", "internal/inventory/collector.go", "internal/config", "foundation packages must not import unapproved local packages"},
 		{"nested inventory", "internal/inventory/nested/collector.go", "internal/cache", "foundation packages must not import unapproved local packages"},
+		{"nested inventory value", "internal/inventory/nested/generation.go", "internal/value", "foundation packages must not import unapproved local packages"},
 		{"action consumer", "actions/workbook/action.go", "internal/inventory", "actions must not import unapproved local packages"},
 		{"resource consumer", "internal/resources/project/adapter.go", "internal/inventory", "resource adapters must not import unapproved local packages"},
 		{"CLI consumer", "internal/cli/content/command.go", "internal/inventory", "CLI plumbing must not import unapproved local packages"},

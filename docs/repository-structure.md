@@ -20,6 +20,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/pulse/subscription` | Authenticated-user subscription discovery, bounded enrichment, and canonical continuation binding |
 | `actions/env` | Environment profile operations and configuration coordination through one service |
 | `actions/mutation` | Exact-site mutation consent status, changes, and policy observations |
+| `actions/cache` | Cache refresh/status workflows, scope selection, and policy prerequisites |
 | `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
 | `actions/agent`, `actions/version` | Guidance installation/removal and installed-version/release-check services |
 | `actions/auth` | Authentication, pre-prompt validation, status projection, and credential/configuration coordination |
@@ -54,7 +55,8 @@ The project service validates input before `internal/app` opens a target-bound p
 `internal/resources/project` implements the live, cached, and inventory-read ports that the service consumes.
 Complete live search uses the composed project service; bounded live search uses its list action with a direct resource list port.
 Shared collection, scoped cache publication, and source/coverage facts live in `internal/inventory`.
-App still binds action-specific pages and outputs and owns cache-only reads, full-generation refresh, and search routing pending their remaining ownership moves.
+`actions/cache` owns full-generation refresh/status workflows, with neutral generation mechanics in `internal/inventory`.
+App still owns some content-specific cache reads and search routing pending their remaining ownership moves.
 
 Workbook, datasource, and flow mutation Services validate input before opening target-bound providers.
 Their resource adapters implement move, update, and delete ports directly, without per-operation app facades or copy-only mutation adapters.

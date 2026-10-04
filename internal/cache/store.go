@@ -382,7 +382,7 @@ func (s *Store) beginGeneration(ctx context.Context, metadata GenerationMetadata
 	metadata.Site = strings.TrimSpace(metadata.Site)
 	// Reject duplicate scopes explicitly rather than letting normalizedScopes
 	// silently deduplicate them: internal callers must see the same contract as
-	// actions/cache/refresh, and silent dedup hides caller bugs.
+	// actions/cache, and silent dedup hides caller bugs.
 	if err := ensureUniqueScopes(metadata.RequestedScopes); err != nil {
 		return nil, err
 	}
