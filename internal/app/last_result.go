@@ -11,7 +11,7 @@ import (
 
 type lastCapture struct {
 	runtime     *runtimeDependencies
-	store       lastcommand.Store
+	store       func() lastcommand.Store
 	now         func() time.Time
 	operation   string
 	value       any
@@ -39,7 +39,9 @@ func lastResultWarning() any {
 }
 
 func newLastCapture(r *runtimeDependencies) *lastCapture {
-	return &lastCapture{runtime: r, store: lastcommand.Store{Path: filepath.Join(filepath.Dir(r.configPath), "last-result.json")}, now: r.now, enabled: true}
+	return &lastCapture{runtime: r, store: func() lastcommand.Store {
+		return lastcommand.Store{Path: filepath.Join(filepath.Dir(r.configPath), "last-result.json")}
+	}, now: r.now, enabled: true}
 }
 func (c *lastCapture) save(code int) error {
 	if !c.enabled || c.value == nil {
@@ -63,7 +65,7 @@ func (c *lastCapture) save(code int) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if saveErr := c.store.Save(ctx, record); saveErr != nil {
+	if saveErr := c.store().Save(ctx, record); saveErr != nil {
 		return saveErr
 	}
 	c.saved = err == nil

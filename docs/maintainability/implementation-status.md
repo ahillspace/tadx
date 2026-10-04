@@ -1,10 +1,28 @@
 # Architecture implementation status
 
-Status: project, catalog, auth, agent/version, capability, env/mutation, admin, content mutations, local helper ownership, and initial shared inventory changes are integrated.
+Status: resource and service ownership migrations are in progress; completed slices and evidence are recorded below.
 Full migration and candidate gates remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
+
+## Selected-configuration saved-result correction
+
+An app.Run E2E test reproduced a pre-existing saved-result location bug for both `--config` and `--cfg`.
+The command selected another configuration, but capture and replay retained a store created from the initial options before argument parsing.
+The selected directory received no saved result, and replay used the default directory.
+The separate fix resolves the existing store from the selected runtime configuration at save and read time.
+It preserves store mechanics, snapshot bounds, authorization, legacy prerequisites, and error reporting.
+
+The unchanged regression test now passes, including separate default/selected results, selected replay, and non-overwriting last behavior.
+Independent focused last-result and managed-policy tests and full compilation also pass.
+The baseline and corrected snapshots remain separate in `.tadx-refactor/last-config-baseline-b1/` and `.tadx-refactor/last-config-fix-dfd/`.
+The corrected 1,424-file snapshot is based on `dfdbb59846676f966deeb18a40c7429507e15492`, changes three paths, and has ordinal fingerprint `3965e1b863af75103dfa99b8c0e205ff46c6562fb0d8c892f23e3e437d282c73`.
+This correction precedes the saved-result ownership refactor and does not alter native operations or credentials.
+
+The earlier exact `7b153c1` revision passed hosted CI `37173668908`, including Windows/Linux quality checks, three native policy platforms, and four build targets.
+The exact `21b1051` revision passed hosted gate-tooling run `37174756124`; its main CI result was still pending at this record update.
+Neither result establishes acceptance of the later integrated changes.
 
 ## Attached-label workflow ownership
 

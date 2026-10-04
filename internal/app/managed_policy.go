@@ -51,12 +51,12 @@ func (c *managedCapabilityChecks) snapshot() []string {
 }
 
 type managedLastReader struct {
-	store   lastcommand.Store
+	store   func() lastcommand.Store
 	runtime *runtimeDependencies
 }
 
 func (r managedLastReader) Read(ctx context.Context) (value.SavedExecution, error) {
-	record, err := r.store.Read(ctx)
+	record, err := r.store().Read(ctx)
 	if err != nil {
 		return record, err
 	}
