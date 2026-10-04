@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authstatus "github.com/ahillspace/tadx/actions/auth"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -53,7 +53,7 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 		if err != nil {
 			return state, err
 		}
-		status := authstatus.Inspect(authStatusTarget(cfg, resolved), processEnvironment{})
+		status := authstatus.InspectStatus(authstatus.StatusTargetFromConfig(cfg, resolved), processEnvironment{})
 		credentials := "missing"
 		if status.CredentialSource == "os_credential_store" {
 			credentials = "stored_reference_unverified"

@@ -184,6 +184,11 @@ func localImportAllowed(file, imported string) bool {
 	}
 	switch layerForFile(file) {
 	case layerAction:
+		// The auth workflow coordinates native credential references with config.
+		// Other actions and obsolete verb packages cannot access credential storage.
+		if path.Dir(file) == "actions/auth" && imported == "internal/auth" {
+			return true
+		}
 		// Skill target metadata is a standard-library leaf, not the installer.
 		if hasPathPrefix(file, "actions/agent") && imported == "internal/agenttarget" {
 			return true

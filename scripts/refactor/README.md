@@ -1,6 +1,6 @@
 # Initial refactor contract gates
 
-This bounded offline runner checks source provenance, selected existing G1-G4 contracts, and seven isolated seeded defects.
+This bounded offline runner checks source provenance, selected G1-G4 contracts, and nine isolated seeded defects.
 It does not establish complete G0-G9 acceptance or authorize live operations.
 The approved regression-gate specification remains authoritative.
 
@@ -42,12 +42,13 @@ An unrelated panic or build failure cannot count as successful detection.
 Exact replacement anchors fail closed when source changes; update anchors deliberately as operations move.
 Seeds use temporary Go overlays and never modify the snapshot or call a live service.
 
-The initial demonstrations cover missing and extra output fields, wrong success exit, preview writes, identity drift, false-success reporting, and skipped restoration.
+The initial demonstrations cover missing and extra output fields, wrong success exit, preview writes, identity drift, false-success reporting, skipped restoration, incorrect restored-reference outcome, and incorrect restore-installation classification.
 The manifest names each contract, existing test, mutation location, and expected assertion.
 The optional `--manifest scripts/refactor/reporting-gates.json` checks the separately approved publication reporting correction and demonstrates detection of both reproduced defects.
 That manifest requires the corrected source and its new tests; it intentionally does not pass against the original baseline.
 The optional `--manifest scripts/refactor/baseline-fixes-gates.json` checks the separately approved flow request identity, project-create identity, and interrupted-publication receipt recovery corrections with three isolated defect seeds.
 Existing tests retain their limitations: JSON parseability is not an exact key-set assertion, and fake credential storage is not a native keyring test.
+The portable G4 restore tests distinguish configuration states and detect incorrect reporting; a separate Windows-only fake-store CLI test exercises the pre-replacement orphan path.
 Unix durability scenarios, architecture conformance, full CI/platform checks, navigation acceptance, and live coverage remain outstanding requirements.
 This runner does not replace those checks or the existing benchmark harness.
 

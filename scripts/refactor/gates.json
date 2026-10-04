@@ -70,6 +70,24 @@
         "TestAuthLogoutPreviewPreservesCredentialsThenExecutionRemovesOnlySelectedReference"
       ],
       "contract": "Real test-owned config plus fake credential store state; compensation and preview effects. Does not establish OS keyring or Unix durability-failure behavior."
+    },
+    {
+      "id": "g4-auth-restore-reporting",
+      "gate": "G4",
+      "package": "./actions/auth",
+      "tests": [
+        "TestLogoutReportsUncertainRestoredReferenceWithoutOrphanClaim"
+      ],
+      "contract": "A failed credential deletion with a restored but not durable reference reports persistence phase and unknown outcome, directs inspection of both stores, and does not claim an orphan. The Windows app.Run fixture separately exercises the pre-replacement orphan path."
+    },
+    {
+      "id": "g4-config-restore-phase",
+      "gate": "G4",
+      "package": "./internal/config",
+      "tests": [
+        "TestUpdateWithPostSaveClassifiesFailedRestoreByInstallPhase"
+      ],
+      "contract": "After failed external commit, a restore replacement failure leaves the updated config in effect; a post-replacement sync failure installs the prior config with uncertain durability. Both errors preserve the external failure."
     }
   ],
   "seeds": [
@@ -135,6 +153,24 @@
       "before": "\t\tif err := postSave(); err != nil {\n\t\t\trestoreErr := restore()",
       "after": "\t\tif err := postSave(); err != nil {\n\t\t\tvar restoreErr error",
       "failure_contains": "want restored"
+    },
+    {
+      "id": "seed-auth-restore-unknown-outcome",
+      "control": "g4-auth-restore-reporting",
+      "test": "TestLogoutReportsUncertainRestoredReferenceWithoutOrphanClaim",
+      "path": "actions/auth/logout.go",
+      "before": "Summary: \"Stored PAT deletion was not confirmed, and the restored credential reference may not be durable.\", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}",
+      "after": "Summary: \"Stored PAT deletion was not confirmed, and the restored credential reference may not be durable.\", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}",
+      "failure_contains": "failure classification"
+    },
+    {
+      "id": "seed-auth-restore-install-phase",
+      "control": "g4-config-restore-phase",
+      "test": "TestUpdateWithPostSaveClassifiesFailedRestoreByInstallPhase",
+      "path": "internal/config/config.go",
+      "before": "priorInstalled := isDurabilityError(restoreErr)",
+      "after": "priorInstalled := false",
+      "failure_contains": "restore classification"
     }
   ]
 }

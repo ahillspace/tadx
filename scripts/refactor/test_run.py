@@ -148,7 +148,17 @@ class SourceTests(unittest.TestCase):
 class ConfigurationTests(unittest.TestCase):
     def test_repository_manifest_validates(self):
         manifest = json.loads(Path(__file__).with_name("gates.json").read_text())
-        self.assertEqual(len(gates.validate_manifest(manifest)["seeds"]), 7)
+        self.assertEqual({seed["id"] for seed in gates.validate_manifest(manifest)["seeds"]}, {
+            "seed-missing-output-field",
+            "seed-extra-output-field",
+            "seed-wrong-success-exit",
+            "seed-preview-write",
+            "seed-identity-drift",
+            "seed-false-success",
+            "seed-skipped-restoration",
+            "seed-auth-restore-unknown-outcome",
+            "seed-auth-restore-install-phase",
+        })
 
     def test_reporting_manifest_has_both_approved_defect_demonstrations(self):
         manifest = json.loads(Path(__file__).with_name("reporting-gates.json").read_text())

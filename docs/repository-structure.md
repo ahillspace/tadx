@@ -20,6 +20,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/env/profile` | Profile operations with a shared profile representation |
 | `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
 | `actions/agent`, `actions/version` | Guidance installation/removal and installed-version/release-check services |
+| `actions/auth` | Authentication, pre-prompt validation, status projection, and credential/configuration coordination |
 | Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
@@ -53,6 +54,10 @@ Shared inventory collection, cache publication, and read-source policy currently
 For catalog commands, `internal/cli/catalog` calls one service in `actions/catalog`.
 The service validates input before opening its target-bound provider and retains separate typed read and mutation sequences.
 App binds native metadata clients directly to those narrow ports, including the shared label-target contract; no forwarding-only catalog resource adapter remains.
+
+For authentication, `internal/cli/auth` calls the auth service, including login preflight before prompting.
+`actions/auth` coordinates credential persistence, target freshness, and compensation through core auth and config mechanisms.
+App supplies invocation-scoped construction; native credential operations and configuration locking remain in their infrastructure owners.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.

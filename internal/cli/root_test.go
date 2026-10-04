@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authcheck "github.com/ahillspace/tadx/actions/auth"
+	authstatus "github.com/ahillspace/tadx/actions/auth"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
@@ -91,14 +91,14 @@ func (noMutationPolicy) IsRemoteMutation(string) bool { return false }
 
 type authChecker struct{}
 
-func (authChecker) Execute(context.Context, authcheck.Input) (authcheck.Output, error) {
-	return authcheck.Output{}, nil
+func (authChecker) Check(context.Context, authcheck.CheckInput) (authcheck.CheckOutput, error) {
+	return authcheck.CheckOutput{}, nil
 }
 
 type authStatuser struct{}
 
-func (authStatuser) Execute(context.Context, authstatus.Input) (authstatus.Output, error) {
-	return authstatus.Output{}, nil
+func (authStatuser) Status(context.Context, authstatus.StatusInput) (authstatus.StatusOutput, error) {
+	return authstatus.StatusOutput{}, nil
 }
 
 func TestRootExposesOnlyPhaseZeroExecutableCommands(t *testing.T) {

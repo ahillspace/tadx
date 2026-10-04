@@ -2,16 +2,12 @@ package app
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
-	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type fakePATStore struct {
@@ -66,9 +62,9 @@ func TestAuthCredentialStoreLogoutRestoresReferenceWhenDeletionFails(t *testing.
 		},
 		deleteErr: &coreauth.CredentialStoreError{Kind: coreauth.CredentialStoreDenied, Operation: "delete"},
 	}
-	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
+	service := authops.NewCredentialPersistence(path, store, processEnvironment{})
 
-	if _, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"}); err == nil {
+	if _, err := service.Remove(context.Background(), authops.LogoutTarget{Environment: "dev"}); err == nil {
 		t.Fatal("Remove() error = nil")
 	}
 	loaded, err := config.Load(path)
@@ -88,9 +84,9 @@ func TestAuthCredentialStorePersistsOpaqueReferenceAndReplacesOldPAT(t *testing.
 			oldReference: {Name: "old", Secret: "old-secret", Source: coreauth.CredentialSourceOSKeyring},
 		},
 	}
-	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
+	service := authops.NewCredentialPersistence(path, store, processEnvironment{})
 
-	_, err := service.Store(context.Background(), authlogin.Target{Environment: "dev", ServerURL: "https://tableau.example.test", SiteContentURL: "test-site"}, authlogin.Credential{PATName: "new", PATSecret: "new-secret"})
+	_, err := service.Store(context.Background(), authops.LoginTarget{Environment: "dev", ServerURL: "https://tableau.example.test", SiteContentURL: "test-site"}, authops.LoginCredential{PATName: "new", PATSecret: "new-secret"})
 	if err != nil {
 		t.Fatalf("Store() error = %v", err)
 	}
@@ -107,6 +103,23 @@ func TestAuthCredentialStorePersistsOpaqueReferenceAndReplacesOldPAT(t *testing.
 	}
 }
 
+func TestAuthCredentialStoreRejectsChangedTargetBeforeCredentialWrite(t *testing.T) {
+	path := authConfig(t, "")
+	store := &fakePATStore{next: "cred_33333333333333333333333333333333"}
+	service := authops.NewCredentialPersistence(path, store, processEnvironment{})
+	_, err := service.Store(t.Context(), authops.LoginTarget{Environment: "dev", ServerURL: "https://changed.example.test", SiteContentURL: "test-site"}, authops.LoginCredential{PATName: "name", PATSecret: "secret"})
+	if err == nil || len(store.records) != 0 {
+		t.Fatalf("changed target stored credentials: error = %v, records = %d", err, len(store.records))
+	}
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.Environments["dev"].Auth.CredentialRef; got != "" {
+		t.Fatalf("credential reference = %q, want unchanged empty reference", got)
+	}
+}
+
 func TestAuthCredentialStoreLogoutDeletesPATAndReference(t *testing.T) {
 	reference := coreauth.CredentialReference("cred_22222222222222222222222222222222")
 	path := authConfig(t, string(reference))
@@ -115,9 +128,9 @@ func TestAuthCredentialStoreLogoutDeletesPATAndReference(t *testing.T) {
 			reference: {Name: "name", Secret: "secret", Source: coreauth.CredentialSourceOSKeyring},
 		},
 	}
-	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
+	service := authops.NewCredentialPersistence(path, store, processEnvironment{})
 
-	result, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"})
+	result, err := service.Remove(context.Background(), authops.LogoutTarget{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}
@@ -140,9 +153,9 @@ func TestAuthCredentialStoreLogoutClearsStaleReference(t *testing.T) {
 	reference := coreauth.CredentialReference("cred_44444444444444444444444444444444")
 	path := authConfig(t, string(reference))
 	store := &fakePATStore{records: make(map[coreauth.CredentialReference]coreauth.PATCredentials)}
-	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
+	service := authops.NewCredentialPersistence(path, store, processEnvironment{})
 
-	result, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"})
+	result, err := service.Remove(context.Background(), authops.LogoutTarget{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}
@@ -176,25 +189,3 @@ func authConfig(t *testing.T, credentialReference string) string {
 	}
 	return path
 }
-
-func TestAuthCredentialStoreNamesOrphanedEntryWhenDeletionFailsAfterInstall(t *testing.T) {
-	reference := coreauth.CredentialReference("cred_88888888888888888888888888888888")
-	failed := orphanedCredentialError(&config.InstalledError{Err: errors.New("sync failed"), ExternalErr: errors.New("delete denied")}, reference)
-	_, advice := errs.RetryAdvice(failed)
-	if !strings.Contains(advice, coreauth.CredentialStoreEntry(reference)) || !strings.Contains(advice, "remove it if present") {
-		t.Fatalf("corrective action = %q, want the orphaned entry", advice)
-	}
-	for _, err := range []error{errors.New("plain failure"), &config.InstalledError{Err: errors.New("sync failed")}, unrelatedInstalledCredentialError{}} {
-		if got := orphanedCredentialError(err, reference); got != err {
-			t.Fatalf("orphanedCredentialError(%v) = %v, want unchanged", err, got)
-		}
-	}
-}
-
-type unrelatedInstalledCredentialError struct{}
-
-func (unrelatedInstalledCredentialError) Error() string { return "unrelated credential-store failure" }
-
-func (unrelatedInstalledCredentialError) ConfigurationInstalled() bool { return true }
-
-func (unrelatedInstalledCredentialError) ExternalCommitConfirmed() bool { return false }

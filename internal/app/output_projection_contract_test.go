@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
+	authcheck "github.com/ahillspace/tadx/actions/auth"
 	catalogread "github.com/ahillspace/tadx/actions/catalog"
 	envupdate "github.com/ahillspace/tadx/actions/env/profile"
 	jobactions "github.com/ahillspace/tadx/actions/job"
@@ -80,7 +80,7 @@ func TestProjectMutationProjectionEncodingContracts(t *testing.T) {
 
 func TestCrossFamilyProjectionEncodingContracts(t *testing.T) {
 	for name, result := range map[string]any{
-		"auth":   authcheck.Output{Status: "authenticated", Environment: "dev", SiteContentURL: "site", UserLUID: "user"},
+		"auth":   authcheck.CheckOutput{Status: "authenticated", Environment: "dev", SiteContentURL: "site", UserLUID: "user"},
 		"env":    envupdate.UpdateOutput{Status: "updated", Profile: envupdate.UpdateProfile{Alias: "dev", ServerURL: "https://example.invalid", SiteContentURL: "site"}, ChangedFields: []string{"site_content_url"}},
 		"table":  catalogread.TableInspectOutput{Status: "inspected", Environment: "dev", Site: "site", Item: &value.MetadataTable{MetadataIdentity: value.MetadataIdentity{LUID: "table-1"}, Database: value.MetadataIdentity{LUID: "database-1"}}},
 		"column": catalogread.ColumnInspectOutput{Status: "inspected", Environment: "dev", Site: "site", Item: &value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{LUID: "column-1"}, Table: value.MetadataIdentity{LUID: "table-1"}}},

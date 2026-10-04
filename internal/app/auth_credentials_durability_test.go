@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
+	authlogin "github.com/ahillspace/tadx/actions/auth"
+	authlogout "github.com/ahillspace/tadx/actions/auth"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 )
@@ -44,10 +44,10 @@ func TestAuthCredentialStoreLoginKeepsStoresConsistentWhenDirectorySyncFails(t *
 	reference := coreauth.CredentialReference("cred_66666666666666666666666666666666")
 	path := authConfig(t, "")
 	store := &fakePATStore{next: reference}
-	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
+	service := authlogin.NewCredentialPersistence(path, store, processEnvironment{})
 	unreadableConfigDirectory(t, path)
 
-	_, err := service.Store(context.Background(), authlogin.Target{Environment: "dev", ServerURL: "https://tableau.example.test", SiteContentURL: "test-site"}, authlogin.Credential{PATName: "name", PATSecret: "secret"})
+	_, err := service.Store(context.Background(), authlogin.LoginTarget{Environment: "dev", ServerURL: "https://tableau.example.test", SiteContentURL: "test-site"}, authlogin.LoginCredential{PATName: "name", PATSecret: "secret"})
 	if err == nil {
 		t.Fatal("Store() error = nil after the configuration directory could not be synced")
 	}
@@ -65,10 +65,10 @@ func TestAuthCredentialStoreLogoutKeepsStoresConsistentWhenDirectorySyncFails(t 
 	store := &fakePATStore{records: map[coreauth.CredentialReference]coreauth.PATCredentials{
 		reference: {Name: "name", Secret: "secret", Source: coreauth.CredentialSourceOSKeyring},
 	}}
-	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
+	service := authlogin.NewCredentialPersistence(path, store, processEnvironment{})
 	unreadableConfigDirectory(t, path)
 
-	if _, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"}); err == nil {
+	if _, err := service.Remove(context.Background(), authlogout.LogoutTarget{Environment: "dev"}); err == nil {
 		t.Fatal("Remove() error = nil after the configuration directory could not be synced")
 	}
 	loaded := loadAfterDurabilityFailure(t, path)

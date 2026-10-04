@@ -210,7 +210,7 @@ Its focused project and search checks pass, and all eight project output goldens
 Mechanical integration copies exactly its 20 reviewed paths after source-fingerprint and existing-edit checks; complete integrated gates remain pending.
 The committed candidate does not contain this draft regression.
 
-Authentication consolidation remains an isolated draft with focused verification, not an integrated or accepted checkpoint.
+Authentication consolidation is integrated after the separately committed reporting corrections; complete candidate acceptance remains pending.
 The required authentication external-deletion failure followed by failed restoration reproduces a pre-existing reporting defect on both exact baseline `1346e591` and the isolated auth draft.
 Fake-store CLI execution returns nonzero with the configuration reference cleared and the credential retained, but omits persistence phase, unknown outcome, and orphan recovery guidance.
 Independent review confirms the state and reporting gap; no real credential store is used.
@@ -241,6 +241,25 @@ Focused action, CLI, app, and architecture tests pass; both agent TOON goldens r
 Mechanical integration checks the before and after hashes for all 17 entries, covering eight relocations and nine modified files.
 The reviewed source fingerprint is `56e9c205b5436a5e871f744f9b0e80f6652d300204dfa74681c44f26372b7f2e` against base `3c2ac9f`.
 Integrated gates and live installer verification remain pending.
+
+### Authentication consolidation
+
+One auth service owns check, login preflight/login, logout, status, and cross-store workflow coordination.
+Core auth and config retain session, native credential-store, locking, and replacement mechanisms.
+The migration retains both approved restoration-reporting corrections and the real configuration and Windows fake-store regression fixtures.
+Three output goldens remain byte-identical, and the exact action-to-core-auth import edge has negative fixtures.
+Final independent review verifies all 44 changed paths against base `75d02a0`, with source fingerprint `d03c4b2be148e2a054bc01353fdf52e9bc52a3cc9530d6ae0822fda556b5e46a`.
+Full compilation and focused CLI root tests pass on that source.
+Mechanical integration copies 32 reviewed files and removes 12 obsolete tracked paths, all recoverable from Git.
+
+An earlier integration check detects a stale root CLI test overlap with the agent/version migration.
+The coordinator restores 12 task-owned deletions after a failed precheck; no user files change and no stale replacement is retained.
+The final manifest records every actual-base before/after hash and preserves the version alias assertions alongside the auth changes.
+An earlier gate run rejects two Python cache files created during review; they are quarantined outside the source, and the rejected evidence remains recorded.
+Subsequent checks disable Python bytecode generation and use explicit ordinal fingerprint ordering.
+The clean pre-overlap-correction auth gate run passes eight controls and detects nine seeded defects, but belongs to its earlier source fingerprint.
+The integrated candidate must rerun those gates; historical results are not attributed to the final merged source.
+The expanded initial manifest adds two portable restoration-reporting controls and two seeded defects without weakening existing assertions.
 
 ## Acceptance dependencies
 

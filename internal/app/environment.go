@@ -7,7 +7,7 @@ import (
 	"os"
 	"slices"
 
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authstatus "github.com/ahillspace/tadx/actions/auth"
 	"github.com/ahillspace/tadx/actions/env/profile"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	"github.com/ahillspace/tadx/internal/config"
@@ -208,25 +208,17 @@ func addProfile(environment config.Environment) profile.AddProfile {
 
 type authStatusResolver struct{ runtime *runtimeDependencies }
 
-func (r authStatusResolver) Resolve(_ context.Context, alias string) (authstatus.Target, error) {
+func (r authStatusResolver) Resolve(_ context.Context, alias string) (authstatus.StatusTarget, error) {
 	configuration, environment, err := r.runtime.environment(alias, false)
 	if err != nil {
-		return authstatus.Target{}, err
+		return authstatus.StatusTarget{}, err
 	}
-	return authStatusTarget(configuration, environment), nil
-}
-
-func authStatusTarget(configuration config.Config, environment config.Environment) authstatus.Target {
-	return authstatus.Target{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", DefaultWorkspace: environment.DefaultWorkspace}
+	return authstatus.StatusTargetFromConfig(configuration, environment), nil
 }
 
 type processEnvironment struct{}
 
 func (processEnvironment) LookupEnv(name string) (string, bool) { return os.LookupEnv(name) }
-
-func newAuthStatus(runtime *runtimeDependencies) *authstatus.Action {
-	return authstatus.New(authStatusResolver{runtime: runtime}, processEnvironment{})
-}
 
 func registryUses(ids ...string) map[string]string {
 	result := make(map[string]string, len(ids))

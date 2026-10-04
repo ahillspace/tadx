@@ -14,9 +14,7 @@ import (
 	"strings"
 	"time"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	lastaction "github.com/ahillspace/tadx/actions/last"
@@ -122,7 +120,13 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	remoteContent := newRemoteContentCommands(runtime)
 	remoteAdmin := newRemoteAdminCommands(runtime)
 	pulseActions := newPulseCommands(runtime)
-	credentialStore := authCredentialStore{runtime: runtime}
+	credentialStore := authops.NewCredentialPersistence(runtime.configPath, runtime.patStore, processEnvironment{})
+	authService := authops.New(authops.Ports{
+		CheckResolver: runtime, CheckAuthenticator: runtime,
+		LoginResolver: authCredentialResolver{runtime: runtime}, LoginAuthenticator: loginAuthenticator{runtime: runtime}, LoginStore: credentialStore,
+		LogoutResolver: credentialStore, LogoutStore: credentialStore,
+		StatusResolver: authStatusResolver{runtime: runtime}, StatusLookup: processEnvironment{},
+	})
 	root := cli.NewRoot(cli.Dependencies{
 		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
 		Update:                newUpdateCommand(updater.Runtime{CredentialVariables: runtime.configuredPATVariables}),
@@ -156,7 +160,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		ListShort:           registryShort("capability.list"),
 		GetUse:              registryUse("capability.get"),
 		GetShort:            registryShort("capability.get"),
-		AuthChecker:         authcheck.New(runtime, runtime),
+		AuthChecker:         authService,
 		Searcher:            newSearchCommands(runtime),
 		CacheRefresher:      runtime,
 		CacheStatuser:       runtime,
@@ -173,9 +177,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		DoctorUse:           registryLeafUse("doctor.run"),
 		DoctorShort:         registryShort("doctor.run"),
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
-		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
-		AuthLogin:    authlogin.New(authCredentialResolver{runtime: runtime}, loginAuthenticator{runtime: runtime}, credentialStore),
-		AuthLogout:   authlogout.New(authLogoutResolver{runtime: runtime}, credentialStore),
+		AuthStatuser: authService, AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
+		AuthLogin:    authService,
+		AuthLogout:   authService,
 		AuthPrompter: runtime.authPrompter,
 		AuthLoginUse: registryLeafUse("auth.login"), AuthLoginShort: registryShort("auth.login"),
 		AuthLogoutUse: registryLeafUse("auth.logout"), AuthLogoutShort: registryShort("auth.logout"),
@@ -406,15 +410,15 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	return &runtimeDependencies{managedPolicy: policy, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter, jobDirectory: options.JobDirectory, progressWriter: options.Stderr, publicationExecution: options.publicationExecution, operationDirectory: options.OperationDirectory}, nil
 }
 
-func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
+func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authops.CheckTarget, error) {
 	_, environment, err := r.environment(alias, false)
 	if err != nil {
-		return authcheck.Target{}, err
+		return authops.CheckTarget{}, err
 	}
-	return authcheck.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, nil
+	return authops.CheckTarget{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, nil
 }
 
-func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck.Target) (authcheck.Authentication, error) {
+func (r *runtimeDependencies) Authenticate(ctx context.Context, target authops.CheckTarget) (authops.CheckAuthentication, error) {
 	session, source, err := r.commandSessions().AuthenticateWithSource(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, tableauauth.NewClient(r.transport(target.APIVersion)))
 	provenance := string(source)
 	if source == coreauth.CredentialSourceOSKeyring {
@@ -427,9 +431,9 @@ func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck
 		if missing || partial || store {
 			err = &errs.Error{ID: "auth.credentials", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication credentials are unavailable.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 		}
-		return authcheck.Authentication{CredentialSource: provenance}, err
+		return authops.CheckAuthentication{CredentialSource: provenance}, err
 	}
-	return authcheck.Authentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID(), CredentialSource: provenance}, nil
+	return authops.CheckAuthentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID(), CredentialSource: provenance}, nil
 }
 
 func (r *runtimeDependencies) environment(alias string, explicit bool) (config.Config, config.Environment, error) {

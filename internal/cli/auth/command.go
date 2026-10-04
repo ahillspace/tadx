@@ -6,10 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
@@ -17,22 +14,23 @@ import (
 
 // Checker executes auth.check.
 type Checker interface {
-	Execute(context.Context, authcheck.Input) (authcheck.Output, error)
+	Check(context.Context, authops.CheckInput) (authops.CheckOutput, error)
 }
 
 // Statuser inspects local PAT-reference readiness without contacting Tableau.
 type Statuser interface {
-	Execute(context.Context, authstatus.Input) (authstatus.Output, error)
+	Status(context.Context, authops.StatusInput) (authops.StatusOutput, error)
 }
 
 // Login validates and stores one PAT supplied through an interactive terminal.
 type Login interface {
-	Execute(context.Context, authlogin.Input) (authlogin.Output, error)
+	LoginPreflight(context.Context, string) error
+	Login(context.Context, authops.LoginInput) (authops.LoginOutput, error)
 }
 
 // Logout removes one TADX-stored PAT without revoking it in Tableau.
 type Logout interface {
-	Execute(context.Context, authlogout.Input) (authlogout.Output, error)
+	Logout(context.Context, authops.LogoutInput) (authops.LogoutOutput, error)
 }
 
 // Prompter provides terminal-only credential input. Implementations must echo
@@ -85,7 +83,7 @@ func New(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Checker.Execute(command.Context(), authcheck.Input{Environment: environment})
+			result, err := deps.Checker.Check(command.Context(), authops.CheckInput{Environment: environment})
 			if err != nil {
 				return clierr.WithOutput(result, err)
 			}
@@ -113,7 +111,7 @@ func New(deps Dependencies) *cobra.Command {
 				return nil
 			},
 			RunE: func(command *cobra.Command, _ []string) error {
-				result, err := deps.Statuser.Execute(command.Context(), authstatus.Input{Environment: statusEnvironment})
+				result, err := deps.Statuser.Status(command.Context(), authops.StatusInput{Environment: statusEnvironment})
 				if err != nil {
 					return err
 				}
@@ -154,12 +152,8 @@ func newLogin(deps Dependencies) *cobra.Command {
 			if strings.TrimSpace(environment) == "" {
 				return clierr.Usage("auth.login", errors.New("--environment is required"))
 			}
-			if preflight, ok := deps.Login.(interface {
-				Preflight(context.Context, string) error
-			}); ok {
-				if err := preflight.Preflight(command.Context(), environment); err != nil {
-					return err
-				}
+			if err := deps.Login.LoginPreflight(command.Context(), environment); err != nil {
+				return err
 			}
 			if deps.Prompter == nil {
 				return promptError(errors.New("interactive credential input is not configured"))
@@ -175,7 +169,7 @@ func newLogin(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return promptError(err)
 			}
-			result, err := deps.Login.Execute(command.Context(), authlogin.Input{Environment: environment, PATName: name, PATSecret: secret})
+			result, err := deps.Login.Login(command.Context(), authops.LoginInput{Environment: environment, PATName: name, PATSecret: secret})
 			if err != nil {
 				return err
 			}
@@ -209,7 +203,7 @@ func newLogout(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Logout.Execute(command.Context(), authlogout.Input{Environment: environment, Preview: preview})
+			result, err := deps.Logout.Logout(command.Context(), authops.LogoutInput{Environment: environment, Preview: preview})
 			if err != nil {
 				return err
 			}

@@ -8,8 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	searchaction "github.com/ahillspace/tadx/actions/search"
@@ -67,10 +66,10 @@ type Getter interface {
 }
 
 type AuthChecker interface {
-	Execute(context.Context, authcheck.Input) (authcheck.Output, error)
+	Check(context.Context, authops.CheckInput) (authops.CheckOutput, error)
 }
 type AuthStatuser interface {
-	Execute(context.Context, authstatus.Input) (authstatus.Output, error)
+	Status(context.Context, authops.StatusInput) (authops.StatusOutput, error)
 }
 type Searcher interface {
 	Execute(context.Context, searchaction.Input) (searchaction.Output, error)

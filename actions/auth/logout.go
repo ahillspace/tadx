@@ -1,5 +1,5 @@
 // Package logout removes TADX-stored PAT credentials for one environment.
-package logout
+package auth
 
 import (
 	"context"
@@ -11,60 +11,49 @@ import (
 )
 
 // Resolver resolves one configured environment without reading credentials.
-type Resolver interface {
-	Resolve(context.Context, string) (Target, error)
+type LogoutResolver interface {
+	Resolve(context.Context, string) (LogoutTarget, error)
 }
 
 // Store removes credentials from TADX's native OS credential store.
-type Store interface {
-	Remove(context.Context, Target) (RemoveResult, error)
-}
-
-// Action removes one locally stored PAT without revoking it in Tableau.
-type Action struct {
-	resolver Resolver
-	store    Store
-}
-
-// New creates auth.logout.
-func New(resolver Resolver, store Store) *Action {
-	return &Action{resolver: resolver, store: store}
+type LogoutStore interface {
+	Remove(context.Context, LogoutTarget) (LogoutRemoveResult, error)
 }
 
 // Execute removes TADX's stored credential and preserves remote PAT state.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if a == nil || a.resolver == nil || a.store == nil {
-		return Output{}, &errs.Error{ID: "auth.logout.unconfigured", Kind: errs.KindRuntime, Operation: "auth.logout", Summary: "PAT logout is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure environment resolution and OS credential storage before retrying."}
+func (a *Service) Logout(ctx context.Context, input LogoutInput) (LogoutOutput, error) {
+	if a == nil || a.LogoutResolver == nil || a.LogoutStore == nil {
+		return LogoutOutput{}, &errs.Error{ID: "auth.logout.unconfigured", Kind: errs.KindRuntime, Operation: "auth.logout", Summary: "PAT logout is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure environment resolution and OS credential storage before retrying."}
 	}
-	target, err := a.resolver.Resolve(ctx, input.Environment)
+	target, err := a.LogoutResolver.Resolve(ctx, input.Environment)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
-		return Output{}, &errs.Error{ID: "auth.logout.resolve", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		return LogoutOutput{}, &errs.Error{ID: "auth.logout.resolve", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if input.Preview {
 		var warnings []string
 		if target.EnvironmentCredentialsAvailable {
 			warnings = []string{"Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate."}
 		}
-		return Output{Status: "preview", Environment: target.Environment, CredentialSource: CredentialSourceOS, Plan: &Plan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: warnings, Help: []string{"Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked."}}, nil
+		return LogoutOutput{Status: "preview", Environment: target.Environment, CredentialSource: CredentialSourceOS, Plan: &LogoutPlan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: warnings, Help: []string{"Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked."}}, nil
 	}
-	removed, err := a.store.Remove(ctx, target)
+	removed, err := a.LogoutStore.Remove(ctx, target)
 	if installed, ok := installedConfiguration(err); ok {
 		if !installed.ExternalCommitConfirmed() {
 			retryable, advice := errs.CompleteRetryAdvice(err, "Inspect the OS credential store entry and remove it if present; logout no longer references it.")
-			return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored credential reference was cleared, but stored PAT deletion was not confirmed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+			return LogoutOutput{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored credential reference was cleared, but stored PAT deletion was not confirmed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
 		}
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair access to the configuration directory, then confirm the removal.")
-		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored PAT was removed, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
+		return LogoutOutput{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored PAT was removed, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
 	}
 	if priorConfigurationReinstalled(err) {
 		retryable, _ := errs.CompleteRetryAdvice(err, "")
 		advice := "Repair access to the configuration directory, then inspect the selected environment's stored reference and OS credential store entry before another logout."
-		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT deletion was not confirmed, and the restored credential reference may not be durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+		return LogoutOutput{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT deletion was not confirmed, and the restored credential reference may not be durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
 	}
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair the OS credential store, then retry. The Tableau PAT was not revoked.")
-		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT removal was not confirmed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice)}
+		return LogoutOutput{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT removal was not confirmed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice)}
 	}
 	status := "unchanged"
 	if removed.Removed {
@@ -74,7 +63,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if target.EnvironmentCredentialsAvailable {
 		warnings = []string{"Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate."}
 	}
-	return Output{
+	return LogoutOutput{
 		Warnings: warnings,
 		Status:   status, Environment: target.Environment, CredentialSource: CredentialSourceOS, TableauPATRevoked: false,
 		Help: []string{"The Tableau PAT remains valid until you revoke it in Tableau."},
@@ -108,39 +97,37 @@ func ensureNotRevokedAdvice(value string) string {
 	return strings.TrimSpace(value) + " The Tableau PAT was not revoked."
 }
 
-const CredentialSourceOS = "os_credential_store"
-
 // Input selects one explicit environment credential.
-type Input struct {
+type LogoutInput struct {
 	Environment string
 	Preview     bool
 }
 
 // Target contains nonsecret credential storage identity.
-type Target struct {
+type LogoutTarget struct {
 	Environment                      string
 	EnvironmentCredentialsAvailable  bool
 	StoredCredentialReferencePresent bool
 }
 
 // RemoveResult reports whether a stored credential existed.
-type RemoveResult struct {
+type LogoutRemoveResult struct {
 	Removed bool
 }
 
 // Output reports local credential removal and remote PAT status separately.
-type Output struct {
-	Plan              *Plan    `json:"plan,omitempty"`
-	Warnings          []string `json:"warnings,omitempty"`
-	Status            string   `json:"status"`
-	Environment       string   `json:"environment"`
-	CredentialSource  string   `json:"credential_source"`
-	TableauPATRevoked bool     `json:"tableau_pat_revoked"`
-	Help              []string `json:"help"`
+type LogoutOutput struct {
+	Plan              *LogoutPlan `json:"plan,omitempty"`
+	Warnings          []string    `json:"warnings,omitempty"`
+	Status            string      `json:"status"`
+	Environment       string      `json:"environment"`
+	CredentialSource  string      `json:"credential_source"`
+	TableauPATRevoked bool        `json:"tableau_pat_revoked"`
+	Help              []string    `json:"help"`
 }
 
 // Plan reports configured local removal scope without opening stored credentials.
-type Plan struct {
+type LogoutPlan struct {
 	StoredCredentialReferencePresent bool `json:"stored_credential_reference_present"`
 	EnvironmentCredentialsAvailable  bool `json:"environment_credentials_available"`
 }

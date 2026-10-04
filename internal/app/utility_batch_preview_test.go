@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
+	authlogout "github.com/ahillspace/tadx/actions/auth"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 )
@@ -66,12 +66,12 @@ func TestAuthLogoutResolverObservesRemovalAfterConfigurationSnapshot(t *testing.
 	if _, err := runtime.configuration(); err != nil {
 		t.Fatal(err)
 	}
-	resolver := authLogoutResolver{runtime: runtime}
+	resolver := authlogout.NewCredentialPersistence(path, store, processEnvironment{})
 	before, err := resolver.Resolve(context.Background(), "dev")
 	if err != nil || !before.StoredCredentialReferencePresent {
 		t.Fatalf("before=%#v err=%v", before, err)
 	}
-	if _, err := (authCredentialStore{runtime: runtime}).Remove(context.Background(), authlogout.Target{Environment: "dev"}); err != nil {
+	if _, err := resolver.Remove(context.Background(), authlogout.LogoutTarget{Environment: "dev"}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := resolver.Resolve(context.Background(), "dev")

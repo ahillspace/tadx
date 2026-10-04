@@ -6,40 +6,48 @@ import (
 	"strings"
 	"testing"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authcheck "github.com/ahillspace/tadx/actions/auth"
+	authlogin "github.com/ahillspace/tadx/actions/auth"
+	authlogout "github.com/ahillspace/tadx/actions/auth"
+	authstatus "github.com/ahillspace/tadx/actions/auth"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type checker struct{ inputs []authcheck.Input }
+type checker struct{ inputs []authcheck.CheckInput }
 
-func (c *checker) Execute(_ context.Context, input authcheck.Input) (authcheck.Output, error) {
+func (c *checker) Check(_ context.Context, input authcheck.CheckInput) (authcheck.CheckOutput, error) {
 	c.inputs = append(c.inputs, input)
-	return authcheck.Output{}, nil
+	return authcheck.CheckOutput{}, nil
 }
 
-type statuser struct{ inputs []authstatus.Input }
+type statuser struct{ inputs []authstatus.StatusInput }
 
-func (s *statuser) Execute(_ context.Context, input authstatus.Input) (authstatus.Output, error) {
+func (s *statuser) Status(_ context.Context, input authstatus.StatusInput) (authstatus.StatusOutput, error) {
 	s.inputs = append(s.inputs, input)
-	return authstatus.Output{}, nil
+	return authstatus.StatusOutput{}, nil
 }
 
-type login struct{ inputs []authlogin.Input }
-
-func (l *login) Execute(_ context.Context, input authlogin.Input) (authlogin.Output, error) {
-	l.inputs = append(l.inputs, input)
-	return authlogin.Output{}, nil
+type login struct {
+	inputs         []authlogin.LoginInput
+	preflightCalls int
+	preflightErr   error
 }
 
-type logout struct{ inputs []authlogout.Input }
-
-func (l *logout) Execute(_ context.Context, input authlogout.Input) (authlogout.Output, error) {
+func (l *login) LoginPreflight(context.Context, string) error {
+	l.preflightCalls++
+	return l.preflightErr
+}
+func (l *login) Login(_ context.Context, input authlogin.LoginInput) (authlogin.LoginOutput, error) {
 	l.inputs = append(l.inputs, input)
-	return authlogout.Output{}, nil
+	return authlogin.LoginOutput{}, nil
+}
+
+type logout struct{ inputs []authlogout.LogoutInput }
+
+func (l *logout) Logout(_ context.Context, input authlogout.LogoutInput) (authlogout.LogoutOutput, error) {
+	l.inputs = append(l.inputs, input)
+	return authlogout.LogoutOutput{}, nil
 }
 
 type prompter struct {
@@ -114,6 +122,19 @@ func TestLoginRejectsMissingEnvironmentBeforePrompt(t *testing.T) {
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || prompt.nameReads != 0 || prompt.secretReads != 0 {
 		t.Fatalf("error = %#v, prompt = %#v", err, prompt)
+	}
+}
+
+func TestLoginRequiresSuccessfulPreflightBeforePrompt(t *testing.T) {
+	login := &login{preflightErr: errors.New("target changed")}
+	prompt := &prompter{terminal: true}
+	command := authcli.New(authcli.Dependencies{Login: login, Prompter: prompt, Renderer: &renderer{}})
+	command.SetArgs([]string{"login", "--environment", "dev"})
+	if err := command.Execute(); !errors.Is(err, login.preflightErr) {
+		t.Fatalf("error = %v, want preflight failure", err)
+	}
+	if login.preflightCalls != 1 || len(login.inputs) != 0 || prompt.nameReads != 0 || prompt.secretReads != 0 {
+		t.Fatalf("preflight calls = %d, action inputs = %d, prompt reads = %d/%d", login.preflightCalls, len(login.inputs), prompt.nameReads, prompt.secretReads)
 	}
 }
 
