@@ -38,6 +38,10 @@ SOURCE_RUNTIME_VERSION = "0.154.0"
 TARGET_RUNTIME_VERSION = "0.160.0"
 PROJECT_CASES = ["P-project-" + action for action in ("create", "delete", "inspect", "list", "move", "update")]
 CASES = PROJECT_CASES + JOB_CASES + POLICY_CASES + [POLICY_INSTALL_CASE, SUBSCRIPTION_CASE]
+AUXILIARY_SOURCE = {
+    "bench/task-scope-policy.json": "0ade697155cad5338cf0cbd641c22928974223ecb62fb2d55c738eaa0c76e9e2",
+    "bench/operator-task-scopes.json": "5a0b90672086a55a21c52e930bdec1608963eeb672112809a354b5e127613f28",
+}
 BLOCKERS = [
     "Copied launcher source provenance must be independently qualified against the exact accepted candidate before its local configuration path can run.",
     "Base worker image ID, installed runtime version, and copied image inputs need independent qualification; no rebuild or binary substitution is permitted.",
@@ -127,6 +131,17 @@ def apply_mutation_runtime(files):
         patches.append({"path": name, "before_sha256": sha(original),
                         "after_sha256": sha(adapted)})
     return patches
+
+
+def append_patch(patches, row):
+    """Record one original-to-final hash across reviewed sequential transforms."""
+    previous = next((item for item in patches if item["path"] == row["path"]), None)
+    if previous is None:
+        patches.append(row)
+        return
+    require(previous["after_sha256"] == row["before_sha256"],
+            "Patch chain differs")
+    previous["after_sha256"] = row["after_sha256"]
 
 
 def apply_mutation_definitions(files):
@@ -256,30 +271,105 @@ def patch_sources(files):
     patch("integration/pulse_profiles.py", lambda s: patch_pulse_profile(s, replace_once))
     patch("integration/project_profiles.py", lambda s: patch_project(s, replace_once))
     # The existing native command invocation and strict project guard stay intact.
-    patch("tools/run_spark_suite.py", lambda s: replace_once(replace_once(replace_once(replace_once(replace_once(replace_once(s,
-          "config.setdefault('run_constraints',{})['native_cli_execution']=True",
-          "config.setdefault('run_constraints',{})['native_cli_execution']=False"),
-          "source=fingerprint(manifest['repository_path'])\n"
-          "    if source['digest']!=manifest.get('source_tree_digest'):\n"
-          "        raise Blocked('TADX working tree changed since capture; rerun -CaptureCli before qualification')",
-          "raise Blocked('G9 copied source provenance requires independent G0 qualification')"),
-          "def main(argv=None):\n",
-          "def main(argv=None):\n    raise RuntimeError('G9 preparation is blocked; see preparation.json. No live dispatch is qualified.')\n"),
-          "    base_config['model_override']=requested_model\n",
-          "    if requested_model != 'gpt-6-luna' or requested_effort != 'medium':\n"
-          "        raise Blocked('G9 requires the reviewed Luna medium runtime configuration')\n"
-          "    base_config['model_override']=requested_model\n"),
-          "    base_config=load(ROOT/'runner.local.json')\n",
-          "    base_config=load(ROOT/'runner.local.json')\n"
-          "    prepared=load(ROOT.parent/'preparation.json')\n"
-          "    if file_sha(ROOT/'runner.local.json')!=prepared.get('runner_config_sha256'):\n"
-          "        raise Blocked('Prepared runner configuration changed after qualification')\n"),
-          "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),",
-          "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),\n"
-          "        'runner_config_sha256':file_sha(ROOT/'runner.local.json'),"))
+    def launcher(source):
+        source = replace_once(source,
+            "config.setdefault('run_constraints',{})['native_cli_execution']=True",
+            "config.setdefault('run_constraints',{})['native_cli_execution']=bool("
+            "config.get('run_constraints',{}).get('g9_authorization'))")
+        source = replace_once(source,
+            "source=fingerprint(manifest['repository_path'])\n"
+            "    if source['digest']!=manifest.get('source_tree_digest'):\n"
+            "        raise Blocked('TADX working tree changed since capture; rerun -CaptureCli before qualification')",
+            "prepared=load(root.parent/'preparation.json')\n"
+            "    expected_manifest=(root.parent/'candidate/capture/manifest.json').resolve()\n"
+            "    if (manifest_path.resolve()!=expected_manifest\n"
+            "            or file_sha(manifest_path)!=prepared.get('snapshot_files',{}).get('candidate/capture/manifest.json')\n"
+            "            or not prepared.get('capture_manifest_sha256')):\n"
+            "        raise Blocked('Active captured CLI manifest differs from qualified capture')\n"
+            "    if (manifest.get('source_commit') != config.get('run_constraints',{}).get('g9_accepted_gate_sha')\n"
+            "            or manifest.get('source_tree_digest') != config.get('run_constraints',{}).get('g9_source_tree_sha')):\n"
+            "        raise Blocked('Copied CLI source differs from accepted G0-G8 candidate')")
+        source = replace_once(source,
+            "    args=parser.parse_args(argv)\n",
+            "    parser.add_argument('--g9-authorization',type=Path)\n"
+            "    parser.add_argument('--g9-authorization-sha256')\n"
+            "    args=parser.parse_args(argv)\n"
+            "    g9_record=None\n"
+            "    if not args.plan:\n"
+            "        if (args.check or args.resume or args.category or args.tag\n"
+            "                or args.skip_windows_installer or args.skip_installers or args.settings\n"
+            "                or args.model or args.reasoning_effort or args.concurrency is not None\n"
+            "                or args.fail_after_command is not None or args.qualification_run or not args.local):\n"
+            "            raise Blocked('G9 authorization permits only the selected local model plan')\n"
+            "        from integration.g9_activation import verify\n"
+            "        try:\n"
+            "            g9_record=verify(args.g9_authorization,args.g9_authorization_sha256,ROOT.parent,check_snapshot=True,check_launch_inputs=True)\n"
+            "        except (ValueError,OSError,TypeError,KeyError) as error:\n"
+            "            raise Blocked(str(error)) from None\n"
+            "        if (g9_record['purpose']=='full_catalog' and (not args.all or args.case)\n"
+            "                or g9_record['purpose']=='windows_qualification'\n"
+            "                   and (args.all or args.case!=g9_record['selected_ids'])):\n"
+            "            raise Blocked('Selected cases differ from operator-authorized G9 purpose')\n")
+        source = replace_once(source,
+            "    readiness=build_report(run_dirs=args.qualification_run)\n",
+            "    if not args.plan and (len(entries)!=len(g9_record['selected_ids'])\n"
+            "            or set(entry['id'] for entry in entries)!=set(g9_record['selected_ids'])):\n"
+            "        raise Blocked('Selected cases differ from operator-authorized G9 plan')\n"
+            "    readiness=build_report(run_dirs=args.qualification_run)\n")
+        source = replace_once(source,
+            "    external_ids.update(unavailable_platform_ids(entries))\n"
+            "    external_ids.update(KNOWN_WINDOWS_EXTERNAL_IDS-set(supported))\n",
+            "    hosted=set(g9_record['selected_ids']) & KNOWN_WINDOWS_EXTERNAL_IDS\n"
+            "    if not hosted <= supported:\n"
+            "        raise Blocked('Hosted Windows profile binding is missing')\n"
+            "    external_ids.difference_update(hosted)\n"
+            "    external_ids.update(unavailable_platform_ids([entry for entry in entries\n"
+            "        if entry['id'] not in hosted]))\n"
+            "    external_ids.update(KNOWN_WINDOWS_EXTERNAL_IDS-set(supported))\n")
+        source = replace_once(source,
+            "    base_config=load(ROOT/'runner.local.json')\n",
+            "    base_config=load(ROOT/'runner.local.json')\n"
+            "    prepared=load(ROOT.parent/'preparation.json')\n"
+            "    if file_sha(ROOT/'runner.local.json')!=prepared.get('runner_config_sha256'):\n"
+            "        raise Blocked('Prepared runner configuration changed after qualification')\n"
+            "    base_config.setdefault('run_constraints',{}).update({\n"
+            "        'g9_authorization':{'path':str(args.g9_authorization.resolve()),\n"
+            "                            'sha256':args.g9_authorization_sha256},\n"
+            "        'g9_accepted_gate_sha':g9_record['source_revision'],\n"
+            "        'g9_source_tree_sha':g9_record['source_tree_sha256'],\n"
+            "        'g9_windows_installer_version':g9_record['windows_fixture_version']})\n")
+        source = replace_once(source,
+            "    base_config['model_override']=requested_model\n",
+            "    if requested_model != 'gpt-6-luna' or requested_effort != 'medium':\n"
+            "        raise Blocked('G9 requires the reviewed Luna medium runtime configuration')\n"
+            "    base_config['model_override']=requested_model\n")
+        source = replace_once(source,
+            "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),",
+            "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),\n"
+            "        'runner_config_sha256':file_sha(ROOT/'runner.local.json'),\n"
+            "        'g9_authorization_sha256':args.g9_authorization_sha256,")
+        return source
+    patch("tools/run_spark_suite.py", launcher)
     path = "integration/docker_local_bridge.py"
 
     def bridge(source):
+        source = replace_once(source, "def image_for(m):\n",
+            "def image_for(m, accepted=None):\n")
+        source = replace_once(source,
+            "    # A strict production manifest always supplies an existing binary path.\n",
+            "    if accepted is not None:\n"
+            "        if not re.fullmatch(r'sha256:[0-9a-f]{64}',accepted):\n"
+            "            raise Blocked('Accepted worker image ID is invalid')\n"
+            "        existing=docker('image','inspect',tag,check=False)\n"
+            "        if existing.returncode:\n"
+            "            raise Blocked('Accepted worker image is absent; dispatch cannot build it')\n"
+            "        details=json.loads(existing.stdout)[0]\n"
+            "        if details.get('Id')!=accepted:\n"
+            "            raise Blocked('Worker image tag differs from accepted immutable ID')\n"
+            "        return accepted\n"
+            "    # A strict production manifest always supplies an existing binary path.\n")
+        source = replace_once(source, "m=manifest(req); image=image_for(m)",
+            "m=manifest(req); image=image_for(m,req.get('_g9_accepted_image'))")
         source = replace_once(source,
             "    from integration import release_profiles,installer_profiles\n",
             "    if req['exercise']['id'] in ('V-installer-windows-fresh', 'V-installer-windows-idempotent',\n"
@@ -306,9 +396,28 @@ def patch_sources(files):
                               "    if req['exercise']['id'] in ('P-project-list', 'P-project-inspect'):\n"
                               "        from integration import g9_project_read\n"
                               "        return g9_project_read\n")
-        source = replace_once(source, "if __name__=='__main__':\n",
-                              "if __name__=='__main__':\n"
-                              "    raise SystemExit('G9 bridge dispatch is blocked; see preparation.json')\n")
+        source = replace_once(source, "    method,request,response=sys.argv[1:]\n"
+            "    try: result=dispatch(method,load(request))\n",
+            "    method,request,response=sys.argv[1:]\n"
+            "    try:\n"
+            "        req=load(request)\n"
+            "        binding=req.get('run_constraints',{}).get('g9_authorization')\n"
+            "        if not isinstance(binding,dict) or set(binding)!={'path','sha256'}:\n"
+            "            raise Blocked('G9 operator authorization is absent')\n"
+            "        from integration.g9_activation import verify\n"
+            "        accepted=verify(binding['path'],binding['sha256'],ROOT.parent)\n"
+            "        if req.get('exercise',{}).get('id') not in accepted['selected_ids']:\n"
+            "            raise Blocked('G9 case differs from authorized plan')\n"
+            "        if (req.get('frozen_cli',{}).get('source_commit')!=accepted['source_revision']\n"
+            "                or req.get('frozen_cli',{}).get('binaries',{}).get('linux',{}).get('sha256')\n"
+            "                   !=accepted['builds']['linux/amd64']\n"
+            "                or req.get('runtime_model')!='gpt-6-luna'\n"
+            "                or req.get('runtime_reasoning_effort')!='medium'\n"
+            "                or req.get('run_constraints',{}).get('g9_accepted_gate_sha')\n"
+            "                   !=accepted['source_revision']):\n"
+            "            raise Blocked('G9 request differs from accepted candidate or runtime')\n"
+            "        req['_g9_accepted_image']=accepted['image']['id']\n"
+            "        result=dispatch(method,req)\n")
         source = replace_once(source,
             "broker_files=(*broker_files,'fault_broker.cjs','credential_pty.py')",
             "broker_files=(*broker_files,'fault_broker.cjs','credential_pty.py','g9_project_read_broker.cjs')")
@@ -527,7 +636,7 @@ def validate_source_closure(files, root):
                 require("integration/" + target in files,
                         "Copied runtime has an unlocked broker import: " + name + " -> " + target)
     bridge = files["integration/docker_local_bridge.py"].decode("utf-8")
-    image_section = bridge.split("def image_for(m):", 1)[1].split("def runtime_check(", 1)[0]
+    image_section = bridge.split("def image_for(m, accepted=None):", 1)[1].split("def runtime_check(", 1)[0]
     for target in re.findall(r"['\"]([^'\"]+\.(?:cjs|py)|Dockerfile\.local)['\"]", image_section):
         require("integration/" + target in files, "Copied worker image input is unlocked")
 
@@ -585,8 +694,9 @@ def validate_candidate(candidate, catalog, builds, required=None):
             "Candidate lacks a required executable action")
 
 
-def isolated_runner_config(blob):
-    """Copy a private runner configuration with one explicit G9 model request."""
+def isolated_runner_config(blob, authority):
+    """Bind reviewed site authority and one model request before hashing."""
+    validate_authority(authority)
     config = parse(blob)
     allowed_root = {"bridge_argv", "deployment", "deployment_lock", "fixture_asset_digest",
                     "fixture_version", "frozen_cli_manifest", "frozen_suite_manifest",
@@ -631,7 +741,12 @@ def isolated_runner_config(blob):
             require(not ("/" not in value and "\\" not in value
                          and re.fullmatch(r"[A-Za-z0-9_-]{32,}", value)),
                     "Runner configuration contains an opaque value")
+    constraints = config.setdefault("run_constraints", {})
+    require(isinstance(constraints, dict)
+            and "g9_saved_consent_authority" not in constraints,
+            "Private runner authority must be bound by the preparer")
     no_secret_values(config)
+    constraints["g9_saved_consent_authority"] = authority
     config["runtime"]["model"] = "gpt-6-luna"
     return encode(config)
 
@@ -832,6 +947,12 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
         blob = read(root / name)
         require(sha(blob) == expected, "Harness source differs from reviewed lock")
         files[name] = blob
+    auxiliary = {}
+    for name, expected in AUXILIARY_SOURCE.items():
+        require(name not in files, "Auxiliary input unexpectedly entered the 373-file lock")
+        blob = read(root / name)
+        require(sha(blob) == expected, "Required launcher policy input differs")
+        auxiliary[name] = blob
     for case in PROJECT_CASES:
         for folder in ("suite/exercises", "fixtures/profiles"):
             require(parse(files[f"{folder}/{case}.json"]).get("id") == case, "Project definition ID differs")
@@ -846,9 +967,14 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
     require(sha(read(consent_evidence_path)) == authority["consent_evidence_sha256"],
             "Saved-consent evidence differs from authority input")
     patches = apply_mutation_runtime(files)
-    patches.extend(patch_sources(files))
+    for row in patch_sources(files):
+        append_patch(patches, row)
+    for name, blob in auxiliary.items():
+        files[name] = blob
+        patches.append({"path": name, "before_sha256": None,
+                        "after_sha256": sha(blob)})
     runner_input = read(root / "runner.local.json")
-    runner_output = isolated_runner_config(runner_input)
+    runner_output = isolated_runner_config(runner_input, authority)
     require("runner.local.json" not in files, "Runner config must remain outside the 373-file source lock")
     files["runner.local.json"] = runner_output
     patches.append({"path": "runner.local.json", "before_sha256": None,
@@ -863,6 +989,7 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
         patches.extend(release_patches)
     files["integration/g9_consent.py"] = read(HERE / "consent.py")
     files["integration/g9_runtime_effective.py"] = read(HERE / "runtime_effective.py")
+    files["integration/g9_activation.py"] = read(HERE / "activation.py")
     files["integration/credential_broker.cjs"] = read(
         HERE / "source/integration/credential_broker.cjs")
     files["integration/g9_project_read.py"] = read(HERE / "project_read.py")
@@ -898,6 +1025,7 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
         "requested_reasoning_effort": "medium", "actual_model_metadata": None,
         "runner_config_input_sha256": sha(runner_input),
         "runner_config_sha256": sha(runner_output),
+        "runner_authority_sha256": sha(encode(authority)),
         "source_lock_sha256": sha(encode(lock)), "source_files": lock["files"],
         "patches": patches, "prepared_files": {name: sha(blob) for name, blob in files.items()},
         "snapshot_files": {name: sha(blob) for name, blob in output_files.items()},

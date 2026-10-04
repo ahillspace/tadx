@@ -19,6 +19,11 @@ class Refused(ValueError):
     """The requested case, source, or hosted evidence is outside fixed scope."""
 
 
+def expected_version(source_sha):
+    """Bind the synthetic installer release name to the accepted Git commit."""
+    return "1.0.0-g9.git" + git_sha(source_sha, "candidate source commit")[:12]
+
+
 def hex64(value, label):
     if not isinstance(value, str) or not HEX64.fullmatch(value):
         raise Refused("Invalid " + label)

@@ -40,7 +40,7 @@ class CredentialTransportIntegrationTests(unittest.TestCase):
         self.assertNotIn("fs.readFileSync('/cli-state/credentials.json'", broker)
         self.assertNotIn("fs.writeFileSync('/cli-state/credentials.json'", bridge)
         self.assertNotIn("fs.readFileSync('/cli-state/credentials.json'", bridge)
-        image = bridge.split("def image_for(m):", 1)[1].split("def runtime_check(", 1)[0]
+        image = bridge.split("def image_for(m, accepted=None):", 1)[1].split("def runtime_check(", 1)[0]
         self.assertIn("'credential_broker.cjs'", image)
         self.assertTrue((HERE / "source/integration/credential_broker.cjs").is_file())
 

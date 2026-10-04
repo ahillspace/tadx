@@ -21,6 +21,7 @@ import zipfile
 
 from windows_gate import (Refused, baseline_issues, command_request,
                           observed_issues, setup_request, stop_request)
+from windows_build import TOOLCHAIN, build_candidate
 
 SETUP_PATH = Path(".g9-windows-installer-setup.json")
 COMMAND_PATH = Path(".g9-windows-installer-command.json")
@@ -164,40 +165,45 @@ def sanitized_output(raw, fixture):
 
 def build_assets(body, root):
     source = root / "candidate-source"
-    checkout = command("git", "worktree", "add", "--detach", str(source),
+    cloned = command("git", "clone", "--local", "--no-hardlinks", "--no-checkout",
+                     ".", str(source), timeout=120)
+    if cloned.returncode:
+        raise Refused("Separate candidate source clone was not established")
+    checkout = command("git", "-C", str(source), "checkout", "--detach",
                        body["source_sha"], timeout=120)
     if checkout.returncode or git_value("-C", str(source), "rev-parse", "HEAD") != body["source_sha"]:
-        raise Refused("Exact candidate source worktree was not established")
+        raise Refused("Exact candidate commit was not checked out")
     binary = root / "candidate.exe"
-    ldflags = ("-s -w -buildid= -X "
-               "github.com/ahillspace/tadx/internal/version.BuildVersion=v" + body["fixture_version"])
-    build_env = child_process_environment()
-    build_env.update(CGO_ENABLED="0", GOOS="windows", GOARCH="amd64",
-                     GOTOOLCHAIN="local")
-    result = command("go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",
-                     "-ldflags=" + ldflags, "-o", str(binary), "./cmd/tadx",
-                     timeout=600, cwd=source, env=build_env)
-    if result.returncode or sha(binary) != body["binary_sha256"]:
+    built_sha = build_candidate(source, binary, body["source_sha"],
+                                body["fixture_version"], TOOLCHAIN,
+                                environment=child_process_environment())
+    if built_sha != body["binary_sha256"]:
         raise Refused("Final candidate Windows build differs from independently pinned binary")
     assets = root / "assets"
     assets.mkdir()
     name = f"tadx_{body['fixture_version']}_windows_amd64.zip"
     archive = assets / name
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
-        for source, label in ((binary, "tadx.exe"), (Path("LICENSE"), "LICENSE"),
-                              (Path("scripts/install.ps1"), "install.ps1"),
-                              (Path("scripts/install.sh"), "install.sh")):
-            output.write(source, label)
+        for asset, label in ((binary, "tadx.exe"), (source / "LICENSE", "LICENSE"),
+                             (source / "scripts/install.ps1", "install.ps1"),
+                             (source / "scripts/install.sh", "install.sh")):
+            output.write(asset, label)
     (assets / "checksums.txt").write_text(f"{sha(archive)}  {name}\n", encoding="ascii")
     return binary, assets
 
 
-def remove_candidate_worktree(root):
+def remove_candidate_checkout(root):
     source = root / "candidate-source"
     if not source.exists() and not source.is_symlink():
         return True
-    return command("git", "worktree", "remove", "--force", str(source),
-                   timeout=60).returncode == 0
+    if (root.is_symlink() or not root.is_dir() or source.is_symlink()
+            or not source.is_dir() or source.resolve().parent != root.resolve()):
+        return False
+    try:
+        shutil.rmtree(source)
+    except OSError:
+        return False
+    return not source.exists() and not source.is_symlink()
 
 
 def child_environment(root, assets, version, fail_archive):
@@ -294,7 +300,7 @@ def prepare_main():
         write_json(Path(os.environ["G9_BASELINE_PATH"]), baseline)
     except BaseException as failure:
         restored = False
-        worktree_removed = False
+        checkout_removed = False
         try:
             restore_user_path(original_path)
             restored = user_path() == original_path
@@ -302,16 +308,16 @@ def prepare_main():
             restored = False
         if restored:
             try:
-                worktree_removed = remove_candidate_worktree(root)
+                checkout_removed = remove_candidate_checkout(root)
             except (OSError, Refused, subprocess.TimeoutExpired):
-                worktree_removed = False
-            if worktree_removed and root.is_dir() and not root.is_symlink():
+                checkout_removed = False
+            if checkout_removed and root.is_dir() and not root.is_symlink():
                 try:
                     shutil.rmtree(root)
                 except OSError:
                     pass
         retained = root.exists() or root.is_symlink()
-        cleanup_ok = restored and worktree_removed and not retained
+        cleanup_ok = restored and checkout_removed and not retained
         write_json(Path(os.environ["G9_SETUP_FAILURE_PATH"]), {
             "protocol": "tadx-windows-installer-setup-failure/1",
             "case": body["case"], "nonce": body["nonce"],
@@ -320,7 +326,7 @@ def prepare_main():
             "run_id": int(os.environ["GITHUB_RUN_ID"]),
             "failure_type": type(failure).__name__,
             "user_path_restored": restored,
-            "worktree_removed": worktree_removed,
+            "candidate_checkout_removed": checkout_removed,
             "fixture_retained": retained,
             "cleanup_ok": cleanup_ok})
         raise Refused("Hosted setup failed; bounded native cleanup evidence was recorded") from None
@@ -430,7 +436,7 @@ def execute_main():
             result["cleanup_ok"] = user_path() == tuple(original_path) if original_path is not None else user_path() is None
         except OSError:
             result["cleanup_ok"] = False
-        if not remove_candidate_worktree(root):
+        if not remove_candidate_checkout(root):
             result["cleanup_ok"] = False
         if root.is_dir() and not root.is_symlink():
             try:

@@ -20,7 +20,7 @@ The Guidance root must contain exactly `tadx` and `tadx-pulse`, including each p
 Do not supply credential files or private run evidence.
 
 ```text
-python -B scripts/refactor/capture/capture.py --source accepted/source-repo --output ignored/new-capture --candidate accepted/candidate.json --catalog accepted/capabilities.json --build windows/amd64=accepted/windows/tadx.exe --build linux/amd64=accepted/linux/tadx --guidance accepted/installed-skills --help accepted/help
+python -B scripts/refactor/capture/capture.py --source accepted/source-repo --output ignored/new-capture --candidate accepted/candidate.json --catalog accepted/capabilities.json --build windows/amd64=accepted/windows/tadx.exe --build linux/amd64=accepted/linux/tadx --guidance accepted/installed-skills --help-dir accepted/help
 ```
 
 The output `manifest.json` has the shape required by `scripts/refactor/harness/prepare.py`.

@@ -14,6 +14,7 @@ SOURCE = Path(__file__).resolve().parents[1] / "source/integration"
 WORKER = Path(__file__).resolve().parents[3] / "g9"
 SHA40 = "a" * 40
 SHA64 = "b" * 64
+VERSION = "1.0.0-g9.git" + SHA40[:12]
 
 
 def module(name, path):
@@ -59,13 +60,16 @@ class WindowsProfileTest(unittest.TestCase):
             frozen = {"source_commit": SHA40, "root": str(root),
                       "binaries": {"windows": {"sha256": SHA64}}}
             req = {"exercise": {"id": "V-installer-windows-fresh"},
-                   "run_constraints": {"g9_windows_installer_version": "0.1.3-g9"}}
+                   "run_constraints": {"g9_windows_installer_version": VERSION}}
             with self.assertRaises(gate.Refused):
                 profile.preflight(req, frozen)
             self.assertFalse(relay.prepare_hosted.called)
             req["run_constraints"]["g9_accepted_gate_sha"] = SHA40
             self.assertIn("platform:windows", profile.preflight(req, frozen)[
                 "qualified_requirements"])
+            req["run_constraints"]["g9_windows_installer_version"] = "1.0.0-g9.git" + "0" * 12
+            with self.assertRaisesRegex(gate.Refused, "version differs"):
+                profile.preflight(req, frozen)
 
     def test_pre_task_baseline_binds_guard_and_missing_native_result_fails(self):
         gate, relay, common, profile = self.modules()
@@ -75,7 +79,7 @@ class WindowsProfileTest(unittest.TestCase):
             (source / "scripts").mkdir(parents=True)
             (source / "scripts/install.ps1").write_text("fixture", encoding="utf-8")
             setup = gate.setup_request("fresh", SHA40, "nonce_123456789",
-                                       version="0.1.3-g9", binary_sha256=SHA64,
+                                       version=VERSION, binary_sha256=SHA64,
                                        installer_sha256=profile.hashlib.sha256(b"fixture").hexdigest())
             before = {"binary_sha256": None, "completion_markers": 0,
                       "user_path_count": 0, "sentinel_sha256": "c" * 64,
@@ -87,7 +91,7 @@ class WindowsProfileTest(unittest.TestCase):
             req = {"exercise": {"id": "V-installer-windows-fresh"},
                    "private_case_dir": str(root), "case_id": "case-1",
                    "run_constraints": {"g9_accepted_gate_sha": SHA40,
-                                       "g9_windows_installer_version": "0.1.3-g9"}}
+                                       "g9_windows_installer_version": VERSION}}
             frozen = {"source_commit": SHA40, "root": str(source),
                       "binaries": {"windows": {"sha256": SHA64}}}
             prepared = profile.prepare(req, frozen, root)
@@ -129,7 +133,7 @@ class WindowsProfileTest(unittest.TestCase):
             (source / "scripts").mkdir(parents=True)
             (source / "scripts/install.ps1").write_text("fixture", encoding="utf-8")
             setup = gate.setup_request("fresh", SHA40, "nonce_123456789",
-                                       version="0.1.3-g9", binary_sha256=SHA64,
+                                       version=VERSION, binary_sha256=SHA64,
                                        installer_sha256=profile.hashlib.sha256(b"fixture").hexdigest())
             session = {"setup": setup, "setup_commit": "d" * 40,
                        "baseline_sha256": "e" * 64, "run_id": 17,
@@ -139,7 +143,7 @@ class WindowsProfileTest(unittest.TestCase):
             req = {"exercise": {"id": "V-installer-windows-fresh"},
                    "private_case_dir": str(root), "case_id": "case-1",
                    "run_constraints": {"g9_accepted_gate_sha": SHA40,
-                                       "g9_windows_installer_version": "0.1.3-g9"}}
+                                       "g9_windows_installer_version": VERSION}}
             frozen = {"source_commit": SHA40, "root": str(source),
                       "binaries": {"windows": {"sha256": SHA64}}}
             with self.assertRaisesRegex(RuntimeError, "synthetic fixture failure"):

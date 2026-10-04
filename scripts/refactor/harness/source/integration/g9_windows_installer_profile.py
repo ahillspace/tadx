@@ -48,6 +48,8 @@ def _identity(req, frozen):
     if source != constraints.get("g9_accepted_gate_sha"):
         raise gate.Refused("Accepted candidate gate revision is not pinned")
     version = constraints.get("g9_windows_installer_version")
+    if version != gate.expected_version(source):
+        raise gate.Refused("Hosted installer version differs from accepted source")
     gate.argv_for(case, version)
     binary = frozen["binaries"]["windows"]["sha256"]
     installer = Path(frozen["root"]) / "scripts" / "install.ps1"

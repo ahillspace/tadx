@@ -237,6 +237,7 @@ def prepare_hosted(*, case, source_sha, version, binary_sha256, installer_sha256
             raise Refused("Disposable Windows branch already exists")
         checked(["git", "switch", "--detach", source_sha], cwd=clone)
         for path in ("scripts/g9/windows_worker.py", "scripts/g9/windows_gate.py",
+                     "scripts/g9/windows_build.py",
                      "scripts/g9/gh_fixture.py", "scripts/g9/installer_wrapper.ps1",
                      ".github/workflows/g9-windows-installer.yml"):
             if not (clone / path).is_file():

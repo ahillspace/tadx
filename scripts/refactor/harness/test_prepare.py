@@ -1,5 +1,6 @@
 """Hermetic preparer tests. No models, subprocesses, credentials, or network."""
 
+import ast
 import copy
 import json
 from pathlib import Path
@@ -63,6 +64,25 @@ class ConsentTests(unittest.TestCase):
                 consent.validate_authority(item)
 
 
+class PatchProvenanceTests(unittest.TestCase):
+    def test_sequential_patch_retains_original_and_final_hashes(self):
+        records = [{"path": "integration/docker_local_bridge.py", "before_sha256": "a", "after_sha256": "b"}]
+        prep.append_patch(records, {"path": "integration/docker_local_bridge.py",
+                                    "before_sha256": "b", "after_sha256": "c"})
+        self.assertEqual(records, [{"path": "integration/docker_local_bridge.py",
+                                    "before_sha256": "a", "after_sha256": "c"}])
+        prep.append_patch(records, {"path": "integration/other.py",
+                                    "before_sha256": "d", "after_sha256": "e"})
+        self.assertEqual(len(records), 2)
+
+    def test_sequential_patch_rejects_broken_chain(self):
+        records = [{"path": "integration/docker_local_bridge.py", "before_sha256": "a", "after_sha256": "b"}]
+        with self.assertRaisesRegex(ValueError, "Patch chain differs"):
+            prep.append_patch(records, {"path": "integration/docker_local_bridge.py",
+                                        "before_sha256": "wrong", "after_sha256": "c"})
+        self.assertEqual(records[0]["after_sha256"], "b")
+
+
 class PrepareTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -71,6 +91,14 @@ class PrepareTests(unittest.TestCase):
         self.harness = self.root / "external"
         self.harness.mkdir()
         self.output = self.root / "new-preparation"
+        auxiliary = {"bench/task-scope-policy.json": b"{\"task_only_exercise_digests\":{}}\n",
+                     "bench/operator-task-scopes.json": b"{}\n"}
+        for name, blob in auxiliary.items():
+            self.put(self.harness / name, blob)
+        auxiliary_patch = patch.object(prep, "AUXILIARY_SOURCE",
+                                       {name: prep.sha(blob) for name, blob in auxiliary.items()})
+        auxiliary_patch.start()
+        self.addCleanup(auxiliary_patch.stop)
         self.files = {
             "integration/local_broker.cjs": (
                 "const projectBroker = require('./project_broker.cjs');\n"
@@ -97,6 +125,10 @@ class PrepareTests(unittest.TestCase):
                 "    if source['digest']!=manifest.get('source_tree_digest'):\n"
                 "        raise Blocked('TADX working tree changed since capture; rerun -CaptureCli before qualification')\n"
                 "def main(argv=None):\n"
+                "    args=parser.parse_args(argv)\n"
+                "    readiness=build_report(run_dirs=args.qualification_run)\n"
+                "    external_ids.update(unavailable_platform_ids(entries))\n"
+                "    external_ids.update(KNOWN_WINDOWS_EXTERNAL_IDS-set(supported))\n"
                 "    base_config=load(ROOT/'runner.local.json')\n"
                 "    base_config['model_override']=requested_model\n"
                 "    meta={\n"
@@ -107,6 +139,8 @@ class PrepareTests(unittest.TestCase):
                 "def profile(req):\n    from integration import release_profiles,installer_profiles\n    return None\n"
                 "def image_for(m):\n    broker_files=('Dockerfile.local','local_broker.cjs','project_broker.cjs')\n"
                 "    broker_files=(*broker_files,'fault_broker.cjs','credential_pty.py')\n"
+                "    # A strict production manifest always supplies an existing binary path.\n"
+                "def preflight(req):\n    m=manifest(req); image=image_for(m)\n"
                 "def runtime_check(image):\n    version='codex-cli 0.154.0'\n    return version\n"
                 "def _seed_site_mutation_consent(config, enabled):\n    return config\n\n\n"
                 "def prepare(req):\n"
@@ -135,7 +169,10 @@ class PrepareTests(unittest.TestCase):
                 "    evidence['audit_capture']=s.get('audit_capture', {'status':'not_recorded'})\n"
                 "def split_evidence(req):\n"
                 "    evidence['audit_capture']=s['audit_capture']\n"
-                "if __name__=='__main__':\n    pass\n"),
+                "if __name__=='__main__':\n"
+                "    method,request,response=sys.argv[1:]\n"
+                "    try: result=dispatch(method,load(request))\n"
+                "    except ValueError: pass\n"),
         }
         self.files["integration/Dockerfile.local"] = (
             "FROM synthetic-worker:locked\nRUN npm install --global @openai/codex@0.154.0\n")
@@ -295,8 +332,9 @@ class PrepareTests(unittest.TestCase):
     def test_runner_config_rebinds_model_and_rejects_secret_or_wrong_effort(self):
         original = {"runtime": {"kind": "bridge", "provider": "openai",
                                 "model": "gpt-5.6-luna", "reasoning_effort": "medium"}}
-        prepared = prep.parse(prep.isolated_runner_config(prep.encode(original)))
+        prepared = prep.parse(prep.isolated_runner_config(prep.encode(original), authority()))
         self.assertEqual(prepared["runtime"]["model"], "gpt-6-luna")
+        self.assertEqual(prepared["run_constraints"]["g9_saved_consent_authority"], authority())
         self.assertEqual(original["runtime"]["model"], "gpt-5.6-luna")
         for changed in ({"runtime": {**original["runtime"], "reasoning_effort": "low"}},
                         {"runtime": {**original["runtime"], "provider": "other"}},
@@ -305,7 +343,10 @@ class PrepareTests(unittest.TestCase):
                         {**original, "fixture_version": "Bearer synthetic-private-value"},
                         {**original, "secret_env_names": ["synthetic-private-value"]}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
-                prep.isolated_runner_config(prep.encode(changed))
+                prep.isolated_runner_config(prep.encode(changed), authority())
+        with self.assertRaisesRegex(ValueError, "bound by the preparer"):
+            prep.isolated_runner_config(prep.encode({**original,
+                "run_constraints": {"g9_saved_consent_authority": authority()}}), authority())
 
     def test_snapshot_is_blocked_exact_and_excludes_unlisted_secrets_and_history(self):
         self.put(self.harness / "config/secret-bindings.json", b"MUST NOT COPY")
@@ -343,6 +384,11 @@ class PrepareTests(unittest.TestCase):
                          ["runtime"]["model"], "gpt-6-luna")
         self.assertEqual(manifest["runner_config_sha256"],
                          prep.sha((self.output / "source/runner.local.json").read_bytes()))
+        runner = prep.parse((self.output / "source/runner.local.json").read_bytes())
+        self.assertEqual(runner["run_constraints"]["g9_saved_consent_authority"],
+                         prep.parse(self.authority.read_bytes()))
+        self.assertEqual(manifest["runner_authority_sha256"],
+                         prep.sha(prep.encode(runner["run_constraints"]["g9_saved_consent_authority"])))
         self.assertEqual((self.output / "candidate/builds/linux/amd64/tadx").read_bytes(), self.binary.read_bytes())
         self.assertEqual((self.output / "candidate/builds/windows/amd64/tadx.exe").read_bytes(),
                          self.windows_binary.read_bytes())
@@ -357,16 +403,21 @@ class PrepareTests(unittest.TestCase):
         self.assertNotIn("fixture-site", (self.output / "preparation.json").read_text())
         for name, digest in manifest["prepared_files"].items():
             self.assertEqual(prep.sha((self.output / "source" / name).read_bytes()), digest)
+        for name in ("tools/run_spark_suite.py", "integration/docker_local_bridge.py",
+                     "integration/g9_activation.py"):
+            ast.parse((self.output / "source" / name).read_bytes(), filename=name)
         for name, digest in self.lock["files"].items():
             self.assertEqual(prep.sha((self.harness / name).read_bytes()), digest)
         source = (self.output / "source/tools/run_spark_suite.py").read_text()
+        ast.parse(source)
         self.assertIn("requested_model != 'gpt-6-luna' or requested_effort != 'medium'", source)
-        namespace = {"Blocked": RuntimeError}
-        exec(compile(source, "synthetic-launcher", "exec"), namespace)
-        with self.assertRaisesRegex(RuntimeError, "blocked"):
-            namespace["main"]()
-        with self.assertRaisesRegex(RuntimeError, "G0 qualification"):
-            namespace["local_config"]({})
+        self.assertIn("g9_record=verify(args.g9_authorization,args.g9_authorization_sha256,ROOT.parent,check_snapshot=True,check_launch_inputs=True)", source)
+        self.assertIn("expected_manifest=(root.parent/'candidate/capture/manifest.json').resolve()", source)
+        self.assertIn("file_sha(manifest_path)!=prepared.get('snapshot_files',{}).get('candidate/capture/manifest.json')", source)
+        self.assertIn("Copied CLI source differs from accepted G0-G8 candidate", source)
+        self.assertIn("'native_cli_execution']=bool(", source)
+        self.assertEqual((self.output / "source/integration/g9_activation.py").read_bytes(),
+                         (Path(__file__).resolve().parent / "activation.py").read_bytes())
         broker = (self.output / "source/integration/local_broker.cjs").read_text()
         self.assertIn("execution_mode==='disposable_native')return false", broker)
         self.assertIn("return projectBroker.allowed(state)", broker)
@@ -398,8 +449,8 @@ class PrepareTests(unittest.TestCase):
         bridge = (self.output / "source/integration/docker_local_bridge.py").read_text()
         compile(bridge, "synthetic-bridge", "exec")
         self.assertIn("g9_saved_consent_authority", bridge)
-        with self.assertRaisesRegex(SystemExit, "blocked"):
-            exec(compile(bridge, "synthetic-bridge", "exec"), {"__name__": "__main__"})
+        self.assertIn("accepted=verify(binding['path'],binding['sha256'],ROOT.parent)", bridge)
+        self.assertIn("req['_g9_accepted_image']=accepted['image']['id']", bridge)
 
     def test_wrong_source_hash_fails_before_output(self):
         self.put(self.harness / "integration/local_broker.cjs", b"different source")
@@ -409,7 +460,7 @@ class PrepareTests(unittest.TestCase):
 
     def test_matching_hash_with_wrong_or_duplicate_patch_anchor_still_rejected(self):
         path = "tools/run_spark_suite.py"
-        for content in ("def other(): pass", self.files[path] + "def main(argv=None):\n    pass\n"):
+        for content in ("def other(): pass", self.files[path] + "    args=parser.parse_args(argv)\n"):
             self.put(self.harness / path, content.encode())
             self.lock["files"][path] = prep.sha(content.encode())
             with self.assertRaisesRegex(ValueError, "anchor"):
@@ -426,6 +477,16 @@ class PrepareTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "anchor"):
                 self.run_prepare()
             self.assertFalse(self.output.exists())
+
+    def test_auxiliary_launcher_policy_is_independently_pinned(self):
+        for name in prep.AUXILIARY_SOURCE:
+            path = self.harness / name
+            original = path.read_bytes()
+            path.write_bytes(original + b"changed")
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "launcher policy input"):
+                self.run_prepare()
+            self.assertFalse(self.output.exists())
+            path.write_bytes(original)
 
     def test_changed_binary_catalog_or_consent_evidence_fails(self):
         for path in (self.binary, self.windows_binary, self.catalog, self.evidence):
@@ -492,7 +553,7 @@ class PrepareTests(unittest.TestCase):
         self.put(self.capture, original)
 
     def test_missing_or_changed_runtime_source_import_rejected(self):
-        bridge = (b"def image_for(m):\n    broker_files=('Dockerfile.local','missing_broker.cjs')\n"
+        bridge = (b"def image_for(m, accepted=None):\n    broker_files=('Dockerfile.local','missing_broker.cjs')\n"
                   b"def runtime_check(image):\n    pass\n")
         files = {"integration/docker_local_bridge.py": bridge,
                  "integration/Dockerfile.local": b"FROM fixed\n",
@@ -504,7 +565,7 @@ class PrepareTests(unittest.TestCase):
             prep.validate_source_closure(files, self.harness)
         self.put(self.harness / "bench/missing.py", b"pass\n")
         files["integration/docker_local_bridge.py"] = (b"from bench.missing import thing\n"
-                                                      b"def image_for(m):\n    broker_files=('Dockerfile.local',)\n"
+                                                      b"def image_for(m, accepted=None):\n    broker_files=('Dockerfile.local',)\n"
                                                       b"def runtime_check(image):\n    pass\n")
         with self.assertRaisesRegex(ValueError, "Python import"):
             prep.validate_source_closure(files, self.harness)

@@ -81,7 +81,8 @@ class WindowsPreparerTest(unittest.TestCase):
         bridge = files["integration/docker_local_bridge.py"]
         self.assertIn(b"g9_windows_installer_watch import run_model", bridge)
         self.assertIn(b"g9_windows_installer_broker.cjs", bridge)
-        self.assertIn(b"G9 bridge dispatch is blocked", bridge)
+        self.assertIn(b"G9 operator authorization is absent", bridge)
+        self.assertIn(b"req['_g9_accepted_image']=accepted['image']['id']", bridge)
         compile(bridge, "integration/docker_local_bridge.py", "exec")
         for target, source in {"g9_consent.py": "consent.py",
                                "g9_project_read.py": "project_read.py",

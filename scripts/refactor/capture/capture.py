@@ -274,8 +274,9 @@ def capture(source, output, candidate_path, catalog_path, builds, guidance_root,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("source", "output", "candidate", "catalog", "guidance", "help"):
+    for name in ("source", "output", "candidate", "catalog", "guidance"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--help-dir", dest="help", type=Path, required=True)
     parser.add_argument("--build", action="append", required=True, metavar="PLATFORM=PATH")
     args = parser.parse_args(argv)
     try:

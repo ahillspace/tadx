@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import capture as cap
 import qualify
@@ -75,6 +76,26 @@ class CaptureTests(unittest.TestCase):
     def run_capture(self):
         return cap.capture(self.source, self.output, self.candidate, self.catalog,
                            self.builds, self.guidance, self.help, inspect=self.inspect)
+
+    def test_cli_help_and_required_help_directory(self):
+        script = Path(cap.__file__).resolve()
+        usage = subprocess.run([sys.executable, "-B", str(script), "--help"],
+                               capture_output=True, text=True, encoding="utf-8", check=False)
+        self.assertEqual(usage.returncode, 0, usage.stderr)
+        self.assertIn("--help-dir HELP", usage.stdout)
+
+        invocation = subprocess.run([
+            sys.executable, "-B", str(script), "--source", str(self.source),
+            "--output", str(self.output), "--candidate", str(self.candidate),
+            "--catalog", str(self.catalog), "--guidance", str(self.guidance),
+            "--help-dir", str(self.help),
+            "--build", "windows/amd64=" + str(self.builds["windows/amd64"]),
+            "--build", "linux/amd64=" + str(self.builds["linux/amd64"]),
+        ], capture_output=True, text=True, encoding="utf-8", check=False)
+        self.assertEqual(invocation.returncode, 1)
+        self.assertEqual(json.loads(invocation.stdout)["status"], "blocked")
+        self.assertNotIn("argparse", invocation.stderr)
+        self.assertFalse(self.output.exists())
 
     def test_copies_only_accepted_bytes_and_preparer_manifest_shape(self):
         result = self.run_capture()
@@ -172,6 +193,10 @@ class QualificationTests(unittest.TestCase):
             "test_snapshot_is_blocked_exact_and_excludes_unlisted_secrets_and_history")
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        auxiliary_patch = mock.patch.object(qualify, "AUXILIARY_SOURCE",
+                                           test_prepare.prep.AUXILIARY_SOURCE)
+        auxiliary_patch.start()
+        self.addCleanup(auxiliary_patch.stop)
         self.fixture.files["integration/Dockerfile.local"] = (
             "FROM synthetic-worker:locked\n"
             "RUN npm install --global @openai/codex@0.154.0\n"
@@ -188,6 +213,19 @@ class QualificationTests(unittest.TestCase):
             manifest["build_metadata"][system]["sha256"] = cap.sha(path.read_bytes())
         self.fixture.put(self.fixture.capture, cap.encode(manifest))
         self.fixture.run_prepare()
+
+    def test_default_qualifier_reads_current_124_source_lock(self):
+        expected = qualify.HERE.parent / "harness/source-lock-124.json"
+        original_read = qualify.read
+
+        def read_with_marker(path):
+            if path == expected:
+                raise LookupError("current source lock reached")
+            return original_read(path)
+
+        with mock.patch.object(qualify, "read", side_effect=read_with_marker):
+            with self.assertRaisesRegex(LookupError, "current source lock reached"):
+                qualify.qualify(self.fixture.output, self.fixture.candidate)
 
     def test_qualifies_copied_inputs_but_keeps_live_blocked(self):
         result = qualify.qualify(self.fixture.output, self.fixture.candidate,
@@ -210,25 +248,29 @@ class QualificationTests(unittest.TestCase):
             qualify.qualify(self.fixture.output, self.fixture.candidate,
                             lock=self.fixture.lock)
 
-    def test_mutated_broker_or_missing_dispatch_block_fails(self):
+    def test_mutated_broker_or_missing_authorization_guard_fails(self):
         broker = self.fixture.output / "source/integration/g9_project_read_broker.cjs"
+        original_broker = broker.read_bytes()
         broker.write_bytes(broker.read_bytes() + b"changed")
         with self.assertRaisesRegex(ValueError, "file set or bytes"):
             qualify.qualify(self.fixture.output, self.fixture.candidate,
                             lock=self.fixture.lock)
+        broker.write_bytes(original_broker)
         launcher = self.fixture.output / "source/tools/run_spark_suite.py"
         launcher.write_bytes(launcher.read_bytes().replace(
-            b"raise RuntimeError('G9 preparation is blocked; see preparation.json. No live dispatch is qualified.')",
-            b"return 0"))
+            b"g9_record=verify(args.g9_authorization,args.g9_authorization_sha256,ROOT.parent,check_snapshot=True,check_launch_inputs=True)",
+            b"g9_record={}"))
         record_path = self.fixture.output / "preparation.json"
         record = json.loads(record_path.read_text())
-        for name, path in (("source/integration/g9_project_read_broker.cjs", broker),
-                           ("source/tools/run_spark_suite.py", launcher)):
-            record["snapshot_files"][name] = cap.sha(path.read_bytes())
-            record["prepared_files"][name.removeprefix("source/")] = record["snapshot_files"][name]
+        name = "source/tools/run_spark_suite.py"
+        record["snapshot_files"][name] = cap.sha(launcher.read_bytes())
+        record["prepared_files"][name.removeprefix("source/")] = record["snapshot_files"][name]
+        for row in record["patches"]:
+            if row["path"] == name.removeprefix("source/"):
+                row["after_sha256"] = record["snapshot_files"][name]
         record_path.write_bytes(cap.encode(record))
-        # This checks that complete byte accounting alone cannot qualify changed image inputs.
-        with self.assertRaisesRegex(ValueError, "Patch provenance|Live dispatch"):
+        # Complete byte accounting still cannot qualify a removed admission check.
+        with self.assertRaisesRegex(ValueError, "Operator-bound G9 dispatch guard"):
             qualify.qualify(self.fixture.output, self.fixture.candidate,
                             lock=self.fixture.lock)
 

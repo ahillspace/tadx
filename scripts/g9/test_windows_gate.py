@@ -14,7 +14,8 @@ sys.path.insert(0, str(ROOT / "scripts/g9"))
 sys.path.insert(0, str(ROOT / "scripts/refactor/harness"))
 
 from windows_gate import (CASES, Refused, argv_for, baseline_issues, command_request,
-                          observed_issues, result_issues, setup_request, stop_request)
+                          expected_version, observed_issues, result_issues, setup_request,
+                          stop_request)
 import gh_fixture
 import windows_worker
 import host_relay
@@ -24,7 +25,7 @@ import subprocess
 
 
 SHA = "a" * 40
-VERSION = "0.1.3-g9"
+VERSION = expected_version(SHA)
 
 
 def selected(case):
@@ -538,6 +539,7 @@ class ContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             clone = Path(directory) / "repository"
             for name in ("scripts/g9/windows_worker.py", "scripts/g9/windows_gate.py",
+                         "scripts/g9/windows_build.py",
                          "scripts/g9/gh_fixture.py", "scripts/g9/installer_wrapper.ps1",
                          ".github/workflows/g9-windows-installer.yml"):
                 target = clone / name
@@ -643,22 +645,24 @@ class ContractTest(unittest.TestCase):
         self.assertIn("fetch-depth: 2", workflow)
         self.assertIn("persist-credentials: false", workflow)
         self.assertIn("G9_GITHUB_TOKEN: ${{ github.token }}", workflow)
+        self.assertIn("go-version: '1.26.5'", workflow)
+        self.assertNotIn("go-version-file: go.mod", workflow)
 
     def test_hosted_build_hash_mismatch_blocks_before_asset_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with patch.object(windows_worker, "command", return_value=SimpleNamespace(returncode=0)) as issued, \
                  patch.object(windows_worker, "git_value", return_value=SHA), \
-                 patch.object(windows_worker, "sha", return_value="f" * 64):
+                 patch.object(windows_worker, "build_candidate", return_value="f" * 64) as built:
                 with self.assertRaises(Refused):
                     windows_worker.build_assets(selected("fresh"), root)
-            build = [call for call in issued.call_args_list if call.args[:2] == ("go", "build")]
-            self.assertEqual(len(build), 1)
-            self.assertIn("-buildvcs=false", build[0].args)
-            self.assertEqual({key: build[0].kwargs["env"][key]
-                              for key in ("CGO_ENABLED", "GOOS", "GOARCH", "GOTOOLCHAIN")},
-                             {"CGO_ENABLED": "0", "GOOS": "windows", "GOARCH": "amd64",
-                              "GOTOOLCHAIN": "local"})
+            self.assertEqual([call.args[:2] for call in issued.call_args_list],
+                             [("git", "clone"), ("git", "-C")])
+            self.assertEqual(issued.call_args.args[-1], SHA)
+            self.assertEqual(built.call_args.args,
+                             (root / "candidate-source", root / "candidate.exe",
+                              SHA, VERSION, "go1.26.5"))
+            self.assertIn("environment", built.call_args.kwargs)
             self.assertFalse((root / "assets").exists())
 
     def test_failed_archive_requires_both_local_transport_refusals(self):
@@ -692,7 +696,7 @@ class ContractTest(unittest.TestCase):
                  patch.object(windows_worker, "user_path", return_value=None), \
                  patch.object(windows_worker, "prepare", side_effect=Refused("synthetic setup failure")), \
                  patch.object(windows_worker, "restore_user_path", side_effect=OSError("synthetic restore failure")), \
-                 patch.object(windows_worker, "remove_candidate_worktree") as removed, \
+                 patch.object(windows_worker, "remove_candidate_checkout") as removed, \
                  patch.object(windows_worker.shutil, "rmtree") as erased, \
                  patch.dict(os.environ, env):
                 with self.assertRaises(Exception):
@@ -721,7 +725,7 @@ class ContractTest(unittest.TestCase):
                 cleanup_order.append("restore")
 
             def removed(_):
-                cleanup_order.append("worktree")
+                cleanup_order.append("checkout")
                 return True
 
             with patch.object(windows_worker, "SETUP_PATH", setup_path), \
@@ -731,16 +735,16 @@ class ContractTest(unittest.TestCase):
                  patch.object(windows_worker, "prepare",
                               side_effect=Refused("synthetic setup failure")), \
                  patch.object(windows_worker, "restore_user_path", side_effect=restored), \
-                 patch.object(windows_worker, "remove_candidate_worktree",
+                 patch.object(windows_worker, "remove_candidate_checkout",
                               side_effect=removed), \
                  patch.dict(os.environ, env):
                 with self.assertRaises(Refused):
                     windows_worker.prepare_main()
-            self.assertEqual(cleanup_order, ["restore", "worktree"])
+            self.assertEqual(cleanup_order, ["restore", "checkout"])
             self.assertFalse(root.exists())
             failure = json.loads(failure_path.read_text(encoding="utf-8"))
             self.assertIs(failure["user_path_restored"], True)
-            self.assertIs(failure["worktree_removed"], True)
+            self.assertIs(failure["candidate_checkout_removed"], True)
             self.assertIs(failure["fixture_retained"], False)
             self.assertIs(failure["cleanup_ok"], True)
 
@@ -749,6 +753,7 @@ class ContractTest(unittest.TestCase):
             clone = Path(directory) / "repository"
             (clone / ".git").mkdir(parents=True)
             for name in ("scripts/g9/windows_worker.py", "scripts/g9/windows_gate.py",
+                         "scripts/g9/windows_build.py",
                          "scripts/g9/gh_fixture.py", "scripts/g9/installer_wrapper.ps1",
                          ".github/workflows/g9-windows-installer.yml"):
                 target = clone / name
@@ -796,7 +801,7 @@ class ContractTest(unittest.TestCase):
                  patch.object(windows_worker, "wait_for_command", side_effect=Refused("branch removed")), \
                  patch.object(windows_worker, "restore_user_path") as restored, \
                  patch.object(windows_worker, "user_path", return_value=None), \
-                 patch.object(windows_worker, "remove_candidate_worktree", return_value=True), \
+                 patch.object(windows_worker, "remove_candidate_checkout", return_value=True), \
                  patch.dict(os.environ, env):
                 self.assertEqual(windows_worker.execute_main(), 1)
             self.assertFalse(root.exists())
@@ -832,7 +837,7 @@ class ContractTest(unittest.TestCase):
                  patch.object(windows_worker, "invoke") as installed, \
                  patch.object(windows_worker, "restore_user_path") as restored, \
                  patch.object(windows_worker, "user_path", return_value=None), \
-                 patch.object(windows_worker, "remove_candidate_worktree", return_value=True), \
+                 patch.object(windows_worker, "remove_candidate_checkout", return_value=True), \
                  patch.dict(os.environ, env):
                 self.assertEqual(windows_worker.execute_main(), 1)
             installed.assert_not_called()
@@ -869,7 +874,7 @@ class ContractTest(unittest.TestCase):
                  patch.object(windows_worker, "wait_for_command") as waited, \
                  patch.object(windows_worker, "restore_user_path") as restored, \
                  patch.object(windows_worker, "user_path", return_value=None), \
-                 patch.object(windows_worker, "remove_candidate_worktree", return_value=True), \
+                 patch.object(windows_worker, "remove_candidate_checkout", return_value=True), \
                  patch.dict(os.environ, env):
                 self.assertEqual(windows_worker.execute_main(), 1)
             waited.assert_not_called()

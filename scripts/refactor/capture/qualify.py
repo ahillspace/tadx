@@ -17,6 +17,10 @@ BLOCKERS = [
     "G0-G8 and reviewed checkpoint scope must pass before live dispatch.",
 ]
 HERE = Path(__file__).resolve().parent
+AUXILIARY_SOURCE = {
+    "bench/task-scope-policy.json": "0ade697155cad5338cf0cbd641c22928974223ecb62fb2d55c738eaa0c76e9e2",
+    "bench/operator-task-scopes.json": "5a0b90672086a55a21c52e930bdec1608963eeb672112809a354b5e127613f28",
+}
 
 
 def broker_inputs(bridge):
@@ -71,7 +75,7 @@ def qualify(root, candidate_path, *, lock=None):
                 name.removeprefix("source/") for name in expected
                 if name.startswith("source/") and name != "source/current-cli.json"},
             "Prepared source accounting differs")
-    lock = parse(read(HERE.parent / "harness/source-lock.json")) if lock is None else lock
+    lock = parse(read(HERE.parent / "harness/source-lock-124.json")) if lock is None else lock
     require(source == lock["files"] and record.get("source_lock_sha256") == sha(encode(lock)),
             "Prepared source differs from reviewed lock")
     patched = {row["path"]: row for row in patches}
@@ -86,6 +90,11 @@ def qualify(root, candidate_path, *, lock=None):
         elif name in source:
             require(source[name] == digest, "Unpatched source changed")
     require(set(source) <= set(prepared), "Locked source is missing")
+    for name, expected in AUXILIARY_SOURCE.items():
+        require(name not in source and prepared.get(name) == expected
+                and patched.get(name, {}).get("before_sha256") is None
+                and patched.get(name, {}).get("after_sha256") == expected,
+                "Auxiliary launcher policy provenance differs")
     runner = parse(read(root / "source/runner.local.json"))
     require(isinstance(runner, dict) and isinstance(runner.get("runtime"), dict)
             and runner["runtime"].get("kind") == "bridge"
@@ -97,8 +106,19 @@ def qualify(root, candidate_path, *, lock=None):
             and re.fullmatch(r"[0-9a-f]{64}", record["runner_config_input_sha256"])
             and patched.get("runner.local.json", {}).get("before_sha256") is None,
             "Prepared runner configuration differs from Luna medium request")
+    constraints = runner.get("run_constraints")
+    runner_authority = constraints.get("g9_saved_consent_authority") if isinstance(constraints, dict) else None
+    require(isinstance(runner_authority, dict)
+            and sha(encode(runner_authority)) == record.get("runner_authority_sha256")
+            and runner_authority.get("consent_evidence_sha256") == record.get("consent_evidence_sha256")
+            and runner_authority.get("saved_consent") == {
+                "server_url": runner_authority.get("server_url"),
+                "site_content_url": runner_authority.get("site_content_url"),
+                "enabled": True, "source": "saved_site_setting",
+            }, "Prepared runner authority differs from saved consent")
     for name, original in (("g9_consent.py", "consent.py"),
                            ("g9_runtime_effective.py", "runtime_effective.py"),
+                           ("g9_activation.py", "activation.py"),
                            ("g9_project_read.py", "project_read.py"),
                            ("g9_project_read_broker.cjs", "project_read_broker.cjs")):
         require(read(root / "source/integration" / name)
@@ -107,11 +127,14 @@ def qualify(root, candidate_path, *, lock=None):
     launcher = read(root / "source/tools/run_spark_suite.py").decode("utf-8")
     bridge_path = root / "source/integration/docker_local_bridge.py"
     bridge = read(bridge_path).decode("utf-8")
-    require("raise RuntimeError('G9 preparation is blocked; see preparation.json. No live dispatch is qualified.')"
-            in launcher and "raise SystemExit('G9 bridge dispatch is blocked; see preparation.json')"
-            in bridge and "native_cli_execution']=False" in launcher
-            and "requested_model != 'gpt-6-luna' or requested_effort != 'medium'" in launcher,
-            "Live dispatch or native CLI block is missing")
+    require("g9_record=verify(args.g9_authorization,args.g9_authorization_sha256,ROOT.parent,check_snapshot=True,check_launch_inputs=True)"
+            in launcher and "'native_cli_execution']=bool(" in launcher
+            and "file_sha(manifest_path)!=prepared.get('snapshot_files',{}).get('candidate/capture/manifest.json')" in launcher
+            and "requested_model != 'gpt-6-luna' or requested_effort != 'medium'" in launcher
+            and "accepted=verify(binding['path'],binding['sha256'],ROOT.parent)" in bridge
+            and "req['_g9_accepted_image']=accepted['image']['id']" in bridge
+            and "dispatch(method,req)" in bridge,
+            "Operator-bound G9 dispatch guard is missing")
     candidate = parse(read(root / "candidate/candidate.json"))
     require(candidate == record.get("candidate")
             and candidate == parse(read(candidate_path)), "Candidate identity differs")
