@@ -44,9 +44,7 @@ func (p jobProvider) Open(ctx context.Context, alias string) (jobactions.Session
 func (p jobProvider) Suspend(ctx context.Context) error {
 	return p.runtime.commandSessions().Suspend(ctx)
 }
-func (p jobProvider) InspectOperation(ctx context.Context, input jobactions.InspectInput) (jobactions.InspectResult, error) {
-	return p.runtime.inspectPublicationOperation(ctx, input)
-}
+func (p jobProvider) RecoveryPorts() jobactions.RecoveryPorts { return p.runtime.recoveryPorts() }
 
 func (c jobProvider) Store() (jobmonitor.Store, error) {
 	directory := c.runtime.jobDirectory

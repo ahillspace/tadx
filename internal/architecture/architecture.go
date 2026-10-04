@@ -185,7 +185,7 @@ func localImportAllowed(file, imported string) bool {
 	switch layerForFile(file) {
 	case layerAction:
 		// Exact job recovery consumes durable receipts and bounded observation.
-		if path.Dir(file) == "actions/job" && imported == "internal/jobmonitor" {
+		if path.Dir(file) == "actions/job" && matchesExact(imported, "internal/jobmonitor", "internal/operationrun") {
 			return true
 		}
 		// Only the cohesive policy workflow coordinates native policy mechanisms.
@@ -361,7 +361,7 @@ func localImportAllowed(file, imported string) bool {
 			return matchesExact(imported, "internal/errs", "internal/toon", "internal/commandhint")
 		}
 		if hasPathPrefix(file, "internal/readsource") {
-			return false
+			return path.Dir(file) == "internal/readsource" && imported == "internal/value"
 		}
 		if hasPathPrefix(file, "internal/workspace") {
 			// Workspace recovery quotes local selectors with the same leaf helper.

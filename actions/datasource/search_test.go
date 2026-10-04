@@ -1,0 +1,20 @@
+package datasource
+
+import (
+	"testing"
+
+	"github.com/ahillspace/tadx/internal/value"
+)
+
+func TestSearchPagePreservesIdentityContinuationAndEmptyRows(t *testing.T) {
+	out := ListOutput{Datasources: []Record{{LUID: "exact-id", Name: "Exact name", OwnerLUID: "owner", UpdatedAt: "updated", ProjectPath: "Parent/Child"}}}
+	out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable = 23, "opaque-cursor", true
+	page := searchPage(out)
+	want := value.SearchItem{LUID: "exact-id", Type: "datasource", Name: "Exact name", Owner: "owner", ModifiedAt: "updated", ProjectPath: "Parent/Child"}
+	if len(page.Items) != 1 || page.Items[0] != want || page.Total != 23 || page.NextCursor != "opaque-cursor" || !page.MoreAvailable {
+		t.Fatalf("page=%+v", page)
+	}
+	if empty := searchPage(ListOutput{}); empty.Items == nil || len(empty.Items) != 0 {
+		t.Fatalf("empty=%+v", empty)
+	}
+}

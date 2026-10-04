@@ -1,0 +1,26 @@
+package user
+
+import (
+	"testing"
+
+	"github.com/ahillspace/tadx/internal/value"
+)
+
+func TestSearchPagePreservesIdentityContinuationAndEmptyRows(t *testing.T) {
+	out := ListOutput{Users: []ListUser{{LUID: "exact-id", Name: "Exact name"}}}
+	out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable = 23, "opaque-cursor", true
+	page := searchPage(out)
+	want := value.SearchItem{LUID: "exact-id", Type: "user", Name: "Exact name"}
+	if len(page.Items) != 1 || page.Items[0] != want || page.Total != 23 || page.NextCursor != "opaque-cursor" || !page.MoreAvailable {
+		t.Fatalf("page=%+v", page)
+	}
+	if empty := searchPage(ListOutput{}); empty.Items == nil || len(empty.Items) != 0 {
+		t.Fatalf("empty=%+v", empty)
+	}
+}
+
+func TestListSearchRejectsMalformedContinuationBeforeReader(t *testing.T) {
+	if _, err := ListSearch(t.Context(), nil, ListInput{Environment: "target", Site: "site", Cursor: "not-a-cursor", Limit: 1}); err == nil {
+		t.Fatal("malformed cursor reached native reader")
+	}
+}

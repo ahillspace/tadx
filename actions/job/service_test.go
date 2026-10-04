@@ -24,9 +24,9 @@ func (p *serviceProviderFake) Store() (jobmonitor.Store, error) {
 	return jobmonitor.Store{}, errors.New("store unexpectedly opened")
 }
 func (p *serviceProviderFake) Suspend(context.Context) error { return nil }
-func (p *serviceProviderFake) InspectOperation(context.Context, InspectInput) (InspectResult, error) {
+func (p *serviceProviderFake) RecoveryPorts() RecoveryPorts {
 	p.operations++
-	return InspectResult{}, nil
+	return RecoveryPorts{}
 }
 
 func TestServiceRejectsInvalidInputBeforeOpeningAnyDependency(t *testing.T) {

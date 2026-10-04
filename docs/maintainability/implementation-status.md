@@ -6,6 +6,27 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Operation recovery and typed search ownership
+
+The job Service owns exact local operation inspection, receipt linkage, target/type checks, reconciliation, and persisted recovery state.
+Resource adapters own exact workbook/datasource destination readback.
+App supplies stores and authenticated sessions; recovery does not resubmit native operations.
+The remaining app projection test moves to the job owner with its assertions preserved.
+
+Typed search projections and native-list validation move to their action owners.
+App binds complete and dedicated sources without converting typed records or deciding continuation behavior.
+Shared read-source metadata preserves live/cache provenance and publication warnings.
+Native datasource/flow searches retain their existing project-path omission, and definition searches retain their existing page fields.
+All eight native source kinds remain available.
+
+Independent review accepts the combined 43-path integration against `6cfd7dfa5410dc08d7117757d882818b40decdc4`.
+The 1,531-file source fingerprint is `516e6ba8ebebaf05ed8875c16c6f300d8ddcf1883ef57fa99ea63fd2491e2683`.
+The archive SHA-256 is `22e442bc9db1ef9bc2190969b95dc90e106a916f9c6235690ffd2e13872bc77f`.
+Focused action, resource, architecture, app, and CLI tests, full compilation, and scoped vet pass.
+Exact dependency fixtures cover job-to-operationrun and readsource-to-value without admitting sibling or nested consumers.
+Evidence remains in `.tadx-refactor/recovery-search-merge-6cf/`.
+Worker lifecycle extraction, final live acceptance, and whole-architecture review remain pending.
+
 ## Pulse reads and search source ownership
 
 Pulse definition and metric Services own read validation and operation sequencing.

@@ -34,7 +34,7 @@ type Provider interface {
 	Open(context.Context, string) (Session, error)
 	Store() (jobmonitor.Store, error)
 	Suspend(context.Context) error
-	InspectOperation(context.Context, InspectInput) (InspectResult, error)
+	RecoveryPorts() RecoveryPorts
 }
 
 type Service struct{ provider Provider }
@@ -61,7 +61,7 @@ func (s *Service) Cancel(ctx context.Context, input CancelInput) (CancelOutput, 
 
 func (c *Service) inspect(ctx context.Context, input InspectInput) (InspectResult, error) {
 	if input.OperationID != "" {
-		return c.provider.InspectOperation(ctx, input)
+		return (recovery{ports: c.provider.RecoveryPorts()}).inspectOperation(ctx, input)
 	}
 	connection, err := c.connection(ctx, input.Environment, input.Site, "job.inspect", input.ID)
 	if err != nil {

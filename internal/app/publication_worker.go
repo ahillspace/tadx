@@ -232,7 +232,7 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 			if receipt.OperationID != r.ID || receipt.Operation != r.Operation || receipt.ReceiptID == "" {
 				return errors.New("publication receipt intent does not match its operation")
 			}
-			r.ReceiptIntents = append(r.ReceiptIntents, operationrun.ReceiptIntent{ID: receipt.ReceiptID, Scope: publicationReceiptScope(receipt), RegisteredAt: time.Now().UTC()})
+			r.ReceiptIntents = append(r.ReceiptIntents, operationrun.ReceiptIntent{ID: receipt.ReceiptID, Scope: jobmonitor.ReceiptScope(receipt), RegisteredAt: time.Now().UTC()})
 			return nil
 		})
 		return err

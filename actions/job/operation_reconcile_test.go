@@ -1,10 +1,9 @@
-package app
+package job
 
 import (
 	"encoding/json"
 	"testing"
 
-	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/operationrun"
 )
 
@@ -36,12 +35,12 @@ func TestPublicationBatchReconciliationClassifiesAllFailuresAndMixedOutcomes(t *
 				t.Fatalf("Update() error = %v", err)
 			}
 
-			items := []jobactions.OperationItem{
+			items := []OperationItem{
 				{Status: test.itemStatuses[0], ReceiptPath: receiptPaths[0], JobID: "job-a"},
 				{Status: test.itemStatuses[1], ReceiptPath: receiptPaths[1], JobID: "job-b"},
 			}
-			runtime := &runtimeDependencies{operationDirectory: operationDirectory}
-			updated, warnings := runtime.reconcilePublicationReceipts(t.Context(), record, items)
+			runtime := recoveryFixture(operationDirectory, "")
+			updated, warnings := runtime.reconcileReceipts(t.Context(), record, items)
 			if len(warnings) != 0 {
 				t.Fatalf("reconcile warnings = %v", warnings)
 			}
