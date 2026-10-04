@@ -89,21 +89,6 @@ func TestUpdateRootRoutesWithoutReleaseCalls(t *testing.T) {
 	}
 }
 
-func TestUpdaterWithholdsConfiguredPATVariables(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := "version: 1\nenvironments:\n  production:\n    url: https://tableau.example.com\n    site_content_url: ''\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_UPDATE_PAT_NAME\n      pat_secret_env: PROD_UPDATE_PAT_SECRET\n"
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got := strings.Join((&runtimeDependencies{configPath: path}).configuredPATVariables(), ",")
-	if got != "PROD_UPDATE_PAT_NAME,PROD_UPDATE_PAT_SECRET" {
-		t.Fatalf("configured PAT variables = %q", got)
-	}
-	if missing := (&runtimeDependencies{configPath: filepath.Join(t.TempDir(), "missing.yaml")}).configuredPATVariables(); len(missing) != 0 {
-		t.Fatalf("missing configuration listed %q", missing)
-	}
-}
-
 // A config selected by flag is parsed after the command tree is built, so the
 // updater must read the selected file when it starts a child, not at wiring time.
 func TestUpdaterWithholdsPATVariablesFromFlagSelectedConfig(t *testing.T) {

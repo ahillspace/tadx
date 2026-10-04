@@ -1,4 +1,4 @@
-package profile
+package env
 
 import (
 	"context"
@@ -11,20 +11,18 @@ type Remover interface {
 	Remove(context.Context, string) error
 	PreviewRemove(context.Context, string) error
 }
-type RemoveAction struct{ remover Remover }
 
-func NewRemove(remover Remover) *RemoveAction { return &RemoveAction{remover: remover} }
-
-func (a *RemoveAction) Execute(ctx context.Context, input RemoveInput) (RemoveOutput, error) {
-	if a == nil || a.remover == nil {
+// Remove previews or removes one guarded environment profile.
+func (s *Service) Remove(ctx context.Context, input RemoveInput) (RemoveOutput, error) {
+	if s == nil || s.store == nil {
 		return RemoveOutput{}, &errs.Error{ID: "env.profile.remove.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.remove", Summary: "Environment profile removal is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
 	if strings.TrimSpace(input.Alias) == "" {
 		return RemoveOutput{}, &errs.Error{ID: "env.profile.remove.usage", Kind: errs.KindUsage, Operation: "env.profile.remove", Summary: "environment alias is required"}
 	}
-	remove := a.remover.Remove
+	remove := s.store.Remove
 	if input.Preview {
-		remove = a.remover.PreviewRemove
+		remove = s.store.PreviewRemove
 	}
 	if err := remove(ctx, input.Alias); err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias and default-environment guard, then retry.")

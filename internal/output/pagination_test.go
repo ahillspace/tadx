@@ -9,7 +9,7 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
-	envlist "github.com/ahillspace/tadx/actions/env/profile"
+	envlist "github.com/ahillspace/tadx/actions/env"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"

@@ -1,4 +1,4 @@
-package profile_test
+package env_test
 
 import (
 	"bytes"
@@ -7,18 +7,19 @@ import (
 	"os"
 	"testing"
 
-	profileremove "github.com/ahillspace/tadx/actions/env/profile"
+	profileremove "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type removeTestStore struct {
+	profileremove.Store
 	alias string
 	err   error
 }
 
 func TestRemoveOutputGolden(t *testing.T) {
-	got, err := profileremove.NewRemove(&removeTestStore{}).Execute(context.Background(), profileremove.RemoveInput{Alias: "production"})
+	got, err := profileremove.New(&removeTestStore{}).Remove(context.Background(), profileremove.RemoveInput{Alias: "production"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,14 +45,14 @@ func (r *removeTestStore) PreviewRemove(ctx context.Context, alias string) error
 	return r.Remove(ctx, alias)
 }
 
-func TestRemoveExecuteRequiresAliasAndReturnsRemovedStatus(t *testing.T) {
+func TestServiceRemoveRequiresAliasAndReturnsRemovedStatus(t *testing.T) {
 	store := &removeTestStore{}
-	_, err := profileremove.NewRemove(store).Execute(context.Background(), profileremove.RemoveInput{})
+	_, err := profileremove.New(store).Remove(context.Background(), profileremove.RemoveInput{})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error = %#v", err)
 	}
-	got, err := profileremove.NewRemove(store).Execute(context.Background(), profileremove.RemoveInput{Alias: "Prod-West"})
+	got, err := profileremove.New(store).Remove(context.Background(), profileremove.RemoveInput{Alias: "Prod-West"})
 	if err != nil || got.Status != "removed" || got.Environment != "Prod-West" || store.alias != "Prod-West" {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}

@@ -1,4 +1,4 @@
-package profile_test
+package env_test
 
 import (
 	"bytes"
@@ -7,19 +7,20 @@ import (
 	"os"
 	"testing"
 
-	setdefault "github.com/ahillspace/tadx/actions/env/profile"
+	setdefault "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type defaultTestStore struct {
+	setdefault.Store
 	alias   string
 	changed bool
 	err     error
 }
 
 func TestSetDefaultOutputGolden(t *testing.T) {
-	got, err := setdefault.NewSetDefault(&defaultTestStore{changed: true}).Execute(context.Background(), setdefault.SetDefaultInput{Alias: "production"})
+	got, err := setdefault.New(&defaultTestStore{changed: true}).SetDefault(context.Background(), setdefault.SetDefaultInput{Alias: "production"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,19 +46,19 @@ func (s *defaultTestStore) PreviewSetDefault(ctx context.Context, alias string) 
 	return s.SetDefault(ctx, alias)
 }
 
-func TestSetDefaultExecuteRequiresAliasAndReportsChangeState(t *testing.T) {
+func TestServiceSetDefaultRequiresAliasAndReportsChangeState(t *testing.T) {
 	store := &defaultTestStore{changed: true}
-	_, err := setdefault.NewSetDefault(store).Execute(context.Background(), setdefault.SetDefaultInput{})
+	_, err := setdefault.New(store).SetDefault(context.Background(), setdefault.SetDefaultInput{})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error = %#v", err)
 	}
-	got, err := setdefault.NewSetDefault(store).Execute(context.Background(), setdefault.SetDefaultInput{Alias: "Prod-West"})
+	got, err := setdefault.New(store).SetDefault(context.Background(), setdefault.SetDefaultInput{Alias: "Prod-West"})
 	if err != nil || got.Status != "updated" || got.DefaultEnvironment != "Prod-West" || store.alias != "Prod-West" {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
 	store.changed = false
-	got, _ = setdefault.NewSetDefault(store).Execute(context.Background(), setdefault.SetDefaultInput{Alias: "production"})
+	got, _ = setdefault.New(store).SetDefault(context.Background(), setdefault.SetDefaultInput{Alias: "production"})
 	if got.Status != "unchanged" {
 		t.Fatalf("output = %#v", got)
 	}

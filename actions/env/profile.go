@@ -1,5 +1,5 @@
-// Package profile implements environment profile operations.
-package profile
+// Package env owns local environment profile operations.
+package env
 
 // Profile is the non-secret record shared by get and list projections.
 type Profile struct {

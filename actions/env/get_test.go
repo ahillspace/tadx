@@ -1,4 +1,4 @@
-package profile_test
+package env_test
 
 import (
 	"bytes"
@@ -7,12 +7,13 @@ import (
 	"os"
 	"testing"
 
-	profileget "github.com/ahillspace/tadx/actions/env/profile"
+	profileget "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type getTestReader struct {
+	profileget.Store
 	profile profileget.Profile
 	err     error
 	alias   *string
@@ -25,20 +26,20 @@ func (r getTestReader) Get(_ context.Context, alias string) (profileget.Profile,
 	return r.profile, r.err
 }
 
-func TestGetExecuteRequiresExactAliasAndReturnsProfile(t *testing.T) {
-	action := profileget.NewGet(getTestReader{profile: getFixture()})
-	if _, err := action.Execute(context.Background(), profileget.GetInput{}); err == nil {
+func TestServiceGetRequiresExactAliasAndReturnsProfile(t *testing.T) {
+	action := profileget.New(getTestReader{profile: getFixture()})
+	if _, err := action.Get(context.Background(), profileget.GetInput{}); err == nil {
 		t.Fatal("empty alias accepted")
 	}
-	got, err := action.Execute(context.Background(), profileget.GetInput{Alias: "production"})
+	got, err := action.Get(context.Background(), profileget.GetInput{Alias: "production"})
 	if err != nil || got.Profile.Alias != "production" {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
 }
 
-func TestGetExecutePreservesExactAlias(t *testing.T) {
+func TestServiceGetPreservesExactAlias(t *testing.T) {
 	var gotAlias string
-	_, err := profileget.NewGet(getTestReader{profile: getFixture(), alias: &gotAlias}).Execute(context.Background(), profileget.GetInput{Alias: "Prod-West"})
+	_, err := profileget.New(getTestReader{profile: getFixture(), alias: &gotAlias}).Get(context.Background(), profileget.GetInput{Alias: "Prod-West"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,8 +48,8 @@ func TestGetExecutePreservesExactAlias(t *testing.T) {
 	}
 }
 
-func TestGetExecuteWrapsReadFailure(t *testing.T) {
-	_, err := profileget.NewGet(getTestReader{err: errors.New("missing")}).Execute(context.Background(), profileget.GetInput{Alias: "production"})
+func TestServiceGetWrapsReadFailure(t *testing.T) {
+	_, err := profileget.New(getTestReader{err: errors.New("missing")}).Get(context.Background(), profileget.GetInput{Alias: "production"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "env.profile.get.read" {
 		t.Fatalf("error = %#v", err)
@@ -56,7 +57,7 @@ func TestGetExecuteWrapsReadFailure(t *testing.T) {
 }
 
 func TestGetOutputGoldens(t *testing.T) {
-	got, _ := profileget.NewGet(getTestReader{profile: getFixture()}).Execute(context.Background(), profileget.GetInput{Alias: "production"})
+	got, _ := profileget.New(getTestReader{profile: getFixture()}).Get(context.Background(), profileget.GetInput{Alias: "production"})
 	getAssertGolden(t, got, false, "testdata/get/output.toon")
 	getAssertGolden(t, got, true, "testdata/get/output_full.toon")
 	if got.CompactOutput().(profileget.GetCompactResult).Details != "--full" {

@@ -1,4 +1,4 @@
-package profile_test
+package env_test
 
 import (
 	"bytes"
@@ -8,12 +8,13 @@ import (
 	"reflect"
 	"testing"
 
-	profileupdate "github.com/ahillspace/tadx/actions/env/profile"
+	profileupdate "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type updateTestStore struct {
+	profileupdate.Store
 	alias  string
 	patch  profileupdate.Patch
 	result profileupdate.UpdateResult
@@ -34,7 +35,7 @@ type retryableStoreError struct{}
 func TestUpdateCacheConcurrencyValidatedAndPassedToStore(t *testing.T) {
 	for _, limit := range []int{-1, 0, 1, 256, 257} {
 		store := &updateTestStore{}
-		_, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "staging", Patch: profileupdate.Patch{CacheMaxConcurrency: profileupdate.IntField{Set: true, Value: limit}}})
+		_, err := profileupdate.New(store).Update(context.Background(), profileupdate.UpdateInput{Alias: "staging", Patch: profileupdate.Patch{CacheMaxConcurrency: profileupdate.IntField{Set: true, Value: limit}}})
 		if limit < 0 || limit > 256 {
 			if err == nil || store.alias != "" {
 				t.Fatalf("invalid%d error=%v stored=%+v", limit, err, store.patch)
@@ -51,10 +52,10 @@ func (retryableStoreError) CorrectiveAction() string {
 	return "Correct the complete candidate profile."
 }
 
-func TestUpdateExecuteRequiresAliasAndExplicitFields(t *testing.T) {
+func TestServiceUpdateRequiresAliasAndExplicitFields(t *testing.T) {
 	store := &updateTestStore{}
 	for _, input := range []profileupdate.UpdateInput{{}, {Alias: "production"}} {
-		_, err := profileupdate.NewUpdate(store).Execute(context.Background(), input)
+		_, err := profileupdate.New(store).Update(context.Background(), input)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 			t.Fatalf("input %#v error = %#v", input, err)
@@ -62,9 +63,9 @@ func TestUpdateExecuteRequiresAliasAndExplicitFields(t *testing.T) {
 	}
 }
 
-func TestUpdateExecuteRejectsInvalidExplicitServerURLBeforeUpdater(t *testing.T) {
+func TestServiceUpdateRejectsInvalidExplicitServerURLBeforeUpdater(t *testing.T) {
 	store := &updateTestStore{}
-	_, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "Prod-West", Patch: profileupdate.Patch{ServerURL: profileupdate.StringField{Set: true, Value: "http://example.test"}}})
+	_, err := profileupdate.New(store).Update(context.Background(), profileupdate.UpdateInput{Alias: "Prod-West", Patch: profileupdate.Patch{ServerURL: profileupdate.StringField{Set: true, Value: "http://example.test"}}})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error = %#v", err)
@@ -74,28 +75,28 @@ func TestUpdateExecuteRejectsInvalidExplicitServerURLBeforeUpdater(t *testing.T)
 	}
 }
 
-func TestUpdateExecutePreservesExactAliasAndStructuredUpdaterAdvice(t *testing.T) {
+func TestServiceUpdatePreservesExactAliasAndStructuredUpdaterAdvice(t *testing.T) {
 	store := &updateTestStore{err: retryableStoreError{}}
-	_, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "Prod-West", Patch: profileupdate.Patch{PATNameEnv: profileupdate.StringField{Set: true, Value: "NEW_NAME_REF"}}})
+	_, err := profileupdate.New(store).Update(context.Background(), profileupdate.UpdateInput{Alias: "Prod-West", Patch: profileupdate.Patch{PATNameEnv: profileupdate.StringField{Set: true, Value: "NEW_NAME_REF"}}})
 	payload := errs.Structure(err).Error
 	if store.alias != "Prod-West" || payload.ID != "env.profile.update.write" || payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Correct the complete candidate profile." {
 		t.Fatalf("alias = %q, error = %#v", store.alias, payload)
 	}
 }
 
-func TestUpdateExecutePreservesStoreChangedFields(t *testing.T) {
+func TestServiceUpdatePreservesStoreChangedFields(t *testing.T) {
 	result := profileupdate.UpdateResult{Profile: updateFixture(), ChangedFields: []string{"site_content_url", "api_version"}}
 	store := &updateTestStore{result: result}
 	patch := profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}, APIVersion: profileupdate.StringField{Set: true, Value: "3.29"}}
-	got, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: patch})
+	got, err := profileupdate.New(store).Update(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: patch})
 	if err != nil || got.Status != "updated" || !reflect.DeepEqual(got.ChangedFields, []string{"site_content_url", "api_version"}) {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
 }
 
-func TestUpdateExecuteReturnsUnchanged(t *testing.T) {
+func TestServiceUpdateReturnsUnchanged(t *testing.T) {
 	store := &updateTestStore{result: profileupdate.UpdateResult{Profile: updateFixture()}}
-	got, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: profileupdate.Patch{APIVersion: profileupdate.StringField{Set: true, Value: "3.29"}}})
+	got, err := profileupdate.New(store).Update(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: profileupdate.Patch{APIVersion: profileupdate.StringField{Set: true, Value: "3.29"}}})
 	if err != nil || got.Status != "unchanged" {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
@@ -103,7 +104,7 @@ func TestUpdateExecuteReturnsUnchanged(t *testing.T) {
 
 func TestUpdateOutputGoldens(t *testing.T) {
 	store := &updateTestStore{result: profileupdate.UpdateResult{Profile: updateFixture(), ChangedFields: []string{"site_content_url"}}}
-	got, _ := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}}})
+	got, _ := profileupdate.New(store).Update(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}}})
 	updateAssertGolden(t, got, false, "testdata/update/output.toon")
 	updateAssertGolden(t, got, true, "testdata/update/output_full.toon")
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	authstatus "github.com/ahillspace/tadx/actions/auth"
+	mutationops "github.com/ahillspace/tadx/actions/mutation"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -28,7 +29,7 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 	state.Mutations = value.MutationSetting{Scope: "site", Source: "site_selection_required"}
 	selected, selectionErr := cfg.ResolveEnvironment("")
 	if selectionErr == nil {
-		state.Mutations, err = siteMutationSetting(cfg, selected)
+		state.Mutations, err = mutationops.SiteSetting(cfg, selected)
 		if err != nil {
 			return state, err
 		}
@@ -65,7 +66,7 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 			}
 		}
 		environment.Alias = name
-		mutations, err := siteMutationSetting(cfg, environment)
+		mutations, err := mutationops.SiteSetting(cfg, environment)
 		if err != nil {
 			return state, err
 		}

@@ -17,6 +17,7 @@ import (
 	authops "github.com/ahillspace/tadx/actions/auth"
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	lastaction "github.com/ahillspace/tadx/actions/last"
+	mutationops "github.com/ahillspace/tadx/actions/mutation"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
@@ -81,7 +82,10 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return renderError(stdout, err, renderOptions)
 	}
 	defer runtime.Close()
-	discovery := capabilityops.New(capabilityops.Ports{ManagedPolicy: runtime.managedPolicy, ResolveMutationPolicy: runtime.mutationPolicy})
+	mutationService := mutationops.New(func() string { return runtime.configPath }, func() bool {
+		return runtime.managedPolicy != nil && errors.Is(runtime.managedPolicy.CheckRemoteMutation(), managedpolicy.ErrRemoteMutationDenied)
+	})
+	discovery := capabilityops.New(capabilityops.Ports{ManagedPolicy: runtime.managedPolicy, ResolveMutationPolicy: mutationService.Policy})
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
@@ -127,8 +131,10 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		StatusResolver: authStatusResolver{runtime: runtime}, StatusLookup: processEnvironment{},
 	})
 	root := cli.NewRoot(cli.Dependencies{
-		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
-		Update:                newUpdateCommand(updater.Runtime{CredentialVariables: runtime.configuredPATVariables}),
+		SessionOverview: sessionoverview.New(sessionOverviewReader{runtime: runtime}),
+		Update: newUpdateCommand(updater.Runtime{CredentialVariables: func() []string {
+			return config.ConfiguredPATVariables(runtime.configPath)
+		}}),
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
 		ContentLabels:         contentLabelDependencies(runtime),
 		AdminLabels:           adminLabelDependencies(runtime),
@@ -142,9 +148,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		MutationsEnabled:      false,
 		MutationPolicy:        registryMutationPolicy{},
 		Policy:                runtime.policyDependencies(),
-		ResolveMutationPolicy: runtime.mutationPolicy,
-		MutationStatus:        runtime,
-		MutationSetter:        runtime,
+		ResolveMutationPolicy: mutationService.Policy,
+		MutationStatus:        mutationService,
+		MutationSetter:        mutationService,
 		LastReader:            lastaction.New(managedLastReader{store: capture.store, runtime: runtime}),
 		Jobs:                  (&jobCommands{runtime: runtime}).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {
@@ -400,7 +406,7 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	}
 	prompter := options.AuthPrompter
 	if prompter == nil {
-		prompter = newTerminalCredentialPrompter()
+		prompter = authcli.NewTerminalPrompter()
 	}
 	policy := options.managedPolicy
 	if policy == nil {

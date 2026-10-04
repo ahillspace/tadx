@@ -1,4 +1,4 @@
-package app
+package env_test
 
 import (
 	"context"
@@ -6,14 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	profileupdate "github.com/ahillspace/tadx/actions/env/profile"
+	profileupdate "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/config"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 func TestEnvironmentUpdateRejectsCredentialTargetChange(t *testing.T) {
 	t.Parallel()
 	path := credentialEnvironmentConfig(t)
-	store := configProfileStore{path: &path}
+	store := profileupdate.NewConfigStore(func() string { return path }, tableaucache.DefaultMaxConcurrency)
 
 	for _, test := range []struct {
 		name  string
@@ -34,7 +35,7 @@ func TestEnvironmentUpdateRejectsCredentialTargetChange(t *testing.T) {
 func TestEnvironmentRemoveRejectsStoredCredential(t *testing.T) {
 	t.Parallel()
 	path := credentialEnvironmentConfig(t)
-	store := configProfileStore{path: &path}
+	store := profileupdate.NewConfigStore(func() string { return path }, tableaucache.DefaultMaxConcurrency)
 
 	err := store.Remove(context.Background(), "dev")
 	if err == nil || !strings.Contains(err.Error(), "auth logout") {
@@ -55,7 +56,7 @@ func TestEnvironmentGetAndListPreserveEffectiveAndStoredDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	store := configProfileStore{path: &path}
+	store := profileupdate.NewConfigStore(func() string { return path }, tableaucache.DefaultMaxConcurrency)
 	got, err := store.Get(t.Context(), "dev")
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)

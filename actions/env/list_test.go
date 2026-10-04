@@ -1,4 +1,4 @@
-package profile_test
+package env_test
 
 import (
 	"bytes"
@@ -8,17 +8,21 @@ import (
 	"reflect"
 	"testing"
 
-	profilelist "github.com/ahillspace/tadx/actions/env/profile"
+	profilelist "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type listTestReader struct {
+	profilelist.Store
 	profiles []profilelist.Profile
 	err      error
 }
 
-type listDirectReader struct{ profiles []profilelist.Profile }
+type listDirectReader struct {
+	profilelist.Store
+	profiles []profilelist.Profile
+}
 
 func (r listDirectReader) List(context.Context) ([]profilelist.Profile, error) {
 	return r.profiles, nil
@@ -28,10 +32,10 @@ func (r listTestReader) List(context.Context) ([]profilelist.Profile, error) {
 	return append([]profilelist.Profile(nil), r.profiles...), r.err
 }
 
-func TestListExecuteSortsAndPagesProfiles(t *testing.T) {
+func TestServiceListSortsAndPagesProfiles(t *testing.T) {
 	source := []profilelist.Profile{{Alias: "zeta"}, {Alias: "Prod-West", Default: true}}
-	action := profilelist.NewList(listDirectReader{profiles: source})
-	got, err := action.Execute(context.Background(), profilelist.ListInput{Limit: 1})
+	action := profilelist.New(listDirectReader{profiles: source})
+	got, err := action.List(context.Background(), profilelist.ListInput{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +47,9 @@ func TestListExecuteSortsAndPagesProfiles(t *testing.T) {
 	}
 }
 
-func TestListExecuteAllReturnsCompleteProfileInventory(t *testing.T) {
+func TestServiceListAllReturnsCompleteProfileInventory(t *testing.T) {
 	profiles := []profilelist.Profile{{Alias: "alpha"}, {Alias: "beta"}}
-	got, err := profilelist.NewList(listDirectReader{profiles: profiles}).Execute(context.Background(), profilelist.ListInput{All: true})
+	got, err := profilelist.New(listDirectReader{profiles: profiles}).List(context.Background(), profilelist.ListInput{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,29 +58,29 @@ func TestListExecuteAllReturnsCompleteProfileInventory(t *testing.T) {
 	}
 }
 
-func TestListExecuteAllRejectsPaginationOverridesAndOverflow(t *testing.T) {
+func TestServiceListAllRejectsPaginationOverridesAndOverflow(t *testing.T) {
 	for _, input := range []profilelist.ListInput{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
-		if _, err := profilelist.NewList(listDirectReader{}).Execute(context.Background(), input); err == nil {
+		if _, err := profilelist.New(listDirectReader{}).List(context.Background(), input); err == nil {
 			t.Fatalf("Execute(%#v) error = nil", input)
 		}
 	}
 	profiles := make([]profilelist.Profile, profilelist.ListMaxLimit+1)
-	_, err := profilelist.NewList(listDirectReader{profiles: profiles}).Execute(context.Background(), profilelist.ListInput{All: true})
+	_, err := profilelist.New(listDirectReader{profiles: profiles}).List(context.Background(), profilelist.ListInput{All: true})
 	if err == nil {
 		t.Fatal("overflow Execute() error = nil")
 	}
 }
 
-func TestListExecuteContinuationTerminalAndEmptyPages(t *testing.T) {
-	action := profilelist.NewList(listTestReader{profiles: []profilelist.Profile{{Alias: "alpha"}, {Alias: "beta"}}})
-	terminal, err := action.Execute(context.Background(), profilelist.ListInput{Limit: 1, Cursor: "1"})
+func TestServiceListContinuationTerminalAndEmptyPages(t *testing.T) {
+	action := profilelist.New(listTestReader{profiles: []profilelist.Profile{{Alias: "alpha"}, {Alias: "beta"}}})
+	terminal, err := action.List(context.Background(), profilelist.ListInput{Limit: 1, Cursor: "1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if terminal.Page.NextCursor != "" || terminal.Page.Returned != 1 || len(terminal.Help) != 1 {
 		t.Fatalf("terminal page = %#v", terminal)
 	}
-	empty, err := profilelist.NewList(listTestReader{}).Execute(context.Background(), profilelist.ListInput{})
+	empty, err := profilelist.New(listTestReader{}).List(context.Background(), profilelist.ListInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,27 +89,27 @@ func TestListExecuteContinuationTerminalAndEmptyPages(t *testing.T) {
 	}
 }
 
-func TestListExecuteAcceptsMaxLimitAndRejectsPastEndCursor(t *testing.T) {
-	got, err := profilelist.NewList(listTestReader{}).Execute(context.Background(), profilelist.ListInput{Limit: profilelist.ListMaxLimit})
+func TestServiceListAcceptsMaxLimitAndRejectsPastEndCursor(t *testing.T) {
+	got, err := profilelist.New(listTestReader{}).List(context.Background(), profilelist.ListInput{Limit: profilelist.ListMaxLimit})
 	if err != nil || got.Page.Limit != profilelist.ListMaxLimit {
 		t.Fatalf("max limit output = %#v, error = %v", got, err)
 	}
-	_, err = profilelist.NewList(listTestReader{}).Execute(context.Background(), profilelist.ListInput{Cursor: "1"})
+	_, err = profilelist.New(listTestReader{}).List(context.Background(), profilelist.ListInput{Cursor: "1"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("past-end error = %#v", err)
 	}
 }
 
-func TestListExecuteValidatesBoundsAndWrapsReadFailure(t *testing.T) {
+func TestServiceListValidatesBoundsAndWrapsReadFailure(t *testing.T) {
 	for _, input := range []profilelist.ListInput{{Limit: -1}, {Limit: 10001}, {Cursor: "bad"}} {
-		_, err := profilelist.NewList(listTestReader{}).Execute(context.Background(), input)
+		_, err := profilelist.New(listTestReader{}).List(context.Background(), input)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 			t.Fatalf("input %#v error = %#v", input, err)
 		}
 	}
-	_, err := profilelist.NewList(listTestReader{err: errors.New("read failed")}).Execute(context.Background(), profilelist.ListInput{})
+	_, err := profilelist.New(listTestReader{err: errors.New("read failed")}).List(context.Background(), profilelist.ListInput{})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "env.profile.list.read" {
 		t.Fatalf("read error = %#v", err)
@@ -113,7 +117,7 @@ func TestListExecuteValidatesBoundsAndWrapsReadFailure(t *testing.T) {
 }
 
 func TestListOutputProjectionsAndGoldens(t *testing.T) {
-	value, err := profilelist.NewList(listTestReader{profiles: []profilelist.Profile{{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}}}).Execute(context.Background(), profilelist.ListInput{})
+	value, err := profilelist.New(listTestReader{profiles: []profilelist.Profile{{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}}}).List(context.Background(), profilelist.ListInput{})
 	if err != nil {
 		t.Fatal(err)
 	}

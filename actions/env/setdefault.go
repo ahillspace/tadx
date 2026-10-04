@@ -1,4 +1,4 @@
-package profile
+package env
 
 import (
 	"context"
@@ -12,20 +12,18 @@ type DefaultSetter interface {
 	SetDefault(context.Context, string) (bool, error)
 	PreviewSetDefault(context.Context, string) (bool, error)
 }
-type SetDefaultAction struct{ setter DefaultSetter }
 
-func NewSetDefault(setter DefaultSetter) *SetDefaultAction { return &SetDefaultAction{setter: setter} }
-
-func (a *SetDefaultAction) Execute(ctx context.Context, input SetDefaultInput) (SetDefaultOutput, error) {
-	if a == nil || a.setter == nil {
+// SetDefault previews or saves the default environment selection.
+func (s *Service) SetDefault(ctx context.Context, input SetDefaultInput) (SetDefaultOutput, error) {
+	if s == nil || s.store == nil {
 		return SetDefaultOutput{}, &errs.Error{ID: "env.profile.set-default.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.set-default", Summary: "Default environment selection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
 	if strings.TrimSpace(input.Alias) == "" {
 		return SetDefaultOutput{}, &errs.Error{ID: "env.profile.set-default.usage", Kind: errs.KindUsage, Operation: "env.profile.set-default", Summary: "environment alias is required"}
 	}
-	setDefault := a.setter.SetDefault
+	setDefault := s.store.SetDefault
 	if input.Preview {
-		setDefault = a.setter.PreviewSetDefault
+		setDefault = s.store.PreviewSetDefault
 	}
 	changed, err := setDefault(ctx, input.Alias)
 	if err != nil {

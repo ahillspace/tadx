@@ -1,4 +1,5 @@
-package app
+// Package mutation owns local site-consent status, policy, and persistence.
+package mutation
 
 import (
 	"context"
@@ -9,50 +10,70 @@ import (
 
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-func (r *runtimeDependencies) ReadMutationStatus(ctx context.Context, alias string) (value.MutationStatus, error) {
+// Restriction reports whether administrator policy blocks remote mutations.
+type Restriction func() bool
+
+// Service owns consent policy for one selected configuration file.
+type Service struct {
+	path        func() string
+	restriction Restriction
+}
+
+func New(path func() string, restriction Restriction) *Service {
+	return &Service{path: path, restriction: restriction}
+}
+
+// ReadMutationStatus lists saved consent without authorizing an operation.
+func (s *Service) ReadMutationStatus(ctx context.Context, alias string) (value.MutationStatus, error) {
 	out := value.MutationStatus{Sites: []value.MutationConsent{}}
 	appendSetting := func(setting value.MutationSetting) {
 		out.Sites = append(out.Sites, value.MutationConsent{Environment: setting.Environment, Enabled: setting.Enabled, ServerURL: setting.ServerURL, SiteContentURL: setting.SiteContentURL, Source: setting.Source})
 	}
 	if alias != "" {
-		setting, err := r.ReadMutationSetting(ctx, alias)
+		setting, err := s.ReadMutationSetting(ctx, alias)
 		if err != nil {
 			return out, err
 		}
 		appendSetting(setting)
 	} else {
-		cfg, err := config.Load(r.configPath)
+		cfg, err := config.Load(s.path())
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return out, err
 		}
 		for _, name := range slices.Sorted(maps.Keys(cfg.Environments)) {
 			environment := cfg.Environments[name]
 			environment.Alias = name
-			setting, err := siteMutationSetting(cfg, environment)
+			setting, err := SiteSetting(cfg, environment)
 			if err != nil {
 				return out, err
 			}
 			appendSetting(setting)
 		}
 	}
-	if r.managedPolicy != nil && errors.Is(r.managedPolicy.CheckRemoteMutation(), managedpolicy.ErrRemoteMutationDenied) {
+	if s.restriction != nil && s.restriction() {
 		out.Restriction = "Administrator-managed policy blocks remote mutations; enabled reports site consent only."
 	}
 	return out, nil
 }
 
-func (r *runtimeDependencies) ReadMutationSetting(_ context.Context, alias string) (value.MutationSetting, error) {
-	cfg, environment, err := r.environment(alias, false)
+// ReadMutationSetting reads one environment's canonical site consent.
+func (s *Service) ReadMutationSetting(_ context.Context, alias string) (value.MutationSetting, error) {
+	cfg, err := config.Load(s.path())
 	if err != nil {
-		return value.MutationSetting{}, err
+		return value.MutationSetting{}, &errs.Error{ID: "configuration.load", Kind: errs.KindOperation, Operation: "configuration", Summary: "CLI settings could not be loaded.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false)}
 	}
-	return siteMutationSetting(cfg, environment)
+	environment, err := cfg.ResolveEnvironment(alias)
+	if err != nil {
+		return value.MutationSetting{}, &errs.Error{ID: "environment.resolve", Kind: errs.KindUsage, Operation: "environment.resolve", Environment: alias, Summary: "A configured environment alias is required, not a Tableau site name or URL.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Prerequisite: &errs.Prerequisite{Kind: "environment", Resource: alias, Summary: "Select a configured environment alias."}}
+	}
+	return SiteSetting(cfg, environment)
 }
-func siteMutationSetting(cfg config.Config, environment config.Environment) (value.MutationSetting, error) {
+
+// SiteSetting projects the canonical saved consent for a resolved environment.
+func SiteSetting(cfg config.Config, environment config.Environment) (value.MutationSetting, error) {
 	server, err := config.CanonicalMutationServer(environment.URL)
 	if err != nil {
 		return value.MutationSetting{}, err
@@ -69,9 +90,11 @@ func siteMutationSetting(cfg config.Config, environment config.Environment) (val
 	}
 	return state, nil
 }
-func (r *runtimeDependencies) WriteMutationSetting(_ context.Context, alias string, enabled bool) (value.MutationSetting, error) {
+
+// WriteMutationSetting persists consent for one resolved canonical site.
+func (s *Service) WriteMutationSetting(_ context.Context, alias string, enabled bool) (value.MutationSetting, error) {
 	var environment config.Environment
-	cfg, err := config.Update(r.configPath, false, func(cfg config.Config) (config.Config, error) {
+	cfg, err := config.Update(s.path(), false, func(cfg config.Config) (config.Config, error) {
 		var resolveErr error
 		environment, resolveErr = cfg.ResolveWriteEnvironment(alias)
 		if resolveErr != nil {
@@ -85,7 +108,7 @@ func (r *runtimeDependencies) WriteMutationSetting(_ context.Context, alias stri
 	if err != nil {
 		return value.MutationSetting{}, err
 	}
-	state, err := siteMutationSetting(cfg, environment)
+	state, err := SiteSetting(cfg, environment)
 	state.Persisted = new(true)
 	if err != nil {
 		state.Saved = new(enabled)
@@ -95,9 +118,11 @@ func (r *runtimeDependencies) WriteMutationSetting(_ context.Context, alias stri
 	}
 	return state, nil
 }
-func (r *runtimeDependencies) mutationPolicy(alias string) (bool, string, error) {
+
+// Policy resolves local site consent for command execution checks.
+func (s *Service) Policy(alias string) (bool, string, error) {
 	if alias == "" {
-		cfg, err := config.Load(r.configPath)
+		cfg, err := config.Load(s.path())
 		if errors.Is(err, os.ErrNotExist) {
 			return false, "site_selection_required", nil
 		}
@@ -108,6 +133,6 @@ func (r *runtimeDependencies) mutationPolicy(alias string) (bool, string, error)
 			return false, "site_selection_required", nil
 		}
 	}
-	state, err := r.ReadMutationSetting(context.Background(), alias)
+	state, err := s.ReadMutationSetting(context.Background(), alias)
 	return state.Enabled, state.Source, err
 }

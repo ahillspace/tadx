@@ -1,6 +1,7 @@
 # Architecture implementation status
 
-Status: project, catalog, auth, agent/version, content mutations, and initial shared inventory changes are integrated; full migration and candidate gates remain incomplete.
+Status: project, catalog, auth, agent/version, capability, env/mutation, content mutations, local helper ownership, and initial shared inventory changes are integrated.
+Full migration and candidate gates remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -316,8 +317,50 @@ All four build jobs and three native managed-policy jobs also pass, but the over
 An isolated diagnostic omits best-effort cache publication and reproduces the hosted test symptom.
 This demonstrates the fixture's dependency, not the precise reason that hosted publication failed.
 A test-only correction explicitly seeds observed and unobserved member-coverage states while retaining live CLI calls and the existing assertions.
-That correction remains outside the integrated source pending independent review.
+Independent review accepts that correction, and commit `e050e18` integrates it separately without production changes.
+Forced-omission and normal-source focused tests pass ten repetitions; separate tests retain admin-detail and workbook write-through coverage.
+The original diagnostic log required post-capture local-path sanitization; its failed result and original/revised hashes remain recorded rather than claiming clean creation.
+The pushed `e050e18` batch includes content mutations and capability discovery and requires its own full candidate checks.
+Exact `e050e18fcd2af0ff94a9c76bb191757787032427` subsequently passes full local race tests, vet, formatting across 1,115 Go files, module/generated-file checks, tooling suites, and assessment validators.
+All three baseline-relative manifests pass 12 controls and 14 seeded defects across 354 declared changed paths; its exact-revision default manifest passes eight controls and nine seeds.
+The 1,383-file ordinal source fingerprint remains `4fc1455b293bc0e9ea10817cf8b9ff26c932cae294bbac985c54589c1ee2f04f` before and after checks.
+The runner's source digest is `b33ced1c6c3ec05f670d4ef423717cd3046bcb50d330cbb428cc54ac526ff386` under its separately defined manifest format.
+Hosted CI run `37170991864` and gate-tooling run `37170991768` both pass on exact `e050e18`, including Windows quality gates and the previously failing fixture.
+These results do not transfer to the newer local-services integration.
 No integrated checkpoint is accepted.
+
+## Environment, consent, and local helper ownership
+
+Independent review rejects the first isolated env/mutation consolidation despite its focused tests and compile passing.
+The draft captures the configuration path during construction, before Cobra parses the selected configuration flag.
+A shared capability CLI regression passes on the baseline and fails on that draft, demonstrating lost selected-site consent behavior.
+Review also finds four unintended help-text changes from mechanical renaming.
+Both issues require correction and selected-configuration positive and inverse-denial tests before integration.
+No remote task uses this draft.
+The author subsequently modifies the initial frozen sources in place; their first manifests remain historical records and no longer describe the current bytes.
+Those handoffs are superseded, not accepted evidence.
+Revisions use new source directories and retained ZIP archives with complete fresh hashes before independent re-review.
+
+The corrected env/mutation revision passes independent re-review, including the original failing CLI test and new selected-config positive and inverse-denial cases.
+Its exact-`e050e18` candidate has 67 paths and source fingerprint `ba3d9e908c0ab1345af77e61c32dde99c1161c5254b4f6ee21c322b7f22cf38b`.
+One env Service owns six named operations and configuration coordination; one mutation Service owns status, set, and selected-site policy observations.
+Configuration retains canonical consent storage, locking, and persistence mechanisms.
+Ten relocated output goldens remain byte-identical; 32 env action tests and three moved app store tests retain their assertions.
+
+Two separately reviewed local-helper moves put configured PAT-variable enumeration in config and terminal credential prompting in the auth CLI package.
+The updater callback reads the selected path at invocation time; terminal construction remains lazy and retains the existing injected-prompter path.
+The enumeration test moves with its owner, while the CLI flag-selected child-environment regression remains at the app boundary.
+Baseline and candidate verification reruns use the gate runner's sanitized subprocess environment; earlier unsanitized focused runs are excluded from assurance.
+Fake prompters do not establish native terminal secret-echo behavior, which remains a verification limit rather than a new claim.
+
+Independent integration review verifies the combined 73-path candidate and both constructor edits in the sole overlapping app file.
+Its 1,389-file ordinal fingerprint is `a9099a577cadd7eaf3d989d567d47f429adecf96929030c65426280420efe4c5`.
+Its retained ZIP has SHA-256 `c5113267762557735be9ede9aea11dfb447942d81a697f56dbfd96cffd7f536f`.
+All other paths match their independently reviewed inputs exactly.
+Clean-environment focused tests, full compile, scoped vet, architecture checks, and formatting pass with unchanged source.
+Mechanical integration checks every actual-base and candidate path hash, copies 44 files, and removes 29 obsolete paths whose behavior and assertions survive under the new owners.
+Removed files remain recoverable from Git.
+Full integrated and live gates remain pending for this new source.
 
 ## Acceptance dependencies
 
@@ -363,6 +406,13 @@ The sanitized, same-thread result establishes that the pinned Codex 0.154.0 Chat
 This establishes failure of that route, not universal model unavailability or successful inference.
 The requested model and medium effort appear in effective rollout configuration, but the task never completes.
 A separately isolated current-client setup diagnostic is authorized; no model substitution or live acceptance follows from this authorization.
+That single Codex 0.160.0 diagnostic completes successfully with exit zero and a completed turn.
+Its same-thread rollout records provider `openai`, model `gpt-6-luna`, and effort `medium`.
+The verified disposable image runs a static text-only request with read-only root, no host mounts, and authentication confined to tmpfs.
+Its container and derived image are removed afterward; the original pinned image remains unchanged.
+The sanitized result SHA-256 is `ebb5e1874141d25cdab2ddebd18175625a68b21402f49d67c1ff4039296e24e7`.
+This qualifies an available setup route, not a final worker image, TADX build, Tableau task, or G9 outcome.
+Final worker preparation must pin the current client and retain actual-session model evidence again.
 The OpenAI Docs check confirms [Luna supports medium reasoning](https://developers.openai.com/api/docs/models/gpt-6-luna), but requested flags alone do not establish actual runtime configuration.
 The [documented noninteractive JSON event stream](https://learn.chatgpt.com/docs/non-interactive-mode) does not establish those actual values by itself.
 
@@ -385,7 +435,7 @@ Fixture preparation must still establish usable identities and cleanup evidence;
 Saved site consent does not expand fixture authority.
 Changing persisted consent or persisting PATs requires separate explicit permission.
 Missing task mappings, installer stages, and runtime qualification are technical gaps, not substitute authority.
-No broader mutations or live CLI model tasks have occurred; baseline feature-branch pushes and the two text-only setup probes are recorded above.
+No Tableau mutations or live CLI model tasks have occurred; the recorded text-only setup diagnostics do not count as CLI tasks.
 The maintainer directs continued implementation and verification; broader fixture authority is now recorded, while runtime qualification and candidate gates remain unresolved.
 A subsequent read-only consent check confirms that the previously selected site's saved mutation consent is already enabled; no setting changes occur.
 No incomplete gate is waived or reported as passing.

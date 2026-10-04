@@ -1,4 +1,4 @@
-package profile
+package env
 
 import (
 	"context"
@@ -12,18 +12,15 @@ type GetReader interface {
 	Get(context.Context, string) (Profile, error)
 }
 
-type GetAction struct{ reader GetReader }
-
-func NewGet(reader GetReader) *GetAction { return &GetAction{reader: reader} }
-
-func (a *GetAction) Execute(ctx context.Context, input GetInput) (GetOutput, error) {
-	if a == nil || a.reader == nil {
+// Get inspects one exact environment profile.
+func (s *Service) Get(ctx context.Context, input GetInput) (GetOutput, error) {
+	if s == nil || s.store == nil {
 		return GetOutput{}, &errs.Error{ID: "env.profile.get.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.get", Summary: "Environment profile inspection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
 	if strings.TrimSpace(input.Alias) == "" {
 		return GetOutput{}, &errs.Error{ID: "env.profile.get.usage", Kind: errs.KindUsage, Operation: "env.profile.get", Summary: "environment alias is required"}
 	}
-	profile, err := a.reader.Get(ctx, input.Alias)
+	profile, err := s.store.Get(ctx, input.Alias)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
 		return GetOutput{}, &errs.Error{ID: "env.profile.get.read", Kind: errs.KindOperation, Operation: "env.profile.get", Environment: input.Alias, Summary: "Environment profile could not be read.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}

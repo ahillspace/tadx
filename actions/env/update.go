@@ -1,4 +1,4 @@
-package profile
+package env
 
 import (
 	"context"
@@ -13,12 +13,9 @@ type Updater interface {
 	PreviewUpdate(context.Context, string, Patch) (UpdateResult, error)
 }
 
-type UpdateAction struct{ updater Updater }
-
-func NewUpdate(updater Updater) *UpdateAction { return &UpdateAction{updater: updater} }
-
-func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOutput, error) {
-	if a == nil || a.updater == nil {
+// Update previews or saves explicit profile field changes.
+func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateOutput, error) {
+	if s == nil || s.store == nil {
 		return UpdateOutput{}, &errs.Error{ID: "env.profile.update.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.update", Summary: "Environment profile update is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
 	if strings.TrimSpace(input.Alias) == "" {
@@ -39,9 +36,9 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 	if input.Patch.PATNameEnv.Set && input.Patch.PATSecretEnv.Set && input.Patch.PATNameEnv.Value != "" && strings.EqualFold(input.Patch.PATNameEnv.Value, input.Patch.PATSecretEnv.Value) {
 		return UpdateOutput{}, updateUsageError("PAT name and secret must use different environment variables")
 	}
-	update := a.updater.Update
+	update := s.store.Update
 	if input.Preview {
-		update = a.updater.PreviewUpdate
+		update = s.store.PreviewUpdate
 	}
 	result, err := update(ctx, input.Alias, input.Patch)
 	if err != nil {

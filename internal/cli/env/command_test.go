@@ -2,7 +2,7 @@ package env_test
 
 import (
 	"context"
-	"github.com/ahillspace/tadx/actions/env/profile"
+	"github.com/ahillspace/tadx/actions/env"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	"reflect"
 	"strings"
@@ -10,37 +10,37 @@ import (
 )
 
 type actions struct {
-	list       []profile.ListInput
-	get        []profile.GetInput
-	add        []profile.AddInput
-	update     []profile.UpdateInput
-	remove     []profile.RemoveInput
-	setDefault []profile.SetDefaultInput
+	list       []env.ListInput
+	get        []env.GetInput
+	add        []env.AddInput
+	update     []env.UpdateInput
+	remove     []env.RemoveInput
+	setDefault []env.SetDefaultInput
 }
 
-func (a *actions) List(_ context.Context, input profile.ListInput) (profile.ListOutput, error) {
+func (a *actions) List(_ context.Context, input env.ListInput) (env.ListOutput, error) {
 	a.list = append(a.list, input)
-	return profile.ListOutput{}, nil
+	return env.ListOutput{}, nil
 }
-func (a *actions) Get(_ context.Context, input profile.GetInput) (profile.GetOutput, error) {
+func (a *actions) Get(_ context.Context, input env.GetInput) (env.GetOutput, error) {
 	a.get = append(a.get, input)
-	return profile.GetOutput{}, nil
+	return env.GetOutput{}, nil
 }
-func (a *actions) Add(_ context.Context, input profile.AddInput) (profile.AddOutput, error) {
+func (a *actions) Add(_ context.Context, input env.AddInput) (env.AddOutput, error) {
 	a.add = append(a.add, input)
-	return profile.AddOutput{}, nil
+	return env.AddOutput{}, nil
 }
-func (a *actions) Update(_ context.Context, input profile.UpdateInput) (profile.UpdateOutput, error) {
+func (a *actions) Update(_ context.Context, input env.UpdateInput) (env.UpdateOutput, error) {
 	a.update = append(a.update, input)
-	return profile.UpdateOutput{}, nil
+	return env.UpdateOutput{}, nil
 }
-func (a *actions) Remove(_ context.Context, input profile.RemoveInput) (profile.RemoveOutput, error) {
+func (a *actions) Remove(_ context.Context, input env.RemoveInput) (env.RemoveOutput, error) {
 	a.remove = append(a.remove, input)
-	return profile.RemoveOutput{}, nil
+	return env.RemoveOutput{}, nil
 }
-func (a *actions) SetDefault(_ context.Context, input profile.SetDefaultInput) (profile.SetDefaultOutput, error) {
+func (a *actions) SetDefault(_ context.Context, input env.SetDefaultInput) (env.SetDefaultOutput, error) {
 	a.setDefault = append(a.setDefault, input)
-	return profile.SetDefaultOutput{}, nil
+	return env.SetDefaultOutput{}, nil
 }
 
 type renderer struct{ calls int }
@@ -69,27 +69,27 @@ func TestEnvCommandsMapInputsAndRender(t *testing.T) {
 		}
 	}
 
-	if !reflect.DeepEqual(a.list, []profile.ListInput{{Limit: 5, Cursor: "10"}}) {
+	if !reflect.DeepEqual(a.list, []env.ListInput{{Limit: 5, Cursor: "10"}}) {
 		t.Fatalf("list inputs = %#v", a.list)
 	}
-	if !reflect.DeepEqual(a.get, []profile.GetInput{{Alias: "dev"}}) {
+	if !reflect.DeepEqual(a.get, []env.GetInput{{Alias: "dev"}}) {
 		t.Fatalf("get inputs = %#v", a.get)
 	}
-	if !reflect.DeepEqual(a.add, []profile.AddInput{{Alias: "dev", ServerURL: "https://tableau.example.com", SiteContentURL: "test-site", APIVersion: "3.29", PATNameEnv: "DEV_PAT_NAME", PATSecretEnv: "DEV_PAT_SECRET", DefaultWorkspace: "development"}}) {
+	if !reflect.DeepEqual(a.add, []env.AddInput{{Alias: "dev", ServerURL: "https://tableau.example.com", SiteContentURL: "test-site", APIVersion: "3.29", PATNameEnv: "DEV_PAT_NAME", PATSecretEnv: "DEV_PAT_SECRET", DefaultWorkspace: "development"}}) {
 		t.Fatalf("add inputs = %#v", a.add)
 	}
-	wantUpdate := profile.UpdateInput{Alias: "dev", Patch: profile.Patch{
-		ServerURL:        profile.StringField{Set: true, Value: "https://new.example.com"},
-		SiteContentURL:   profile.StringField{Set: true},
-		APIVersion:       profile.StringField{Set: true, Value: "3.30"},
-		PATNameEnv:       profile.StringField{Set: true, Value: "NEW_PAT_NAME"},
-		PATSecretEnv:     profile.StringField{Set: true},
-		DefaultWorkspace: profile.StringField{Set: true, Value: "development"},
+	wantUpdate := env.UpdateInput{Alias: "dev", Patch: env.Patch{
+		ServerURL:        env.StringField{Set: true, Value: "https://new.example.com"},
+		SiteContentURL:   env.StringField{Set: true},
+		APIVersion:       env.StringField{Set: true, Value: "3.30"},
+		PATNameEnv:       env.StringField{Set: true, Value: "NEW_PAT_NAME"},
+		PATSecretEnv:     env.StringField{Set: true},
+		DefaultWorkspace: env.StringField{Set: true, Value: "development"},
 	}}
-	if !reflect.DeepEqual(a.update, []profile.UpdateInput{wantUpdate}) {
+	if !reflect.DeepEqual(a.update, []env.UpdateInput{wantUpdate}) {
 		t.Fatalf("update inputs = %#v", a.update)
 	}
-	if !reflect.DeepEqual(a.remove, []profile.RemoveInput{{Alias: "old"}}) || !reflect.DeepEqual(a.setDefault, []profile.SetDefaultInput{{Alias: "dev"}}) {
+	if !reflect.DeepEqual(a.remove, []env.RemoveInput{{Alias: "old"}}) || !reflect.DeepEqual(a.setDefault, []env.SetDefaultInput{{Alias: "dev"}}) {
 		t.Fatalf("remove = %#v, default = %#v", a.remove, a.setDefault)
 	}
 	if r.calls != len(commands) {
@@ -104,7 +104,7 @@ func TestEnvListAllCarriesCompleteInventoryMode(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(a.list, []profile.ListInput{{All: true}}) {
+	if !reflect.DeepEqual(a.list, []env.ListInput{{All: true}}) {
 		t.Fatalf("list inputs = %#v", a.list)
 	}
 }

@@ -17,10 +17,12 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
 | `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
-| `actions/env/profile` | Profile operations with a shared profile representation |
+| `actions/env` | Environment profile operations and configuration coordination through one service |
+| `actions/mutation` | Exact-site mutation consent status, changes, and policy observations |
 | `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
 | `actions/agent`, `actions/version` | Guidance installation/removal and installed-version/release-check services |
 | `actions/auth` | Authentication, pre-prompt validation, status projection, and credential/configuration coordination |
+| `actions/capability` | Registry discovery and policy/site readiness through named get and list operations |
 | Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
@@ -53,6 +55,11 @@ Complete live search uses the composed project service; bounded live search uses
 Shared collection, scoped cache publication, and source/coverage facts live in `internal/inventory`.
 App still binds action-specific pages and outputs and owns cache-only reads, full-generation refresh, and search routing pending their remaining ownership moves.
 
+Workbook, datasource, and flow mutation Services validate input before opening target-bound providers.
+Their resource adapters implement move, update, and delete ports directly, without per-operation app facades or copy-only mutation adapters.
+Fresh prewrite observations, native acknowledgements, partial outcomes, and operation-specific projections remain explicit.
+Content read, pull, publication, and recovery ownership moves remain in progress.
+
 For catalog commands, `internal/cli/catalog` calls one service in `actions/catalog`.
 The service validates input before opening its target-bound provider and retains separate typed read and mutation sequences.
 App binds native metadata clients directly to those narrow ports, including the shared label-target contract; no forwarding-only catalog resource adapter remains.
@@ -60,6 +67,17 @@ App binds native metadata clients directly to those narrow ports, including the 
 For authentication, `internal/cli/auth` calls the auth service, including login preflight before prompting.
 `actions/auth` coordinates credential persistence, target freshness, and compensation through core auth and config mechanisms.
 App supplies invocation-scoped construction; native credential operations and configuration locking remain in their infrastructure owners.
+Terminal credential prompting belongs to `internal/cli/auth`; app constructs the default prompter without reading credentials.
+
+Environment and mutation Services receive the selected configuration path lazily, after root flag parsing.
+The env Service owns profile changes and credential-bound target guards.
+The mutation Service owns consent workflows, while config retains exact server/site authority, locking, and durable storage.
+Updater child-process credential-variable enumeration also belongs to config; the updater retains filtering and process-launch policy.
+
+Capability discovery uses one `actions/capability` Service for get and list.
+The Service reads the existing registry and applies injected policy and selected-site readiness observations.
+The CLI owns parsing, rendering, and partial-result wrapping; app retains actual-operation policy enforcement and dependency construction.
+Discovery results do not authorize an operation.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.

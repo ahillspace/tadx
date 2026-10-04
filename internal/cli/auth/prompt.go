@@ -1,4 +1,4 @@
-package app
+package auth
 
 import (
 	"bufio"
@@ -17,7 +17,9 @@ type terminalCredentialPrompter struct {
 	output io.Writer
 }
 
-func newTerminalCredentialPrompter() *terminalCredentialPrompter {
+// NewTerminalPrompter binds credential input to stdin and prompts to stderr.
+// Construction does not read input or write a prompt.
+func NewTerminalPrompter() Prompter {
 	return &terminalCredentialPrompter{input: os.Stdin, output: os.Stderr}
 }
 

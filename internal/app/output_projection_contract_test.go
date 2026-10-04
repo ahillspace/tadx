@@ -8,7 +8,7 @@ import (
 
 	authcheck "github.com/ahillspace/tadx/actions/auth"
 	catalogread "github.com/ahillspace/tadx/actions/catalog"
-	envupdate "github.com/ahillspace/tadx/actions/env/profile"
+	envupdate "github.com/ahillspace/tadx/actions/env"
 	jobactions "github.com/ahillspace/tadx/actions/job"
 	projectops "github.com/ahillspace/tadx/actions/project"
 

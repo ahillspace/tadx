@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ahillspace/tadx/actions/env/profile"
+	"github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
@@ -14,12 +14,12 @@ import (
 type Renderer interface{ Render(any) error }
 
 type Dependencies struct {
-	Lister        func(context.Context, profile.ListInput) (profile.ListOutput, error)
-	Getter        func(context.Context, profile.GetInput) (profile.GetOutput, error)
-	Adder         func(context.Context, profile.AddInput) (profile.AddOutput, error)
-	Updater       func(context.Context, profile.UpdateInput) (profile.UpdateOutput, error)
-	Remover       func(context.Context, profile.RemoveInput) (profile.RemoveOutput, error)
-	DefaultSetter func(context.Context, profile.SetDefaultInput) (profile.SetDefaultOutput, error)
+	Lister        func(context.Context, env.ListInput) (env.ListOutput, error)
+	Getter        func(context.Context, env.GetInput) (env.GetOutput, error)
+	Adder         func(context.Context, env.AddInput) (env.AddOutput, error)
+	Updater       func(context.Context, env.UpdateInput) (env.UpdateOutput, error)
+	Remover       func(context.Context, env.RemoveInput) (env.RemoveOutput, error)
+	DefaultSetter func(context.Context, env.SetDefaultInput) (env.SetDefaultOutput, error)
 	Renderer      Renderer
 	Uses          map[string]string
 	Shorts        map[string]string
@@ -32,7 +32,7 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newList(deps Dependencies) *cobra.Command {
-	var input profile.ListInput
+	var input env.ListInput
 	command := &cobra.Command{
 		Use: use(deps, "env.profile.list", "list"), Short: short(deps, "env.profile.list", "List environment profiles."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.list"}, Args: noArgs("env.profile.list"),
@@ -57,7 +57,7 @@ func newGet(deps Dependencies) *cobra.Command {
 		Use: use(deps, "env.profile.get", "get <alias>"), Short: short(deps, "env.profile.get", "Inspect one environment profile."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.get"}, Args: exactAlias("env.profile.get"),
 		RunE: func(command *cobra.Command, args []string) error {
-			result, err := deps.Getter(command.Context(), profile.GetInput{Alias: args[0]})
+			result, err := deps.Getter(command.Context(), env.GetInput{Alias: args[0]})
 			if err != nil {
 				return err
 			}
@@ -67,7 +67,7 @@ func newGet(deps Dependencies) *cobra.Command {
 }
 
 func newAdd(deps Dependencies) *cobra.Command {
-	var input profile.AddInput
+	var input env.AddInput
 	command := &cobra.Command{
 		Use: use(deps, "env.profile.add", "add <alias>"), Short: short(deps, "env.profile.add", "Add an environment profile."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.add"},
@@ -122,16 +122,16 @@ func newUpdate(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, args []string) error {
-			patch := profile.Patch{
+			patch := env.Patch{
 				ServerURL:           field(command, "url", values.serverURL, false),
 				SiteContentURL:      field(command, "site", values.site, clears.site),
 				APIVersion:          field(command, "api-version", values.apiVersion, clears.apiVersion),
 				PATNameEnv:          field(command, "pat-name-env", values.patNameEnv, clears.patNameEnv),
 				PATSecretEnv:        field(command, "pat-secret-env", values.patSecretEnv, clears.patSecretEnv),
 				DefaultWorkspace:    field(command, "default-workspace", values.defaultWorkspace, clears.defaultWorkspace),
-				CacheMaxConcurrency: profile.IntField{Set: command.Flags().Changed("cache-max-concurrency") || clearCacheMaxConcurrency, Value: cacheMaxConcurrency},
+				CacheMaxConcurrency: env.IntField{Set: command.Flags().Changed("cache-max-concurrency") || clearCacheMaxConcurrency, Value: cacheMaxConcurrency},
 			}
-			result, err := deps.Updater(command.Context(), profile.UpdateInput{Alias: args[0], Patch: patch, Preview: preview})
+			result, err := deps.Updater(command.Context(), env.UpdateInput{Alias: args[0], Patch: patch, Preview: preview})
 			if err != nil {
 				return err
 			}
@@ -156,7 +156,7 @@ func newRemove(deps Dependencies) *cobra.Command {
 		Use: use(deps, "env.profile.remove", "remove <alias>"), Short: short(deps, "env.profile.remove", "Remove an environment profile."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.remove"}, Args: exactAlias("env.profile.remove"),
 		RunE: func(command *cobra.Command, args []string) error {
-			result, err := deps.Remover(command.Context(), profile.RemoveInput{Alias: args[0], Preview: preview})
+			result, err := deps.Remover(command.Context(), env.RemoveInput{Alias: args[0], Preview: preview})
 			if err != nil {
 				return err
 			}
@@ -173,7 +173,7 @@ func newDefault(deps Dependencies) *cobra.Command {
 		Use: use(deps, "env.profile.set-default", "default <alias>"), Short: short(deps, "env.profile.set-default", "Set the default environment."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.set-default"}, Args: exactAlias("env.profile.set-default"),
 		RunE: func(command *cobra.Command, args []string) error {
-			result, err := deps.DefaultSetter(command.Context(), profile.SetDefaultInput{Alias: args[0], Preview: preview})
+			result, err := deps.DefaultSetter(command.Context(), env.SetDefaultInput{Alias: args[0], Preview: preview})
 			if err != nil {
 				return err
 			}
@@ -196,8 +196,8 @@ func addProfileFlags(command *cobra.Command, serverURL, site, apiVersion, patNam
 	command.Flags().StringVar(defaultWorkspace, "default-workspace", "", "logical default workspace name")
 }
 
-func field(command *cobra.Command, flag, value string, clear bool) profile.StringField {
-	return profile.StringField{Set: command.Flags().Changed(flag) || clear, Value: value}
+func field(command *cobra.Command, flag, value string, clear bool) env.StringField {
+	return env.StringField{Set: command.Flags().Changed(flag) || clear, Value: value}
 }
 
 func noArgs(operation string) cobra.PositionalArgs {

@@ -1,10 +1,10 @@
-package profile_test
+package env_test
 
 import (
 	"encoding/json"
 	"testing"
 
-	profileupdate "github.com/ahillspace/tadx/actions/env/profile"
+	profileupdate "github.com/ahillspace/tadx/actions/env"
 )
 
 func TestUpdateCompactProfileRetainsTargetAndChangedValues(t *testing.T) {

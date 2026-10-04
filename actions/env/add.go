@@ -1,4 +1,4 @@
-package profile
+package env
 
 import (
 	"context"
@@ -15,12 +15,9 @@ type Adder interface {
 	PreviewAdd(context.Context, AddProfile) (AddProfile, error)
 }
 
-type AddAction struct{ adder Adder }
-
-func NewAdd(adder Adder) *AddAction { return &AddAction{adder: adder} }
-
-func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, error) {
-	if a == nil || a.adder == nil {
+// Add previews or saves one validated environment profile.
+func (s *Service) Add(ctx context.Context, input AddInput) (AddOutput, error) {
+	if s == nil || s.store == nil {
 		return AddOutput{}, &errs.Error{ID: "env.profile.add.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.add", Summary: "Environment profile creation is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
 	if strings.TrimSpace(input.Alias) == "" {
@@ -38,9 +35,9 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 	if input.CacheMaxConcurrency < 0 || input.CacheMaxConcurrency > 256 {
 		return AddOutput{}, addUsageError("cache maximum concurrency must be between 1 and 256, or omitted for the default")
 	}
-	add := a.adder.Add
+	add := s.store.Add
 	if input.Preview {
-		add = a.adder.PreviewAdd
+		add = s.store.PreviewAdd
 	}
 	profile, err := add(ctx, AddProfile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency})
 	if err != nil {

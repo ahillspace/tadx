@@ -1,4 +1,4 @@
-package profile_test
+package env_test
 
 import (
 	"bytes"
@@ -7,12 +7,13 @@ import (
 	"os"
 	"testing"
 
-	profileadd "github.com/ahillspace/tadx/actions/env/profile"
+	profileadd "github.com/ahillspace/tadx/actions/env"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type addTestStore struct {
+	profileadd.Store
 	got    profileadd.AddProfile
 	result profileadd.AddProfile
 	err    error
@@ -27,10 +28,10 @@ func (a *addTestStore) PreviewAdd(ctx context.Context, profile profileadd.AddPro
 	return a.Add(ctx, profile)
 }
 
-func TestAddExecuteValidatesRequiredInputBeforeWriting(t *testing.T) {
+func TestServiceAddValidatesRequiredInputBeforeWriting(t *testing.T) {
 	store := &addTestStore{}
 	for _, input := range []profileadd.AddInput{{}, {Alias: "production"}, {Alias: "production", ServerURL: "http://example.test"}} {
-		_, err := profileadd.NewAdd(store).Execute(context.Background(), input)
+		_, err := profileadd.New(store).Add(context.Background(), input)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 			t.Fatalf("input %#v error = %#v", input, err)
@@ -41,9 +42,9 @@ func TestAddExecuteValidatesRequiredInputBeforeWriting(t *testing.T) {
 	}
 }
 
-func TestAddExecuteAddsPATProfile(t *testing.T) {
+func TestServiceAddAddsPATProfile(t *testing.T) {
 	store := &addTestStore{result: addFixture()}
-	got, err := profileadd.NewAdd(store).Execute(context.Background(), profileadd.AddInput{Alias: "Prod-West", ServerURL: "https://example.test", SiteContentURL: "marketing"})
+	got, err := profileadd.New(store).Add(context.Background(), profileadd.AddInput{Alias: "Prod-West", ServerURL: "https://example.test", SiteContentURL: "marketing"})
 	if err != nil || got.Status != "added" || store.got.AuthType != "pat" || store.got.Alias != "Prod-West" {
 		t.Fatalf("output = %#v, input = %#v, error = %v", got, store.got, err)
 	}
@@ -52,7 +53,7 @@ func TestAddExecuteAddsPATProfile(t *testing.T) {
 func TestAddCacheConcurrencyValidatedAndPassedToStore(t *testing.T) {
 	for _, limit := range []int{-1, 0, 1, 256, 257} {
 		store := &addTestStore{}
-		_, err := profileadd.NewAdd(store).Execute(context.Background(), profileadd.AddInput{Alias: "staging", ServerURL: "https://tableau.example.com", CacheMaxConcurrency: limit})
+		_, err := profileadd.New(store).Add(context.Background(), profileadd.AddInput{Alias: "staging", ServerURL: "https://tableau.example.com", CacheMaxConcurrency: limit})
 		if limit < 0 || limit > 256 {
 			if err == nil || store.got.Alias != "" {
 				t.Fatalf("invalid%d error=%v stored=%+v", limit, err, store.got)
@@ -64,7 +65,7 @@ func TestAddCacheConcurrencyValidatedAndPassedToStore(t *testing.T) {
 }
 
 func TestAddOutputGoldens(t *testing.T) {
-	got, _ := profileadd.NewAdd(&addTestStore{result: addFixture()}).Execute(context.Background(), profileadd.AddInput{Alias: "production", ServerURL: "https://example.test"})
+	got, _ := profileadd.New(&addTestStore{result: addFixture()}).Add(context.Background(), profileadd.AddInput{Alias: "production", ServerURL: "https://example.test"})
 	addAssertGolden(t, got, false, "testdata/add/output.toon")
 	addAssertGolden(t, got, true, "testdata/add/output_full.toon")
 }

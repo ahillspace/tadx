@@ -1,4 +1,4 @@
-package profile
+package env
 
 import (
 	"cmp"
@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	// DefaultLimit bounds profile output when the caller does not choose a limit.
+	// ListDefaultLimit bounds profile output when the caller does not choose a limit.
 	ListDefaultLimit = 20
-	// MaxLimit is the largest permitted profile page.
+	// ListMaxLimit is the largest permitted profile page.
 	ListMaxLimit = 10000
 )
 
@@ -22,12 +22,9 @@ type ListReader interface {
 	List(context.Context) ([]Profile, error)
 }
 
-type ListAction struct{ reader ListReader }
-
-func NewList(reader ListReader) *ListAction { return &ListAction{reader: reader} }
-
-func (a *ListAction) Execute(ctx context.Context, input ListInput) (ListOutput, error) {
-	if a == nil || a.reader == nil {
+// List returns one bounded page of stored environment profiles.
+func (s *Service) List(ctx context.Context, input ListInput) (ListOutput, error) {
+	if s == nil || s.store == nil {
 		return ListOutput{}, &errs.Error{ID: "env.profile.list.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.list", Summary: "Environment profile listing is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
@@ -50,7 +47,7 @@ func (a *ListAction) Execute(ctx context.Context, input ListInput) (ListOutput, 
 		}
 		offset = value
 	}
-	profiles, err := a.reader.List(ctx)
+	profiles, err := s.store.List(ctx)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the selected configuration file, then retry.")
 		return ListOutput{}, &errs.Error{ID: "env.profile.list.read", Kind: errs.KindOperation, Operation: "env.profile.list", Summary: "Environment profiles could not be read.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
