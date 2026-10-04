@@ -11,7 +11,7 @@ import (
 	authops "github.com/ahillspace/tadx/actions/auth"
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	searchaction "github.com/ahillspace/tadx/actions/search"
-	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
+	sessionoverview "github.com/ahillspace/tadx/actions/session"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/batchspec"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"

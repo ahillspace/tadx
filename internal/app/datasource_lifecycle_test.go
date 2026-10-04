@@ -79,7 +79,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("publish preview = %#v", preview)
 	}
 
-	deleted, err := datasourceops.New(contentMutationProvider{commands: commands}).DeleteDatasource(context.Background(), datasourceops.DeleteInput{Environment: "production", Selector: identity.Selector{LUID: "ds-1"}}, false)
+	deleted, err := datasourceops.New(datasourceops.Ports{Mutation: contentMutationProvider{commands: commands}}).DeleteDatasource(context.Background(), datasourceops.DeleteInput{Environment: "production", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

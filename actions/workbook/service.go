@@ -23,19 +23,25 @@ type MutationProvider interface {
 	OpenWorkbookMutation(context.Context, string, string, string) (MutationSession, error)
 }
 
-// Service owns named workbook mutation operations.
-type Service struct{ provider MutationProvider }
+// Ports declares the workbook service's target-bound provider dependencies.
+type Ports struct {
+	Mutation MutationProvider
+	Read     ReadProvider
+}
 
-func New(provider MutationProvider) *Service { return &Service{provider: provider} }
+// Service owns named workbook read and mutation operations.
+type Service struct{ ports Ports }
+
+func New(ports Ports) *Service { return &Service{ports: ports} }
 
 func (s *Service) MoveWorkbook(ctx context.Context, input MoveInput, preview bool) (MoveOutput, error) {
 	if err := ValidateMoveInput(input); err != nil {
 		return MoveOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return MoveOutput{}, errs.New(errs.KindRuntime, "workbook mutation provider is not configured")
 	}
-	session, err := s.provider.OpenWorkbookMutation(ctx, input.Environment, input.Site, "workbook.move")
+	session, err := s.ports.Mutation.OpenWorkbookMutation(ctx, input.Environment, input.Site, "workbook.move")
 	if err != nil {
 		return MoveOutput{}, err
 	}
@@ -47,10 +53,10 @@ func (s *Service) UpdateWorkbook(ctx context.Context, input UpdateInput, preview
 	if err := ValidateUpdateInput(input); err != nil {
 		return UpdateOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return UpdateOutput{}, errs.New(errs.KindRuntime, "workbook mutation provider is not configured")
 	}
-	session, err := s.provider.OpenWorkbookMutation(ctx, input.Environment, input.Site, "workbook.update")
+	session, err := s.ports.Mutation.OpenWorkbookMutation(ctx, input.Environment, input.Site, "workbook.update")
 	if err != nil {
 		return UpdateOutput{}, err
 	}
@@ -66,10 +72,10 @@ func (s *Service) DeleteWorkbook(ctx context.Context, input DeleteInput, preview
 	if strings.TrimSpace(input.Environment) == "" {
 		return DeleteOutput{}, deleteUsage("environment", "workbook delete requires an explicit resolved environment and site")
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return DeleteOutput{}, errs.New(errs.KindRuntime, "workbook mutation provider is not configured")
 	}
-	session, err := s.provider.OpenWorkbookMutation(ctx, input.Environment, input.Site, "workbook.delete")
+	session, err := s.ports.Mutation.OpenWorkbookMutation(ctx, input.Environment, input.Site, "workbook.delete")
 	if err != nil {
 		return DeleteOutput{}, err
 	}

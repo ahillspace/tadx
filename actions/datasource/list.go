@@ -31,6 +31,10 @@ func List(ctx context.Context, reader ListReader, input ListInput) (ListOutput, 
 	if err != nil {
 		return ListOutput{}, err
 	}
+	return listValidated(ctx, reader, input, selection)
+}
+
+func listValidated(ctx context.Context, reader ListReader, input ListInput, selection listCursorValue) (ListOutput, error) {
 	if input.All {
 		return listCollectAll(ctx, reader, input)
 	}
@@ -167,12 +171,6 @@ func listReadWindow(ctx context.Context, reader ListReader, request ListPageRequ
 		return paging.Page[Record]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Datasources, Token: page.SnapshotCursor}, err
 	}, func(item Record) string { return item.LUID })
 	return ListPage{Number: page.Number, Size: page.Size, Total: page.Total, Datasources: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
-}
-
-// ValidateListInput validates bounds and continuation identity without a reader.
-func ValidateListInput(input ListInput) error {
-	_, err := listValidateInput(input)
-	return err
 }
 
 func listValidateInput(input ListInput) (listCursorValue, error) {

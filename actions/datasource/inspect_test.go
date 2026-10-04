@@ -11,7 +11,42 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+type inspectReadProvider struct {
+	*readServiceProvider
+	resolver datasourceops.Resolver
+}
+
+func (p *inspectReadProvider) OpenDatasourceRead(_ context.Context, environment, site, _ string) (datasourceops.ReadSession, error) {
+	p.opens++
+	return datasourceops.ReadSession{ReadTarget: datasourceops.ReadTarget{Environment: environment, Site: site}, Resolver: p.resolver, Upstream: inspectUpstream{}, Inventory: inspectInventory{}}, nil
+}
+
+type inspectUpstream struct{}
+
+func (inspectUpstream) ReadDatasourceUpstream(context.Context, string) (datasourceops.UpstreamObservation, error) {
+	return datasourceops.UpstreamObservation{}, nil
+}
+
+type inspectInventory struct{}
+
+func (inspectInventory) CollectDatasources(context.Context, string, time.Time) (datasourceops.CollectedList, error) {
+	return datasourceops.CollectedList{}, nil
+}
+func (inspectInventory) PublishDatasourceInspect(context.Context, datasourceops.InspectOutput, time.Time) {
+}
+
+func inspectWithResolver(ctx context.Context, resolver datasourceops.Resolver, input datasourceops.InspectInput) (datasourceops.InspectOutput, error) {
+	service, _ := inspectService(resolver)
+	return service.InspectDatasource(ctx, input)
+}
+
+func inspectService(resolver datasourceops.Resolver) (*datasourceops.Service, *inspectReadProvider) {
+	provider := &inspectReadProvider{readServiceProvider: &readServiceProvider{}, resolver: resolver}
+	return datasourceops.New(datasourceops.Ports{Read: provider}), provider
+}
 
 type inspectErroringResolver struct{ err error }
 
@@ -34,7 +69,7 @@ func TestInspectActionClassifiesResolutionFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cause := &identity.ResolutionError{Kind: tc.kind, Selector: identity.Selector{Name: "Sales", ProjectPath: "Ops"}}
 			input := datasourceops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Sales", ProjectPath: "Ops"}}
-			_, err := datasourceops.Inspect(context.Background(), inspectErroringResolver{err: cause}, input)
+			_, err := inspectWithResolver(context.Background(), inspectErroringResolver{err: cause}, input)
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != tc.wantErr || structured.ID != tc.wantID {
 				t.Fatalf("error = %#v", structured)
@@ -45,7 +80,7 @@ func TestInspectActionClassifiesResolutionFailures(t *testing.T) {
 
 func TestInspectActionClassifiesOpaqueResolverErrorAsOperation(t *testing.T) {
 	input := datasourceops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Sales", ProjectPath: "Ops"}}
-	_, err := datasourceops.Inspect(context.Background(), inspectErroringResolver{err: errors.New("upstream unavailable")}, input)
+	_, err := inspectWithResolver(context.Background(), inspectErroringResolver{err: errors.New("upstream unavailable")}, input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "datasource.inspect.resolve" {
 		t.Fatalf("error = %#v", structured)
@@ -72,10 +107,14 @@ func TestInspectOutputGolden(t *testing.T) {
 		OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", Size: &size, HasExtracts: &hasExtracts,
 		IsCertified: &isCertified, CertificationNote: "Reviewed", Tags: []string{"daily"}, AskDataEnablement: "Enabled", RequestID: "request-1",
 	}
-	output, err := datasourceops.Inspect(t.Context(), &inspectResolver{datasource: item}, datasourceops.InspectInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "datasource-1"}})
+	output, err := inspectWithResolver(t.Context(), &inspectResolver{datasource: item}, datasourceops.InspectInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "datasource-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Keep the original inspect projection golden; the Service adds live source
+	// and upstream observations, which have separate integration coverage.
+	output.Source = nil
+	output.Datasource.Upstream = nil
 	inspectAssertGolden(t, "compact.toon", output, false)
 	inspectAssertGolden(t, "full.toon", output, true)
 }
@@ -93,26 +132,28 @@ func (r *inspectSpyResolver) ResolveDatasource(_ context.Context, _ identity.Sel
 func TestInspectActionRejectsConflictingSelector(t *testing.T) {
 	r := &inspectSpyResolver{}
 	input := datasourceops.InspectInput{Selector: identity.Selector{LUID: "ds-1", Name: "Sales"}}
-	_, err := datasourceops.Inspect(context.Background(), r, input)
+	service, provider := inspectService(r)
+	_, err := service.InspectDatasource(t.Context(), input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "datasource.inspect.usage" {
 		t.Fatalf("error = %#v", structured)
 	}
-	if r.called {
-		t.Fatal("resolver called for conflicting selector")
+	if provider.opens != 0 || r.called {
+		t.Fatal("provider opened or resolver called for conflicting selector")
 	}
 }
 
 func TestInspectActionRejectsWhitespaceOnlySelector(t *testing.T) {
 	r := &inspectSpyResolver{}
 	input := datasourceops.InspectInput{Selector: identity.Selector{LUID: "   ", Name: " ", ProjectPath: "\t"}}
-	_, err := datasourceops.Inspect(context.Background(), r, input)
+	service, provider := inspectService(r)
+	_, err := service.InspectDatasource(t.Context(), input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "datasource.inspect.usage" {
 		t.Fatalf("error = %#v", structured)
 	}
-	if r.called {
-		t.Fatal("resolver called for whitespace-only selector")
+	if provider.opens != 0 || r.called {
+		t.Fatal("provider opened or resolver called for whitespace-only selector")
 	}
 }
 
@@ -129,7 +170,7 @@ func TestInspectActionRejectsMismatchedIdentity(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &inspectSpyResolver{datasource: tc.datasource}
-			_, err := datasourceops.Inspect(context.Background(), r, datasourceops.InspectInput{Selector: tc.selector})
+			_, err := inspectWithResolver(context.Background(), r, datasourceops.InspectInput{Selector: tc.selector})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "datasource.inspect.identity_mismatch" {
 				t.Fatalf("error = %#v", structured)
@@ -157,7 +198,7 @@ func TestInspectActionGetsExactDatasourceByNameAndCanonicalProjectPath(t *testin
 	r := &inspectResolver{datasource: datasourceops.Record{LUID: "ds-1", Name: "Sales", ProjectPath: "Department/Ops", RequestID: "request-1"}}
 	input := datasourceops.InspectInput{Environment: "dev", Site: "site"}
 	input.SetSelector("", "Sales", "Department/Ops")
-	output, err := datasourceops.Inspect(context.Background(), r, input)
+	output, err := inspectWithResolver(context.Background(), r, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +209,7 @@ func TestInspectActionGetsExactDatasourceByNameAndCanonicalProjectPath(t *testin
 
 func TestInspectActionRequiresAuthoritativeOrExactDatasourceSelector(t *testing.T) {
 	for _, selector := range []identity.Selector{{}, {Name: "Sales"}, {ProjectPath: "Department/Ops"}} {
-		_, err := datasourceops.Inspect(context.Background(), &inspectResolver{}, datasourceops.InspectInput{Selector: selector})
+		_, err := inspectWithResolver(context.Background(), &inspectResolver{}, datasourceops.InspectInput{Selector: selector})
 		if err == nil {
 			t.Fatalf("selector %#v succeeded", selector)
 		}

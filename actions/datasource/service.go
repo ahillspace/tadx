@@ -21,18 +21,23 @@ type MutationProvider interface {
 	OpenDatasourceMutation(context.Context, string, string, string) (MutationSession, error)
 }
 
-type Service struct{ provider MutationProvider }
+type Ports struct {
+	Mutation MutationProvider
+	Read     ReadProvider
+}
 
-func New(provider MutationProvider) *Service { return &Service{provider: provider} }
+type Service struct{ ports Ports }
+
+func New(ports Ports) *Service { return &Service{ports: ports} }
 
 func (s *Service) MoveDatasource(ctx context.Context, input MoveInput, preview bool) (MoveOutput, error) {
 	if err := ValidateMoveInput(input); err != nil {
 		return MoveOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return MoveOutput{}, errs.New(errs.KindRuntime, "datasource mutation provider is not configured")
 	}
-	session, err := s.provider.OpenDatasourceMutation(ctx, input.Environment, input.Site, "datasource.move")
+	session, err := s.ports.Mutation.OpenDatasourceMutation(ctx, input.Environment, input.Site, "datasource.move")
 	if err != nil {
 		return MoveOutput{}, err
 	}
@@ -44,10 +49,10 @@ func (s *Service) UpdateDatasource(ctx context.Context, input UpdateInput, previ
 	if err := ValidateUpdateInput(input); err != nil {
 		return UpdateOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return UpdateOutput{}, errs.New(errs.KindRuntime, "datasource mutation provider is not configured")
 	}
-	session, err := s.provider.OpenDatasourceMutation(ctx, input.Environment, input.Site, "datasource.update")
+	session, err := s.ports.Mutation.OpenDatasourceMutation(ctx, input.Environment, input.Site, "datasource.update")
 	if err != nil {
 		return UpdateOutput{}, err
 	}
@@ -59,10 +64,10 @@ func (s *Service) DeleteDatasource(ctx context.Context, input DeleteInput, previ
 	if err := ValidateDeleteInput(input); err != nil {
 		return DeleteOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return DeleteOutput{}, errs.New(errs.KindRuntime, "datasource mutation provider is not configured")
 	}
-	session, err := s.provider.OpenDatasourceMutation(ctx, input.Environment, input.Site, "datasource.delete")
+	session, err := s.ports.Mutation.OpenDatasourceMutation(ctx, input.Environment, input.Site, "datasource.delete")
 	if err != nil {
 		return DeleteOutput{}, err
 	}

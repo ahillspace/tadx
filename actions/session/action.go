@@ -1,11 +1,18 @@
-// Package overview presents local TADX setup without authenticating or creating state.
-package overview
+// Package session presents local TADX setup without authenticating or creating state.
+package session
 
 import (
 	"cmp"
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 
+	coreauth "github.com/ahillspace/tadx/internal/auth"
+	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -14,13 +21,21 @@ const (
 	fullLimit    = 100
 )
 
-// Reader transfers ownership of the returned observation slices to the action.
-type Reader interface {
-	ReadOverview(context.Context) (State, error)
+// WorkspaceResolution contains only the non-secret local selection facts.
+type WorkspaceResolution struct {
+	Name, Reason string
 }
 
-// State contains only non-secret local configuration observations.
-type State struct {
+// Dependencies supplies local mechanisms while the service owns aggregation.
+type Dependencies struct {
+	ReadConfiguration func() (config.Config, error)
+	SiteSetting       func(config.Config, config.Environment) (value.MutationSetting, error)
+	LookupEnv         coreauth.LookupEnv
+	ResolveWorkspace  func(context.Context, config.Config, string, string) (WorkspaceResolution, error)
+}
+
+// overviewState contains only non-secret local configuration observations.
+type overviewState struct {
 	Configuration   string
 	ReadEnvironment string
 	ReadSelection   string
@@ -61,7 +76,7 @@ type Page[T any] struct {
 }
 
 type Output struct {
-	state State
+	state overviewState
 }
 
 type Result[E, W any] struct {
@@ -91,21 +106,94 @@ type CompactWorkspace struct {
 	Default bool   `json:"default"`
 }
 
-type Action struct{ reader Reader }
+type Service struct{ dependencies Dependencies }
 
-func New(reader Reader) *Action { return &Action{reader: reader} }
+func New(dependencies Dependencies) *Service { return &Service{dependencies: dependencies} }
 
-func (a *Action) Execute(ctx context.Context) (Output, error) {
+func (s *Service) Execute(ctx context.Context) (Output, error) {
 	if err := ctx.Err(); err != nil {
 		return Output{}, err
 	}
-	state, err := a.reader.ReadOverview(ctx)
+	state, err := s.readOverview(ctx)
 	if err != nil {
 		return Output{}, err
 	}
 	slices.SortFunc(state.Environments, func(left, right Environment) int { return cmp.Compare(left.Name, right.Name) })
 	slices.SortFunc(state.Workspaces, func(left, right Workspace) int { return cmp.Compare(left.Name, right.Name) })
 	return Output{state: state}, nil
+}
+
+func (s *Service) readOverview(ctx context.Context) (overviewState, error) {
+	cfg, err := s.dependencies.ReadConfiguration()
+	state := overviewState{Configuration: "configured", ReadSelection: "explicit_environment_required", WriteTarget: "explicit_environment_required", Workspace: WorkspaceSelection{Status: "not_selected", Reason: "none"}}
+	if errors.Is(err, os.ErrNotExist) {
+		state.Configuration = "missing"
+		cfg = config.Config{Version: config.CurrentVersion}
+	} else if err != nil {
+		return state, &errs.Error{ID: "session.overview.configuration", Kind: errs.KindOperation, Operation: "session.overview", Summary: "Local configuration could not be read or is invalid.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Correct the reported field in the selected CLI settings file. No authentication was attempted."}
+	}
+	state.Mutations = value.MutationSetting{Scope: "site", Source: "site_selection_required"}
+	selected, selectionErr := cfg.ResolveEnvironment("")
+	if selectionErr == nil {
+		state.Mutations, err = s.dependencies.SiteSetting(cfg, selected)
+		if err != nil {
+			return state, err
+		}
+		state.ReadEnvironment = selected.Alias
+		state.ReadSelection = "configured_default"
+		if cfg.DefaultEnvironment == "" {
+			state.ReadSelection = "only_environment"
+		}
+	}
+	if len(cfg.Environments) == 1 {
+		state.WriteTarget = "only_environment"
+	}
+	if len(cfg.Environments) == 0 {
+		state.WriteTarget = "environment_setup_required"
+		state.ReadSelection = "environment_setup_required"
+	}
+	for name, environment := range cfg.Environments {
+		if err := ctx.Err(); err != nil {
+			return state, err
+		}
+		resolved, err := cfg.ResolveEnvironment(name)
+		if err != nil {
+			return state, err
+		}
+		readiness := coreauth.InspectLocalPATReadiness(resolved.Auth.PATNameEnv, resolved.Auth.PATSecretEnv, resolved.Auth.CredentialRef != "", s.dependencies.LookupEnv)
+		credentials := "missing"
+		if readiness.Source == "os_credential_store" {
+			credentials = "stored_reference_unverified"
+		}
+		if readiness.Source == "environment" {
+			credentials = "incomplete"
+			if readiness.NamePresent && readiness.SecretPresent {
+				credentials = "configured"
+			}
+		}
+		environment.Alias = name
+		mutations, err := s.dependencies.SiteSetting(cfg, environment)
+		if err != nil {
+			return state, err
+		}
+		state.Environments = append(state.Environments, Environment{Mutations: mutations, Name: name, Site: environment.SiteContentURL, ServerURL: environment.URL, CredentialSource: readiness.Source, Credentials: credentials, DefaultWorkspace: environment.DefaultWorkspace})
+	}
+	for name, workspace := range cfg.Workspaces {
+		state.Workspaces = append(state.Workspaces, Workspace{Name: name, Path: filepath.ToSlash(workspace.Path), Default: strings.EqualFold(name, cfg.DefaultWorkspace)})
+	}
+	record, workspaceErr := s.dependencies.ResolveWorkspace(ctx, cfg, "", selected.DefaultWorkspace)
+	if ctx.Err() != nil {
+		return state, ctx.Err()
+	}
+	if record.Name != "" {
+		state.Workspace.Name = record.Name
+		state.Workspace.Reason = record.Reason
+		state.Workspace.Status = "unavailable"
+	}
+	if workspaceErr == nil {
+		state.Workspace.Status = "ready"
+	}
+	return state, nil
 }
 
 func (o Output) CompactOutput() any {
@@ -126,7 +214,7 @@ func (o Output) FullOutput() any {
 	return result(o.state, environments, workspaces)
 }
 
-func result[E, W any](state State, environments []E, workspaces []W) Result[E, W] {
+func result[E, W any](state overviewState, environments []E, workspaces []W) Result[E, W] {
 	help := []string{"tadx --help"}
 	if state.Configuration == "missing" || len(state.Environments) == 0 {
 		help = append(help, "tadx env add --help")

@@ -62,8 +62,8 @@ func TestProjectCachePortAllowsOnlyItsRequiredInfrastructure(t *testing.T) {
 		file     string
 		imported string
 	}{
-		{"other resource cache", "internal/resources/workbook/cache.go", "internal/cache"},
-		{"other resource read coverage", "internal/resources/workbook/cache.go", "internal/readsource"},
+		{"other resource cache", "internal/resources/lineage/cache.go", "internal/cache"},
+		{"other resource read coverage", "internal/resources/lineage/cache.go", "internal/readsource"},
 		{"nested project package", "internal/resources/project/nested/cache.go", "internal/cache"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,12 +95,49 @@ func TestAdminCachePortsAllowOnlyTheirRequiredInfrastructure(t *testing.T) {
 	for _, tc := range []struct {
 		name, file, imported string
 	}{
-		{"other resource inventory", "internal/resources/workbook/cache.go", "internal/inventory"},
+		{"other resource inventory", "internal/resources/lineage/cache.go", "internal/inventory"},
 		{"other resource admin errors", "internal/resources/workbook/cache.go", "internal/errs"},
 		{"nested admin package", "internal/resources/admin/nested/cache.go", "internal/cache"},
 		{"sibling action inventory", "actions/admin/group/action.go", "internal/inventory"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, tc.file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+tc.imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) != 1 || violations[0].File != tc.file {
+				t.Fatalf("violations=%v", violations)
+			}
+		})
+	}
+}
+
+func TestContentReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
+	for _, resource := range []string{"workbook", "datasource", "flow"} {
+		for _, imported := range []string{"internal/cache", "internal/readsource", "internal/inventory"} {
+			t.Run(resource+"/"+imported, func(t *testing.T) {
+				root := moduleFixture(t)
+				file := "internal/resources/" + resource + "/read_ports.go"
+				writeGo(t, root, file, fmt.Sprintf("package adapter\nimport _ %q\n", "example.test/tadx/"+imported))
+				violations, err := architecture.Check(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertViolationStrings(t, violations, nil)
+			})
+		}
+	}
+	for _, tc := range []struct{ file, imported string }{
+		{"internal/resources/lineage/read_ports.go", "internal/inventory"},
+		{"internal/resources/pulse/read_ports.go", "internal/cache"},
+		{"internal/resources/workbook/nested/read_ports.go", "internal/cache"},
+		{"internal/resources/datasource/nested/read_ports.go", "internal/readsource"},
+		{"internal/resources/flow/nested/read_ports.go", "internal/inventory"},
+		{"internal/resources/workbook/read_ports.go", "internal/operationrun"},
+	} {
+		t.Run(tc.file+"/"+tc.imported, func(t *testing.T) {
 			root := moduleFixture(t)
 			writeGo(t, root, tc.file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+tc.imported))
 			violations, err := architecture.Check(root)

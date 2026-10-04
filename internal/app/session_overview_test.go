@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
+	sessionoverview "github.com/ahillspace/tadx/actions/session"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
@@ -250,5 +250,37 @@ func TestBareOverviewDoesNotMigrateLegacyLocalFiles(t *testing.T) {
 	code, text := runOverview(t, root, []string{"--json", "--full"}, options)
 	if code != 0 || !strings.Contains(text, "local_overview") {
 		t.Fatalf("code=%d output=%s", code, text)
+	}
+}
+
+func TestBareOverviewUsesSelectedConfigurationAfterFlagParsing(t *testing.T) {
+	root := t.TempDir()
+	options := overviewOptions(t, root)
+	selectedPath := filepath.Join(root, "selected", "config.yaml")
+	for _, target := range []struct{ path, alias string }{{options.ConfigPath, "default"}, {selectedPath, "selected"}} {
+		cfg := config.Config{Version: config.CurrentVersion, DefaultEnvironment: target.alias, Environments: map[string]config.Environment{
+			target.alias: {URL: "https://tableau.example.test", Auth: config.Auth{Type: config.AuthTypePAT}},
+		}}
+		if err := config.Save(target.path, cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, flag := range []string{"--config", "--cfg"} {
+		code, body := runOverview(t, root, []string{flag, selectedPath, "--json"}, options)
+		var result sessionoverview.Result[sessionoverview.CompactEnvironment, sessionoverview.CompactWorkspace]
+		if err := json.Unmarshal([]byte(body), &result); err != nil {
+			t.Fatal(err)
+		}
+		if code != 0 || result.ReadEnvironment != "selected" || result.Environments.Items[0].Name != "selected" {
+			t.Fatalf("flag=%s code=%d overview=%+v", flag, code, result)
+		}
+	}
+	code, body := runOverview(t, root, []string{"--json"}, options)
+	var result sessionoverview.Result[sessionoverview.CompactEnvironment, sessionoverview.CompactWorkspace]
+	if err := json.Unmarshal([]byte(body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if code != 0 || result.ReadEnvironment != "default" {
+		t.Fatalf("default code=%d overview=%+v", code, result)
 	}
 }

@@ -21,18 +21,23 @@ type MutationProvider interface {
 	OpenFlowMutation(context.Context, string, string, string) (MutationSession, error)
 }
 
-type Service struct{ provider MutationProvider }
+type Ports struct {
+	Mutation MutationProvider
+	Read     ReadProvider
+}
 
-func New(provider MutationProvider) *Service { return &Service{provider: provider} }
+type Service struct{ ports Ports }
+
+func New(ports Ports) *Service { return &Service{ports: ports} }
 
 func (s *Service) MoveFlow(ctx context.Context, input MoveInput, preview bool) (MoveOutput, error) {
 	if err := ValidateMoveInput(input); err != nil {
 		return MoveOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return MoveOutput{}, errs.New(errs.KindRuntime, "flow mutation provider is not configured")
 	}
-	session, err := s.provider.OpenFlowMutation(ctx, input.Environment, input.Site, "flow.move")
+	session, err := s.ports.Mutation.OpenFlowMutation(ctx, input.Environment, input.Site, "flow.move")
 	if err != nil {
 		return MoveOutput{}, err
 	}
@@ -44,10 +49,10 @@ func (s *Service) UpdateFlow(ctx context.Context, input UpdateInput, preview boo
 	if err := ValidateUpdateInput(input); err != nil {
 		return UpdateOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return UpdateOutput{}, errs.New(errs.KindRuntime, "flow mutation provider is not configured")
 	}
-	session, err := s.provider.OpenFlowMutation(ctx, input.Environment, input.Site, "flow.update")
+	session, err := s.ports.Mutation.OpenFlowMutation(ctx, input.Environment, input.Site, "flow.update")
 	if err != nil {
 		return UpdateOutput{}, err
 	}
@@ -59,10 +64,10 @@ func (s *Service) DeleteFlow(ctx context.Context, input DeleteInput, preview boo
 	if err := ValidateDeleteInput(input); err != nil {
 		return DeleteOutput{}, err
 	}
-	if s == nil || s.provider == nil {
+	if s == nil || s.ports.Mutation == nil {
 		return DeleteOutput{}, errs.New(errs.KindRuntime, "flow mutation provider is not configured")
 	}
-	session, err := s.provider.OpenFlowMutation(ctx, input.Environment, input.Site, "flow.delete")
+	session, err := s.ports.Mutation.OpenFlowMutation(ctx, input.Environment, input.Site, "flow.delete")
 	if err != nil {
 		return DeleteOutput{}, err
 	}

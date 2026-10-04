@@ -30,6 +30,10 @@ func List(ctx context.Context, reader ListReader, input ListInput) (ListOutput, 
 	if err != nil {
 		return ListOutput{}, err
 	}
+	return listValidated(ctx, reader, input, selection)
+}
+
+func listValidated(ctx context.Context, reader ListReader, input ListInput, selection listSelection) (ListOutput, error) {
 	if input.All {
 		return listCollectAll(ctx, reader, input)
 	}
@@ -154,12 +158,6 @@ type listSelection struct {
 	Size     int
 	Snapshot string
 	Filter   string
-}
-
-// ValidateListInput validates bounds and continuation identity without a reader.
-func ValidateListInput(input ListInput) error {
-	_, err := listValidateInput(input)
-	return err
 }
 
 func listValidateInput(input ListInput) (listSelection, error) {

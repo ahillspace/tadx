@@ -37,9 +37,9 @@ func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
 			commands := newRemoteContentCommands(runtime)
 			var err error
 			if kind == "datasource" {
-				_, err = commands.ListDatasources(context.Background(), datasourceops.ListInput{Environment: "production", Name: "Sales", All: true})
+				_, err = commands.dependencies().DatasourceLister.ListDatasources(context.Background(), datasourceops.ListInput{Environment: "production", Name: "Sales", All: true})
 			} else {
-				_, err = commands.ListFlows(context.Background(), flowops.ListInput{Environment: "production", Name: "Sales", All: true})
+				_, err = commands.dependencies().FlowLister.ListFlows(context.Background(), flowops.ListInput{Environment: "production", Name: "Sales", All: true})
 			}
 			if err != nil {
 				t.Fatal(err)

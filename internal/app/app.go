@@ -19,7 +19,6 @@ import (
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	lastaction "github.com/ahillspace/tadx/actions/last"
 	mutationops "github.com/ahillspace/tadx/actions/mutation"
-	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/artifact"
@@ -137,7 +136,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		StatusResolver: authStatusResolver{runtime: runtime}, StatusLookup: processEnvironment{},
 	})
 	root := cli.NewRoot(cli.Dependencies{
-		SessionOverview: sessionoverview.New(sessionOverviewReader{runtime: runtime}),
+		SessionOverview: newSessionService(runtime),
 		Update: newUpdateCommand(updater.Runtime{CredentialVariables: func() []string {
 			return config.ConfiguredPATVariables(runtime.configPath)
 		}}),

@@ -6,11 +6,34 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	flowget "github.com/ahillspace/tadx/actions/flow"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
+
+type inspectReadProvider struct {
+	*readServiceProvider
+	resolver flowget.Resolver
+}
+
+func (p *inspectReadProvider) OpenFlowRead(_ context.Context, environment, site, _ string) (flowget.ReadSession, error) {
+	p.opens++
+	return flowget.ReadSession{ReadTarget: flowget.ReadTarget{Environment: environment, Site: site}, Resolver: p.resolver, Inventory: inspectInventory{}}, nil
+}
+
+type inspectInventory struct{}
+
+func (inspectInventory) CollectFlows(context.Context, string, time.Time) (flowget.CollectedList, error) {
+	return flowget.CollectedList{}, nil
+}
+func (inspectInventory) PublishFlowInspect(context.Context, flowget.InspectOutput, time.Time) {}
+
+func inspectWithResolver(ctx context.Context, resolver flowget.Resolver, input flowget.InspectInput) (flowget.InspectOutput, error) {
+	provider := &inspectReadProvider{readServiceProvider: &readServiceProvider{}, resolver: resolver}
+	return flowget.New(flowget.Ports{Read: provider}).InspectFlow(ctx, input)
+}
 
 type inspectResolver struct{ flow flowget.Record }
 
@@ -46,7 +69,7 @@ func inspectAssertGolden(t *testing.T, name string, value any, full bool) {
 
 func TestInspectActionGetsExactFlowWithBoundedDetails(t *testing.T) {
 	parameters := make([]flowget.InspectParameter, 60)
-	output, err := flowget.Inspect(context.Background(), inspectResolver{flow: flowget.Record{LUID: "f-1", Name: "Daily", ProjectPath: "Department/Ops", FileType: "tflx", Parameters: parameters}}, flowget.InspectInput{Selector: identity.Selector{LUID: "f-1"}})
+	output, err := inspectWithResolver(context.Background(), inspectResolver{flow: flowget.Record{LUID: "f-1", Name: "Daily", ProjectPath: "Department/Ops", FileType: "tflx", Parameters: parameters}}, flowget.InspectInput{Selector: identity.Selector{LUID: "f-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,19 +82,19 @@ func TestInspectActionGetsExactFlowWithBoundedDetails(t *testing.T) {
 	}
 }
 
-func TestValidateInspectInputAcceptsProjectLUIDSelector(t *testing.T) {
+func TestInspectServiceAcceptsProjectLUIDSelector(t *testing.T) {
 	input := flowget.InspectInput{}
 	input.SetSelectorWithProjectLUID("", "Daily", "", "project-1")
-	if err := flowget.ValidateInspectInput(input); err != nil {
-		t.Fatalf("ValidateInput() error = %v", err)
+	if _, err := inspectWithResolver(t.Context(), inspectResolver{flow: flowget.Record{LUID: "f-1", Name: "Daily", ProjectLUID: "project-1"}}, input); err != nil {
+		t.Fatalf("InspectFlow() error = %v", err)
 	}
 }
 
-func TestValidateInspectInputRejectsConflictingProjectSelectors(t *testing.T) {
+func TestInspectServiceRejectsConflictingProjectSelectors(t *testing.T) {
 	input := flowget.InspectInput{}
 	input.SetSelectorWithProjectLUID("", "Daily", "Department/Ops", "project-1")
-	if err := flowget.ValidateInspectInput(input); err == nil {
-		t.Fatal("ValidateInput() error = nil, want project selector conflict")
+	if _, err := inspectWithResolver(t.Context(), inspectResolver{}, input); err == nil {
+		t.Fatal("InspectFlow() error = nil, want project selector conflict")
 	}
 }
 
@@ -79,7 +102,7 @@ func TestInspectActionRejectsMismatchedProjectLUID(t *testing.T) {
 	flow := flowget.Record{LUID: "f-1", Name: "Daily", ProjectLUID: "project-other"}
 	input := flowget.InspectInput{}
 	input.SetSelectorWithProjectLUID("", "Daily", "", "project-1")
-	if _, err := flowget.Inspect(t.Context(), inspectResolver{flow: flow}, input); err == nil {
+	if _, err := inspectWithResolver(t.Context(), inspectResolver{flow: flow}, input); err == nil {
 		t.Fatal("Execute() error = nil, want identity mismatch")
 	}
 }

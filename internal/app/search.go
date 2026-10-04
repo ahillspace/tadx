@@ -92,6 +92,9 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 			admin:       newRemoteAdminCommands(c.runtime),
 		}
 		lister.projects = projectops.New(projectops.Ports{Provider: projectProvider{commands: lister.content}})
+		lister.workbooks = workbookops.New(workbookops.Ports{Read: workbookReadProvider{commands: lister.content}})
+		lister.datasources = datasourceops.New(datasourceops.Ports{Read: &datasourceReadProvider{commands: lister.content}})
+		lister.flows = flowops.New(flowops.Ports{Read: flowReadProvider{commands: lister.content}})
 		return searchaction.Execute(ctx, globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}, input, types)
 	}
 
@@ -501,11 +504,13 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 // completeLiveSearchLister routes blank typed searches through the same
 // complete-inventory services as the public list commands.
 type completeLiveSearchLister struct {
-	environment         string
-	content             *remoteContentCommands
-	projects            *projectops.Service
-	admin               *remoteAdminCommands
-	datasourceDiscovery datasourceDiscovery
+	environment string
+	content     *remoteContentCommands
+	projects    *projectops.Service
+	admin       *remoteAdminCommands
+	workbooks   *workbookops.Service
+	datasources *datasourceops.Service
+	flows       *flowops.Service
 }
 
 type completeListSearchPager interface {
@@ -608,21 +613,21 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 	}
 	switch resourceType {
 	case "workbook":
-		out, err := s.content.ListWorkbooks(ctx, workbookops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		out, err := s.workbooks.ListWorkbooks(ctx, workbookops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Workbooks))
 		for i, item := range out.Workbooks {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "datasource":
-		out, err := s.content.listDatasources(ctx, datasourceops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner}, &s.datasourceDiscovery)
+		out, err := s.datasources.ListDatasources(ctx, datasourceops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Datasources))
 		for i, item := range out.Datasources {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "flow":
-		out, err := s.content.ListFlows(ctx, flowops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		out, err := s.flows.ListFlows(ctx, flowops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Flows))
 		for i, item := range out.Flows {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
@@ -695,9 +700,9 @@ func newLiveSearchLister(connection authenticatedTableau, checks ...func(string)
 	return &liveSearchLister{
 		environment:     connection.environment.Alias,
 		site:            connection.environment.SiteContentURL,
-		workbooks:       workbookListReader{adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
-		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
-		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
+		workbooks:       resourceworkbook.ReadPorts{Adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
+		datasources:     resourcedatasource.ReadPorts{Adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), Projects: resourceproject.NewDiscoveryPaths(projects)},
+		flows:           resourceflow.ReadPorts{Adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        resourceproject.ListPort{Adapter: projects},
 		users:           resourceadmin.UserPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		groups:          resourceadmin.GroupPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},

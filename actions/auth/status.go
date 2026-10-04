@@ -1,10 +1,10 @@
-// Package status implements auth.status.
+// Package auth implements PAT credential operations.
 package auth
 
 import (
 	"context"
-	"strings"
 
+	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -30,20 +30,11 @@ func (a *Service) Status(ctx context.Context, input StatusInput) (StatusOutput, 
 // Inspect reports local readiness for an already resolved configuration target.
 // It reads process variables at the time of inspection and never opens the store.
 func InspectStatus(target StatusTarget, lookup StatusLookupEnv) StatusOutput {
-	name, nameExists := lookup.LookupEnv(target.PATNameVariable)
-	secret, secretExists := lookup.LookupEnv(target.PATSecretVariable)
-	namePresent := nameExists && strings.TrimSpace(name) != ""
-	secretPresent := secretExists && strings.TrimSpace(secret) != ""
+	readiness := coreauth.InspectLocalPATReadiness(target.PATNameVariable, target.PATSecretVariable, target.StoredCredentialReferencePresent, lookup)
+	namePresent, secretPresent := readiness.NamePresent, readiness.SecretPresent
 	state := "incomplete"
-	source := "none"
-	if namePresent && secretPresent {
+	if readiness.Ready {
 		state = "ready"
-		source = "environment"
-	} else if namePresent || secretPresent {
-		source = "environment"
-	} else if target.StoredCredentialReferencePresent {
-		state = "ready"
-		source = "os_credential_store"
 	}
 	var missing []string
 	help := []string{"Optional live verification: " + commandhint.Environment(target.Environment, "auth", "check")}
@@ -59,7 +50,7 @@ func InspectStatus(target StatusTarget, lookup StatusLookupEnv) StatusOutput {
 			help = append(help, commandhint.Environment(target.Environment, "auth", "login"))
 		}
 	}
-	return StatusOutput{Status: state, Verification: "local_readiness_only", MissingVariables: missing, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: help}
+	return StatusOutput{Status: state, Verification: "local_readiness_only", MissingVariables: missing, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: readiness.Source, DefaultWorkspace: target.DefaultWorkspace, Help: help}
 }
 
 type StatusInput struct {

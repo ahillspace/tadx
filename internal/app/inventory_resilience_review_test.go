@@ -41,7 +41,7 @@ func TestIncompleteFullInventoryFailsWithoutReplacingCache(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			first, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", All: true})
+			first, err := newRemoteContentCommands(runtime).dependencies().WorkbookLister.ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", All: true})
 			if err == nil {
 				t.Fatal("incomplete --all must fail")
 			}

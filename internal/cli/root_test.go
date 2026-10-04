@@ -11,7 +11,7 @@ import (
 	authcheck "github.com/ahillspace/tadx/actions/auth"
 	authstatus "github.com/ahillspace/tadx/actions/auth"
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
-	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
+	sessionoverview "github.com/ahillspace/tadx/actions/session"
 	versionaction "github.com/ahillspace/tadx/actions/version"
 	"github.com/ahillspace/tadx/internal/cli"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"

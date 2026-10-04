@@ -12,9 +12,11 @@ func TestAuthCredentialMechanismDependencyIsExact(t *testing.T) {
 		allowed    bool
 	}{
 		{"auth workflow", "actions/auth/persistence.go", true},
+		{"session readiness", "actions/session/action.go", true},
 		{"other action", "actions/env/profile.go", false},
 		{"obsolete verb package", "actions/auth/login/action.go", false},
 		{"nested lookalike", "actions/auth/nested/persistence.go", false},
+		{"nested session package", "actions/session/nested/action.go", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := moduleFixture(t)

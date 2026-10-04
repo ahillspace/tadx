@@ -31,7 +31,7 @@ func (p workbookMutationProvider) OpenWorkbookMutation(_ context.Context, enviro
 func TestMutationServiceUsesCanonicalWorkbookTarget(t *testing.T) {
 	resolver := &moveResolver{workbook: workbookops.Record{LUID: "wb-1", Name: "Sales", ProjectLUID: "source"}, project: workbookops.Project{LUID: "destination"}}
 	provider := workbookMutationProvider{session: workbookops.MutationSession{MoveResolver: resolver, Mover: &moveMover{}}, targetEnvironment: "canonical", targetSite: "canonical-site"}
-	output, err := workbookops.New(provider).MoveWorkbook(t.Context(), workbookops.MoveInput{Environment: "alias", Site: "caller-site", WorkbookSelector: identity.Selector{LUID: "wb-1"}, ProjectSelector: identity.Selector{LUID: "destination"}}, true)
+	output, err := workbookops.New(workbookops.Ports{Mutation: provider}).MoveWorkbook(t.Context(), workbookops.MoveInput{Environment: "alias", Site: "caller-site", WorkbookSelector: identity.Selector{LUID: "wb-1"}, ProjectSelector: identity.Selector{LUID: "destination"}}, true)
 	if err != nil || output.Plan.Environment != "canonical" || output.Plan.Site != "canonical-site" {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
@@ -40,7 +40,7 @@ func TestMutationServiceUsesCanonicalWorkbookTarget(t *testing.T) {
 func TestMutationServiceDeleteBindsDefaultSiteAfterOpen(t *testing.T) {
 	resolver := &deleteResolver{results: []workbookops.Record{{LUID: "wb-1", Name: "Sales"}}}
 	provider := workbookMutationProvider{session: workbookops.MutationSession{DeleteResolver: resolver, Deleter: &deleteDeleter{}}, targetSite: "canonical-site"}
-	output, err := workbookops.New(provider).DeleteWorkbook(t.Context(), workbookops.DeleteInput{Environment: "dev", Selector: identity.Selector{LUID: "wb-1"}}, true)
+	output, err := workbookops.New(workbookops.Ports{Mutation: provider}).DeleteWorkbook(t.Context(), workbookops.DeleteInput{Environment: "dev", Selector: identity.Selector{LUID: "wb-1"}}, true)
 	if err != nil || output.Plan.Site != "canonical-site" {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
@@ -48,7 +48,7 @@ func TestMutationServiceDeleteBindsDefaultSiteAfterOpen(t *testing.T) {
 
 func TestMutationServiceRejectsInvalidWorkbookInputBeforeOpen(t *testing.T) {
 	opens := 0
-	service := workbookops.New(workbookMutationProvider{opens: &opens})
+	service := workbookops.New(workbookops.Ports{Mutation: workbookMutationProvider{opens: &opens}})
 	if _, err := service.MoveWorkbook(t.Context(), workbookops.MoveInput{Environment: "dev", WorkbookSelector: identity.Selector{LUID: "wb-1"}}, false); err == nil {
 		t.Fatal("move accepted missing destination")
 	}
@@ -71,15 +71,15 @@ func TestMutationServiceRejectsInvalidWorkbookInputBeforeOpen(t *testing.T) {
 
 func runMove(ctx context.Context, resolver workbookops.MoveResolver, mover workbookops.Mover, input workbookops.MoveInput, preview bool) (workbookops.MoveOutput, error) {
 	provider := workbookMutationProvider{session: workbookops.MutationSession{MoveResolver: resolver, Mover: mover}}
-	return workbookops.New(provider).MoveWorkbook(ctx, input, preview)
+	return workbookops.New(workbookops.Ports{Mutation: provider}).MoveWorkbook(ctx, input, preview)
 }
 
 func runUpdate(ctx context.Context, resolver workbookops.UpdateResolver, updater workbookops.Updater, input workbookops.UpdateInput, preview bool) (workbookops.UpdateOutput, error) {
 	provider := workbookMutationProvider{session: workbookops.MutationSession{UpdateResolver: resolver, Updater: updater}}
-	return workbookops.New(provider).UpdateWorkbook(ctx, input, preview)
+	return workbookops.New(workbookops.Ports{Mutation: provider}).UpdateWorkbook(ctx, input, preview)
 }
 
 func runDelete(ctx context.Context, resolver workbookops.Resolver, deleter workbookops.Deleter, input workbookops.DeleteInput, preview bool) (workbookops.DeleteOutput, error) {
 	provider := workbookMutationProvider{session: workbookops.MutationSession{DeleteResolver: resolver, Deleter: deleter}}
-	return workbookops.New(provider).DeleteWorkbook(ctx, input, preview)
+	return workbookops.New(workbookops.Ports{Mutation: provider}).DeleteWorkbook(ctx, input, preview)
 }

@@ -56,7 +56,7 @@ environments:
 	t.Cleanup(func() { _ = runtime.Close() })
 	input := workbookops.InspectInput{Cache: true}
 	input.SetSelector("wb-1", "", "")
-	output, err := newRemoteContentCommands(runtime).InspectWorkbook(context.Background(), input)
+	output, err := newRemoteContentCommands(runtime).dependencies().WorkbookInspector.InspectWorkbook(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}

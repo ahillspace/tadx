@@ -4,19 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	datasourceops "github.com/ahillspace/tadx/actions/datasource"
-	flowops "github.com/ahillspace/tadx/actions/flow"
 	"path/filepath"
 	"strings"
 	"time"
-
-	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -142,16 +137,7 @@ func resourceEntry(environment, site, kind, luid, name, projectPath, owner, cove
 	if err != nil {
 		return cache.ResourceEntry{}, err
 	}
-	projectLUID := ""
-	switch item := payload.(type) {
-	case workbookops.Record:
-		projectLUID = item.ProjectLUID
-	case datasourceops.InspectDatasource:
-		projectLUID = item.ProjectLUID
-	case flowops.InspectFlow:
-		projectLUID = item.ProjectLUID
-	}
-	return cache.ResourceEntry{ProjectLUID: projectLUID, Environment: environment, Site: site, Kind: kind, LUID: luid, Name: name, ProjectPath: projectPath, Owner: owner, Payload: encoded, Coverage: coverage, ObservedAt: observedAt}, nil
+	return cache.ResourceEntry{Environment: environment, Site: site, Kind: kind, LUID: luid, Name: name, ProjectPath: projectPath, Owner: owner, Payload: encoded, Coverage: coverage, ObservedAt: observedAt}, nil
 }
 
 func writeThrough(store *cache.Store, entries []cache.ResourceEntry) {
@@ -161,155 +147,4 @@ func writeThrough(store *cache.Store, entries []cache.ResourceEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = store.UpsertResources(ctx, entries)
-}
-
-type cacheWorkbookListReader struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
-}
-
-func (r *cacheWorkbookListReader) ListWorkbooks(ctx context.Context, input workbookops.ListPageRequest) (workbookops.ListPage, error) {
-	if input.OwnerName != "" || input.ProjectName != "" || input.Tag != "" {
-		return workbookops.ListPage{}, unsupportedCacheFilters("workbook.list", r.environment, r.site)
-	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", Name: input.Name, ProjectLUID: input.ProjectLUID, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
-	if err != nil {
-		return workbookops.ListPage{}, cacheReadError("workbook.list", r.environment, r.site, err)
-	}
-	r.source = cacheReadSource(result)
-	items := make([]workbookops.Record, len(result.Entries))
-	for index, entry := range result.Entries {
-		if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &items[index]) == nil {
-			continue
-		}
-		items[index] = workbookops.Record{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}
-	}
-	return workbookops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Workbooks: items, SnapshotCursor: result.NextCursor}, nil
-}
-
-type cacheWorkbookGetResolver struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
-}
-
-func (r *cacheWorkbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookops.Record, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2, ExactlyOne: true})
-	if err != nil {
-		return workbookops.Record{}, cacheReadError("workbook.inspect", r.environment, r.site, err)
-	}
-	entry := result.Entries[0]
-	r.source = cacheRecordSource(result, entry)
-	var item workbookops.Record
-	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
-		return item, nil
-	}
-	return workbookops.Record{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
-}
-
-type cacheDatasourceListReader struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
-}
-
-func (r *cacheDatasourceListReader) ListDatasources(ctx context.Context, input datasourceops.ListPageRequest) (datasourceops.ListPage, error) {
-	if input.OwnerName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
-		return datasourceops.ListPage{}, unsupportedCacheFilters("datasource.list", r.environment, r.site)
-	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
-	if err != nil {
-		return datasourceops.ListPage{}, cacheReadError("datasource.list", r.environment, r.site, err)
-	}
-	r.source = cacheReadSource(result)
-	items := make([]datasourceops.Record, len(result.Entries))
-	for index, entry := range result.Entries {
-		if len(entry.Payload) == 0 || json.Unmarshal(entry.Payload, &items[index]) != nil {
-			items[index] = datasourceops.Record{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
-		}
-		items[index].ProjectPath = entry.ProjectPath
-		if input.ProjectName != "" {
-			items[index].ProjectName = input.ProjectName
-		}
-	}
-	return datasourceops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Datasources: items, SnapshotCursor: result.NextCursor}, nil
-}
-
-type cacheDatasourceGetResolver struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
-}
-
-func (r *cacheDatasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceops.Record, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2, ExactlyOne: true})
-	if err != nil {
-		return datasourceops.Record{}, cacheReadError("datasource.inspect", r.environment, r.site, err)
-	}
-	entry := result.Entries[0]
-	r.source = cacheRecordSource(result, entry)
-	var item datasourceops.Record
-	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
-		return item, nil
-	}
-	return datasourceops.Record{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
-}
-
-type cacheFlowListReader struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
-}
-
-func (r *cacheFlowListReader) ListFlows(ctx context.Context, input flowops.ListPageRequest) (flowops.ListPage, error) {
-	if input.OwnerName != "" || input.ProjectLUID != "" || input.ProjectName != "" {
-		return flowops.ListPage{}, unsupportedCacheFilters("flow.list", r.environment, r.site)
-	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
-	if err != nil {
-		return flowops.ListPage{}, cacheReadError("flow.list", r.environment, r.site, err)
-	}
-	r.source = cacheReadSource(result)
-	items := make([]flowops.Record, len(result.Entries))
-	for index, entry := range result.Entries {
-		if len(entry.Payload) == 0 || json.Unmarshal(entry.Payload, &items[index]) != nil {
-			items[index] = flowops.Record{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
-		}
-		items[index].ProjectPath = entry.ProjectPath
-	}
-	return flowops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Flows: items, SnapshotCursor: result.NextCursor}, nil
-}
-
-type cacheFlowGetResolver struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
-}
-
-func (r *cacheFlowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowops.Record, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, ProjectLUID: string(selector.ProjectLUID), Limit: 2, ExactlyOne: true})
-	if err != nil {
-		return flowops.Record{}, cacheReadError("flow.inspect", r.environment, r.site, err)
-	}
-	entry := result.Entries[0]
-	r.source = cacheRecordSource(result, entry)
-	var item flowops.Record
-	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
-		return item, nil
-	}
-	return flowops.Record{LUID: entry.LUID, Name: entry.Name, ProjectLUID: entry.ProjectLUID, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
-}
-
-func snapshotOffset(pageNumber, pageSize int, cursor string) int {
-	if cursor != "" {
-		return 0
-	}
-	return (pageNumber - 1) * pageSize
 }

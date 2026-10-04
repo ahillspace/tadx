@@ -9,18 +9,7 @@ import (
 	"strings"
 )
 
-// Resolver is the action-owned exact datasource seam.
-
-// Inspect resolves one authoritative published datasource.
-func Inspect(ctx context.Context, resolver Resolver, input InspectInput) (InspectOutput, error) {
-	if resolver == nil {
-		return InspectOutput{}, &errs.Error{ID: "datasource.inspect.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.inspect", Summary: "Datasource inspection is not configured.", Retryable: new(false), CorrectiveAction: "Configure the datasource resolver before retrying."}
-	}
-	var validationErr error
-	input, validationErr = inspectNormalizeInput(input)
-	if validationErr != nil {
-		return InspectOutput{}, validationErr
-	}
+func inspectValidated(ctx context.Context, resolver Resolver, input InspectInput) (InspectOutput, error) {
 	item, err := resolver.ResolveDatasource(ctx, input.Selector)
 	if err != nil {
 		var structured *errs.Error
@@ -49,12 +38,6 @@ func Inspect(ctx context.Context, resolver Resolver, input InspectInput) (Inspec
 
 func inspectResolveUsageError(id string, input InspectInput, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: errs.KindUsage, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: new(false), CorrectiveAction: "Provide a LUID or an exact name with --project or --project-id.", TableauRequestID: errs.TableauRequestID(cause)}
-}
-
-// ValidateInspectInput checks an exact selector before authentication.
-func ValidateInspectInput(input InspectInput) error {
-	_, err := inspectNormalizeInput(input)
-	return err
 }
 
 func inspectNormalizeInput(input InspectInput) (InspectInput, error) {

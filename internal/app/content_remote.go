@@ -13,12 +13,10 @@ import (
 
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
-	"github.com/ahillspace/tadx/internal/cache"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/identity"
-	inventorycore "github.com/ahillspace/tadx/internal/inventory"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
@@ -38,14 +36,14 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	projects := projectops.New(projectops.Ports{Provider: projectProvider{commands: c}})
 	mutations := contentMutationProvider{commands: c}
-	workbooks := workbookops.New(mutations)
-	datasources := datasourceops.New(mutations)
-	flows := flowops.New(mutations)
+	workbooks := workbookops.New(workbookops.Ports{Mutation: mutations, Read: workbookReadProvider{commands: c}})
+	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}})
+	flows := flowops.New(flowops.Ports{Mutation: mutations, Read: flowReadProvider{commands: c}})
 	return &contentcli.Dependencies{
-		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: workbooks, WorkbookMover: workbooks, WorkbookUpdater: workbooks,
-		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
+		WorkbookLister: workbooks, WorkbookInspector: workbooks, WorkbookDeleter: workbooks, WorkbookMover: workbooks, WorkbookUpdater: workbooks,
+		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
 		ProjectLister: projects, ProjectInspector: projects, ProjectCreator: projects, ProjectUpdater: projects, ProjectDeleter: projects, ProjectMover: projects,
-		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
+		FlowLister: flows, FlowInspector: flows, FlowPuller: c, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
 	}
 }
 
@@ -101,112 +99,6 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 		datasourceNativeChanges: datasourceClient,
 		inventory:               tableaucache.AuthenticatedExecutor{Transport: connection.transport, Session: connection.session, ServerURL: connection.environment.URL, SiteLUID: connection.session.SiteLUID()},
 	}, nil
-}
-
-func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowops.ListInput) (result flowops.ListOutput, resultErr error) {
-	if input.Cursor != "" {
-		_, environment, err := c.runtime.environment(input.Environment, false)
-		if err != nil {
-			return flowops.ListOutput{}, err
-		}
-		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
-	}
-	if err := flowops.ValidateListInput(input); err != nil {
-		return flowops.ListOutput{}, err
-	}
-	defer func() {
-		if resultErr == nil {
-			resultErr = inventorycore.ValidateAll(input.All, result.Source)
-		}
-	}()
-	if input.Cache || legacyInventorySnapshot(input.Cursor) {
-		environment, site, err := c.resolveCacheTarget(input.Environment)
-		if err != nil {
-			return flowops.ListOutput{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &cacheFlowListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := flowops.List(ctx, reader, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
-	}
-	filter, err := tableauflow.ListFilter(tableauflow.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
-	if err != nil {
-		return flowops.ListOutput{}, err
-	}
-	connection, err := c.connect(ctx, input.Environment, false)
-	if err != nil {
-		return flowops.ListOutput{}, remoteSetupError("flow.list", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	if input.All {
-		observedAt := c.runtime.now().UTC()
-		inventory, err := inventorycore.Collect(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeFlows, input.Environment, input.Site, observedAt, inventorycore.Options{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
-		if err != nil {
-			return flowops.ListOutput{}, inventorycore.RefreshError("flow.list", input.Environment, input.Site, err)
-		}
-		reader := inventoryMemoryReader{entries: inventory.Entries, requestID: inventory.FinalRequestID()}
-		reader.allowContinuation = true
-		output, err := flowops.List(ctx, reader, input)
-		if err != nil {
-			return output, err
-		}
-		source, help := inventory.SourceAndHelp(observedAt, c.runtime.now)
-		output.Source = source
-		if help != "" {
-			output.Help = append(output.Help, help)
-		}
-		output.RequestID = inventory.FinalRequestID()
-		return output, nil
-	}
-	output, err := flowops.List(ctx, flowListReader{connection.flows}, input)
-	if err != nil {
-		return output, err
-	}
-	output.Source = liveSource(c.runtime.now)
-	return output, nil
-}
-
-func flowListIsUnfiltered(input flowops.ListInput) bool {
-	return input.Name == "" && input.OwnerName == "" && input.ProjectLUID == "" && input.ProjectName == ""
-}
-
-func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowops.InspectInput) (flowops.InspectOutput, error) {
-	if err := flowops.ValidateInspectInput(input); err != nil {
-		return flowops.InspectOutput{}, err
-	}
-	if input.Cache {
-		environment, site, err := c.resolveCacheTarget(input.Environment)
-		if err != nil {
-			return flowops.InspectOutput{}, err
-		}
-		input.Environment, input.Site = environment, site
-		resolver := &cacheFlowGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := flowops.Inspect(ctx, resolver, input)
-		if err == nil {
-			output.Source = resolver.source
-		}
-		return output, err
-	}
-	connection, err := c.connect(ctx, input.Environment, false)
-	if err != nil {
-		return flowops.InspectOutput{}, remoteSetupError("flow.inspect", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := flowops.Inspect(ctx, connection.flows, input)
-	if err != nil {
-		return output, err
-	}
-	observedAt := c.runtime.now().UTC()
-	output.Source = liveSource(c.runtime.now)
-	entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", output.Flow.LUID, output.Flow.Name, output.Flow.ProjectPath, output.Flow.OwnerLUID, "detail", observedAt, output.CacheFlow())
-	if encodeErr == nil {
-		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
-	}
-	return output, nil
 }
 
 func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowops.PullInput) (flowops.PullOutput, error) {
@@ -316,17 +208,6 @@ func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepu
 func remoteSetupError(operation, environment, site string, resolved config.Environment, err error) error {
 	environment, site = resolvedTarget(environment, site, resolved)
 	return capabilitySetupError(operation+".setup", operation, environment, site, "Tableau operation setup failed.", "Review the selected environment, site, and PAT configuration.", err)
-}
-
-type flowListReader struct{ adapter *resourceflow.Adapter }
-
-func (r flowListReader) ListFlows(ctx context.Context, input flowops.ListPageRequest) (flowops.ListPage, error) {
-	page, err := r.adapter.ListFlows(ctx, tableauflow.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
-	items := make([]flowops.Record, len(page.Items))
-	for index, item := range page.Items {
-		items[index] = flowops.Record{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: item.ProjectPath, FileType: item.FileType, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}
-	}
-	return flowops.ListPage{Number: page.Number, Size: page.Size, Total: page.Total, Flows: items, RequestID: page.RequestID}, err
 }
 
 type flowPullReader struct {

@@ -6,6 +6,27 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Content reads and session ownership
+
+Workbook, datasource, and flow Services own list/inspect sequencing, while their resource adapters own typed live/cache reads and inventory publication.
+Nine app operation facades and the obsolete public inspection/validation entry points are removed.
+Production-used pre-resolved list operations remain available to search without reauthentication.
+Canonical cursors, project filtering, cache coverage, best-effort publication, and existing projections remain unchanged.
+Inspect tests now enter the Service with fake providers; invalid selectors assert no provider opening.
+
+The session Service owns local configuration, consent, credential-readiness, and workspace aggregation.
+App binds loaders and projections; neutral credential readiness lives in core auth and also serves authentication status.
+Tests preserve process-variable precedence, cancellation, sorting, and output, and add selected-configuration coverage.
+
+The combined integration snapshot is based on `6520279111b2b1046f38b328d126ac829b54bc85`.
+Its 61 changed paths contain 59 previously reviewed nonmerge paths and two independently reviewed shared-file merges.
+The 1,448-file fingerprint is `131efe135caa0344bb04eab4cf52e2f472fd1cf4e5a1c0052a3b5722218a355c`.
+Session, auth, content, resource, architecture, CLI, and focused app tests, full compilation, scoped vet, and formatting pass.
+The post-test fingerprint remains unchanged.
+The shared merges preserve policy enforcement, saved-result recording, and existing inventory boundaries.
+Evidence remains in `.tadx-refactor/content-session-merge-652/`.
+Datasource schema, pull/publication, and final live acceptance remain separate unfinished work.
+
 ## Managed policy ownership
 
 The cohesive `actions/policy` Service owns installation sequencing, candidate validation, sample creation, status assembly, and partial-effect errors.

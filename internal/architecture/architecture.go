@@ -193,6 +193,10 @@ func localImportAllowed(file, imported string) bool {
 		if path.Dir(file) == "actions/auth" && imported == "internal/auth" {
 			return true
 		}
+		// The session overview shares non-secret local PAT readiness with auth.
+		if path.Dir(file) == "actions/session" && imported == "internal/auth" {
+			return true
+		}
 		// Skill target metadata is a standard-library leaf, not the installer.
 		if hasPathPrefix(file, "actions/agent") && imported == "internal/agenttarget" {
 			return true
@@ -261,6 +265,12 @@ func localImportAllowed(file, imported string) bool {
 		// Admin cache ports translate indexed user/group records, while the
 		// shared inventory package retains neutral collection and publication.
 		if path.Dir(file) == "internal/resources/admin" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory", "internal/errs") {
+			return true
+		}
+		// Content read ports own typed cache and inventory projections. The
+		// collector and source policy remain in the neutral inventory package.
+		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow") &&
+			matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory") {
 			return true
 		}
 		return adapterConsumerImportAllowed(file, imported) ||

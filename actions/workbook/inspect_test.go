@@ -12,7 +12,39 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+type inspectReadProvider struct {
+	*readServiceProvider
+	resolver workbookops.Resolver
+}
+
+func (p *inspectReadProvider) OpenWorkbookRead(_ context.Context, environment, site, _ string) (workbookops.ReadSession, error) {
+	p.opens++
+	return workbookops.ReadSession{ReadTarget: workbookops.ReadTarget{Environment: environment, Site: site}, Resolver: p.resolver, Inventory: inspectInventory{}}, nil
+}
+
+type inspectInventory struct{}
+
+func (inspectInventory) CollectWorkbooks(context.Context, string, time.Time) (workbookops.CollectedList, error) {
+	return workbookops.CollectedList{}, nil
+}
+func (inspectInventory) CollectProjectWorkbooks(context.Context, workbookops.ListInput) (workbookops.ListReader, error) {
+	return nil, nil
+}
+func (inspectInventory) PublishWorkbookInspect(context.Context, workbookops.InspectOutput, time.Time) {
+}
+
+func inspectWithResolver(ctx context.Context, resolver workbookops.Resolver, input workbookops.InspectInput) (workbookops.InspectOutput, error) {
+	service, _ := inspectService(resolver)
+	return service.InspectWorkbook(ctx, input)
+}
+
+func inspectService(resolver workbookops.Resolver) (*workbookops.Service, *inspectReadProvider) {
+	provider := &inspectReadProvider{readServiceProvider: &readServiceProvider{}, resolver: resolver}
+	return workbookops.New(workbookops.Ports{Read: provider}), provider
+}
 
 type inspectErroringResolver struct{ err error }
 
@@ -34,7 +66,7 @@ func TestInspectActionClassifiesResolutionFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cause := &identity.ResolutionError{Kind: tc.kind, Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
 			input := workbookops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
-			_, err := workbookops.Inspect(context.Background(), inspectErroringResolver{err: cause}, input)
+			_, err := inspectWithResolver(context.Background(), inspectErroringResolver{err: cause}, input)
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != tc.wantID {
 				t.Fatalf("error = %#v", structured)
@@ -45,7 +77,7 @@ func TestInspectActionClassifiesResolutionFailures(t *testing.T) {
 
 func TestInspectActionClassifiesOpaqueResolverErrorAsOperation(t *testing.T) {
 	input := workbookops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
-	_, err := workbookops.Inspect(context.Background(), inspectErroringResolver{err: errors.New("upstream unavailable")}, input)
+	_, err := inspectWithResolver(context.Background(), inspectErroringResolver{err: errors.New("upstream unavailable")}, input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "workbook.inspect.resolve" {
 		t.Fatalf("error = %#v", structured)
@@ -78,7 +110,7 @@ func TestInspectActionGetsExactWorkbookAndBoundsTags(t *testing.T) {
 		tags[index] = fmt.Sprintf("tag-%02d", index)
 	}
 	r := &inspectResolver{workbook: workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectPath: "Department/Ops", Tags: tags, RequestID: "request-1"}}
-	output, err := workbookops.Inspect(context.Background(), r, workbookops.InspectInput{Environment: "dev", Selector: identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"}})
+	output, err := inspectWithResolver(context.Background(), r, workbookops.InspectInput{Environment: "dev", Selector: identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,26 +139,28 @@ func (r *inspectSpyResolver) ResolveWorkbook(_ context.Context, _ identity.Selec
 func TestInspectActionRejectsConflictingSelector(t *testing.T) {
 	r := &inspectSpyResolver{}
 	input := workbookops.InspectInput{Selector: identity.Selector{LUID: "wb-1", Name: "Finance"}}
-	_, err := workbookops.Inspect(context.Background(), r, input)
+	service, provider := inspectService(r)
+	_, err := service.InspectWorkbook(t.Context(), input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.inspect.usage" {
 		t.Fatalf("error = %#v", structured)
 	}
-	if r.called {
-		t.Fatal("resolver called for conflicting selector")
+	if provider.opens != 0 || r.called {
+		t.Fatal("provider opened or resolver called for conflicting selector")
 	}
 }
 
 func TestInspectActionRejectsWhitespaceOnlySelector(t *testing.T) {
 	r := &inspectSpyResolver{}
 	input := workbookops.InspectInput{Selector: identity.Selector{LUID: "   ", Name: " ", ProjectPath: "\t"}}
-	_, err := workbookops.Inspect(context.Background(), r, input)
+	service, provider := inspectService(r)
+	_, err := service.InspectWorkbook(t.Context(), input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.inspect.usage" {
 		t.Fatalf("error = %#v", structured)
 	}
-	if r.called {
-		t.Fatal("resolver called for whitespace-only selector")
+	if provider.opens != 0 || r.called {
+		t.Fatal("provider opened or resolver called for whitespace-only selector")
 	}
 }
 
@@ -143,7 +177,7 @@ func TestInspectActionRejectsMismatchedIdentity(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &inspectSpyResolver{workbook: tc.workbook}
-			_, err := workbookops.Inspect(context.Background(), r, workbookops.InspectInput{Selector: tc.selector})
+			_, err := inspectWithResolver(context.Background(), r, workbookops.InspectInput{Selector: tc.selector})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "workbook.inspect.identity_mismatch" {
 				t.Fatalf("error = %#v", structured)
