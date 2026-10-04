@@ -23,6 +23,9 @@ from project_patches import patch_project
 from release_update_patches import definitions as release_update_definitions
 from release_update_patches import patch_broker as patch_release_broker
 from release_update_patches import go_toolchain as release_go_toolchain
+from reset_absence_patches import (patch_cleanup_config_tests, patch_content_operator_tests,
+                                   patch_content_profiles, patch_operator_reset, patch_operator_reset_tests,
+                                   patch_reset_site, patch_reset_site_tests)
 from release_update_build import build as build_release_assets
 from release_update_build import digest as file_digest
 from release_update_build import RECIPE as RELEASE_RECIPE
@@ -533,6 +536,17 @@ def patch_sources(files):
             "codex-cli " + TARGET_RUNTIME_VERSION), replace_once)
 
     patch(path, bridge)
+    patch("tools/reset_site.py", lambda s: patch_reset_site(s, replace_once))
+    patch("integration/operator_reset.py", lambda s: patch_operator_reset(s, replace_once))
+    patch("integration/content_profiles.py", lambda s: patch_content_profiles(s, replace_once))
+    patch("tests/test_reset_site.py", lambda s: patch_reset_site_tests(s, replace_once))
+    patch("tests/test_operator_reset.py", lambda s: patch_operator_reset_tests(s, replace_once))
+    patch("tests/test_cleanup_config.py", lambda s: patch_cleanup_config_tests(s, replace_once))
+    patch("tests/test_content_operator_profiles.py", lambda s: patch_content_operator_tests(s, replace_once))
+    name = "tests/test_reset_absence.py"
+    require(name not in files, "Independent reset regression already exists in the source lock")
+    files[name] = read(HERE / "source/tests/test_reset_absence.py")
+    patches.append({"path": name, "before_sha256": None, "after_sha256": sha(files[name])})
     for action in ("list", "inspect"):
         name = f"suite/exercises/P-project-{action}.json"
         original = files[name]
