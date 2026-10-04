@@ -76,6 +76,7 @@ class PrepareTests(unittest.TestCase):
                 "const projectBroker = require('./project_broker.cjs');\n"
                 "const sharedBroker = require('./shared_broker.cjs');\n"
                 "function startBroker() {\n"
+                "    if (fs.existsSync('/cli-state/credentials.json')) Object.assign(env,JSON.parse(fs.readFileSync('/cli-state/credentials.json','utf8')));\n"
                 "function allowed(state) {\n"
                 "  if(state.guard?.execution_mode==='disposable_native'&&state.baselinePresent)return true;\n"
                 "  if (Object.hasOwn(flags,'config')) return false;\n"
@@ -95,7 +96,13 @@ class PrepareTests(unittest.TestCase):
                 "    source=fingerprint(manifest['repository_path'])\n"
                 "    if source['digest']!=manifest.get('source_tree_digest'):\n"
                 "        raise Blocked('TADX working tree changed since capture; rerun -CaptureCli before qualification')\n"
-                "def main(argv=None):\n    return 0\n"),
+                "def main(argv=None):\n"
+                "    base_config=load(ROOT/'runner.local.json')\n"
+                "    base_config['model_override']=requested_model\n"
+                "    meta={\n"
+                "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),\n"
+                "    }\n"
+                "    return 0\n"),
             "integration/docker_local_bridge.py": (
                 "def profile(req):\n    from integration import release_profiles,installer_profiles\n    return None\n"
                 "def image_for(m):\n    broker_files=('Dockerfile.local','local_broker.cjs','project_broker.cjs')\n"
@@ -120,10 +127,29 @@ class PrepareTests(unittest.TestCase):
                 "def _local_before_worker_recovery(req, s):\n    return None\n"
                 "def synthetic_model_dispatch(req,s,capture,Redactor,ROOT):\n"
                 "        result=model_run(req,s,capture,Redactor,ROOT)\n"
+                "def run_task(req):\n"
+                "    s['task_sessions']=result.get('task',{}).get('telemetry',{}).get('session_ids',[]);write_state(req,s)\n"
+                "def followup(req):\n"
+                "    return model_followup(req,s,capture,Redactor,ROOT)\n"
+                "def freeze(req):\n"
+                "    evidence['audit_capture']=s.get('audit_capture', {'status':'not_recorded'})\n"
+                "def split_evidence(req):\n"
+                "    evidence['audit_capture']=s['audit_capture']\n"
                 "if __name__=='__main__':\n    pass\n"),
         }
         self.files["integration/Dockerfile.local"] = (
             "FROM synthetic-worker:locked\nRUN npm install --global @openai/codex@0.154.0\n")
+        self.files["integration/codex_runtime.py"] = (
+            "from bench.telemetry import summarize_events\n"
+            "VERSION = '0.154.0'\n"
+            "def model_run(req, state, capture, Redactor, ROOT):\n"
+            "    argv = [*([] if req.get('exercise',{}).get('agent',{}).get('followups') else ['--ephemeral']), '--skip-git-repo-check']\n"
+            "    task['telemetry'] = summarize_events('codex', task.get('events', []))\n"
+            "    return {'task': task}\n\n\n"
+            "def model_followup(req,state,capture,Redactor,ROOT):\n"
+            "    model = selected_model(req)\n    argv=_worker_command(state['container'],\n"
+            "    task['telemetry']=summarize_events('codex', task.get('events', []))\n"
+            "    return {**task,'metrics':task['telemetry']}\n")
         self.files["integration/tadx_client.cjs"] = (
             "    request.on('error',reject);request.setTimeout(310000,()=>request.destroy(Error('CLI broker response timed out')));\n")
         self.files["integration/project_broker.cjs"] = "module.exports={allowed:()=>false};\n"
@@ -155,6 +181,9 @@ class PrepareTests(unittest.TestCase):
             blob = content.encode()
             self.put(self.harness / name, blob)
             self.lock["files"][name] = prep.sha(blob)
+        self.put(self.harness / "runner.local.json", prep.encode({"runtime": {
+            "kind": "bridge", "provider": "openai", "model": "gpt-5.6-luna",
+            "reasoning_effort": "medium"}}))
         self.catalog = self.root / "catalog.json"
         self.put(self.catalog, prep.encode([{
             "id": case.removeprefix("P-").replace("-", "."), "owner": "cli",
@@ -193,8 +222,21 @@ class PrepareTests(unittest.TestCase):
             self.put(path, ("build\tvcs.revision=" + "a" * 40 + "\nbuild\tGOOS=" + system
                             + "\nbuild\tGOARCH=amd64\n").encode())
             metadata[system] = {"path": str(path), "sha256": prep.sha(path.read_bytes())}
+        full_files = {"go.mod": prep.sha(b"synthetic module"),
+                      "scripts/install.ps1": prep.sha(b"synthetic installer")}
+        ordinal = "".join(f"{name} {digest}\n" for name, digest in sorted(full_files.items()))
+        full = {"commit": "a" * 40, "files": {"go.mod": full_files["go.mod"]},
+                "digest": "b" * 64, "full_files": full_files,
+                "full_digest": prep.sha(json.dumps(full_files, sort_keys=True,
+                                                  separators=(",", ":")).encode()),
+                "full_ordinal_sha256": prep.sha(ordinal.encode())}
+        full_blob = prep.encode(full)
+        self.put(self.capture_root / "complete-source-fingerprint.json", full_blob)
         self.put(self.capture, prep.encode({
             "source_commit": "a" * 40, "source_tree_digest": "b" * 64,
+            "complete_source_tree_digest": full["full_digest"],
+            "complete_source_ordinal_sha256": full["full_ordinal_sha256"],
+            "complete_source_fingerprint_sha256": prep.sha(full_blob),
             "capture_kind": "current-worktree-including-uncommitted-changes",
             "binary": str(self.windows_binary), "binary_sha256": prep.sha(self.windows_binary.read_bytes()),
             "binaries": {"windows": {"path": str(self.windows_binary),
@@ -250,6 +292,21 @@ class PrepareTests(unittest.TestCase):
                                 {"linux/amd64": self.binary, "windows/amd64": self.windows_binary},
                                 self.capture, self.authority, self.evidence, lock=self.lock)
 
+    def test_runner_config_rebinds_model_and_rejects_secret_or_wrong_effort(self):
+        original = {"runtime": {"kind": "bridge", "provider": "openai",
+                                "model": "gpt-5.6-luna", "reasoning_effort": "medium"}}
+        prepared = prep.parse(prep.isolated_runner_config(prep.encode(original)))
+        self.assertEqual(prepared["runtime"]["model"], "gpt-6-luna")
+        self.assertEqual(original["runtime"]["model"], "gpt-5.6-luna")
+        for changed in ({"runtime": {**original["runtime"], "reasoning_effort": "low"}},
+                        {"runtime": {**original["runtime"], "provider": "other"}},
+                        {**original, "deployment": {"pat_secret": "synthetic-private-value"}},
+                        {**original, "deployment": {"unknown": "synthetic-private-value"}},
+                        {**original, "fixture_version": "Bearer synthetic-private-value"},
+                        {**original, "secret_env_names": ["synthetic-private-value"]}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                prep.isolated_runner_config(prep.encode(changed))
+
     def test_snapshot_is_blocked_exact_and_excludes_unlisted_secrets_and_history(self):
         self.put(self.harness / "config/secret-bindings.json", b"MUST NOT COPY")
         self.put(self.harness / "old-run/task.json", b"MUST NOT COPY")
@@ -282,6 +339,10 @@ class PrepareTests(unittest.TestCase):
                          ["pulse.subscription.list"])
         self.assertTrue((self.output / "source/suite/exercises/P-policy-install.json").exists())
         self.assertIsNone(manifest["actual_model_metadata"])
+        self.assertEqual(prep.parse((self.output / "source/runner.local.json").read_bytes())
+                         ["runtime"]["model"], "gpt-6-luna")
+        self.assertEqual(manifest["runner_config_sha256"],
+                         prep.sha((self.output / "source/runner.local.json").read_bytes()))
         self.assertEqual((self.output / "candidate/builds/linux/amd64/tadx").read_bytes(), self.binary.read_bytes())
         self.assertEqual((self.output / "candidate/builds/windows/amd64/tadx.exe").read_bytes(),
                          self.windows_binary.read_bytes())
@@ -299,6 +360,7 @@ class PrepareTests(unittest.TestCase):
         for name, digest in self.lock["files"].items():
             self.assertEqual(prep.sha((self.harness / name).read_bytes()), digest)
         source = (self.output / "source/tools/run_spark_suite.py").read_text()
+        self.assertIn("requested_model != 'gpt-6-luna' or requested_effort != 'medium'", source)
         namespace = {"Blocked": RuntimeError}
         exec(compile(source, "synthetic-launcher", "exec"), namespace)
         with self.assertRaisesRegex(RuntimeError, "blocked"):
@@ -318,6 +380,7 @@ class PrepareTests(unittest.TestCase):
                          (Path(__file__).resolve().parent / "source/integration/policy_private.py").read_bytes())
         image = (self.output / "source/integration/Dockerfile.local").read_text()
         bridge = (self.output / "source/integration/docker_local_bridge.py").read_text()
+        runtime = (self.output / "source/integration/codex_runtime.py").read_text()
         self.assertIn("'g9_policy_broker.cjs'", bridge)
         self.assertIn("'g9_policy_install_broker.cjs'", bridge)
         self.assertIn("broker_common.remove('--read-only')", bridge)
@@ -330,7 +393,8 @@ class PrepareTests(unittest.TestCase):
                         bridge.index("def _local_disposable_recovery(req, s):") + 300)
         self.assertIn("@openai/codex@0.160.0", image)
         self.assertIn("codex-cli 0.160.0", bridge)
-        self.assertNotIn("0.154.0", image + bridge)
+        self.assertIn("VERSION = '0.160.0'", runtime)
+        self.assertNotIn("0.154.0", image + bridge + runtime)
         bridge = (self.output / "source/integration/docker_local_bridge.py").read_text()
         compile(bridge, "synthetic-bridge", "exec")
         self.assertIn("g9_saved_consent_authority", bridge)
@@ -348,6 +412,17 @@ class PrepareTests(unittest.TestCase):
         for content in ("def other(): pass", self.files[path] + "def main(argv=None):\n    pass\n"):
             self.put(self.harness / path, content.encode())
             self.lock["files"][path] = prep.sha(content.encode())
+            with self.assertRaisesRegex(ValueError, "anchor"):
+                self.run_prepare()
+            self.assertFalse(self.output.exists())
+
+    def test_runtime_version_requires_one_locked_original_anchor(self):
+        path = "integration/codex_runtime.py"
+        for content in ("VERSION = '0.160.0'\n",
+                        "VERSION = '0.154.0'\nVERSION = '0.154.0'\n"):
+            blob = content.encode()
+            self.put(self.harness / path, blob)
+            self.lock["files"][path] = prep.sha(blob)
             with self.assertRaisesRegex(ValueError, "anchor"):
                 self.run_prepare()
             self.assertFalse(self.output.exists())

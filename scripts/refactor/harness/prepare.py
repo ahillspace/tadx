@@ -13,6 +13,8 @@ import tempfile
 
 from consent import validate_authority
 from coverage import NEW_CASES
+from credential_patch import patch_broker as patch_credential_broker
+from credential_patch import patch_bridge as patch_credential_bridge
 from job_patches import JOB_CASES, job_definitions, patch_job_broker, patch_job_image
 from mutation_patches import definitions as mutation_definitions
 from policy_patches import POLICY_CASES, policy_definitions
@@ -32,6 +34,8 @@ from windows_preparer import IDS as WINDOWS_IDS, extend_budget
 
 HERE = Path(__file__).resolve().parent
 WORKER = HERE.parents[1] / "g9"
+SOURCE_RUNTIME_VERSION = "0.154.0"
+TARGET_RUNTIME_VERSION = "0.160.0"
 PROJECT_CASES = ["P-project-" + action for action in ("create", "delete", "inspect", "list", "move", "update")]
 CASES = PROJECT_CASES + JOB_CASES + POLICY_CASES + [POLICY_INSTALL_CASE, SUBSCRIPTION_CASE]
 BLOCKERS = [
@@ -183,7 +187,53 @@ def patch_sources(files):
         patches.append({"path": path, "before_sha256": sha(original), "after_sha256": sha(after)})
 
     patch("integration/Dockerfile.local", lambda s: replace_once(
-          s, "@openai/codex@0.154.0", "@openai/codex@0.160.0"))
+          s, "@openai/codex@" + SOURCE_RUNTIME_VERSION,
+          "@openai/codex@" + TARGET_RUNTIME_VERSION))
+    def runtime(source):
+        source = replace_once(source, "VERSION = '" + SOURCE_RUNTIME_VERSION + "'",
+                              "VERSION = '" + TARGET_RUNTIME_VERSION + "'")
+        source = replace_once(source, "from bench.telemetry import summarize_events\n",
+                              "from bench.telemetry import summarize_events\n"
+                              "from integration import g9_runtime_effective as effective\n")
+        source = replace_once(source,
+            "*([] if req.get('exercise',{}).get('agent',{}).get('followups') else ['--ephemeral']), '--skip-git-repo-check'",
+            "'--skip-git-repo-check'")
+        source = replace_once(source,
+            "    return {'task': task}\n\n\ndef model_followup",
+            "    try:\n"
+            "        thread = effective.thread_from_events(task['events'])\n"
+            "        observed = _docker(_worker_command(container, ['node', '-e', effective.ROLLOUT, thread])[1:])\n"
+            "        task['effective_runtime'] = effective.qualify(task, observed.stdout,\n"
+            "            model=model, effort=selected_reasoning_effort(req))\n"
+            "    except effective.EffectiveRuntimeError:\n"
+            "        raise CodexRuntimeError('Effective same-thread Codex runtime could not be qualified') from None\n"
+            "    return {'task': task}\n\n\ndef model_followup")
+        source = replace_once(source,
+            "    model = selected_model(req)\n    argv=_worker_command(state['container'],",
+            "    model = selected_model(req)\n"
+            "    _require_tmpfs_home(state['container'])\n"
+            "    try:\n"
+            "        before = _docker(_worker_command(state['container'],\n"
+            "            ['node', '-e', effective.ROLLOUT, sessions[0]])[1:])\n"
+            "        previous = effective.parse_observation(before.stdout)['context_count']\n"
+            "    except effective.EffectiveRuntimeError:\n"
+            "        raise CodexRuntimeError('Continuation runtime context is unavailable') from None\n"
+            "    argv=_worker_command(state['container'],")
+        source = replace_once(source,
+            "    return {**task,'metrics':task['telemetry']}\n",
+            "    try:\n"
+            "        thread = effective.thread_from_events(task['events'])\n"
+            "        observed = _docker(_worker_command(state['container'],\n"
+            "            ['node', '-e', effective.ROLLOUT, sessions[0]])[1:])\n"
+            "        task['effective_runtime'] = effective.qualify(task, observed.stdout,\n"
+            "            model=model, effort=selected_reasoning_effort(req),\n"
+            "            previous_contexts=previous, expected_thread=sessions[0])\n"
+            "    except effective.EffectiveRuntimeError:\n"
+            "        raise CodexRuntimeError('Effective continuation runtime could not be qualified') from None\n"
+            "    return {**task,'metrics':task['telemetry']}\n")
+        return source
+
+    patch("integration/codex_runtime.py", runtime)
     def broker(source):
         source = patch_job_broker(replace_once(replace_once(source,
             "if(state.guard?.execution_mode==='disposable_native'&&state.baselinePresent)return true;",
@@ -197,7 +247,8 @@ def patch_sources(files):
             "  if(state.guard?.family==='g9-local-policy')return require('./g9_policy_broker.cjs').allowed(parsed,classify(args,state.registry||registry),state);\n"
             "  if(state.guard?.family==='job')return g9JobBroker.allowed(parsed,classify(args,state.registry||registry),state);")
         patched = patch_windows_broker(source)
-        return patch_release_broker(patched) if release_enabled else patched
+        patched = patch_release_broker(patched) if release_enabled else patched
+        return patch_credential_broker(patched, replace_once)
 
     patch("integration/local_broker.cjs", broker)
     patch("integration/tadx_client.cjs", patch_windows_client)
@@ -205,7 +256,7 @@ def patch_sources(files):
     patch("integration/pulse_profiles.py", lambda s: patch_pulse_profile(s, replace_once))
     patch("integration/project_profiles.py", lambda s: patch_project(s, replace_once))
     # The existing native command invocation and strict project guard stay intact.
-    patch("tools/run_spark_suite.py", lambda s: replace_once(replace_once(replace_once(s,
+    patch("tools/run_spark_suite.py", lambda s: replace_once(replace_once(replace_once(replace_once(replace_once(replace_once(s,
           "config.setdefault('run_constraints',{})['native_cli_execution']=True",
           "config.setdefault('run_constraints',{})['native_cli_execution']=False"),
           "source=fingerprint(manifest['repository_path'])\n"
@@ -213,7 +264,19 @@ def patch_sources(files):
           "        raise Blocked('TADX working tree changed since capture; rerun -CaptureCli before qualification')",
           "raise Blocked('G9 copied source provenance requires independent G0 qualification')"),
           "def main(argv=None):\n",
-          "def main(argv=None):\n    raise RuntimeError('G9 preparation is blocked; see preparation.json. No live dispatch is qualified.')\n"))
+          "def main(argv=None):\n    raise RuntimeError('G9 preparation is blocked; see preparation.json. No live dispatch is qualified.')\n"),
+          "    base_config['model_override']=requested_model\n",
+          "    if requested_model != 'gpt-6-luna' or requested_effort != 'medium':\n"
+          "        raise Blocked('G9 requires the reviewed Luna medium runtime configuration')\n"
+          "    base_config['model_override']=requested_model\n"),
+          "    base_config=load(ROOT/'runner.local.json')\n",
+          "    base_config=load(ROOT/'runner.local.json')\n"
+          "    prepared=load(ROOT.parent/'preparation.json')\n"
+          "    if file_sha(ROOT/'runner.local.json')!=prepared.get('runner_config_sha256'):\n"
+          "        raise Blocked('Prepared runner configuration changed after qualification')\n"),
+          "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),",
+          "        'frozen_cli_manifest_sha256':file_sha(config['frozen_cli_manifest']),\n"
+          "        'runner_config_sha256':file_sha(ROOT/'runner.local.json'),"))
     path = "integration/docker_local_bridge.py"
 
     def bridge(source):
@@ -335,7 +398,30 @@ def patch_sources(files):
             "            result=run_model(req,s,lambda: model_run(req,s,capture,Redactor,ROOT),docker)\n"
             "        else:\n"
             "            result=model_run(req,s,capture,Redactor,ROOT)")
-        return replace_once(source, "codex-cli 0.154.0", "codex-cli 0.160.0")
+        source = replace_once(source,
+            "    s['task_sessions']=result.get('task',{}).get('telemetry',{}).get('session_ids',[]);write_state(req,s)",
+            "    if not req.get('deterministic'):\n"
+            "        s['effective_runtime'] = result['task']['effective_runtime']\n"
+            "    s['task_sessions']=result.get('task',{}).get('telemetry',{}).get('session_ids',[]);write_state(req,s)")
+        source = replace_once(source,
+            "    return model_followup(req,s,capture,Redactor,ROOT)\n",
+            "    result = model_followup(req,s,capture,Redactor,ROOT)\n"
+            "    s.setdefault('effective_runtime_followups', []).append(result['effective_runtime'])\n"
+            "    write_state(req,s)\n"
+            "    return result\n")
+        source = replace_once(source,
+            "    evidence['audit_capture']=s.get('audit_capture', {'status':'not_recorded'})\n",
+            "    evidence['audit_capture']=s.get('audit_capture', {'status':'not_recorded'})\n"
+            "    evidence['effective_runtime']=s.get('effective_runtime')\n"
+            "    evidence['effective_runtime_followups']=s.get('effective_runtime_followups', [])\n")
+        source = replace_once(source,
+            "    evidence['audit_capture']=s['audit_capture']\n",
+            "    evidence['audit_capture']=s['audit_capture']\n"
+            "    evidence['effective_runtime']=s.get('effective_runtime')\n"
+            "    evidence['effective_runtime_followups']=s.get('effective_runtime_followups', [])\n")
+        return patch_credential_bridge(replace_once(
+            source, "codex-cli " + SOURCE_RUNTIME_VERSION,
+            "codex-cli " + TARGET_RUNTIME_VERSION), replace_once)
 
     patch(path, bridge)
     for action in ("list", "inspect"):
@@ -499,6 +585,57 @@ def validate_candidate(candidate, catalog, builds, required=None):
             "Candidate lacks a required executable action")
 
 
+def isolated_runner_config(blob):
+    """Copy a private runner configuration with one explicit G9 model request."""
+    config = parse(blob)
+    allowed_root = {"bridge_argv", "deployment", "deployment_lock", "fixture_asset_digest",
+                    "fixture_version", "frozen_cli_manifest", "frozen_suite_manifest",
+                    "objective_policy", "require_frozen_cli", "run_constraints", "runtime",
+                    "runtime_env_allowlist", "secret_env_names", "task_reporting"}
+    allowed_deployment = {"catalog_fixture_source_dir", "metadata_restore_evidence_file",
+                          "metadata_restore_evidence_files", "operator_settings_file",
+                          "pulse_dependency_discovery_file", "remote_binding_file",
+                          "codex_auth_source_file"}
+    require(isinstance(config, dict) and isinstance(config.get("runtime"), dict)
+            and set(config) <= allowed_root
+            and isinstance(config.get("deployment", {}), dict)
+            and set(config.get("deployment", {})) <= allowed_deployment
+            and config["runtime"].get("kind") == "bridge"
+            and config["runtime"].get("provider") == "openai"
+            and config["runtime"].get("reasoning_effort") == "medium",
+            "Private runner configuration has an unsupported runtime")
+    require(isinstance(config["runtime"].get("model"), str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", config["runtime"]["model"]),
+            "Private runner model is invalid")
+    for key in ("runtime_env_allowlist", "secret_env_names"):
+        require(isinstance(config.get(key, []), list) and all(
+            isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,127}", name)
+            for name in config.get(key, [])), "Runner environment allowlist is invalid")
+    def no_secret_values(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                require(isinstance(key, str) and not re.search(
+                    r"(?:^|_)(?:password|token|secret|api_key|pat_name|session_key)$", key, re.I),
+                    "Runner configuration contains credential material")
+                if key in ("runtime_env_allowlist", "secret_env_names"):
+                    continue  # The validated entries are environment variable names, not values.
+                no_secret_values(child)
+        elif isinstance(value, list):
+            for child in value:
+                no_secret_values(child)
+        elif isinstance(value, str):
+            require(not re.search(r"(?i)(?:Bearer\s+\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----|"
+                                  r"\b(?:sk|pat)-[A-Za-z0-9_-]{16,}\b|"
+                                  r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.)", value),
+                    "Runner configuration contains credential material")
+            require(not ("/" not in value and "\\" not in value
+                         and re.fullmatch(r"[A-Za-z0-9_-]{32,}", value)),
+                    "Runner configuration contains an opaque value")
+    no_secret_values(config)
+    config["runtime"]["model"] = "gpt-6-luna"
+    return encode(config)
+
+
 def capture_inputs(path, candidate, catalog, builds, output):
     """Verify and rebase an existing capture without running or rebuilding TADX."""
     capture_path = plain_path(path)
@@ -510,7 +647,25 @@ def capture_inputs(path, candidate, catalog, builds, output):
     require(source.get("capture_kind") == "current-worktree-including-uncommitted-changes",
             "Unsupported prebuilt capture kind")
     capture_root = capture_path.parent
+    full_blob = read(capture_root / "complete-source-fingerprint.json")
+    full = parse(full_blob)
+    require(sha(full_blob) == source.get("complete_source_fingerprint_sha256")
+            and isinstance(full, dict) and full.get("commit") == candidate["source_revision"]
+            and full.get("digest") == candidate["source_tree_sha256"]
+            and full.get("full_digest") == source.get("complete_source_tree_digest")
+            and isinstance(full.get("full_files"), dict) and full["full_files"],
+            "Complete accepted source capture differs")
+    require(all(isinstance(name, str) and isinstance(digest, str)
+                and re.fullmatch(r"[0-9a-f]{64}", digest) and relative(name)
+                for name, digest in full["full_files"].items()),
+            "Complete accepted source path or digest differs")
+    ordinal = "".join(f"{name} {digest}\n" for name, digest in sorted(
+        full["full_files"].items(), key=lambda row: row[0].encode("utf-8")))
+    require(sha(ordinal.encode("utf-8")) == full.get("full_ordinal_sha256")
+            == source.get("complete_source_ordinal_sha256"),
+            "Complete accepted source ordinal fingerprint differs")
     result = {"candidate/capture/registry.json": read(capture_root / "registry.json")}
+    result["candidate/capture/complete-source-fingerprint.json"] = full_blob
     require(sha(result["candidate/capture/registry.json"]) == source.get("registry_sha256")
             and parse(result["candidate/capture/registry.json"]) == parse(catalog),
             "Captured registry differs from accepted catalog")
@@ -581,6 +736,9 @@ def capture_inputs(path, candidate, catalog, builds, output):
                        "sha256": entries[system]["sha256"]} for system in ("windows", "linux")}
     adapted = {"source_commit": candidate["source_revision"],
                "source_tree_digest": candidate["source_tree_sha256"],
+               "complete_source_tree_digest": source["complete_source_tree_digest"],
+               "complete_source_ordinal_sha256": source["complete_source_ordinal_sha256"],
+               "complete_source_fingerprint_sha256": source["complete_source_fingerprint_sha256"],
                "capture_kind": source["capture_kind"], "binary": copied["windows"]["path"],
                "binary_sha256": copied["windows"]["sha256"], "binaries": copied,
                "registry_sha256": source["registry_sha256"], "skills": skills,
@@ -599,7 +757,8 @@ def prepare_release(files, candidate, captured, source_archive, output):
     source_lock = {
         "schema_version": 1,
         "source_commit": candidate["source_revision"],
-        "source_fingerprint": candidate["source_tree_sha256"],
+        "source_fingerprint": parse(captured["candidate/capture/manifest.json"])[
+            "complete_source_ordinal_sha256"],
         "source_archive_sha256": file_digest(archive),
         "go_toolchain": toolchain,
     }
@@ -688,6 +847,12 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
             "Saved-consent evidence differs from authority input")
     patches = apply_mutation_runtime(files)
     patches.extend(patch_sources(files))
+    runner_input = read(root / "runner.local.json")
+    runner_output = isolated_runner_config(runner_input)
+    require("runner.local.json" not in files, "Runner config must remain outside the 373-file source lock")
+    files["runner.local.json"] = runner_output
+    patches.append({"path": "runner.local.json", "before_sha256": None,
+                    "after_sha256": sha(runner_output)})
     release_lock_sha = None
     release_asset_sha = None
     if "suite/exercises/P-current-update.json" in files:
@@ -697,6 +862,9 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
             files, candidate, captured, release_source_archive, output)
         patches.extend(release_patches)
     files["integration/g9_consent.py"] = read(HERE / "consent.py")
+    files["integration/g9_runtime_effective.py"] = read(HERE / "runtime_effective.py")
+    files["integration/credential_broker.cjs"] = read(
+        HERE / "source/integration/credential_broker.cjs")
     files["integration/g9_project_read.py"] = read(HERE / "project_read.py")
     files["integration/g9_project_read_broker.cjs"] = read(HERE / "project_read_broker.cjs")
     files["integration/g9_job_broker.cjs"] = read(HERE / "source/integration/job_broker.cjs")
@@ -728,6 +896,8 @@ def prepare(harness, output, candidate_path, catalog_path, build_paths, capture_
         "cases": sorted(row["id"] for row in parse(files["suite/index.json"])["exercises"]),
         "requested_model": "gpt-6-luna",
         "requested_reasoning_effort": "medium", "actual_model_metadata": None,
+        "runner_config_input_sha256": sha(runner_input),
+        "runner_config_sha256": sha(runner_output),
         "source_lock_sha256": sha(encode(lock)), "source_files": lock["files"],
         "patches": patches, "prepared_files": {name: sha(blob) for name, blob in files.items()},
         "snapshot_files": {name: sha(blob) for name, blob in output_files.items()},

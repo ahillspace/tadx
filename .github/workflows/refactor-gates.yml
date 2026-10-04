@@ -62,4 +62,5 @@ jobs:
           scripts/refactor/harness/tests/mutation_site_broker.test.cjs
           scripts/refactor/harness/tests/policy_broker.test.cjs
           scripts/refactor/harness/tests/policy_install_broker.test.cjs
+          scripts/refactor/harness/tests/credential_broker.test.cjs
           scripts/g9/tests/windows_installer_broker.test.cjs

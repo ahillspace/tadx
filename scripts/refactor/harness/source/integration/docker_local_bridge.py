@@ -820,6 +820,65 @@ def _deliver_split(req, s, work, skills, actual, name):
         'skill_evidence': [rel(req, path)], 'feedback_mode': 'off', 'evidence': [rel(req, path)]}
 
 
+def _remote_credentials(req, s):
+    """Reopen the private binding without placing PAT material in saved state."""
+    original=load(Path(req['private_case_dir'])/'profile-request.json')
+    binding=profile(original).load_binding(original)
+    credentials={'TADX_BENCH_AGENT_PAT_NAME':binding['agent']['pat_name'],
+                 'TADX_BENCH_AGENT_PAT_SECRET':binding['agent']['pat_secret']}
+    for extra_credential in s.get('additional_credential_bindings',[]):
+        selected=binding[extra_credential['binding_key']]['agent']
+        for field in ('pat_name','pat_secret'):
+            credentials[extra_credential[field]]=selected[field]
+    if len(credentials)>16 or any(not re.fullmatch(r'TADX_BENCH_[A-Z0-9_]+_PAT_(NAME|SECRET)',key) or
+        not isinstance(value,str) or not value or len(value)>4096
+        for key,value in credentials.items()):
+        raise Blocked('Private credential binding has an invalid transport shape')
+    payload=json.dumps(credentials,separators=(',',':')).encode('utf-8')
+    if len(payload)>16384:
+        raise Blocked('Private credential binding exceeds the bounded transport')
+    return credentials,payload
+
+
+def _credential_exec(name, script, payload, *args, timeout=30):
+    """Send PAT material only through Docker stdin, never argv or a volume."""
+    options={'input':payload,'stdout':subprocess.PIPE,'stderr':subprocess.PIPE,'timeout':timeout}
+    if os.name=='nt':options['creationflags']=getattr(subprocess,'CREATE_NO_WINDOW',0x08000000)
+    return subprocess.run(['docker','exec','-i','--user','0:0',name,'node','-e',script,*map(str,args)],**options)
+
+
+def _redact_credentials(output, credentials):
+    text=output.decode('utf-8','replace') if isinstance(output,bytes) else str(output)
+    for value in sorted(set(credentials.values()),key=len,reverse=True):
+        text=text.replace(value,'[REDACTED]')
+    return text
+
+
+def _initialize_broker_credentials(name, payload):
+    script="""const fs=require('fs'),net=require('net');
+const payload=fs.readFileSync(0);if(payload.length>16384)process.exit(2);
+const socket=net.createConnection('/tmp/tadx-private/credential-init.sock');
+let answer='',result=4;socket.setTimeout(5000,()=>{result=5;socket.destroy();});
+socket.on('connect',()=>socket.end(payload));
+socket.on('data',chunk=>{answer+=chunk.toString('utf8');if(answer.length>16){result=6;socket.destroy();}});
+socket.on('error',()=>{result=3;socket.destroy();});
+socket.on('end',()=>{if(result===4&&answer==='ready')result=0;});
+socket.on('close',()=>process.exit(result));"""
+    for _ in range(READY_POLL_ATTEMPTS):
+        if docker('exec','--user','0:0',name,'test','-S',
+                  '/tmp/tadx-private/credential-init.sock',check=False).returncode==0:
+            break
+        time.sleep(READY_POLL_DELAY_S)
+    else:
+        raise Blocked('Private broker credential channel did not become ready')
+    result=_credential_exec(name,script,payload)
+    if result.returncode:
+        raise Blocked('Private broker credential initialization did not complete')
+    if docker('exec','--user','0:0',name,'test','!','-e',
+              '/cli-state/credentials.json',check=False).returncode:
+        raise Blocked('Plaintext credentials appeared on the persistent CLI volume')
+
+
 def deliver(req):
     s=state(req);work=Path(s['work']);m=s['manifest']
     _checkpoint(req, s, 'allocation_started', resource_names=['tadx-local-' + hashlib.sha256((req['run_id']+req['case_id']).encode()).hexdigest()[:20]])
@@ -856,7 +915,9 @@ def deliver(req):
       '--mount','type=bind,source='+str(skills)+',target=/skills,readonly',
       '--mount','type=volume,source='+volume+',target=/audit',
       '--mount','type=volume,source='+config_volume+',target=/cli-state',
-      '--add-host','host.docker.internal:host-gateway','--env','TADX_FEEDBACK_MODE=off',*inherited_policy,*network_args,s['image'])
+      '--add-host','host.docker.internal:host-gateway','--env','TADX_FEEDBACK_MODE=off',
+      *(['--env','BENCH_CREDENTIAL_CHANNEL=1'] if s.get('remote_profile') else []),
+      *inherited_policy,*network_args,s['image'])
     s.update(container_created=True,container_id=created.stdout.strip());write_state(req,s)
     _checkpoint(req, s, 'allocated', resource_ids={'container': s.get('container_id')})
     _split_container(req,s,'container')
@@ -871,32 +932,24 @@ def deliver(req):
         observed=json.loads(docker('exec',name,'cat','/cli-state/tadx/config.yaml').stdout)
         if observed!=s['config_seed']:raise Blocked('Container config seed readback differs from independent baseline')
     if s.get('remote_profile'):
-        original=load(Path(req['private_case_dir'])/'profile-request.json')
-        binding=profile(original).load_binding(original)
-        credentials={'TADX_BENCH_AGENT_PAT_NAME':binding['agent']['pat_name'],'TADX_BENCH_AGENT_PAT_SECRET':binding['agent']['pat_secret']}
-        for extra_credential in s.get('additional_credential_bindings',[]):
-            selected=binding[extra_credential['binding_key']]['agent']
-            for field in ('pat_name','pat_secret'):
-                credentials[extra_credential[field]]=selected[field]
-        credential_transfer=subprocess.run(['docker','exec','-i','--user','0:0',name,'node','-e',
-            "const fs=require('fs');fs.writeFileSync('/cli-state/credentials.json',fs.readFileSync(0),{mode:0o600});"],
-            input=json.dumps(credentials).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
-        if credential_transfer.returncode:
-            raise Blocked('Private runtime credential transfer did not complete')
+        credentials,payload=_remote_credentials(req,s)
+        _initialize_broker_credentials(name,payload)
         target=Path(req['private_case_dir'])/'broker-targets.json';save(target,s['config_seed'])
         docker('cp',str(target),name+':/cli-state/target-baseline.json')
         # Root-owned setup probe uses the frozen Go binary and system CA bundle.
         # It is not task-phase coverage and never exposes credential values.
         probe_js="""const fs=require('fs'),cp=require('child_process');
 const config=JSON.parse(fs.readFileSync('/cli-state/tadx/config.yaml','utf8'));
-const env={PATH:process.env.PATH,HOME:'/tmp/cli-home',XDG_CONFIG_HOME:'/cli-state',XDG_DATA_HOME:'/cli-state/data',TADX_FEEDBACK_MODE:'off',...JSON.parse(fs.readFileSync('/cli-state/credentials.json','utf8'))};
+const env={PATH:process.env.PATH,HOME:'/tmp/cli-home',XDG_CONFIG_HOME:'/cli-state',XDG_DATA_HOME:'/cli-state/data',TADX_FEEDBACK_MODE:'off',...JSON.parse(fs.readFileSync(0,'utf8'))};
 if('TADX_ENABLE_MUTATIONS' in process.env)env.TADX_ENABLE_MUTATIONS=process.env.TADX_ENABLE_MUTATIONS;
 const r=cp.spawnSync('/opt/tadx',['auth','check','--environment',config.default_environment,'--json'],{env,encoding:'utf8',timeout:30000});
 process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status===null?124:r.status);"""
         if not s.get('skip_native_auth_preflight'):
-            probe=docker('exec','--user','0:0',name,'node','-e',probe_js,timeout=40,check=False)
+            probe=_credential_exec(name,probe_js,payload,timeout=40)
             save(Path(req['private_case_dir'])/'remote-cli-preflight.json',{'phase':'setup','exit_status':probe.returncode,
-              'stdout':probe.stdout,'stderr':probe.stderr,'binary_sha256':m['binaries']['linux']['sha256']})
+              'stdout':_redact_credentials(probe.stdout,credentials),
+              'stderr':_redact_credentials(probe.stderr,credentials),
+              'binary_sha256':m['binaries']['linux']['sha256']})
             if probe.returncode and (s.get('broker_guard') or {}).get('auth_condition')!='bad-pat':
                 raise Blocked('Frozen CLI remote authentication/TLS preflight failed; see remote-cli-preflight.json')
     if s.get('catalog_seed_dir'):
@@ -978,8 +1031,9 @@ fs.writeFileSync('/cli-state/credential-runtime.json',JSON.stringify({DBUS_SESSI
     result=docker('exec','--user','0:0',name,'node','-e',script,check=False)
     if result.returncode:raise Blocked('Disposable native credential-store service failed to start')
     if spec.get('mode') in ('seed_login','precedence'):
+        credentials,payload=_remote_credentials(req,s)
         seed=r"""const fs=require('fs'),cp=require('child_process');
-const env={PATH:process.env.PATH,HOME:'/tmp/cli-home',XDG_CONFIG_HOME:'/cli-state',XDG_DATA_HOME:'/cli-state/data',TADX_FEEDBACK_MODE:'off',...JSON.parse(fs.readFileSync('/cli-state/credentials.json')),...JSON.parse(fs.readFileSync('/cli-state/credential-runtime.json'))};
+const env={PATH:process.env.PATH,HOME:'/tmp/cli-home',XDG_CONFIG_HOME:'/cli-state',XDG_DATA_HOME:'/cli-state/data',TADX_FEEDBACK_MODE:'off',...JSON.parse(fs.readFileSync(0,'utf8')),...JSON.parse(fs.readFileSync('/cli-state/credential-runtime.json'))};
 const r=cp.spawnSync('python3',['/opt/credential_pty.py','auth','login','--environment',process.argv[1],'--json'],{env,encoding:'utf8',timeout:130000});
 if(r.status!==0)process.exit(2);const v=JSON.parse(r.stdout);fs.writeFileSync('/audit/credential-setup.json',JSON.stringify(v));
 if(v.status!==0)process.exit(v.status);
@@ -995,7 +1049,7 @@ fs.writeFileSync('/cli-state/seed-credential-ref.txt',reference,{mode:0o600});
 fs.writeFileSync('/audit/credential-store-baseline.json',JSON.stringify({scope:'disposable_container',stored:true,credential_match:true,credential_material_exported:false}),{mode:0o600});
 process.exit(0);
 """
-        answer=docker('exec','--user','0:0',name,'node','-e',seed,spec['environment'],timeout=140,check=False)
+        answer=_credential_exec(name,seed,payload,spec['environment'],timeout=140)
         if answer.returncode:raise Blocked('Native login did not establish the disposable stored-credential fixture')
     s.setdefault('broker_guard',{})['interactive_credentials']=spec
     write_state(req,s)
@@ -1056,8 +1110,9 @@ def followup(req):
     return model_followup(req,s,capture,Redactor,ROOT)
 
 def _observe_credentials(req,s,name):
+    credentials,payload=_remote_credentials(req,s)
     script=r"""const fs=require('fs'),cp=require('child_process');
-const credentials=JSON.parse(fs.readFileSync('/cli-state/credentials.json','utf8'));
+const credentials=JSON.parse(fs.readFileSync(0,'utf8'));
 const runtime=JSON.parse(fs.readFileSync('/cli-state/credential-runtime.json','utf8'));
 const env={PATH:process.env.PATH,HOME:'/tmp/cli-home',XDG_CONFIG_HOME:'/cli-state',XDG_DATA_HOME:'/cli-state/data',TADX_FEEDBACK_MODE:'off',...credentials,...runtime};
 const r=cp.spawnSync('/opt/tadx',['auth','status','--environment',process.argv[1],'--json','--full'],{env,encoding:'utf8',timeout:30000});
@@ -1079,7 +1134,7 @@ const proof={scope:'disposable_container',credential_material_exported:false,sto
   environment_selected:status.credential_source==='environment',native_status_exit:r.status};
 process.stdout.write(JSON.stringify(proof));
 """
-    response=docker('exec','--user','0:0',name,'node','-e',script,s['interactive_credentials']['environment'],check=False)
+    response=_credential_exec(name,script,payload,s['interactive_credentials']['environment'])
     if response.returncode:
         proof={'scope':'disposable_container','credential_material_exported':False,'observation_error':'Native store inspection failed'}
     else:proof=json.loads(response.stdout)
@@ -1097,6 +1152,10 @@ def freeze(req):
     # absent, since it may have been reused by an unrelated process.
     existing=_split_container(req,s,'container') if name and not s.get('container_removed') else None
     if existing is not None:
+        if s.get('remote_profile') and existing['State'].get('Running') and \
+                docker('exec','--user','0:0',name,'test','!','-e',
+                       '/cli-state/credentials.json',check=False).returncode:
+            raise Blocked('Plaintext credentials appeared on the persistent CLI volume')
         if s.get('interactive_credentials') and existing['State'].get('Running'):
             _observe_credentials(req,s,name)
         if s.get('mutable_binary') and existing['State'].get('Running'):

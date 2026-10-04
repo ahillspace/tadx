@@ -29,6 +29,9 @@ TRANSPORT = (
 )
 RUNTIME = (
     "scripts/refactor/harness/prepare.py",
+    "scripts/refactor/harness/runtime_effective.py",
+    "scripts/refactor/harness/credential_patch.py",
+    "scripts/refactor/harness/source/integration/credential_broker.cjs",
     "scripts/refactor/harness/release_update_patches.py",
     "scripts/refactor/harness/release_update/assets.py",
     "scripts/refactor/harness/release_update/profile.py",

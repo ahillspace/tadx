@@ -4,6 +4,7 @@ import argparse
 import ast
 import json
 from pathlib import Path
+import re
 
 from capture import build_fields, encode, parse, plain, read, relative, require, sha
 
@@ -39,7 +40,8 @@ def broker_inputs(bridge):
     names = [*first, *extension]
     require(all(isinstance(name, str) and "/" not in name and "\\" not in name
                 for name in names) and len(names) == len(set(names))
-            and "Dockerfile.local" in names and "g9_project_read_broker.cjs" in names,
+            and "Dockerfile.local" in names and "g9_project_read_broker.cjs" in names
+            and "credential_broker.cjs" in names,
             "Worker image input list is incomplete")
     return names
 
@@ -78,13 +80,25 @@ def qualify(root, candidate_path, *, lock=None):
     for name, digest in prepared.items():
         require(actual["source/" + name] == digest, "Prepared source hash differs")
         if name in patched:
-            require(patched[name]["before_sha256"] == source[name]
+            require(patched[name]["before_sha256"] == source.get(name)
                     and patched[name]["after_sha256"] == digest,
                     "Patch provenance differs")
         elif name in source:
             require(source[name] == digest, "Unpatched source changed")
     require(set(source) <= set(prepared), "Locked source is missing")
+    runner = parse(read(root / "source/runner.local.json"))
+    require(isinstance(runner, dict) and isinstance(runner.get("runtime"), dict)
+            and runner["runtime"].get("kind") == "bridge"
+            and runner["runtime"].get("provider") == "openai"
+            and runner["runtime"].get("model") == "gpt-6-luna"
+            and runner["runtime"].get("reasoning_effort") == "medium"
+            and record.get("runner_config_sha256") == prepared.get("runner.local.json")
+            and isinstance(record.get("runner_config_input_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", record["runner_config_input_sha256"])
+            and patched.get("runner.local.json", {}).get("before_sha256") is None,
+            "Prepared runner configuration differs from Luna medium request")
     for name, original in (("g9_consent.py", "consent.py"),
+                           ("g9_runtime_effective.py", "runtime_effective.py"),
                            ("g9_project_read.py", "project_read.py"),
                            ("g9_project_read_broker.cjs", "project_read_broker.cjs")):
         require(read(root / "source/integration" / name)
@@ -95,7 +109,8 @@ def qualify(root, candidate_path, *, lock=None):
     bridge = read(bridge_path).decode("utf-8")
     require("raise RuntimeError('G9 preparation is blocked; see preparation.json. No live dispatch is qualified.')"
             in launcher and "raise SystemExit('G9 bridge dispatch is blocked; see preparation.json')"
-            in bridge and "native_cli_execution']=False" in launcher,
+            in bridge and "native_cli_execution']=False" in launcher
+            and "requested_model != 'gpt-6-luna' or requested_effort != 'medium'" in launcher,
             "Live dispatch or native CLI block is missing")
     candidate = parse(read(root / "candidate/candidate.json"))
     require(candidate == record.get("candidate")
@@ -110,6 +125,14 @@ def qualify(root, candidate_path, *, lock=None):
     require(capture.get("source_commit") == candidate["source_revision"]
             and capture.get("source_tree_digest") == candidate["source_tree_sha256"],
             "Captured source identity differs")
+    full_blob = read(root / "candidate/capture/complete-source-fingerprint.json")
+    full = parse(full_blob)
+    require(sha(full_blob) == capture.get("complete_source_fingerprint_sha256")
+            and isinstance(full, dict) and full.get("commit") == candidate["source_revision"]
+            and full.get("digest") == candidate["source_tree_sha256"]
+            and full.get("full_digest") == capture.get("complete_source_tree_digest")
+            and full.get("full_ordinal_sha256") == capture.get("complete_source_ordinal_sha256"),
+            "Copied complete source fingerprint differs")
     require(capture.get("registry_sha256") == sha(catalog)
             and read(root / "candidate/capture/registry.json") == catalog,
             "Captured registry differs")

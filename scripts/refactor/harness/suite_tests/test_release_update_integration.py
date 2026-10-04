@@ -76,7 +76,21 @@ class ReleaseUpdateIntegrationTest(unittest.TestCase):
         self.assertTrue(any(row["path"] == "integration/docker_local_bridge.py" for row in patches))
         bridge = files["integration/docker_local_bridge.py"].decode("utf-8")
         broker = files["integration/local_broker.cjs"].decode("utf-8")
+        runtime = files["integration/codex_runtime.py"].decode("utf-8")
+        image = files["integration/Dockerfile.local"].decode("utf-8")
         ast.parse(bridge)
+        ast.parse(runtime)
+        self.assertIn("@openai/codex@0.160.0", image)
+        self.assertIn("codex-cli 0.160.0", bridge)
+        self.assertIn("VERSION = '0.160.0'", runtime)
+        runtime_patch = next(row for row in patches if row["path"] == "integration/codex_runtime.py")
+        self.assertEqual(runtime_patch["before_sha256"], self.lock["files"]["integration/codex_runtime.py"])
+        self.assertEqual(runtime_patch["after_sha256"], prep.sha(files["integration/codex_runtime.py"]))
+        self.assertEqual(runtime.count("effective.qualify(task, observed.stdout"), 2)
+        self.assertNotIn("--ephemeral", runtime)
+        self.assertIn("previous_contexts=previous, expected_thread=sessions[0]", runtime)
+        self.assertIn("s['effective_runtime'] = result['task']['effective_runtime']", bridge)
+        self.assertIn("evidence['effective_runtime']=s.get('effective_runtime')", bridge)
         self.assertIn("def _policy_args(req, s):", bridge)
         self.assertIn("def _policy_evidence(req, s, details):", bridge)
         self.assertIn("def _deliver_candidate_release(req, s):", bridge)
@@ -89,6 +103,16 @@ class ReleaseUpdateIntegrationTest(unittest.TestCase):
             path.write_text(broker, encoding="utf-8")
             result = subprocess.run(["node", "--check", str(path)], capture_output=True, check=False)
             self.assertEqual(result.returncode, 0, "Combined broker syntax differs")
+
+    def test_runtime_version_patch_rejects_missing_or_duplicate_anchor(self):
+        original = {name: self.read(name) for name in self.lock["files"]}
+        path = "integration/codex_runtime.py"
+        for changed in (b"VERSION = '0.160.0'\n",
+                        b"VERSION = '0.154.0'\nVERSION = '0.154.0'\n"):
+            files = dict(original)
+            files[path] = changed
+            with self.assertRaisesRegex(ValueError, "Patch anchor differs"):
+                prep.patch_sources(files)
 
     def test_native_metadata_requires_one_toolchain(self):
         both = {system: f"candidate: {self.toolchain}\nbuild\tGOOS=linux\n".encode()
@@ -122,11 +146,14 @@ class ReleaseUpdateIntegrationTest(unittest.TestCase):
                 for name, blob in sorted(source.items()):
                     bundle.writestr(name, blob)
             rows = "".join(f"{name} {prep.sha(source[name])}\n" for name in sorted(source))
+            ordinal = hashlib.sha256(rows.encode()).hexdigest()
             candidate = {"source_revision": "a" * 40,
-                         "source_tree_sha256": hashlib.sha256(rows.encode()).hexdigest()}
+                         "source_tree_sha256": "b" * 64}
             captured = {f"candidate/capture/build-metadata/{system}.txt":
                         f"candidate: {self.toolchain}\n".encode()
                         for system in ("windows", "linux")}
+            captured["candidate/capture/manifest.json"] = prep.encode({
+                "complete_source_ordinal_sha256": ordinal})
             names = ("suite/exercises/P-current-update.json",
                      "fixtures/profiles/P-current-update.json")
             files = {name: self.read(name) for name in names}
@@ -134,16 +161,32 @@ class ReleaseUpdateIntegrationTest(unittest.TestCase):
                 files, candidate, captured, archive, root / "prepared")
             self.assertEqual(prep.sha(files["integration/release_update_source.json"]), lock_hash)
             self.assertEqual(prep.parse(files["integration/release_update_source.json"])["source_fingerprint"],
-                             candidate["source_tree_sha256"])
+                             ordinal)
+            self.assertNotEqual(ordinal, candidate["source_tree_sha256"])
             self.assertEqual(prep.sha(files["fixtures/release-update/manifest.json"]), asset_hash)
             self.assertIn("fixtures/release-update/target-tadx", files)
             self.assertIn("integration/release_update_profile.py", files)
             self.assertEqual(len({row["path"] for row in patches}), len(patches))
 
             rejected = {name: self.read(name) for name in names}
-            candidate["source_tree_sha256"] = "0" * 64
+            captured["candidate/capture/manifest.json"] = prep.encode({
+                "complete_source_ordinal_sha256": "0" * 64})
             with self.assertRaisesRegex(ValueError, "fingerprint differs"):
                 prep.prepare_release(rejected, candidate, captured, archive, root / "prepared")
+
+            captured["candidate/capture/manifest.json"] = prep.encode({
+                "complete_source_ordinal_sha256": ordinal})
+            skill = "internal/agent/skills/tadx/SKILL.md"
+            original_skill = source[skill]
+            source[skill] += b"\nsubstituted non-Go Guidance\n"
+            changed_archive = root / "substituted-guidance.zip"
+            with zipfile.ZipFile(changed_archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+                for name, blob in sorted(source.items()):
+                    bundle.writestr(name, blob)
+            with self.assertRaisesRegex(ValueError, "fingerprint differs"):
+                prep.prepare_release(rejected, candidate, captured, changed_archive,
+                                     root / "prepared")
+            source[skill] = original_skill
 
             observer = "scripts/refactor/harness/release_update/observer.cjs"
             source[observer] += b"\n// substituted runtime owner\n"
@@ -152,7 +195,8 @@ class ReleaseUpdateIntegrationTest(unittest.TestCase):
                 for name, blob in sorted(source.items()):
                     bundle.writestr(name, blob)
             rows = "".join(f"{name} {prep.sha(source[name])}\n" for name in sorted(source))
-            candidate["source_tree_sha256"] = hashlib.sha256(rows.encode()).hexdigest()
+            captured["candidate/capture/manifest.json"] = prep.encode({
+                "complete_source_ordinal_sha256": hashlib.sha256(rows.encode()).hexdigest()})
             with self.assertRaisesRegex(ValueError, "recipe differs"):
                 prep.prepare_release(rejected, candidate, captured, changed_archive,
                                      root / "prepared")

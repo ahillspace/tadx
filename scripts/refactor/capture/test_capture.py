@@ -87,6 +87,12 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(set(manifest["skills"]), {"tadx", "tadx-pulse"})
         full = cap.parse((self.output / "complete-source-fingerprint.json").read_bytes())
         self.assertEqual(full["full_digest"], manifest["complete_source_tree_digest"])
+        self.assertEqual(full["full_ordinal_sha256"], manifest["complete_source_ordinal_sha256"])
+        ordinal = "".join(f"{name} {full['full_files'][name]}\n"
+                          for name in sorted(full["full_files"], key=lambda value: value.encode("utf-8")))
+        self.assertEqual(manifest["complete_source_ordinal_sha256"], cap.sha(ordinal.encode()))
+        self.assertNotEqual(manifest["complete_source_ordinal_sha256"],
+                            manifest["source_tree_digest"])
         self.assertIn("scripts/install.ps1", full["full_files"])
         self.assertIn("scripts/install.sh", full["full_files"])
         self.assertEqual(set(p.relative_to(self.output).as_posix() for p in self.output.rglob("*")
@@ -105,6 +111,7 @@ class CaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Binary differs"):
             self.run_capture()
         self.assertFalse(self.output.exists())
+
         self.builds["linux/amd64"].write_bytes(b"linux accepted binary")
         (self.help / "project.list.txt").unlink()
         with self.assertRaisesRegex(ValueError, "Help set"):
@@ -115,6 +122,16 @@ class CaptureTests(unittest.TestCase):
             cap.capture(self.source, self.output, self.candidate, self.catalog,
                         self.builds, self.guidance, self.help, inspect=lambda path: b"wrong")
         self.assertFalse(self.output.exists())
+
+    def test_clean_non_go_change_changes_full_ordinal_not_narrow_digest(self):
+        previous = self.identity
+        self.put(self.source / "scripts/install.sh", b"echo changed accepted installer\n")
+        self.git("add", "scripts/install.sh")
+        self.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+                 "commit", "-qm", "non-Go change")
+        current = cap.fingerprint(self.source)
+        self.assertEqual(current["digest"], previous["digest"])
+        self.assertNotEqual(current["full_ordinal_sha256"], previous["full_ordinal_sha256"])
 
     def test_modified_untracked_and_ignored_installers_block(self):
         installer = self.source / "scripts/install.ps1"
@@ -156,7 +173,9 @@ class QualificationTests(unittest.TestCase):
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.fixture.files["integration/Dockerfile.local"] = (
-            "FROM synthetic-worker:locked\nCOPY tadx /opt/tadx\n"
+            "FROM synthetic-worker:locked\n"
+            "RUN npm install --global @openai/codex@0.154.0\n"
+            "COPY tadx /opt/tadx\n"
             "COPY registry.json /opt/registry.json\nCOPY *_broker.cjs /opt/\n"
             "COPY credential_pty.py /opt/\n")
         blob = self.fixture.files["integration/Dockerfile.local"].encode()
@@ -177,6 +196,19 @@ class QualificationTests(unittest.TestCase):
         self.assertFalse(result["live_execution_enabled"])
         self.assertIn("g9_project_read_broker.cjs", result["worker_input_files"])
         self.assertTrue(result["blockers"])
+
+    def test_generated_patch_cannot_claim_a_locked_original(self):
+        record_path = self.fixture.output / "preparation.json"
+        record = cap.parse(record_path.read_bytes())
+        generated = "fixtures/profiles/P-job-cancel.json"
+        self.assertNotIn(generated, self.fixture.lock["files"])
+        row = next(row for row in record["patches"] if row["path"] == generated)
+        self.assertIsNone(row["before_sha256"])
+        row["before_sha256"] = "0" * 64
+        record_path.write_bytes(cap.encode(record))
+        with self.assertRaisesRegex(ValueError, "Patch provenance differs"):
+            qualify.qualify(self.fixture.output, self.fixture.candidate,
+                            lock=self.fixture.lock)
 
     def test_mutated_broker_or_missing_dispatch_block_fails(self):
         broker = self.fixture.output / "source/integration/g9_project_read_broker.cjs"

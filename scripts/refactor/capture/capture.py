@@ -138,8 +138,11 @@ def fingerprint(source):
                             ensure_ascii=False).encode())
     full_digest = sha(json.dumps(full_files, sort_keys=True, separators=(",", ":"),
                                  ensure_ascii=False).encode())
+    ordinal = "".join(f"{name} {full_files[name]}\n"
+                      for name in sorted(full_files, key=lambda value: value.encode("utf-8")))
     return {"commit": commit, "files": files, "digest": digest,
-            "full_files": full_files, "full_digest": full_digest}
+            "full_files": full_files, "full_digest": full_digest,
+            "full_ordinal_sha256": sha(ordinal.encode("utf-8"))}
 
 
 def tree(root):
@@ -246,6 +249,7 @@ def capture(source, output, candidate_path, catalog_path, builds, guidance_root,
     manifest = {
         "source_commit": before["commit"], "source_tree_digest": before["digest"],
         "complete_source_tree_digest": before["full_digest"],
+        "complete_source_ordinal_sha256": before["full_ordinal_sha256"],
         "complete_source_fingerprint_sha256": sha(encode(before)),
         "capture_kind": "current-worktree-including-uncommitted-changes",
         "binary": binary_entries["windows"]["path"],

@@ -86,6 +86,7 @@ class WindowsPreparerTest(unittest.TestCase):
         for target, source in {"g9_consent.py": "consent.py",
                                "g9_project_read.py": "project_read.py",
                                "g9_project_read_broker.cjs": "project_read_broker.cjs",
+                               "credential_broker.cjs": "source/integration/credential_broker.cjs",
                                "g9_job_broker.cjs": "source/integration/job_broker.cjs",
                                "g9_job_contract.py": "source/integration/job_contract.py",
                                "g9_job_fixture.py": "source/integration/job_fixture.py",
