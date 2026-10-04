@@ -8,7 +8,7 @@ import (
 
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	projectops "github.com/ahillspace/tadx/actions/project"
 
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -179,30 +179,29 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 	return out, err
 }
 
-func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
-	input, err := lineagepull.NormalizeInput(input)
-	if err != nil {
-		return lineagepull.Output{}, err
-	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return lineagepull.Output{}, capabilitySetupError("lineage.pull.workspace", "lineage.pull", input.Environment, input.Site, "Lineage workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
-	input.WorkspaceName = workspace.Name
-	connection, err := c.connect(ctx, input.Environment, false)
-	if err != nil {
-		return lineagepull.Output{}, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.SiteLUID = connection.siteLUID
-	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
-	if err != nil {
-		return lineagepull.Output{}, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
-	}
+type lineageWorkspace struct{ runtime *runtimeDependencies }
 
-	resolver := lineageResolver{workbooks: connection.workbooks, flows: connection.flows, datasources: connection.datasources, projects: connection.projects}
-	return lineagepull.Execute(ctx, resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}, input)
+func (w lineageWorkspace) ResolveLineageWorkspace(ctx context.Context, selector, environment string) (lineagepull.Workspace, error) {
+	item, err := (&workspaceRuntime{runtime: w.runtime}).resolveForEnvironment(ctx, selector, environment)
+	return lineagepull.Workspace{Root: item.Root, Name: item.Name}, err
+}
+
+type lineageProvider struct{ commands *remoteContentCommands }
+
+func (p lineageProvider) OpenLineage(ctx context.Context, environment string) (lineagepull.ReadSession, error) {
+	connection, err := p.commands.connect(ctx, environment, false)
+	session := lineagepull.ReadSession{Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL}
+	if err != nil {
+		return session, err
+	}
+	session.SiteLUID = connection.siteLUID
+	session.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
+	if err != nil {
+		return session, err
+	}
+	ports := resourcelineage.ReadPorts{Workbooks: connection.workbooks, Datasources: connection.datasources, Flows: connection.flows, Metadata: connection.lineage, Artifacts: artifact.NewLineageManager(p.commands.runtime.now)}
+	session.Resolver, session.Reader, session.Writer, session.Previewer = ports, ports, ports, ports
+	return session, nil
 }
 
 func remoteSetupError(operation, environment, site string, resolved config.Environment, err error) error {
@@ -335,52 +334,4 @@ func (p preparedFlowPublish) Commit(ctx context.Context) (flowops.PublishResult,
 	progress.SetLabel(ctx, "Uploading and submitting flow")
 	result, err := p.prepared.Commit(ctx)
 	return flowops.PublishResult{Status: result.Status, FlowLUID: result.FlowLUID, FlowName: result.FlowName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
-}
-
-type lineageResolver struct {
-	workbooks   *resourceworkbook.Adapter
-	flows       *resourceflow.Adapter
-	datasources *resourcedatasource.Adapter
-	projects    *resourceproject.Adapter
-}
-
-func (r lineageResolver) ResolveLineageResource(ctx context.Context, kind string, selector identity.Selector) (lineagepull.Resource, error) {
-	switch kind {
-	case "workbook":
-		item, err := r.workbooks.ResolveWorkbook(ctx, selector)
-		return lineagepull.Resource{Kind: kind, LUID: item.LUID, Name: item.Name, ProjectPath: item.ProjectPath}, err
-	case "flow":
-		item, err := r.flows.ResolveFlow(ctx, selector)
-		return lineagepull.Resource{Kind: kind, LUID: item.LUID, Name: item.Name, ProjectPath: item.ProjectPath}, err
-	case "published_datasource":
-		item, err := r.datasources.ResolveDatasource(ctx, selector)
-		if err != nil {
-			return lineagepull.Resource{}, err
-		}
-		return lineagepull.Resource{Kind: kind, LUID: item.LUID, Name: item.Name, ProjectPath: item.ProjectPath}, nil
-	default:
-		return lineagepull.Resource{}, errors.New("unsupported lineage resource kind")
-	}
-}
-
-type lineageReader struct{ adapter *resourcelineage.Adapter }
-
-func (r lineageReader) CaptureLineage(ctx context.Context, input lineagepull.CaptureRequest) (lineagepull.Graph, error) {
-	graph, err := r.adapter.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
-	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Direction: graph.Direction, Depth: graph.Depth, Complete: graph.Complete, Failure: graph.Failure, Nodes: graph.Nodes, Edges: graph.Edges, Warnings: graph.Warnings, RequestIDs: graph.RequestIDs}, err
-}
-
-type lineageArtifactWriter struct{ manager *artifact.LineageManager }
-
-func (w lineageArtifactWriter) WriteLineage(ctx context.Context, input lineagepull.Artifact) (lineagepull.ArtifactResult, error) {
-	nodes := make([]artifact.LineageNode, len(input.Nodes))
-	for index, node := range input.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
-	edges := make([]artifact.LineageEdge, len(input.Edges))
-	for index, edge := range input.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
-	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
-	return lineagepull.ArtifactResult{Path: result.Path, LineagePath: result.LineagePath, Fingerprint: result.Fingerprint}, err
 }

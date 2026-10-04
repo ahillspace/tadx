@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	"github.com/ahillspace/tadx/internal/cli"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 )

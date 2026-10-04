@@ -1,4 +1,4 @@
-package pull
+package lineage
 
 import (
 	"github.com/ahillspace/tadx/internal/identity"

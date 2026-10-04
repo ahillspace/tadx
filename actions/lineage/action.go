@@ -1,4 +1,4 @@
-package pull
+package lineage
 
 import (
 	"context"
@@ -30,10 +30,15 @@ type Writer interface {
 	WriteLineage(context.Context, Artifact) (ArtifactResult, error)
 }
 
-// Execute resolves, captures, and persists one metadata-only graph.
-func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Writer, input Input) (Output, error) {
+// Previewer checks the exact local artifact target without capturing Metadata.
+type Previewer interface {
+	PreviewLineage(context.Context, Input, Resource) (value.AcquisitionPlan, error)
+}
+
+// executeValidated resolves, captures, and persists one metadata-only graph.
+func executeValidated(ctx context.Context, resolver Resolver, reader Reader, writer Writer, previewer Previewer, input Input) (Output, error) {
 	if resolver == nil || reader == nil || writer == nil {
-		return Output{}, &errs.Error{ID: "lineage.pull.unconfigured", Kind: errs.KindRuntime, Operation: "lineage.pull", Summary: "Lineage pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure lineage pull before retrying."}
+		return Output{}, unconfigured()
 	}
 	if strings.TrimSpace(input.Workspace) == "" {
 		return Output{}, usage("workspace", "lineage pull requires a workspace")
@@ -47,10 +52,7 @@ func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Write
 		return Output{}, err
 	}
 	if input.Preview {
-		previewer, ok := writer.(interface {
-			PreviewLineage(context.Context, Input, Resource) (value.AcquisitionPlan, error)
-		})
-		if !ok {
+		if previewer == nil {
 			return Output{}, &errs.Error{ID: "lineage.pull.preview", Kind: errs.KindRuntime, Operation: "lineage.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
 		}
 		plan, err := previewer.PreviewLineage(ctx, input, resource)

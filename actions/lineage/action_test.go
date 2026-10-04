@@ -1,4 +1,4 @@
-package pull_test
+package lineage_test
 
 import (
 	"bytes"
@@ -9,13 +9,34 @@ import (
 	"path/filepath"
 	"testing"
 
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
 type resolver struct{ resource lineagepull.Resource }
+
+type testWorkspace struct{}
+
+func (testWorkspace) ResolveLineageWorkspace(_ context.Context, selector, _ string) (lineagepull.Workspace, error) {
+	return lineagepull.Workspace{Root: selector, Name: "workspace"}, nil
+}
+
+type testProvider struct {
+	resolver  lineagepull.Resolver
+	reader    lineagepull.Reader
+	writer    lineagepull.Writer
+	previewer lineagepull.Previewer
+}
+
+func (p testProvider) OpenLineage(_ context.Context, environment string) (lineagepull.ReadSession, error) {
+	return lineagepull.ReadSession{Environment: environment, Resolver: p.resolver, Reader: p.reader, Writer: p.writer, Previewer: p.previewer}, nil
+}
+
+func testExecute(ctx context.Context, resolver lineagepull.Resolver, reader lineagepull.Reader, writer lineagepull.Writer, input lineagepull.Input) (lineagepull.Output, error) {
+	return lineagepull.New(testWorkspace{}, testProvider{resolver: resolver, reader: reader, writer: writer}).PullLineage(ctx, input)
+}
 
 func (r resolver) ResolveLineageResource(context.Context, string, identity.Selector) (lineagepull.Resource, error) {
 	return r.resource, nil
@@ -47,7 +68,7 @@ func TestOutputReportsUnknownCountsAndBoundOmissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily"}}, reader{graph: lineagepull.Graph{Complete: true, Warnings: warnings, RequestIDs: requests}}, &writer{}, input)
+	output, err := testExecute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily"}}, reader{graph: lineagepull.Graph{Complete: true, Warnings: warnings, RequestIDs: requests}}, &writer{}, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +127,7 @@ func TestActionCreatesCompactAndBoundedFullProjections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily", ProjectPath: "Department/Ops"}}, reader{graph: graph}, w, input)
+	output, err := testExecute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily", ProjectPath: "Department/Ops"}}, reader{graph: graph}, w, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +150,7 @@ func TestActionPersistsExplicitIncompleteCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{err: errors.New("permission limited")}, w, input)
+	output, err := testExecute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{err: errors.New("permission limited")}, w, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +172,7 @@ func TestActionPersistsPartialCaptureAfterProviderFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{graph: partial, err: errors.New("provider relation failure")}, w, input)
+	output, err := testExecute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{graph: partial, err: errors.New("provider relation failure")}, w, input)
 	if err != nil {
 		t.Fatal(err)
 	}

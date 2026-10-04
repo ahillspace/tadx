@@ -6,7 +6,6 @@ import (
 
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
@@ -64,17 +63,6 @@ func (w flowArtifactWriter) PreviewFlow(ctx context.Context, input flowops.PullI
 	}
 	plan := acquisitionPlan("flow.pull", input.WorkspaceName, input.Environment, input.Site, target)
 	plan.Direction, plan.Depth = "both", 1
-	return plan, nil
-}
-
-func (w lineageArtifactWriter) PreviewLineage(ctx context.Context, input lineagepull.Input, item lineagepull.Resource) (value.AcquisitionPlan, error) {
-	target, err := acquisitionTarget(ctx, "lineage.pull", artifact.PullPreview{Workspace: input.Workspace, Kind: "lineage", ResourceKind: item.Kind, Name: item.Name, LUID: item.LUID, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Overwrite: input.Overwrite})
-	if err != nil {
-		return value.AcquisitionPlan{}, err
-	}
-	plan := acquisitionPlan("lineage.pull", input.WorkspaceName, input.Environment, input.Site, target)
-	plan.Direction, plan.Depth = input.Direction, input.Depth
-	plan.Limitations = []string{"The graph is not captured during preview. Metadata API availability, completeness, and filesystem write permission are checked during execution."}
 	return plan, nil
 }
 

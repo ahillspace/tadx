@@ -1,4 +1,4 @@
-package app
+package lineage_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
+	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
@@ -46,7 +47,7 @@ func TestLineageResolverResolvesPublishedDatasourceByExactNameAndProjectPath(t *
 		}},
 	}}, lineageProjectPaths{"project-1": "Department/Ops"})
 
-	resource, err := (lineageResolver{datasources: datasources}).ResolveLineageResource(
+	resource, err := (resourcelineage.ReadPorts{Datasources: datasources}).ResolveLineageResource(
 		context.Background(),
 		"published_datasource",
 		identity.Selector{Name: "Sales", ProjectPath: "Department/Ops"},

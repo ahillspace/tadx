@@ -16,7 +16,7 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	jobactions "github.com/ahillspace/tadx/actions/job"
-	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage/pull"
+	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage"
 	projectops "github.com/ahillspace/tadx/actions/project"
 
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"

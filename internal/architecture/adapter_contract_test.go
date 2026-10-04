@@ -114,6 +114,33 @@ func TestAdminCachePortsAllowOnlyTheirRequiredInfrastructure(t *testing.T) {
 	}
 }
 
+func TestLineageArtifactPortAllowsOnlyExactOwner(t *testing.T) {
+	for _, imported := range []string{"internal/artifact", "internal/errs"} {
+		t.Run("allowed/"+imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/lineage/ports.go", fmt.Sprintf("package lineage\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+		for _, file := range []string{"internal/resources/workbook/ports.go", "internal/resources/lineage/nested/ports.go"} {
+			t.Run("rejected/"+file+"/"+imported, func(t *testing.T) {
+				root := moduleFixture(t)
+				writeGo(t, root, file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+imported))
+				violations, err := architecture.Check(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(violations) != 1 || violations[0].File != file {
+					t.Fatalf("violations=%v", violations)
+				}
+			})
+		}
+	}
+}
+
 func TestContentReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
 	for _, resource := range []string{"workbook", "datasource", "flow"} {
 		for _, imported := range []string{"internal/cache", "internal/readsource", "internal/inventory"} {

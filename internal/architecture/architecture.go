@@ -267,6 +267,10 @@ func localImportAllowed(file, imported string) bool {
 		if path.Dir(file) == "internal/resources/admin" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory", "internal/errs") {
 			return true
 		}
+		// Lineage owns the metadata-only artifact port and its local preview error.
+		if path.Dir(file) == "internal/resources/lineage" && matchesExact(imported, "internal/artifact", "internal/errs") {
+			return true
+		}
 		// Content read ports own typed cache and inventory projections. The
 		// collector and source policy remain in the neutral inventory package.
 		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow") &&

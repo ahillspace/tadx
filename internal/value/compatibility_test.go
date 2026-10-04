@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"

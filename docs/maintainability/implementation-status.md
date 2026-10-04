@@ -6,6 +6,22 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Lineage ownership
+
+The cohesive lineage Service owns validation, workspace selection, canonical target binding, and operation sequencing.
+Its resource ports own exact cross-resource resolution, native metadata translation, artifact writing, and preview translation.
+App retains construction and selected-session binding rather than those algorithms.
+Preview is an explicit capability in the declared session contract, not an optional runtime writer assertion.
+The revision preserves missing-preview error timing and performs no metadata capture or write during preview.
+
+Independent review rejects the initial optional-preview design and passes its corrected immutable revision.
+The final merge is based on `df6f34c17a6e2e102c58f870a69f736038995f3a` and preserves publication coordinator calls and existing architecture boundaries.
+Its 30 changed paths and 1,454 files have fingerprint `cf53c9399111eb06b512653800e94644ee0c583c4b27749fefd8e735de6a75ab`.
+Focused lineage, resource, architecture, app lineage/publication/job-monitor tests, and full compilation pass.
+Original goldens remain byte-identical; pure adapter assertions move with their owner.
+Evidence remains in `.tadx-refactor/lineage-merge-df6/`.
+Final integrated and live acceptance remain outstanding.
+
 ## Accepted publication receipt ownership
 
 `internal/jobmonitor.Publication` owns durable result recording, accepted-receipt persistence, and bounded wait coordination.

@@ -1,8 +1,8 @@
-package pull_test
+package lineage_test
 
 import (
 	"encoding/json"
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	"github.com/ahillspace/tadx/internal/identity"
 	"strings"
 	"testing"
@@ -14,7 +14,7 @@ func TestDatasourceKindAcceptsPublicAndLegacyNames(t *testing.T) {
 		if err != nil || input.Kind != "published_datasource" || input.Direction != "both" || input.Depth != 1 {
 			t.Fatalf("normalized input = %#v, err = %v", input, err)
 		}
-		output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "published_datasource", LUID: "ds-1", Name: "Sales"}}, reader{graph: lineagepull.Graph{Complete: true}}, &writer{}, input)
+		output, err := testExecute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "published_datasource", LUID: "ds-1", Name: "Sales"}}, reader{graph: lineagepull.Graph{Complete: true}}, &writer{}, input)
 		if err != nil {
 			t.Fatal(err)
 		}

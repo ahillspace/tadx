@@ -18,6 +18,7 @@ import (
 	cacheops "github.com/ahillspace/tadx/actions/cache"
 	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	lastaction "github.com/ahillspace/tadx/actions/last"
+	lineageops "github.com/ahillspace/tadx/actions/lineage"
 	mutationops "github.com/ahillspace/tadx/actions/mutation"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
@@ -142,7 +143,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		}}),
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
 		CatalogLabels:         contentLabelDependencies(runtime),
-		CatalogLineage:        remoteContent,
+		CatalogLineage:        lineageops.New(lineageWorkspace{runtime: runtime}, lineageProvider{commands: remoteContent}),
 		AdminLabels:           adminLabelDependencies(runtime),
 		Lister:                discovery,
 		Getter:                discovery,

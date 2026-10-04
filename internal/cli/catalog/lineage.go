@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )

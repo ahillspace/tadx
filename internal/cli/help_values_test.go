@@ -14,7 +14,7 @@ import (
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
-	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	lineagepull "github.com/ahillspace/tadx/actions/lineage"
 	projectops "github.com/ahillspace/tadx/actions/project"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
