@@ -54,7 +54,7 @@ func TestWorkbookDescriptionUpdateThroughCLI(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			config := writePhaseOneConfig(t, server.URL)
+			config := writeCLIConfig(t, server.URL)
 			t.Setenv("PROD_PAT_NAME", "test-name")
 			t.Setenv("PROD_PAT_SECRET", "test-secret")
 			args := []string{"content", "workbook", "update", "--environment", "production", "--id", "wb-1", "--description", "Sales & margin"}

@@ -38,12 +38,12 @@ func TestRoutinePullKeepsOptionalEnrichmentDiagnosticsFullOnly(t *testing.T) {
 			defer server.Close()
 			options := diagnosticOptions(t, server)
 			workspaceRoot := filepath.Join(t.TempDir(), "workspace")
-			runGroupOneCLI(t, options, "workspace", "create", "work", "--path", workspaceRoot)
-			output := runGroupOneCLI(t, options, "content", kind, "pull", "--id", "item-1", "--workspace", "work", "--environment", "test")
+			runProjectFlowCLI(t, options, "workspace", "create", "work", "--path", workspaceRoot)
+			output := runProjectFlowCLI(t, options, "content", kind, "pull", "--id", "item-1", "--workspace", "work", "--environment", "test")
 			if !strings.Contains(output, "status: pulled") || strings.Contains(output, "Lineage capture") || strings.Contains(output, "portability: unknown") || strings.Contains(output, "portability remains unknown") {
 				t.Fatalf("routine pull was noisy: %s", output)
 			}
-			full := runGroupOneCLI(t, options, "last")
+			full := runProjectFlowCLI(t, options, "last")
 			if !strings.Contains(full, "Lineage capture") {
 				t.Fatalf("saved full result lost enrichment diagnostics: %s", full)
 			}

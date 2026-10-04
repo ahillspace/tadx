@@ -1,119 +1,114 @@
 # Repository architecture
 
-TADX is one Go module and one CLI binary with a runtime scoped to each command.
-It has no resident service and does not call or proxy Tableau MCP.
-The [architecture diagram](architecture/index.html) shows command flow and dependency wiring.
-The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](architecture/tadx-architecture.excalidraw) accompany the diagram.
+TADX is one Go module and one CLI executable.
+Each invocation constructs its own dependencies; detached transfers start another instance of the same executable, not a resident service.
+TADX manages Tableau lifecycle operations and never calls or proxies Tableau MCP.
+The [architecture diagram](architecture/index.html) summarizes runtime calls and dependency construction.
+Its arrows are not a Go import graph.
 
-## Package responsibilities
+## Find the owner
 
-| Package | Responsibility |
+Start with the resource or service, then the operation file.
+Workbook operations belong to `actions/workbook`; project operations belong to `actions/project`; authentication belongs to `actions/auth`.
+Admin and Pulse directories are domain namespaces, not extra execution layers.
+Distinct operation inputs, sequencing, projections, and safety rules remain explicit within each owner.
+
+| Location | Responsibility |
 | --- | --- |
-| `cmd/tadx` | Process entry point |
-| `internal/app` | Composition root, target and workspace selection, command runtime, and concrete dependency wiring |
-| `internal/cli` | Cobra command tree, argument parsing, and action invocation |
-| `actions/workbook`, `actions/datasource`, `actions/flow` | Cohesive resource packages for related lifecycle operations |
-| `actions/project` | Project list, inspect, create, update, delete, and move workflows with distinct operation contracts |
-| `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
-| `actions/admin` subpackages | Cohesive user, group/membership, permission, and label-definition services with explicit operation contracts |
-| `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
-| `actions/pulse/subscription` | Authenticated-user subscription discovery, bounded enrichment, and canonical continuation binding |
-| `actions/env` | Environment profile operations and configuration coordination through one service |
-| `actions/mutation` | Exact-site mutation consent status, changes, and policy observations |
-| `actions/cache` | Cache refresh/status workflows, scope selection, and policy prerequisites |
-| `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
-| `actions/contentlabel` | Attached-label operations, distinct from admin-owned shared label definitions |
-| `actions/agent`, `actions/version` | Guidance installation/removal and installed-version/release-check services |
-| `actions/auth` | Authentication, pre-prompt validation, status projection, and credential/configuration coordination |
-| `actions/capability` | Registry discovery and policy/site readiness through named get and list operations |
-| Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
-| `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
-| `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
-| `internal/auth` | PAT resolution, native credential storage, authenticated sessions, and credential-scoped coordination |
-| `internal/operationrun` | Durable local operation records, detached worker launch, and process-lifetime coordination |
-| `internal/jobmonitor` | Accepted Tableau job receipts, bounded observation, and shared monitoring coordination |
-| `internal/workspace`, `internal/artifact` | Named workspace registration, native packages, provenance, and dirty guards |
-| `internal/cache` | SQLite cache generations, scoped observations, and local queries |
-| `internal/inventory` | Neutral bounded collection, coverage facts, and scoped cache publication |
-| `internal/config` | Nonsecret configuration, environment aliases, and opaque credential references |
-| `internal/output`, `internal/toon` | Bounded output projections, redaction, and TOON encoding |
-| `internal/capability` | Typed capability facts, validation, and command bindings |
-| `internal/architecture` | Automated import-boundary checks |
+| `cmd/tadx` | Process entry and exit status. |
+| `internal/cli/<category>` | Cobra commands, flags, argument parsing, command-specific help, and presentation binding. |
+| `actions/<resource-or-service>` | Requested outcome, local validation, operation sequencing, preview decisions, and result contracts. |
+| `internal/resources/<resource>` | Exact resolution, provider normalization, and implementations of action-owned ports. |
+| `internal/tableau/<api>` | Native HTTP/GraphQL requests, response contracts, and acknowledgements. |
+| `internal/app` | Invocation-scoped construction, client/session lifetime, target binding, and private process dispatch. |
+| Named infrastructure packages | Shared mechanisms with concrete consumers and matching invariants. |
 
-## Dependency boundaries
+Action Services expose named operations through explicit dependencies.
+Providers open lazily after input validation when authentication or remote access is required.
+Help and invalid arguments must not authenticate or contact Tableau.
+App supplies providers; it does not add a forwarding method for every command.
 
-Action packages keep operation rules near related operations, sharing a package when their responsibilities match.
-Some actions use focused interfaces; others use direct function or service calls.
-Choose the dependency shape that preserves clear ownership without adding forwarding layers for each command.
-`internal/app` composes command dependencies, including resource adapters where remote identity resolution or provider normalization needs a distinct owner.
-Actions do not import concrete resource adapters, Tableau clients, Cobra, or `net/http`.
-Resource adapters can implement narrow action-owned ports, but cannot call action workflow entry points or use HTTP directly.
-Tableau clients own request and response mechanics.
-Shared value types in `internal/value` depend only on the standard library.
+An operation does not need a wrapper in every layer.
+Catalog can receive native metadata clients directly because they already implement narrow value-based contracts.
+Resource adapters remain useful when exact identity, hierarchy, provider normalization, or resource-specific scope requires translation.
 
-For project commands, `internal/cli/content` calls the named operation in `actions/project`.
-The project service validates input before `internal/app` opens a target-bound provider.
-`internal/resources/project` implements the live, cached, and inventory-read ports that the service consumes.
-Complete live search uses the composed project service; bounded live search uses its list action with a direct resource list port.
-Shared collection, scoped cache publication, and source/coverage facts live in `internal/inventory`.
-`actions/cache` owns full-generation refresh/status workflows, with neutral generation mechanics in `internal/inventory`.
-App still owns some content-specific cache reads and search routing pending their remaining ownership moves.
+## Follow calls and imports
 
-Workbook, datasource, and flow mutation Services validate input before opening target-bound providers.
-Their resource adapters implement move, update, and delete ports directly, without per-operation app facades or copy-only mutation adapters.
-Fresh prewrite observations, native acknowledgements, partial outcomes, and operation-specific projections remain explicit.
-Content read, pull, publication, and recovery ownership moves remain in progress.
+Runtime calls follow this path when provider translation is needed:
 
-Admin services own operation validation, canonical target binding, and user/group/permission/label-definition workflows.
-`internal/resources/admin` implements their typed ports, including cached user/group observations and inventory projections.
-Neutral inventory publication preserves observed-member coverage and best-effort detail updates; app supplies command-scoped collaborators.
+```text
+command -> action Service -> injected resource port -> native client
+```
 
-For catalog commands, `internal/cli/catalog` calls one service in `actions/catalog`.
-The service validates input before opening its target-bound provider and retains separate typed read and mutation sequences.
-App binds native metadata clients directly to those narrow ports, including the shared label-target contract; no forwarding-only catalog resource adapter remains.
+Construction happens outside that chain in app.
+The action declares the port it consumes, and the resource adapter imports that contract to implement it.
+The action does not import the resource adapter.
+Actions do not import sibling actions, Tableau clients, Cobra, or HTTP clients.
+Resource adapters do not call action workflow entry points.
+Native clients do not import actions, resources, or CLI packages.
 
-For authentication, `internal/cli/auth` calls the auth service, including login preflight before prompting.
-`actions/auth` coordinates credential persistence, target freshness, and compensation through core auth and config mechanisms.
-App supplies invocation-scoped construction; native credential operations and configuration locking remain in their infrastructure owners.
-Terminal credential prompting belongs to `internal/cli/auth`; app constructs the default prompter without reading credentials.
+The architecture checker enforces explicit production import boundaries.
+Selected infrastructure dependencies are exact-owner permissions, not permission for neighboring or nested packages.
+Shared observations in `internal/value` depend only on the standard library.
+Native wire types and operation-specific output types remain separate when their semantics differ.
 
-Environment and mutation Services receive the selected configuration path lazily, after root flag parsing.
-The env Service owns profile changes and credential-bound target guards.
-The mutation Service owns consent workflows, while config retains exact server/site authority, locking, and durable storage.
-Updater child-process credential-variable enumeration also belongs to config; the updater retains filtering and process-launch policy.
+## Keep shared mechanisms distinct
 
-Capability discovery uses one `actions/capability` Service for get and list.
-The Service reads the existing registry and applies injected policy and selected-site readiness observations.
-The CLI owns parsing, rendering, and partial-result wrapping; app retains actual-operation policy enforcement and dependency construction.
-Discovery results do not authorize an operation.
+`internal/inventory` owns neutral bounded collection, completeness observations, and scoped cache publication.
+`internal/cache` owns storage, generations, and local queries.
+Resource actions choose cache or live behavior; adapters translate typed observations.
+An explicit cached read never silently becomes a native read.
+Complete unfiltered inventory replacement remains distinct from filtered or partial updates.
 
-The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
-Unknown local package dependencies fail the check.
-Additional external-import rules keep Cobra out of action, adapter, client, and foundation layers and HTTP out of actions, adapters, and CLI plumbing.
-These boundaries constrain package dependencies; they do not require an adapter or forwarding interface for every operation.
+`internal/jobmonitor` owns accepted Tableau job receipts and bounded shared observation.
+`internal/operationrun` owns local worker records, startup acknowledgement, leases, detached waiting, and durable process state.
+A local worker is not a Tableau job.
+`actions/job` reconciles saved operation evidence without resubmitting an operation.
+Each resource owns publication completion and destination verification.
 
-## Runtime and local state
+`internal/workspace` owns workspace registration and rooted local state.
+`internal/artifact` owns package persistence, provenance, and dirty-file guards.
+`internal/config` owns nonsecret configuration and durable replacement.
+`internal/auth` owns credential-store and session mechanisms; `actions/auth` owns ordering and compensation across those boundaries.
 
-`internal/app` resolves the configuration, workspace, authentication, and clients needed for one invocation, including supported sequential batches.
-Mutation validation uses fresh state at the relevant validation boundaries.
-Tableau LUIDs provide authoritative remote identity; ambiguous name and project selectors fail deterministically.
-Configuration stores credential references, while approved persistent PATs reside only in the native OS credential store.
-Workspaces hold managed content artifacts; the cache holds cached observations and does not replace a live source implicitly.
-Persisted artifact paths are relative to the workspace and use forward slashes.
+`internal/output` owns shared bounded presentation and saved-operation snapshots.
+`internal/toon` owns TOON encoding.
+`internal/lastcommand` records saved results without redefining the remote operation's outcome.
+Resource-named files group command constructors and their help facts within each category package.
+Category registration and genuinely shared flags stay centralized; shared help code handles metadata and rendering.
 
-Workbook, datasource, and flow publish and pull can hand execution to a detached instance of the same binary.
-This is a per-operation worker, not a resident service.
-The default foreground wait ends at completion or the shared 20-minute invocation limit; `--no-wait` returns after durable handoff with one status command for the single operation or batch.
-Publication receipts retain accepted Tableau job identities, while download workers save native files and metadata without inventing remote job IDs.
-Local operation records live outside the source checkout and are inspected through `tadx job inspect --operation-id`.
-Active transfers can hold the shared PAT lease; returning the terminal does not promise concurrent remote access with that credential.
+## Preserve evidence and safety
 
-## Capability metadata and documentation
+Tableau LUIDs are authoritative, and ambiguous names fail deterministically.
+Fresh-state checks remain where remote or local facts can change.
+Preview does not authorize a mutation or enable site consent.
+Mutation execution uses saved consent for the canonical server and exact site, plus all other policy checks.
 
-[Typed definitions](../internal/capability/definitions.go) are the source of capability ownership, selectors, safety, evidence, implementation status, and command bindings.
-The registry exposes those definitions to discovery and CLI binding checks.
-`cmd/gencapdocs` generates [the capability reference](reference/capabilities.md), its [JSON data](reference/capabilities.json), and the data block in the [interactive HTML map](reference/capability-map.html).
-Generated documentation is distinct from the maintained architecture diagram and these explanatory pages.
+Configuration stores opaque credential references, not PATs.
+Approved persistent PATs belong only in the native OS credential store.
+Credentials and session tokens never belong in logs, fixtures, artifacts, receipts, or output.
+Persisted artifact paths stay relative to the resolved workspace and use forward slashes.
 
-[CONTRIBUTING.md](../CONTRIBUTING.md) introduces contributions.
-The repository [build skill](../.agents/skills/tadx-build/SKILL.md) contains implementation procedures and verification requirements.
+Native acknowledgements, request IDs, confirmed identities, and unknown effects survive partial failures.
+Transport retryability does not establish that resubmission is safe.
+Accepted native jobs and local download workers retain different recovery evidence.
+Compact and full output remain projections of the same operation; `--json` changes encoding, not behavior.
+
+## Navigate tests and contributions
+
+Action tests protect validation, sequencing, previews, outcomes, and recovery contracts.
+Resource and native-client tests protect identity translation, request shape, acknowledgements, and protocol failures.
+CLI tests protect syntax and presentation.
+App tests exercise real command paths against controlled stores or HTTP servers.
+Shared-mechanism tests protect bounds, persistence, concurrency, and failure recovery across consumers.
+
+Name a test for a concrete failure it detects, not the review phase that introduced it.
+Move meaningful assertions with their owner instead of retaining obsolete production wrappers for tests.
+Native platform checks and authorized live tasks provide evidence that isolated tests cannot establish.
+No finite suite guarantees zero regressions.
+
+The [contributor walkthrough](contributor-walkthrough.md) traces a read, a mutation, and a local-state change through these boundaries.
+[CONTRIBUTING](../CONTRIBUTING.md) is the human entry point; the repository build skill supplies focused implementation references for agent-assisted work.
+[Capability definitions](../internal/capability/definitions.go) remain separate from executable syntax.
+`cmd/gencapdocs` generates their Markdown, JSON, and HTML references through the existing tooling.
+The [implementation record](maintainability/implementation-status.md) and [regression gates](maintainability/regression-gates.md) track acceptance evidence separately from this architecture description.

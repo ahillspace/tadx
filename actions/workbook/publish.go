@@ -19,6 +19,7 @@ type ArtifactReader interface {
 type PublishResolver interface {
 	ProjectResolver
 	CollisionReader
+	BeginProjectResolution(context.Context) context.Context
 }
 
 // PreparedPublish is ready for the final consequential remote mutation.
@@ -31,29 +32,30 @@ type PublishPreparer interface {
 	Prepare(context.Context, PublishRequest) (PreparedPublish, error)
 }
 
-// Publisher orchestrates workbook.publish preview and apply.
-type Publisher struct {
+// publisher orchestrates workbook.publish preview and apply.
+type publisher struct {
 	artifacts ArtifactReader
 	resolver  PublishResolver
 	publisher PublishPreparer
 }
 
-// NewPublish creates workbook.publish.
-func NewPublish(artifacts ArtifactReader, resolver PublishResolver, publisher PublishPreparer) *Publisher {
-	return &Publisher{artifacts: artifacts, resolver: resolver, publisher: publisher}
+func newPublisher(artifacts ArtifactReader, resolver PublishResolver, preparer PublishPreparer) *publisher {
+	return &publisher{artifacts: artifacts, resolver: resolver, publisher: preparer}
 }
 
 // Plan performs authoritative reads and returns a preview without mutation.
-func (a *Publisher) Plan(ctx context.Context, input PublishInput) (PublishPlan, error) {
-	if err := ValidatePublishInput(input); err != nil {
+func (a *publisher) Plan(ctx context.Context, input PublishInput) (PublishPlan, error) {
+	if err := validatePublishInput(input); err != nil {
 		return PublishPlan{}, err
 	}
-	if a != nil {
-		ctx = beginProjectResolution(ctx, a.resolver)
-	}
+	return a.planValidated(ctx, input)
+}
+
+func (a *publisher) planValidated(ctx context.Context, input PublishInput) (PublishPlan, error) {
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return PublishPlan{}, publishUnconfigured()
 	}
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	if input.Environment == "" {
 		return PublishPlan{}, publishUsage("environment", "an explicit write environment is required")
 	}
@@ -149,13 +151,11 @@ func (a *Publisher) Plan(ctx context.Context, input PublishInput) (PublishPlan, 
 }
 
 // Apply performs only the exact mutation request captured by Plan.
-func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult, error) {
-	if a != nil {
-		ctx = beginProjectResolution(ctx, a.resolver)
-	}
+func (a *publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult, error) {
 	if a == nil || a.resolver == nil || a.publisher == nil {
 		return PublishResult{}, publishUnconfigured()
 	}
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	if !plan.planned || plan.Operation != "workbook.publish" || plan.request.Name == "" || plan.request.ProjectLUID == "" {
 		return PublishResult{}, publishUsage("plan", "workbook publish apply requires a plan produced by Plan")
 	}
@@ -172,7 +172,7 @@ func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult,
 	if prepared == nil {
 		return PublishResult{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindRuntime, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation returned no commit operation.", Retryable: new(false), CorrectiveAction: "Review the publish configuration before retrying."}
 	}
-	ctx = beginProjectResolution(ctx, a.resolver)
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	if plan.request.Overwrite {
 		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {
 			return PublishResult{}, err
@@ -209,7 +209,7 @@ func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult,
 	return result, nil
 }
 
-func (a *Publisher) verifyOverwriteTarget(ctx context.Context, plan PublishPlan) error {
+func (a *publisher) verifyOverwriteTarget(ctx context.Context, plan PublishPlan) error {
 	current, err := a.resolver.FindWorkbooks(ctx, plan.request.Name, plan.request.ProjectLUID)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact destination again before publishing.")
@@ -226,8 +226,15 @@ func (a *Publisher) verifyOverwriteTarget(ctx context.Context, plan PublishPlan)
 }
 
 // Execute plans every invocation and publishes unless preview is requested.
-func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
-	plan, err := a.Plan(ctx, input)
+func (a *publisher) Execute(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
+	if err := validatePublishInput(input); err != nil {
+		return PublishOutput{}, err
+	}
+	return a.executeValidated(ctx, input, preview)
+}
+
+func (a *publisher) executeValidated(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
+	plan, err := a.planValidated(ctx, input)
 	if err != nil {
 		return PublishOutput{}, err
 	}
@@ -252,7 +259,7 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 }
 
 // Complete confirms an already completed publication without submitting it again.
-func (a *Publisher) Complete(ctx context.Context, output PublishOutput) (PublishOutput, error) {
+func (a *publisher) Complete(ctx context.Context, output PublishOutput) (PublishOutput, error) {
 	output.Help = nil
 	if output.Result == nil || output.Result.Status != "succeeded" {
 		return output, nil
@@ -287,8 +294,8 @@ func publishUnconfigured() error {
 	return &errs.Error{ID: "workbook.publish.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.publish", Summary: "Workbook publish is not configured.", Retryable: new(false), CorrectiveAction: "Configure workbook publishing before retrying."}
 }
 
-// ValidatePublishInput checks caller-controlled arguments before dependency setup.
-func ValidatePublishInput(input PublishInput) error {
+// validatePublishInput checks caller-controlled arguments before dependency setup.
+func validatePublishInput(input PublishInput) error {
 	if strings.TrimSpace(input.ArtifactPath) == "" && strings.TrimSpace(input.File) == "" && strings.TrimSpace(input.ArtifactID) == "" && strings.TrimSpace(input.ArtifactName) == "" {
 		return publishUsage("artifact", "an explicit workbook artifact is required")
 	}

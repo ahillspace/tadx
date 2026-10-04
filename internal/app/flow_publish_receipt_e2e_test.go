@@ -37,7 +37,7 @@ func TestFlowPublishPreservesConfirmedPersistenceOutcome(t *testing.T) {
 	}))
 	defer server.Close()
 
-	configPath := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	configPath := writeCLIConfigWithSite(t, server.URL, "team-site")
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	flowPath := filepath.Join(t.TempDir(), "Daily.tfl")

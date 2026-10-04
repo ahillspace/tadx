@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"context"
@@ -6,25 +6,24 @@ import (
 	"fmt"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type createPartialCreator struct {
-	result pulsedefinition.CreateResult
+	result CreateResult
 	err    error
 	calls  int
 }
 
-func (c *createPartialCreator) CreateDefinition(context.Context, pulsedefinition.CreateRequest) (pulsedefinition.CreateResult, error) {
+func (c *createPartialCreator) CreateDefinition(context.Context, CreateRequest) (CreateResult, error) {
 	c.calls++
 	return c.result, c.err
 }
 
 func TestCreateConfirmedCreateRemainsTypedWhileUnknownWriteDoesNotBecomeSuccess(t *testing.T) {
 	for _, id := range []string{"confirmed", ""} {
-		creator := &createPartialCreator{result: pulsedefinition.CreateResult{DefinitionLUID: id, TableauRequestID: "write-request"}, err: errors.New("readback unavailable")}
-		input := pulsedefinition.CreateInput{Environment: "selected", Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "source", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
+		creator := &createPartialCreator{result: CreateResult{DefinitionLUID: id, TableauRequestID: "write-request"}, err: errors.New("readback unavailable")}
+		input := CreateInput{Environment: "selected", Intent: CreateIntent{Name: "Revenue", DatasourceLUID: "source", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
 		output, err := create(context.Background(), &createValidator{}, &createFinder{}, creator, input, false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || creator.calls != 1 || structured.Retryable == nil || *structured.Retryable {
@@ -47,12 +46,12 @@ func TestCreateCompactCreateDimensionsAreBoundedWithoutChangingRequest(t *testin
 	for i := range dimensions {
 		dimensions[i] = fmt.Sprintf("Dimension %d", i)
 	}
-	input := pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "source", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: dimensions}}
+	input := CreateInput{Intent: CreateIntent{Name: "Revenue", DatasourceLUID: "source", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: dimensions}}
 	output, err := create(context.Background(), &createValidator{}, &createFinder{}, &createCreator{}, input, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	compact := output.CompactOutput().(pulsedefinition.CreateCompactResult)
+	compact := output.CompactOutput().(CreateCompactResult)
 	if compact.Plan.ReviewComplete || !compact.Plan.RequiresFull || compact.Plan.DimensionsOmitted != 1 || len(compact.Plan.Dimensions) != 50 || len(output.Plan.Request.ExtensionOptions.AllowedDimensions) != 51 {
 		t.Fatalf("compact=%#v", compact.Plan)
 	}

@@ -1,19 +1,18 @@
-package flow_test
+package flow
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	flowpublish "github.com/ahillspace/tadx/actions/flow"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 )
 
 type publishTypedErrorPrepared struct{}
 
-func (publishTypedErrorPrepared) Commit(context.Context) (flowpublish.PublishResult, error) {
-	return flowpublish.PublishResult{Status: "succeeded", FlowLUID: "flow-1"}, &errs.Error{
+func (publishTypedErrorPrepared) Commit(context.Context) (PublishResult, error) {
+	return PublishResult{Status: "succeeded", FlowLUID: "flow-1"}, &errs.Error{
 		ID:      "flow.publish.receipt",
 		Phase:   errs.PhasePersistence,
 		Outcome: errs.OutcomeConfirmed,
@@ -22,16 +21,16 @@ func (publishTypedErrorPrepared) Commit(context.Context) (flowpublish.PublishRes
 
 type publishTypedErrorPublisher struct{}
 
-func (publishTypedErrorPublisher) Prepare(context.Context, flowpublish.PublishRequest) (flowpublish.PreparedPublish, error) {
+func (publishTypedErrorPublisher) Prepare(context.Context, PublishRequest) (PreparedPublish, error) {
 	return publishTypedErrorPrepared{}, nil
 }
 
 func TestPublishPublishPreservesTypedCommitOutcome(t *testing.T) {
-	output, err := flowpublish.NewPublish(
-		publishArtifactReader{artifact: flowpublish.PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}},
-		&publishResolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}},
+	output, err := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}},
+		&publishResolver{project: Project{LUID: "p-1", Path: "Ops"}},
 		publishTypedErrorPublisher{},
-	).Execute(context.Background(), flowpublish.PublishInput{
+	).Execute(context.Background(), PublishInput{
 		Environment:     "dev",
 		Site:            "site",
 		ArtifactPath:    "artifact",

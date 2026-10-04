@@ -46,7 +46,7 @@ func (b *batchCalls) PullWorkbook(_ context.Context, in workbookops.PullInput) (
 
 type batchWorkbookPublisher struct{ b *batchCalls }
 
-func (p batchWorkbookPublisher) Execute(_ context.Context, in workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
+func (p batchWorkbookPublisher) PublishWorkbook(_ context.Context, in workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
 	p.b.previews = append(p.b.previews, preview)
 	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: in.ArtifactPath}}, p.b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }

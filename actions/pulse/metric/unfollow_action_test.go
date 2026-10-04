@@ -1,4 +1,4 @@
-package metric_test
+package metric
 
 import (
 	"bytes"
@@ -6,17 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 type unfollowService struct {
-	subscriptions []pulsemetric.Subscription
+	subscriptions []Subscription
 	listed        int
 	deleted       []string
 }
 
-func (s *unfollowService) ListSubscriptions(context.Context, string) ([]pulsemetric.Subscription, error) {
+func (s *unfollowService) ListSubscriptions(context.Context, string) ([]Subscription, error) {
 	s.listed++
 	return s.subscriptions, nil
 }
@@ -26,8 +25,8 @@ func (s *unfollowService) DeleteSubscription(_ context.Context, luid string) err
 }
 
 func TestUnfollowResolvesOneExactRelationshipAndRevalidates(t *testing.T) {
-	s := &unfollowService{subscriptions: []pulsemetric.Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "GROUP", FollowerLUID: "group-1"}}}
-	input := pulsemetric.UnfollowInput{MetricLUID: "metric-1", GroupLUID: "group-1"}
+	s := &unfollowService{subscriptions: []Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "GROUP", FollowerLUID: "group-1"}}}
+	input := UnfollowInput{MetricLUID: "metric-1", GroupLUID: "group-1"}
 	preview, err := unfollow(context.Background(), s, s, input, true)
 	if err != nil || preview.Plan.SubscriptionLUID != "sub-1" || len(s.deleted) != 0 {
 		t.Fatalf("preview=%#v err=%v", preview, err)
@@ -49,15 +48,15 @@ func TestUnfollowResolvesOneExactRelationshipAndRevalidates(t *testing.T) {
 }
 
 func TestUnfollowRejectsAmbiguousRelationship(t *testing.T) {
-	s := &unfollowService{subscriptions: []pulsemetric.Subscription{{LUID: "sub-1", FollowerType: "USER", FollowerLUID: "user-1"}, {LUID: "sub-2", FollowerType: "USER", FollowerLUID: "user-1"}}}
-	if _, err := unfollow(context.Background(), s, s, pulsemetric.UnfollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}, false); err == nil {
+	s := &unfollowService{subscriptions: []Subscription{{LUID: "sub-1", FollowerType: "USER", FollowerLUID: "user-1"}, {LUID: "sub-2", FollowerType: "USER", FollowerLUID: "user-1"}}}
+	if _, err := unfollow(context.Background(), s, s, UnfollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}, false); err == nil {
 		t.Fatal("ambiguous relationship accepted")
 	}
 }
 
 func TestUnfollowAcceptsExactSubscriptionWithoutResolution(t *testing.T) {
 	s := &unfollowService{}
-	output, err := unfollow(context.Background(), s, s, pulsemetric.UnfollowInput{SubscriptionLUID: "sub-1"}, false)
+	output, err := unfollow(context.Background(), s, s, UnfollowInput{SubscriptionLUID: "sub-1"}, false)
 	if err != nil || output.Result == nil || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
 		t.Fatalf("output=%#v deleted=%#v err=%v", output, s.deleted, err)
 	}
@@ -77,7 +76,7 @@ func TestUnfollowAcceptsExactSubscriptionWithoutResolution(t *testing.T) {
 }
 
 func TestUnfollowRejectsMixedAndIncompleteSelectorsBeforeRemoteCalls(t *testing.T) {
-	tests := []pulsemetric.UnfollowInput{
+	tests := []UnfollowInput{
 		{},
 		{SubscriptionLUID: "sub-1", MetricLUID: "metric-1"},
 		{SubscriptionLUID: "sub-1", UserLUID: "user-1"},

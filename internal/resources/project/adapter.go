@@ -243,6 +243,22 @@ type DiscoveryPaths struct {
 
 func NewDiscoveryPaths(adapter *Adapter) *DiscoveryPaths { return &DiscoveryPaths{adapter: adapter} }
 
+// ResolveProjectPath reads one identity from the immutable discovery snapshot.
+func (r *DiscoveryPaths) ResolveProjectPath(ctx context.Context, luid string) (string, error) {
+	paths, err := r.ResolveProjectPaths(ctx, []string{luid})
+	return paths[luid], err
+}
+
+// ValidateProjectPath checks current hierarchy, never the discovery snapshot.
+func (r *DiscoveryPaths) ValidateProjectPath(ctx context.Context, path string) error {
+	return r.adapter.ValidateProjectPath(ctx, path)
+}
+
+// ResolveProjectSelectorPath checks current hierarchy before a mutation.
+func (r *DiscoveryPaths) ResolveProjectSelectorPath(ctx context.Context, path string) (string, error) {
+	return r.adapter.ResolveProjectSelectorPath(ctx, path)
+}
+
 func (r *DiscoveryPaths) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
 	if r == nil || r.adapter == nil {
 		return nil, errors.New("discovery project resolver is not configured")

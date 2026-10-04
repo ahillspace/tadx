@@ -13,9 +13,9 @@ import (
 )
 
 func TestDefaultSiteLifecyclePreviewThroughCLI(t *testing.T) {
-	server, mutations := newGroupOneTableauServer(t)
+	server, mutations := newProjectFlowTableauServer(t)
 	defer server.Close()
-	configPath := writePhaseOneConfigWithSite(t, server.URL, "")
+	configPath := writeCLIConfigWithSite(t, server.URL, "")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client()}
@@ -29,7 +29,7 @@ func TestDefaultSiteLifecyclePreviewThroughCLI(t *testing.T) {
 		{"content", "flow", "delete", "--id", "flow-1"},
 	} {
 		t.Run(args[1]+"/"+args[2], func(t *testing.T) {
-			runGroupOneCLI(t, options, append(args, "--environment", "production", "--preview=true")...)
+			runProjectFlowCLI(t, options, append(args, "--environment", "production", "--preview=true")...)
 			if mutations.Load() != 0 {
 				t.Fatal("preview performed a consequential mutation")
 			}
@@ -65,17 +65,17 @@ func TestDefaultSiteAdminCreateThroughCLI(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	configPath := writePhaseOneConfigWithSite(t, server.URL, "")
+	configPath := writeCLIConfigWithSite(t, server.URL, "")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client()}
 	args := []string{"admin", "group", "create", "--environment", "production", "--name", "New Group"}
-	runGroupOneCLI(t, options, append(args, "--preview")...)
+	runProjectFlowCLI(t, options, append(args, "--preview")...)
 	if creates.Load() != 0 {
 		t.Fatal("preview created a group")
 	}
 	options = withSiteMutationConsent(t, options, true)
-	output := runGroupOneCLI(t, options, args...)
+	output := runProjectFlowCLI(t, options, args...)
 	if creates.Load() != 1 || !strings.Contains(output, "group-new") {
 		t.Fatalf("creates=%d output=%s", creates.Load(), output)
 	}

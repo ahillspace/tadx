@@ -124,7 +124,7 @@ func OperationSnapshot(record shared.OperationRecord, full, stopped bool) any {
 	return result
 }
 
-// The operation handle replaces per-item recovery paths in compact
+// The operation handle replaces per-item recovery paths in compact output.
 // Saved full results retain the original action contracts and receipt paths.
 func compactOperationSnapshot(result map[string]any) {
 	items, batch := result["items"].([]any)

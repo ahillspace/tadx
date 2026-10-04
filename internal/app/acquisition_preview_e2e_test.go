@@ -40,14 +40,14 @@ func TestNativeAcquisitionPreviewResolvesWithoutDownloadingOrWriting(t *testing.
 			defer server.Close()
 			options := diagnosticOptions(t, server)
 			root := filepath.Join(t.TempDir(), "workspace")
-			runGroupOneCLI(t, options, "workspace", "create", "work", "--path", root)
+			runProjectFlowCLI(t, options, "workspace", "create", "work", "--path", root)
 			before := acquisitionSnapshot(t, root)
 			args := []string{"content", kind, "pull", "--id", "item-1", "--workspace", "work", "--environment", "test", "--preview"}
 			if kind == "lineage" {
 				args[0] = "catalog"
 				args = append(args, "--kind", "flow", "--direction", "upstream", "--depth", "3")
 			}
-			out := runGroupOneCLI(t, options, args...)
+			out := runProjectFlowCLI(t, options, args...)
 			if !strings.Contains(out, "status: preview") || !strings.Contains(out, "item-1") || !strings.Contains(out, "artifacts/"+kind+"/") {
 				t.Fatalf("incomplete preview: %s", out)
 			}
@@ -80,9 +80,9 @@ func TestLineageDatasourcePublicKindPreviewUsesNormalizedRoot(t *testing.T) {
 	defer server.Close()
 	options := diagnosticOptions(t, server)
 	root := filepath.Join(t.TempDir(), "workspace")
-	runGroupOneCLI(t, options, "workspace", "create", "work", "--path", root)
+	runProjectFlowCLI(t, options, "workspace", "create", "work", "--path", root)
 	before := acquisitionSnapshot(t, root)
-	out := runGroupOneCLI(t, options, "catalog", "lineage", "pull", "--id", "item-1", "--kind", "datasource", "--workspace", "work", "--environment", "test", "--preview")
+	out := runProjectFlowCLI(t, options, "catalog", "lineage", "pull", "--id", "item-1", "--kind", "datasource", "--workspace", "work", "--environment", "test", "--preview")
 	for _, want := range []string{"status: preview", "resource_kind: published_datasource", "direction: both", "depth: 1"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("preview missing %q: %s", want, out)
@@ -130,10 +130,10 @@ func TestPulseAcquisitionPreviewChecksCompleteBundleWithoutWriting(t *testing.T)
 		t.Fatal(err)
 	}
 	root := filepath.Join(t.TempDir(), "workspace")
-	runGroupOneCLI(t, options, "workspace", "create", "work", "--path", root)
+	runProjectFlowCLI(t, options, "workspace", "create", "work", "--path", root)
 	before := acquisitionSnapshot(t, root)
 	args := []string{"pulse", "definition", "pull", "--id", "definition-1", "--workspace", "work", "--environment", "test", "--preview"}
-	out := runGroupOneCLI(t, options, args...)
+	out := runProjectFlowCLI(t, options, args...)
 	if !strings.Contains(out, "status: preview") || !strings.Contains(out, "metric_count: 1") {
 		t.Fatalf("incomplete preview: %s", out)
 	}

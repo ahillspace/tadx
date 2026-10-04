@@ -33,12 +33,3 @@ func contentIdentity(item Record) value.ContentIdentity {
 func updateIdentity(item Record) UpdateFlow {
 	return UpdateFlow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}
 }
-
-func beginProjectResolution(ctx context.Context, resolver any) context.Context {
-	if phased, ok := resolver.(interface {
-		BeginProjectResolution(context.Context) context.Context
-	}); ok {
-		return phased.BeginProjectResolution(ctx)
-	}
-	return ctx
-}

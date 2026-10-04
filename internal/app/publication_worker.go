@@ -9,7 +9,6 @@ import (
 	"github.com/ahillspace/tadx/internal/cli"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
-	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/spf13/cobra"
@@ -25,7 +24,7 @@ func bindPublicationExecution(root *cobra.Command, runtime *runtimeDependencies,
 			if noWait {
 				return operationrun.WorkerError("unconfigured", "Background execution requires the detached worker runtime.", nil)
 			}
-			runtime.publicationExecution = &publicationExecution{deadline: time.Now().Add(operationrun.WaitLimit)}
+			runtime.publicationExecution = &operationrun.PublicationExecution{Deadline: time.Now().Add(operationrun.WaitLimit)}
 			return nil
 		},
 		Begin: func(ctx context.Context, operation, batchPath string, noWait bool, stderr io.Writer) (cli.ExecutionOutcome, error) {
@@ -74,13 +73,13 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 	}
 	defer worker.Close()
 	record := worker.Record
-	control := &publicationExecution{
-		operation: record.Operation, operationID: record.ID, noWait: record.Request.NoWait,
-		deadline: record.RequestedAt.Add(operationrun.WaitLimit), detached: worker.Detached,
-		prepare: func(_ context.Context, receipt jobmonitor.Receipt) error {
-			return worker.PrepareIntent(receipt.OperationID, receipt.Operation, receipt.ReceiptID, jobmonitor.ReceiptScope(receipt))
+	control := &operationrun.PublicationExecution{
+		Operation: record.Operation, OperationID: record.ID, NoWait: record.Request.NoWait,
+		Deadline: record.RequestedAt.Add(operationrun.WaitLimit), Detached: worker.Detached,
+		Prepare: func(_ context.Context, operationID, operation, receiptID, scope string) error {
+			return worker.PrepareIntent(operationID, operation, receiptID, scope)
 		},
-		accepted: func(_ context.Context, path string) error { return worker.AcceptReceipt(path) },
+		Accepted: func(_ context.Context, path string) error { return worker.AcceptReceipt(path) },
 	}
 	options.ConfigPath = record.Request.ConfigPath
 	options.OperationDirectory = store.Directory

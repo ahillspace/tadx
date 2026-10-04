@@ -1,4 +1,4 @@
-package metric_test
+package metric
 
 import (
 	"context"
@@ -6,14 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type followersReader struct {
-	metric        pulsemetric.Metric
+	metric        Metric
 	metricErr     error
-	subscriptions []pulsemetric.Subscription
+	subscriptions []Subscription
 	getCalls      int
 	listCalls     int
 }
@@ -25,22 +24,22 @@ func (followersLiveError) Retryable() bool          { return false }
 func (followersLiveError) CorrectiveAction() string { return "Verify the Pulse metric LUID." }
 func (followersLiveError) RequestID() string        { return "request-404" }
 
-func (r *followersReader) GetMetric(context.Context, string) (pulsemetric.Metric, error) {
+func (r *followersReader) GetMetric(context.Context, string) (Metric, error) {
 	r.getCalls++
 	return r.metric, r.metricErr
 }
 
-func (r *followersReader) ListSubscriptions(context.Context, string) ([]pulsemetric.Subscription, error) {
+func (r *followersReader) ListSubscriptions(context.Context, string) ([]Subscription, error) {
 	r.listCalls++
 	return r.subscriptions, nil
 }
 
 func TestFollowersReturnsExactRelationships(t *testing.T) {
 	reader := &followersReader{
-		metric:        pulsemetric.Metric{LUID: "metric-1"},
-		subscriptions: []pulsemetric.Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "user-1"}},
+		metric:        Metric{LUID: "metric-1"},
+		subscriptions: []Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "user-1"}},
 	}
-	output, err := followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric-1"})
+	output, err := followers(context.Background(), reader, FollowersInput{MetricLUID: "metric-1"})
 	if err != nil || output.Count != 1 || output.Subscriptions[0].LUID != "sub-1" {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
@@ -50,15 +49,15 @@ func TestFollowersReturnsExactRelationships(t *testing.T) {
 }
 
 func TestFollowersNormalizesSuccessfulEmptySubscriptions(t *testing.T) {
-	reader := &followersReader{metric: pulsemetric.Metric{LUID: "metric-1"}}
-	output, err := followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric-1"})
+	reader := &followersReader{metric: Metric{LUID: "metric-1"}}
+	output, err := followers(context.Background(), reader, FollowersInput{MetricLUID: "metric-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if output.Count != 0 || output.Subscriptions == nil {
 		t.Fatalf("output=%#v", output)
 	}
-	full, ok := output.FullOutput().(pulsemetric.FollowersOutput)
+	full, ok := output.FullOutput().(FollowersOutput)
 	if !ok || full.Subscriptions == nil {
 		t.Fatalf("full output=%#v", output.FullOutput())
 	}
@@ -66,7 +65,7 @@ func TestFollowersNormalizesSuccessfulEmptySubscriptions(t *testing.T) {
 
 func TestFollowersRejectsMalformedMetricSelectorBeforeReading(t *testing.T) {
 	reader := &followersReader{}
-	_, err := followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric with spaces"})
+	_, err := followers(context.Background(), reader, FollowersInput{MetricLUID: "metric with spaces"})
 	if err == nil {
 		t.Fatal("expected malformed metric selector error")
 	}
@@ -82,7 +81,7 @@ func TestFollowersRejectsMalformedMetricSelectorBeforeReading(t *testing.T) {
 func TestFollowersRejectsMissingMetricBeforeListingSubscriptions(t *testing.T) {
 	reader := &followersReader{metricErr: followersLiveError{}}
 
-	_, err := followers(context.Background(), reader, pulsemetric.FollowersInput{
+	_, err := followers(context.Background(), reader, FollowersInput{
 		Environment: "dev",
 		Site:        "test-site",
 		MetricLUID:  "missing-metric",

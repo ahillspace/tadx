@@ -1,4 +1,3 @@
-// Package status reports bounded local cache generation status.
 package cache
 
 import (

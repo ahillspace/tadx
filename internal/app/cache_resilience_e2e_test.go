@@ -19,13 +19,13 @@ import (
 )
 
 func TestCacheStatusUninitializedThroughCLI(t *testing.T) {
-	options := app.Options{ConfigPath: writePhaseOneConfig(t, "https://unused.example")}
+	options := app.Options{ConfigPath: writeCLIConfig(t, "https://unused.example")}
 	for _, full := range []bool{false, true} {
 		args := []string{"cache", "status", "--environment", "production"}
 		if full {
 			args = append(args, "--full")
 		}
-		out := runGroupOneCLI(t, options, args...)
+		out := runProjectFlowCLI(t, options, args...)
 		decoded, err := toon.Decode([]byte(out))
 		if err != nil {
 			t.Fatal(err)
@@ -50,17 +50,17 @@ func TestCachePermissionDenialRetainsInventoryThroughCLI(t *testing.T) {
 				if full {
 					args = append(args, "--full")
 				}
-				out := runGroupOneCLI(t, options, args...)
+				out := runProjectFlowCLI(t, options, args...)
 				if !strings.Contains(out, "status: partial") || !strings.Contains(out, "permission") || !strings.Contains(out, "403") || strings.Contains(out, "complete: true") {
 					t.Fatalf("partial refresh:\n%s", out)
 				}
 			}
 			before := requests.Load()
-			status := runGroupOneCLI(t, options, "cache", "status", "--environment", "production", "--full")
+			status := runProjectFlowCLI(t, options, "cache", "status", "--environment", "production", "--full")
 			if !strings.Contains(status, "status: partial") || !strings.Contains(status, "complete: false") || !strings.Contains(status, "permission") {
 				t.Fatalf("persisted partial status:\n%s", status)
 			}
-			inventory := runGroupOneCLI(t, options, "content", "workbook", "list", "--environment", "production", "--cache", "--full")
+			inventory := runProjectFlowCLI(t, options, "content", "workbook", "list", "--environment", "production", "--cache", "--full")
 			if !strings.Contains(inventory, "Allowed") || !strings.Contains(inventory, "Blocked") || !strings.Contains(inventory, "coverage: complete") || requests.Load() != before {
 				t.Fatalf("cached inventory requests=%d/%d:\n%s", before, requests.Load(), inventory)
 			}
@@ -90,7 +90,7 @@ func TestCachePermissionAuthenticationFailureStillFailsThroughCLI(t *testing.T) 
 	server := cacheResilienceServer(t, &requests, http.StatusUnauthorized, false)
 	defer server.Close()
 	options := cacheResilienceOptions(t, server)
-	runGroupOneCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", "workbooks")
+	runProjectFlowCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", "workbooks")
 	store := targetCacheFixture(t, options.ConfigPath, nil)
 	selection := cache.Selection{Environment: "production", SiteSelected: true}
 	before, err := store.Status(context.Background(), selection)
@@ -102,7 +102,7 @@ func TestCachePermissionAuthenticationFailureStillFailsThroughCLI(t *testing.T) 
 	if exit == 0 || !strings.Contains(out.String(), "401") {
 		t.Fatalf("authentication failure exit=%d:\n%s", exit, out.String())
 	}
-	status := runGroupOneCLI(t, options, "cache", "status", "--environment", "production")
+	status := runProjectFlowCLI(t, options, "cache", "status", "--environment", "production")
 	if !strings.Contains(status, "status: current") || !strings.Contains(status, before.GenerationID) {
 		t.Fatalf("failed refresh replaced the previous generation:\n%s", status)
 	}
@@ -112,7 +112,7 @@ func cacheResilienceOptions(t *testing.T, server *httptest.Server) app.Options {
 	t.Helper()
 	t.Setenv("PROD_PAT_NAME", "test-pat-name")
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
-	return app.Options{ConfigPath: writePhaseOneConfig(t, server.URL), HTTPClient: server.Client()}
+	return app.Options{ConfigPath: writeCLIConfig(t, server.URL), HTTPClient: server.Client()}
 }
 
 func cacheResilienceServer(t *testing.T, requests *atomic.Int32, deniedStatus int, denyAll bool) *httptest.Server {

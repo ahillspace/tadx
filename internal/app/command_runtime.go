@@ -8,6 +8,7 @@ import (
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/jobmonitor"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
@@ -31,8 +32,8 @@ type commandRuntime struct {
 	transports        map[string]*tableau.Transport
 	clients           map[clientKey]tableauClients
 	workspaces        map[workspaceKey]workspaceResult
-	discovery         map[clientKey]*commandDiscoveryPaths
-	jobMonitoring     map[string]bool
+	discovery         map[clientKey]*resourceproject.DiscoveryPaths
+	jobMonitoring     jobmonitor.Eligibility
 }
 
 type clientKey struct {
@@ -53,36 +54,17 @@ type workspaceResult struct {
 	err    error
 }
 
-type commandDiscoveryPaths struct {
-	paths *resourceproject.DiscoveryPaths
-	fresh *resourceproject.Adapter
-}
-
-func (p *commandDiscoveryPaths) ResolveProjectPath(ctx context.Context, luid string) (string, error) {
-	paths, err := p.paths.ResolveProjectPaths(ctx, []string{luid})
-	return paths[luid], err
-}
-func (p *commandDiscoveryPaths) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
-	return p.paths.ResolveProjectPaths(ctx, luids)
-}
-func (p *commandDiscoveryPaths) ValidateProjectPath(ctx context.Context, path string) error {
-	return p.fresh.ValidateProjectPath(ctx, path)
-}
-func (p *commandDiscoveryPaths) ResolveProjectSelectorPath(ctx context.Context, path string) (string, error) {
-	return p.fresh.ResolveProjectSelectorPath(ctx, path)
-}
-
-func (r *runtimeDependencies) discoveryPaths(connection authenticatedTableau) *commandDiscoveryPaths {
+func (r *runtimeDependencies) discoveryPaths(connection authenticatedTableau) *resourceproject.DiscoveryPaths {
 	clients := r.clients(connection)
 	r.command.mu.Lock()
 	defer r.command.mu.Unlock()
 	if r.command.discovery == nil {
-		r.command.discovery = make(map[clientKey]*commandDiscoveryPaths)
+		r.command.discovery = make(map[clientKey]*resourceproject.DiscoveryPaths)
 	}
 	key := clientKey{connection.session, connection.transport}
 	if r.command.discovery[key] == nil {
 		fresh := resourceproject.NewAdapter(clients.projects)
-		r.command.discovery[key] = &commandDiscoveryPaths{paths: resourceproject.NewDiscoveryPaths(fresh), fresh: fresh}
+		r.command.discovery[key] = resourceproject.NewDiscoveryPaths(fresh)
 	}
 	return r.command.discovery[key]
 }

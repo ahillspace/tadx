@@ -40,12 +40,12 @@ func TestCacheReadDiagnosticRepairPopulatesRequiredScopeThroughCLI(t *testing.T)
 			if len(repair) == 0 {
 				t.Fatalf("no executable recovery in %#v", failure)
 			}
-			runGroupOneCLI(t, options, repair...)
+			runProjectFlowCLI(t, options, repair...)
 			before := requests.Load()
 			if before == 0 {
 				t.Fatal("repair did not collect the requested inventory")
 			}
-			result := runGroupOneCLI(t, options, args...)
+			result := runProjectFlowCLI(t, options, args...)
 			if requests.Load() != before || !strings.Contains(result, kind+"-1") {
 				t.Fatalf("repaired local read: requests=%d/%d output=%s", before, requests.Load(), result)
 			}
@@ -60,7 +60,7 @@ func TestOldCacheReadDiagnosticOffersExecutableScopedRebuildThroughCLI(t *testin
 	server, requests := cacheRecoveryServer(t, "project")
 	defer server.Close()
 	options := diagnosticOptions(t, server)
-	runGroupOneCLI(t, options, "cache", "refresh", "--environment", "test", "--scope", "projects")
+	runProjectFlowCLI(t, options, "cache", "refresh", "--environment", "test", "--scope", "projects")
 	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(options.ConfigPath), targetCacheFixture(t, options.ConfigPath, nil).RelativePath()))
 	if err != nil {
 		t.Fatal(err)
@@ -82,9 +82,9 @@ func TestOldCacheReadDiagnosticOffersExecutableScopedRebuildThroughCLI(t *testin
 	if !reflect.DeepEqual(repair, []string{"--config", options.ConfigPath, "cache", "refresh", "--environment", "test", "--scope", "projects"}) {
 		t.Fatalf("schema rebuild is not actionable for this scope: %q", failure.CorrectiveAction)
 	}
-	runGroupOneCLI(t, options, repair...)
+	runProjectFlowCLI(t, options, repair...)
 	before = requests.Load()
-	runGroupOneCLI(t, options, args...)
+	runProjectFlowCLI(t, options, args...)
 	if requests.Load() != before {
 		t.Fatal("repaired cached read contacted Tableau")
 	}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/resources/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 )
@@ -25,7 +26,7 @@ func (p datasourceSchemaProvider) CacheTarget(alias string) (datasourceops.Schem
 }
 
 func (p datasourceSchemaProvider) CachedSchema(target datasourceops.SchemaTarget, metadata bool) datasourceops.CachedSchemaReader {
-	return &datasource.CachedSchemaPort{Store: p.commands.cacheStore(target.Environment), Environment: target.Environment, Site: target.Site, Metadata: metadata, ReadError: cacheReadError}
+	return &datasource.CachedSchemaPort{Store: p.commands.cacheStore(target.Environment), Environment: target.Environment, Site: target.Site, Metadata: metadata, ReadError: inventory.CacheReadError}
 }
 
 func (p datasourceSchemaProvider) OpenDatasourceSchema(ctx context.Context, alias string, metadata bool) (datasourceops.SchemaSession, error) {

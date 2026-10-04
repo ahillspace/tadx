@@ -28,7 +28,7 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCache(t *testing.T) {
 	options := diagnosticOptions(t, server)
 	for _, cached := range []bool{false, true} {
 		if cached {
-			runGroupOneCLI(t, options, "cache", "refresh", "--scope", "projects", "--environment", "test")
+			runProjectFlowCLI(t, options, "cache", "refresh", "--scope", "projects", "--environment", "test")
 		}
 		for _, operation := range []string{"list", "inspect"} {
 			args := []string{"content", "project", operation, "--environment", "test"}
@@ -39,7 +39,7 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCache(t *testing.T) {
 				args = append(args, "--cache")
 			}
 			before := reads.Load()
-			output := runGroupOneCLI(t, options, args...)
+			output := runProjectFlowCLI(t, options, args...)
 			if !strings.Contains(output, "content_permissions") || !strings.Contains(output, "LockedToProject") || !strings.Contains(output, "controlling_permissions_project_luid") {
 				t.Fatalf("permission metadata omitted (%v): %s", args, output)
 			}
@@ -51,7 +51,7 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCache(t *testing.T) {
 			}
 		}
 	}
-	output := runGroupOneCLI(t, options, "content", "project", "inspect", "--project-id", "unknown", "--environment", "test", "--cache")
+	output := runProjectFlowCLI(t, options, "content", "project", "inspect", "--project-id", "unknown", "--environment", "test", "--cache")
 	if strings.Contains(output, "controlling_permissions_project_luid") || strings.Contains(output, "content_permissions") {
 		t.Fatalf("invented inherited controller or mode: %s", output)
 	}
@@ -73,7 +73,7 @@ func TestProjectUpdateReceiptShowsReturnedPermissionMode(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	output := runGroupOneCLI(t, diagnosticOptions(t, server), "content", "project", "update", "--project-id", "root", "--content-permissions", "LockedToProject", "--environment", "test")
+	output := runProjectFlowCLI(t, diagnosticOptions(t, server), "content", "project", "update", "--project-id", "root", "--content-permissions", "LockedToProject", "--environment", "test")
 	resultIndex := strings.Index(output, "result:")
 	if resultIndex < 0 || !strings.Contains(output[resultIndex:], "content_permissions: LockedToProject") || !strings.Contains(output[resultIndex:], "controlling_permissions_project_luid: root") {
 		t.Fatalf("compact receipt omitted returned change: %s", output)

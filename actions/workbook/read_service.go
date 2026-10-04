@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -43,11 +44,8 @@ type ReadProvider interface {
 	CacheTarget(string) (ReadTarget, error)
 	CachedList(ReadTarget) CachedListReader
 	CachedInspect(ReadTarget) CachedInspectResolver
-	LegacyInventoryCursor(string) bool
 	ListFilter(ListInput) (string, error)
 	OpenWorkbookRead(context.Context, string, string, string) (ReadSession, error)
-	ValidateComplete(bool, *readsource.Metadata) error
-	RefreshError(string, string, string, error) error
 	Now() time.Time
 }
 
@@ -69,10 +67,10 @@ func (s *Service) ListWorkbooks(ctx context.Context, input ListInput) (result Li
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = p.ValidateComplete(input.All, result.Source)
+			resultErr = inventory.ValidateAll(input.All, result.Source)
 		}
 	}()
-	if input.Cache || p.LegacyInventoryCursor(input.Cursor) {
+	if input.Cache || inventory.LegacyInventoryCursor(input.Cursor) {
 		target, err := p.CacheTarget(input.Environment)
 		if err != nil {
 			return ListOutput{}, err
@@ -103,7 +101,7 @@ func (s *Service) ListWorkbooks(ctx context.Context, input ListInput) (result Li
 	if input.All && input.ProjectLUID != "" {
 		reader, err := session.Inventory.CollectProjectWorkbooks(ctx, input)
 		if err != nil {
-			return ListOutput{}, p.RefreshError("workbook.list", input.Environment, input.Site, err)
+			return ListOutput{}, inventory.RefreshError("workbook.list", input.Environment, input.Site, err)
 		}
 		output, err := listValidated(ctx, reader, input, selection)
 		if err != nil {
@@ -117,7 +115,7 @@ func (s *Service) ListWorkbooks(ctx context.Context, input ListInput) (result Li
 		observedAt := p.Now().UTC()
 		collected, err := session.Inventory.CollectWorkbooks(ctx, filter, observedAt)
 		if err != nil {
-			return ListOutput{}, p.RefreshError("workbook.list", input.Environment, input.Site, err)
+			return ListOutput{}, inventory.RefreshError("workbook.list", input.Environment, input.Site, err)
 		}
 		output, err := listValidated(ctx, collected.Reader, input, selection)
 		if err != nil {

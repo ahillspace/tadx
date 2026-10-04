@@ -18,7 +18,7 @@ func (a *contentActions) PullWorkbook(_ context.Context, input workbookops.PullI
 
 type publisher struct{ actions *contentActions }
 
-func (p publisher) Execute(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
+func (p publisher) PublishWorkbook(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
 	p.actions.publishInputs = append(p.actions.publishInputs, input)
 	return workbookops.PublishOutput{}, nil
 }

@@ -32,7 +32,6 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/operationrun"
 	"github.com/ahillspace/tadx/internal/output"
@@ -40,7 +39,6 @@ import (
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
-	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	updater "github.com/ahillspace/tadx/internal/update"
 	"github.com/ahillspace/tadx/internal/value"
 )
@@ -62,7 +60,7 @@ type Options struct {
 	PublicationWorkers   bool
 	OperationDirectory   string
 	WorkerLauncher       func(context.Context, string, string) error
-	publicationExecution *publicationExecution
+	publicationExecution *operationrun.PublicationExecution
 	publicationResult    func(any, bool, int) error
 }
 
@@ -178,7 +176,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		CacheRefresher:      cacheService,
 		CacheStatuser:       cacheService,
 		WorkbookPuller:      workbookops.New(workbookops.Ports{Pull: workbookPullProvider{runtime: runtime}}),
-		WorkbookPublisher:   &publishService{runtime: runtime},
+		WorkbookPublisher:   workbookops.New(workbookops.Ports{Publish: workbookPublishProvider{runtime: runtime}}),
 		Content:             remoteContent.dependencies(),
 		EnvironmentProfiles: newEnvironmentDependencies(runtime),
 		Workspaces:          workspaceCommands,
@@ -221,7 +219,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	selected, _, findErr := root.Find(args)
 	if selected != nil {
 		capture.operation = selected.Annotations[cli.CapabilityAnnotation]
-		if options.publicationExecution != nil && options.publicationExecution.operation != "" && capture.operation != options.publicationExecution.operation {
+		if options.publicationExecution != nil && options.publicationExecution.Operation != "" && capture.operation != options.publicationExecution.Operation {
 			capture.enabled = false
 			return fail(operationrun.WorkerError("identity", "The saved publication command no longer matches its recorded operation; no action was started.", nil), renderOptions)
 		}
@@ -373,7 +371,7 @@ type runtimeDependencies struct {
 	authPrompter         authcli.Prompter
 	jobDirectory         string
 	progressWriter       io.Writer
-	publicationExecution *publicationExecution
+	publicationExecution *operationrun.PublicationExecution
 	operationDirectory   string
 }
 
@@ -466,14 +464,14 @@ func (r *runtimeDependencies) environment(alias string, explicit bool) (config.C
 	return configuration, environment, err
 }
 
-func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string, explicit bool) (config.Config, config.Environment, *resourceworkbook.Adapter, string, error) {
+func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string, explicit bool) (config.Environment, *resourceworkbook.Adapter, resourceworkbook.ProjectResolution, error) {
 	connection, err := r.tableauConnection(ctx, alias, explicit)
 	if err != nil {
-		return connection.configuration, connection.environment, nil, "", err
+		return connection.environment, nil, nil, err
 	}
 	clients := r.clients(connection)
 	projects := resourceproject.NewAdapter(clients.projects)
-	return connection.configuration, connection.environment, resourceworkbook.NewAdapterWithProjectIdentityResolver(clients.workbooks, projects), connection.session.SiteLUID(), nil
+	return connection.environment, resourceworkbook.NewAdapterWithProjectIdentityResolver(clients.workbooks, projects), projects, nil
 }
 
 type authenticatedTableau struct {
@@ -493,68 +491,69 @@ func (r *runtimeDependencies) tableauConnection(ctx context.Context, alias strin
 	return authenticatedTableau{configuration: configuration, environment: environment, transport: transport, session: session}, err
 }
 
-type publishService struct{ runtime *runtimeDependencies }
+type workbookPublishProvider struct{ runtime *runtimeDependencies }
 
-func (s *publishService) Execute(ctx context.Context, input workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
-	if err := workbookops.ValidatePublishInput(input); err != nil {
-		return workbookops.PublishOutput{}, err
-	}
-	manager := artifact.NewWorkbookManager(s.runtime.now)
-	var adapter *resourceworkbook.Adapter
-	_, environment, err := s.runtime.environment(input.Environment, true)
+func (p workbookPublishProvider) ResolveWorkbookPublishTarget(_ context.Context, alias, site string) (string, string, error) {
+	_, environment, err := p.runtime.environment(alias, true)
 	if err != nil {
-		return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish target resolution failed.", "Select the destination with --env.", err)
+		return "", "", capabilitySetupError("workbook.publish.setup", "workbook.publish", alias, site, "Workbook publish target resolution failed.", "Select the destination with --env.", err)
 	}
-	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	var reader workbookops.ArtifactReader
-	if input.File != "" {
-		input.ArtifactPath = input.File
-		reader = nativeWorkbookArtifactReader{}
-		if _, err := reader.ReadWorkbook(ctx, input.File); err != nil {
-			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.file", "workbook.publish", input.Environment, input.Site, "Native workbook file is invalid.", "Select an existing .twb or .twbx file with --file.", err)
-		}
-	} else {
-		resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, environment.Alias)
-		if err != nil {
-			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.workspace", "workbook.publish", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-		}
-		managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook", LUID: input.ArtifactID, Name: input.ArtifactName})
-		if err != nil {
-			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-				return workbookops.PublishOutput{}, artifact.MapResolutionError("workbook.publish", resolvedWorkspace.Name, input.ArtifactID, err)
+	return environment.Alias, environment.SiteContentURL, nil
+}
+
+func (p workbookPublishProvider) OpenWorkbookPublishSource(ctx context.Context, input workbookops.PublishInput) (workbookops.PublishInput, workbookops.ArtifactReader, string, error) {
+	source := resourceworkbook.PublishSource{Manager: artifact.NewWorkbookManager(p.runtime.now), Workspace: func(ctx context.Context, selector, alias string) (string, string, error) {
+		workspace, err := (&workspaceRuntime{runtime: p.runtime}).resolveForEnvironment(ctx, selector, alias)
+		return workspace.Name, workspace.Root, err
+	}}
+	return source.Open(ctx, input)
+}
+
+func (p workbookPublishProvider) OpenWorkbookPublish(ctx context.Context, alias, site, sourcePath string) (workbookops.PublishSession, error) {
+	environment, adapter, projects, err := p.runtime.workbookAdapter(ctx, alias, true)
+	if err != nil {
+		return workbookops.PublishSession{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", alias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
+	}
+	var lifecycle *resourceworkbook.PublicationLifecycle
+	bridge := resourceworkbook.PublishPorts{
+		Adapter:  adapter,
+		Projects: projects,
+		Fresh: func(ctx context.Context) (*resourceworkbook.Adapter, error) {
+			_, fresh, _, err := p.runtime.workbookAdapter(ctx, environment.Alias, true)
+			return fresh, err
+		},
+		Begin: func(ctx context.Context, request workbookops.PublishRequest) (resourceworkbook.PublishAcceptance, error) {
+			monitor, asJob, err := p.runtime.publication(ctx, environment.Alias, "workbook", sourcePath, request.ProjectLUID, request.Name)
+			if err != nil {
+				return resourceworkbook.PublishAcceptance{}, err
 			}
-			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
-		}
-		input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
-		input.WorkspaceName = resolvedWorkspace.Name
-		if _, err := manager.Read(ctx, input.ArtifactPath); err != nil {
-			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact read failed.", "Repair or pull the exact workbook artifact, then retry.", err)
-		}
-		reader = artifactReader{manager: manager, displayPath: managedArtifact.Path}
+			readback := resourceworkbook.FreshPublicationDestination{
+				Name: request.Name, ProjectID: request.ProjectLUID,
+				Open: func(ctx context.Context) (*resourceworkbook.Adapter, error) {
+					connection, err := newRemoteContentCommands(p.runtime).connect(ctx, monitor.Base.Environment, true)
+					if err != nil {
+						return nil, err
+					}
+					return connection.workbooks, nil
+				},
+				Progress: func(ctx context.Context) { progress.SetLabel(ctx, "Confirming published content") },
+			}
+			lifecycle = &resourceworkbook.PublicationLifecycle{Publication: monitor, Readback: readback}
+			return resourceworkbook.NewPublishAcceptance(monitor, asJob, environment.Alias, environment.SiteContentURL, readback, contentbatch.Bulk), nil
+		},
+		Progress: func(ctx context.Context, label string) { progress.SetLabel(ctx, label) },
 	}
-	_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
-	if err != nil {
-		return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
-	}
-	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	var lifecycle *publication
-	bridge := publishAdapter{adapter: adapter, runtime: s.runtime, environment: environment.Alias, sourcePath: input.ArtifactPath, lifecycle: &lifecycle}
-	if managed, ok := reader.(artifactReader); ok {
-		bridge.sourcePath = managed.displayPath
-	}
-	action := workbookops.NewPublish(reader, bridge, bridge)
-	out, err := action.Execute(ctx, input, preview)
-	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
-		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.Record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
-		err = errors.Join(err, saveErr)
-	}
-	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !s.runtime.publicationNoWait() {
-		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) {
-			return lifecycle.completeWorkbook(ctx, action, out)
-		})
-	}
-	return out, err
+	return workbookops.PublishSession{Environment: environment.Alias, Site: environment.SiteContentURL, Resolver: bridge, Preparer: bridge,
+		Lifecycle: func() workbookops.PublishLifecycle {
+			if lifecycle == nil {
+				return nil
+			}
+			return lifecycle
+		},
+		NoWait: p.runtime.publicationExecution.StopRequested, Defer: func(ctx context.Context, finish func(context.Context) (any, error)) {
+			contentbatch.DeferCompletion(ctx, finish)
+		},
+	}, nil
 }
 
 func resolvedTarget(environmentAlias, site string, environment config.Environment) (string, string) {
@@ -570,73 +569,6 @@ func resolvedTarget(environmentAlias, site string, environment config.Environmen
 func capabilitySetupError(id, operation, environment, site, summary, fallbackAction string, err error) error {
 	retryable, correctiveAction := errs.CompleteRetryAdvice(err, fallbackAction)
 	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
-}
-
-type artifactReader struct {
-	manager     *artifact.WorkbookManager
-	displayPath string
-}
-
-func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbookops.PublishArtifact, error) {
-	item, err := r.manager.Read(ctx, path)
-	if err == nil && r.displayPath != "" {
-		item.Path = r.displayPath
-	}
-	return workbookops.PublishArtifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Portability: item.Portability, PublishedDatasourceCount: item.PublishedDatasourceCount}, err
-}
-
-type publishAdapter struct {
-	adapter                 *resourceworkbook.Adapter
-	runtime                 *runtimeDependencies
-	environment, sourcePath string
-	lifecycle               **publication
-}
-
-func (a publishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (workbookops.Project, error) {
-	return a.adapter.ResolveProject(ctx, selector)
-}
-func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string) ([]workbookops.Record, error) {
-	if a.runtime != nil {
-		_, _, fresh, _, err := a.runtime.workbookAdapter(ctx, a.environment, true)
-		if err != nil {
-			return nil, err
-		}
-		a.adapter = fresh
-	}
-	return a.adapter.FindWorkbooks(ctx, name, project)
-}
-func (a publishAdapter) Prepare(ctx context.Context, input workbookops.PublishRequest) (workbookops.PreparedPublish, error) {
-	request := tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob}
-	if a.runtime != nil {
-		p, err := a.runtime.publication(ctx, a.environment, "workbook", a.sourcePath, input.ProjectLUID, input.Name)
-		if err != nil {
-			return nil, err
-		}
-		if a.lifecycle != nil {
-			*a.lifecycle = p
-		}
-		request.AsJob = p.asJob
-		request.Accepted = p.acceptWorkbook
-	}
-	prepared, err := a.adapter.PrepareWorkbook(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return preparedPublishAdapter{prepared: prepared}, nil
-}
-
-type preparedPublishAdapter struct {
-	prepared *tableauworkbook.PreparedPublish
-}
-
-func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookops.PublishResult, error) {
-	progress.SetLabel(ctx, "Uploading and submitting workbook")
-	result, err := a.prepared.Commit(ctx)
-	warnings := make([]workbookops.PublishValidationIssue, len(result.Warnings))
-	for index, warning := range result.Warnings {
-		warnings[index] = workbookops.PublishValidationIssue{Severity: warning.Severity, Message: warning.Message, Line: warning.Line, Column: warning.Column, ElementName: warning.ElementName}
-	}
-	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath, ValidationWarnings: warnings}, err
 }
 
 type registryMutationPolicy struct{}

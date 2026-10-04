@@ -32,8 +32,10 @@ var (
 // ListPort translates one bounded native page into the project action contract.
 type ListPort struct{ *Adapter }
 
-// ListFilter validates and encodes the native project list selection.
-func ListFilter(input projectops.ListInput) (string, error) {
+// ListFilterPort validates and encodes native project selection before authentication.
+type ListFilterPort struct{}
+
+func (ListFilterPort) ListFilter(input projectops.ListInput) (string, error) {
 	return tableauproject.ListFilter(tableauproject.ListRequest{Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel})
 }
 

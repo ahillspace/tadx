@@ -40,7 +40,7 @@ func TestLineageInvalidInputPrecedesWorkspaceSetup(t *testing.T) {
 }
 
 func TestMalformedLineageRootKeepsObservableEmptyGraphContracts(t *testing.T) {
-	base, mutations := newGroupOneTableauServer(t)
+	base, mutations := newProjectFlowTableauServer(t)
 	defer base.Close()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/metadata/graphql" {
@@ -51,7 +51,7 @@ func TestMalformedLineageRootKeepsObservableEmptyGraphContracts(t *testing.T) {
 		_, _ = fmt.Fprint(w, `{"data":{"flowsConnection":{"totalCount":1,"nodes":[{"id":"flow-meta","luid":"wrong-flow","name":"Daily Prep"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`)
 	}))
 	defer server.Close()
-	config := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	config := writeCLIConfigWithSite(t, server.URL, "team-site")
 	workspace := createNamedWorkspace(t, config, "malformed-lineage")
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
@@ -120,7 +120,7 @@ func TestMalformedLineageRootKeepsObservableEmptyGraphContracts(t *testing.T) {
 // Exercise the user-visible failure: Tableau has physical upstream assets but
 // no published-content neighbors, so the former query returned zero edges.
 func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
-	base, mutations := newGroupOneTableauServer(t)
+	base, mutations := newProjectFlowTableauServer(t)
 	defer base.Close()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/metadata/graphql" {
@@ -158,25 +158,25 @@ func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	config := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	config := writeCLIConfigWithSite(t, server.URL, "team-site")
 	workspace := createNamedWorkspace(t, config, "physical-lineage")
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	options := app.Options{ConfigPath: config, HTTPClient: server.Client()}
 	args := []string{"catalog", "lineage", "pull", "--workspace", "physical-lineage", "--kind", "flow", "--id", "flow-1", "--direction", "upstream"}
-	compact := runGroupOneCLI(t, options, args...)
+	compact := runProjectFlowCLI(t, options, args...)
 	for _, want := range []string{"complete: true", "node_count: 13", "edge_count: 12"} {
 		if !strings.Contains(compact, want) {
 			t.Fatalf("lineage missing %q:\n%s", want, compact)
 		}
 	}
-	full := runGroupOneCLI(t, options, append(args, "--full")...)
+	full := runProjectFlowCLI(t, options, append(args, "--full")...)
 	for _, want := range []string{"database-meta-6", "table-meta-6", "edge_count: 12"} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("full lineage missing %q:\n%s", want, full)
 		}
 	}
-	runGroupOneCLI(t, options, "content", "flow", "pull", "--workspace", "physical-lineage", "--id", "flow-1")
+	runProjectFlowCLI(t, options, "content", "flow", "pull", "--workspace", "physical-lineage", "--id", "flow-1")
 	graphs := 0
 	err := filepath.WalkDir(filepath.Join(workspace, "artifacts"), func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -228,7 +228,7 @@ func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
 // Exercise the user-visible partial result: a root and one validated relation
 // are retained when a later relationship is denied by the Metadata API.
 func TestPartialFlowLineageThroughCLIAndArtifact(t *testing.T) {
-	base, mutations := newGroupOneTableauServer(t)
+	base, mutations := newProjectFlowTableauServer(t)
 	defer base.Close()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/metadata/graphql" {
@@ -285,17 +285,17 @@ func TestPartialFlowLineageThroughCLIAndArtifact(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	config := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	config := writeCLIConfigWithSite(t, server.URL, "team-site")
 	workspace := createNamedWorkspace(t, config, "partial-lineage")
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	options := app.Options{ConfigPath: config, HTTPClient: server.Client()}
 	args := []string{"catalog", "lineage", "pull", "--workspace", "partial-lineage", "--kind", "flow", "--id", "flow-1", "--direction", "upstream"}
-	compact := runGroupOneCLI(t, options, args...)
+	compact := runProjectFlowCLI(t, options, args...)
 	if !strings.Contains(compact, "complete: false") || !strings.Contains(compact, "lineage_path:") || strings.Contains(compact, "node_count:") || strings.Contains(compact, "edge_count:") {
 		t.Fatalf("partial compact lineage = %s", compact)
 	}
-	full := runGroupOneCLI(t, options, append(args, "--full")...)
+	full := runProjectFlowCLI(t, options, append(args, "--full")...)
 	for _, want := range []string{"complete: false", "datasource-meta", "upstreamDatabasesConnection", "partial-lineage-database-request", "provider: tableau-metadata", "root_rest_luid: flow-1"} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("partial full lineage missing %q:\n%s", want, full)

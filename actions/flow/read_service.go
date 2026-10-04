@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -36,11 +37,8 @@ type ReadProvider interface {
 	CacheTarget(string) (ReadTarget, error)
 	CachedList(ReadTarget) CachedListReader
 	CachedInspect(ReadTarget) CachedInspectResolver
-	LegacyInventoryCursor(string) bool
 	ListFilter(ListInput) (string, error)
 	OpenFlowRead(context.Context, string, string, string) (ReadSession, error)
-	ValidateComplete(bool, *readsource.Metadata) error
-	RefreshError(string, string, string, error) error
 	Now() time.Time
 }
 
@@ -62,10 +60,10 @@ func (s *Service) ListFlows(ctx context.Context, input ListInput) (result ListOu
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = p.ValidateComplete(input.All, result.Source)
+			resultErr = inventory.ValidateAll(input.All, result.Source)
 		}
 	}()
-	if input.Cache || p.LegacyInventoryCursor(input.Cursor) {
+	if input.Cache || inventory.LegacyInventoryCursor(input.Cursor) {
 		target, err := p.CacheTarget(input.Environment)
 		if err != nil {
 			return ListOutput{}, err
@@ -103,7 +101,7 @@ func (s *Service) ListFlows(ctx context.Context, input ListInput) (result ListOu
 		observedAt := p.Now().UTC()
 		collected, err := session.Inventory.CollectFlows(ctx, filter, observedAt)
 		if err != nil {
-			return ListOutput{}, p.RefreshError("flow.list", input.Environment, input.Site, err)
+			return ListOutput{}, inventory.RefreshError("flow.list", input.Environment, input.Site, err)
 		}
 		output, err := listValidated(ctx, collected.Reader, input, selection)
 		if err != nil {

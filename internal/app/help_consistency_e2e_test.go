@@ -6,11 +6,11 @@ import (
 )
 
 func TestContentInspectHelpUsesAvailableProjectSelectors(t *testing.T) {
-	dir, options := contentHelpPilotSetup(t)
+	dir, options := contentHelpContractSetup(t)
 	for _, resource := range []string{"workbook", "datasource", "flow"} {
 		t.Run(resource, func(t *testing.T) {
 			for _, path := range [][]string{{"content", resource}, {"content", resource, "inspect"}} {
-				output := contentHelpPilotRun(t, dir, options, append(path, "--help")...)
+				output := contentHelpContractRun(t, dir, options, append(path, "--help")...)
 				if !strings.Contains(output, "--project or --project-id") {
 					t.Errorf("%v does not document both project selectors:\n%s", path, output)
 				}
@@ -23,15 +23,15 @@ func TestContentInspectHelpUsesAvailableProjectSelectors(t *testing.T) {
 }
 
 func TestContentResourceHelpScopesWorkspaceToLocalFileActions(t *testing.T) {
-	dir, options := contentHelpPilotSetup(t)
+	dir, options := contentHelpContractSetup(t)
 	for _, resource := range []string{"workbook", "datasource", "flow"} {
 		t.Run(resource, func(t *testing.T) {
-			complete := contentHelpPilotRun(t, dir, options, "content", resource, "--help")
+			complete := contentHelpContractRun(t, dir, options, "content", resource, "--help")
 			if !strings.Contains(complete, "--workspace (publish,pull)") {
 				t.Errorf("workspace scope is not explicit:\n%s", complete)
 			}
 			for _, verb := range []string{"list", "inspect", "move", "update", "delete"} {
-				focused := contentHelpPilotRun(t, dir, options, "content", resource, verb, "--help")
+				focused := contentHelpContractRun(t, dir, options, "content", resource, verb, "--help")
 				if strings.Contains(focused, "--workspace") {
 					t.Errorf("%s incorrectly advertises workspace scope", verb)
 				}
@@ -41,7 +41,7 @@ func TestContentResourceHelpScopesWorkspaceToLocalFileActions(t *testing.T) {
 }
 
 func TestCompleteInventoryRejectsPageLimitAcrossFamilies(t *testing.T) {
-	_, options := contentHelpPilotSetup(t)
+	_, options := contentHelpContractSetup(t)
 	for _, path := range []string{
 		"content workbook list", "content datasource list", "content flow list", "content project list",
 		"admin user list", "admin group list", "pulse definition list", "pulse metric list", "capability list",
@@ -74,15 +74,15 @@ func TestCompleteInventoryRejectsPageLimitAcrossFamilies(t *testing.T) {
 }
 
 func TestContentFocusedExamplesAreIncludedInCompleteReference(t *testing.T) {
-	dir, options := contentHelpPilotSetup(t)
+	dir, options := contentHelpContractSetup(t)
 	for _, resource := range []string{"workbook", "datasource", "flow", "project"} {
 		t.Run(resource, func(t *testing.T) {
-			complete := contentHelpPilotRun(t, dir, options, "content", resource, "--help")
+			complete := contentHelpContractRun(t, dir, options, "content", resource, "--help")
 			for _, verb := range []string{"list", "inspect", "move", "update", "delete", "publish", "pull", "schema", "create"} {
 				if !strings.Contains(complete, "\n  "+verb+":") {
 					continue
 				}
-				focused := contentHelpPilotRun(t, dir, options, "content", resource, verb, "--help")
+				focused := contentHelpContractRun(t, dir, options, "content", resource, verb, "--help")
 				_, examples, _ := strings.Cut(focused, "Examples:\n")
 				for line := range strings.SplitSeq(examples, "\n") {
 					if example := strings.TrimSpace(line); example != "" && !strings.Contains(complete, example) {

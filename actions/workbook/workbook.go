@@ -40,14 +40,3 @@ func updateIdentity(item Record) updateWorkbook {
 func deleteIdentity(item Record) deleteWorkbook {
 	return deleteWorkbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath}
 }
-
-// beginProjectResolution deliberately starts a fresh observation phase at each
-// call site; planning, prewrite, and post-upload phases cannot share snapshots.
-func beginProjectResolution(ctx context.Context, resolver any) context.Context {
-	if phased, ok := resolver.(interface {
-		BeginProjectResolution(context.Context) context.Context
-	}); ok {
-		return phased.BeginProjectResolution(ctx)
-	}
-	return ctx
-}

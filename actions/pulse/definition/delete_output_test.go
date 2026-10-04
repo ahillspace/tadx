@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"bytes"
@@ -7,13 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 func TestDeleteOutputGolden(t *testing.T) {
-	b := &deleteBackend{targets: []pulsedefinition.DeleteDefinition{deleteTarget(), deleteTarget()}}
-	output, err := delete(context.Background(), b, b, deleteInput())
+	b := &deleteBackend{targets: []DeleteDefinition{deleteTarget(), deleteTarget()}}
+	output, err := deleteWorkflow(context.Background(), b, b, deleteInput())
 	if err != nil {
 		t.Fatal(err)
 	}

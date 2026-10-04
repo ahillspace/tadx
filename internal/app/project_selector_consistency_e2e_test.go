@@ -19,7 +19,7 @@ func TestProjectIDInspectSelectorsAreConsistentAcrossContentFamilies(t *testing.
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
 	server := httptest.NewTLSServer(http.HandlerFunc(projectSelectorFixture(t)))
 	defer server.Close()
-	configPath := writePhaseOneConfig(t, server.URL)
+	configPath := writeCLIConfig(t, server.URL)
 
 	for _, test := range []struct {
 		kind, name, identity string
@@ -61,7 +61,7 @@ func TestFlowInspectRejectsIncompleteBoundedPagination(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
 	server := httptest.NewTLSServer(http.HandlerFunc(projectSelectorFixture(t)))
 	defer server.Close()
-	configPath := writePhaseOneConfig(t, server.URL)
+	configPath := writeCLIConfig(t, server.URL)
 
 	var output strings.Builder
 	exit := runProjectSelectorCLI(t, configPath, server.Client(), []string{"content", "flow", "inspect", "--environment", "production", "--name", "Overflow", "--project-id", "project-1", "--json"}, &output)

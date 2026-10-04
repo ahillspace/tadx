@@ -59,7 +59,7 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 			}))
 			defer server.Close()
 
-			config := writePhaseOneConfig(t, server.URL)
+			config := writeCLIConfig(t, server.URL)
 			t.Setenv("PROD_PAT_NAME", "fixture-name")
 			t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 			args := []string{"content", "workbook", "update", "--environment", "production", "--id", "wb-1", "--description", "Confirmed description"}
@@ -110,7 +110,7 @@ func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := writePhaseOneConfig(t, server.URL)
+	config := writeCLIConfig(t, server.URL)
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	var output strings.Builder
@@ -170,7 +170,7 @@ func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
 	if err := os.WriteFile(batchFile, []byte(`{"items":[{"id":"wb-1","description":"Confirmed one"},{"id":"wb-2","description":"Confirmed two"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	config := writePhaseOneConfig(t, server.URL)
+	config := writeCLIConfig(t, server.URL)
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	var output strings.Builder

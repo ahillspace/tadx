@@ -32,7 +32,7 @@ func TestMissingPATIsSetupFailure(t *testing.T) {
 }
 
 func TestSetupFailuresPreserveKnownPhaseAndContext(t *testing.T) {
-	_, options := contentHelpPilotSetup(t)
+	_, options := contentHelpContractSetup(t)
 	for _, command := range []string{"auth check --env dev", "auth logout --env dev --preview", "env list", "env get dev", "workspace list", "job inspect --id job-1 --env dev --site site", "job cancel --id job-1 --env dev --site site --preview"} {
 		t.Run(command, func(t *testing.T) {
 			var out strings.Builder
@@ -58,18 +58,18 @@ func TestSetupFailuresPreserveKnownPhaseAndContext(t *testing.T) {
 }
 
 func TestFocusedHelpCorrectionContracts(t *testing.T) {
-	dir, options := contentHelpPilotSetup(t)
+	dir, options := contentHelpContractSetup(t)
 	for _, command := range []string{"pulse metric fork", "pulse metric"} {
-		out := contentHelpPilotRun(t, dir, options, append(strings.Fields(command), "--help")...)
+		out := contentHelpContractRun(t, dir, options, append(strings.Fields(command), "--help")...)
 		if !strings.Contains(out, "7|14|30|60|90") || strings.Contains(out, "1..3650") {
 			t.Errorf("incorrect Pulse days: %s", out)
 		}
 	}
-	out := contentHelpPilotRun(t, dir, options, "workspace", "status", "--help")
+	out := contentHelpContractRun(t, dir, options, "workspace", "status", "--help")
 	if strings.Contains(out, "tadx workspace status -h") {
 		t.Errorf("self-related route: %s", out)
 	}
-	out = contentHelpPilotRun(t, dir, options, "auth", "logout", "--help")
+	out = contentHelpContractRun(t, dir, options, "auth", "logout", "--help")
 	if strings.Contains(out, "check/status:") {
 		t.Errorf("unrelated auth defaults: %s", out)
 	}

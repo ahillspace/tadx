@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/identity"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -18,11 +19,23 @@ type WorkbookChanges interface {
 // MutationPort combines authoritative resolution with one native mutation client.
 type MutationPort struct {
 	*Adapter
-	changes WorkbookChanges
+	projects ProjectResolution
+	changes  WorkbookChanges
 }
 
-func NewMutationPort(reader *Adapter, changes WorkbookChanges) *MutationPort {
-	return &MutationPort{Adapter: reader, changes: changes}
+func NewMutationPort(reader *Adapter, projects ProjectResolution, changes WorkbookChanges) *MutationPort {
+	return &MutationPort{Adapter: reader, projects: projects, changes: changes}
+}
+
+func (p *MutationPort) BeginProjectResolution(ctx context.Context) context.Context {
+	return p.projects.BeginProjectResolution(ctx)
+}
+
+func (p *MutationPort) ResolveProject(ctx context.Context, selector identity.Selector) (workbookops.Project, error) {
+	if p == nil || p.projects == nil {
+		return workbookops.Project{}, errors.New("workbook project resolver is not configured")
+	}
+	return p.projects.ResolveProjectIdentity(ctx, selector)
 }
 
 func (p *MutationPort) MoveWorkbook(ctx context.Context, luid, projectLUID string) (workbookops.MoveResult, error) {

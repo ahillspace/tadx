@@ -18,7 +18,7 @@ type FollowersReader interface {
 	ListSubscriptions(context.Context, string) ([]Subscription, error)
 }
 
-func Followers(ctx context.Context, reader FollowersReader, input FollowersInput) (FollowersOutput, error) {
+func runFollowers(ctx context.Context, reader FollowersReader, input FollowersInput) (FollowersOutput, error) {
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	metric, err := reader.GetMetric(ctx, input.MetricLUID)
 	if err != nil {
@@ -113,7 +113,7 @@ func (o FollowersOutput) CompactOutput() any {
 func (o FollowersOutput) FullOutput() any { return o }
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.
-func FollowersValidateInput(input FollowersInput) error {
+func followersValidateInput(input FollowersInput) error {
 	if strings.TrimSpace(input.MetricLUID) == "" {
 		return followersFail("pulse.metric.followers.usage", errs.KindUsage, input, "Pulse metric followers requires an exact LUID.", nil)
 	}

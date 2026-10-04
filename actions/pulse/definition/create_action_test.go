@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"bytes"
@@ -9,24 +9,23 @@ import (
 	"strings"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 func TestCreateOutputGolden(t *testing.T) {
-	request := pulsedefinition.CreateRequest{
+	request := CreateRequest{
 		Name: "Revenue", Description: "Recognized revenue",
-		Specification:         pulsedefinition.CreateSpecification{Datasource: pulsedefinition.CreateDatasource{ID: "datasource-1"}, BasicSpecification: pulsedefinition.CreateBasicSpecification{Measure: pulsedefinition.CreateMeasure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeDimension: pulsedefinition.CreateTimeDimension{Field: "Order Date"}, Filters: []pulsedefinition.CreateFilter{}}, Temporality: "TEMPORALITY_OVER_TIME"},
-		ExtensionOptions:      pulsedefinition.CreateExtensionOptions{AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_MONTH"}},
-		RepresentationOptions: pulsedefinition.CreateRepresentationOptions{Type: "NUMBER_FORMAT_TYPE_CURRENCY", SentimentType: "SENTIMENT_TYPE_UP_IS_GOOD", CurrencyCode: "CURRENCY_CODE_USD"},
-		InsightsOptions:       pulsedefinition.CreateInsightsOptions{ShowInsights: true, Settings: []pulsedefinition.CreateInsightSetting{{Type: "INSIGHT_TYPE_TOP_DRIVERS"}}},
-		Comparisons:           pulsedefinition.CreateComparisons{Comparisons: []pulsedefinition.CreateComparison{{CompareConfig: pulsedefinition.CreateCompareConfig{Comparison: "TIME_COMPARISON_PREVIOUS_PERIOD"}}}},
+		Specification:         CreateSpecification{Datasource: CreateDatasource{ID: "datasource-1"}, BasicSpecification: CreateBasicSpecification{Measure: CreateMeasure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeDimension: CreateTimeDimension{Field: "Order Date"}, Filters: []CreateFilter{}}, Temporality: "TEMPORALITY_OVER_TIME"},
+		ExtensionOptions:      CreateExtensionOptions{AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_MONTH"}},
+		RepresentationOptions: CreateRepresentationOptions{Type: "NUMBER_FORMAT_TYPE_CURRENCY", SentimentType: "SENTIMENT_TYPE_UP_IS_GOOD", CurrencyCode: "CURRENCY_CODE_USD"},
+		InsightsOptions:       CreateInsightsOptions{ShowInsights: true, Settings: []CreateInsightSetting{{Type: "INSIGHT_TYPE_TOP_DRIVERS"}}},
+		Comparisons:           CreateComparisons{Comparisons: []CreateComparison{{CompareConfig: CreateCompareConfig{Comparison: "TIME_COMPARISON_PREVIOUS_PERIOD"}}}},
 		DatasourceGoals:       []map[string]any{}, RelatedLinks: []map[string]any{},
 	}
-	output := pulsedefinition.CreateOutput{
-		Plan:   pulsedefinition.CreatePlan{Mode: "execute", Operation: "pulse.definition.create", Environment: "dev", Site: "sales", Name: "Revenue", Datasource: "datasource-1", Measure: pulsedefinition.CreateMeasure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
-		Result: &pulsedefinition.CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", DefaultMetricStatus: "ready", TableauRequestID: "request-1", PollRequestID: "poll-1"},
+	output := CreateOutput{
+		Plan:   CreatePlan{Mode: "execute", Operation: "pulse.definition.create", Environment: "dev", Site: "sales", Name: "Revenue", Datasource: "datasource-1", Measure: CreateMeasure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
+		Result: &CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", DefaultMetricStatus: "ready", TableauRequestID: "request-1", PollRequestID: "poll-1"},
 		Help:   []string{"tadx pulse metric inspect --id metric-1 --environment dev"},
 	}
 	createAssertGolden(t, "compact.toon", output, false)
@@ -49,13 +48,13 @@ func createAssertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 type createValidator struct {
-	resolved *pulsedefinition.CreateFieldReferences
-	input    pulsedefinition.CreateFieldReferences
+	resolved *CreateFieldReferences
+	input    CreateFieldReferences
 	calls    int
 	err      error
 }
 
-func (v *createValidator) ResolveDefinitionFields(_ context.Context, input pulsedefinition.CreateFieldReferences) (pulsedefinition.CreateFieldReferences, error) {
+func (v *createValidator) ResolveDefinitionFields(_ context.Context, input CreateFieldReferences) (CreateFieldReferences, error) {
 	v.calls++
 	v.input = input
 	if v.resolved != nil {
@@ -65,9 +64,9 @@ func (v *createValidator) ResolveDefinitionFields(_ context.Context, input pulse
 }
 
 func TestCreateCanonicalizesFieldReferencesBeforePreviewAndWrite(t *testing.T) {
-	refs := pulsedefinition.CreateFieldReferences{DatasourceLUID: "datasource-1", MeasureField: "[Calculation_1]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[date_raw]", AllowedDimensions: []string{"[region_raw]"}}
-	v, f, c := &createValidator{resolved: &refs}, &createFinder{}, &createCreator{result: pulsedefinition.CreateResult{DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1"}}
-	input := pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Revenue", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}}}
+	refs := CreateFieldReferences{DatasourceLUID: "datasource-1", MeasureField: "[Calculation_1]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[date_raw]", AllowedDimensions: []string{"[region_raw]"}}
+	v, f, c := &createValidator{resolved: &refs}, &createFinder{}, &createCreator{result: CreateResult{DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1"}}
+	input := CreateInput{Intent: CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Revenue", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}}}
 	out, err := create(context.Background(), v, f, c, input, true)
 	if err != nil || out.Plan.Measure.Field != refs.MeasureField || out.Plan.TimeField != refs.TimeDimension || len(out.Plan.Dimensions) != 1 || out.Plan.Dimensions[0] != refs.AllowedDimensions[0] || c.calls != 0 {
 		t.Fatalf("preview=%#v err=%v writes=%d", out, err, c.calls)
@@ -80,8 +79,8 @@ func TestCreateCanonicalizesFieldReferencesBeforePreviewAndWrite(t *testing.T) {
 
 func TestCreatePlanOwnsNormalizedInput(t *testing.T) {
 	dimensions := []string{"Region"}
-	resolved := pulsedefinition.CreateFieldReferences{DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", AllowedDimensions: []string{"[Region]"}}
-	input := pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date", AllowedDimensions: dimensions}}
+	resolved := CreateFieldReferences{DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", AllowedDimensions: []string{"[Region]"}}
+	input := CreateInput{Intent: CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date", AllowedDimensions: dimensions}}
 	output, err := create(t.Context(), &createValidator{resolved: &resolved}, &createFinder{}, &createCreator{}, input, true)
 	if err != nil {
 		t.Fatal(err)
@@ -97,22 +96,22 @@ func TestCreatePlanOwnsNormalizedInput(t *testing.T) {
 }
 
 type createFinder struct {
-	items []pulsedefinition.Definition
+	items []Definition
 	calls int
 }
 
-func (f *createFinder) FindDefinitions(context.Context, string, string) ([]pulsedefinition.Definition, error) {
+func (f *createFinder) FindDefinitions(context.Context, string, string) ([]Definition, error) {
 	f.calls++
-	return append([]pulsedefinition.Definition(nil), f.items...), nil
+	return append([]Definition(nil), f.items...), nil
 }
 
 type createCreator struct {
-	request pulsedefinition.CreateRequest
-	result  pulsedefinition.CreateResult
+	request CreateRequest
+	result  CreateResult
 	calls   int
 }
 
-func (c *createCreator) CreateDefinition(_ context.Context, input pulsedefinition.CreateRequest) (pulsedefinition.CreateResult, error) {
+func (c *createCreator) CreateDefinition(_ context.Context, input CreateRequest) (CreateResult, error) {
 	c.calls++
 	c.request = input
 	return c.result, nil
@@ -120,8 +119,8 @@ func (c *createCreator) CreateDefinition(_ context.Context, input pulsedefinitio
 
 func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	v, f := &createValidator{}, &createFinder{}
-	c := &createCreator{result: pulsedefinition.CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", TableauRequestID: "request-1"}}
-	input := pulsedefinition.CreateInput{Environment: "dev", Site: "sales", Intent: pulsedefinition.CreateIntent{
+	c := &createCreator{result: CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", TableauRequestID: "request-1"}}
+	input := CreateInput{Environment: "dev", Site: "sales", Intent: CreateIntent{
 		Name: "Revenue", Description: "Recognized revenue.", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "SUM",
 		TimeDimension: "Order Date", AllowedDimensions: []string{"Region", "Category", "Region"}, MinimumGranularity: "MONTH",
 		NumberFormat: "CURRENCY", CurrencyCode: "USD", Sentiment: "UP", Temporality: "OVER_TIME", RunningTotal: true,
@@ -151,11 +150,11 @@ func TestCreatePreviewWarnsWhenCompactPlanNeedsFullReview(t *testing.T) {
 		dimensions[index] = "Dimension_" + string(rune('A'+index%26)) + string(rune('0'+index/26))
 	}
 	v, f, c := &createValidator{}, &createFinder{}, &createCreator{}
-	input := pulsedefinition.CreateInput{Environment: "dev", Site: "sales", Intent: pulsedefinition.CreateIntent{
+	input := CreateInput{Environment: "dev", Site: "sales", Intent: CreateIntent{
 		Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date", Aggregation: "SUM", AllowedDimensions: dimensions,
 	}}
 	output, err := create(context.Background(), v, f, c, input, true)
-	if err != nil || !output.CompactOutput().(pulsedefinition.CreateCompactResult).Plan.RequiresFull {
+	if err != nil || !output.CompactOutput().(CreateCompactResult).Plan.RequiresFull {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
 	if len(output.Help) != 1 || !strings.Contains(output.Help[0], "--full") || strings.Contains(output.Help[0], "without --preview") {
@@ -165,7 +164,7 @@ func TestCreatePreviewWarnsWhenCompactPlanNeedsFullReview(t *testing.T) {
 
 func TestCreateRejectsZeroDimensionsBeforeRemoteCalls(t *testing.T) {
 	v, f, c := &createValidator{}, &createFinder{}, &createCreator{}
-	_, err := create(context.Background(), v, f, c, pulsedefinition.CreateInput{Environment: "dev", Site: "sales", Intent: pulsedefinition.CreateIntent{
+	_, err := create(context.Background(), v, f, c, CreateInput{Environment: "dev", Site: "sales", Intent: CreateIntent{
 		Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date",
 	}}, true)
 	var structured *errs.Error
@@ -175,7 +174,7 @@ func TestCreateRejectsZeroDimensionsBeforeRemoteCalls(t *testing.T) {
 }
 
 func TestCreateRejectsUnsafeIntentBeforeRemoteCalls(t *testing.T) {
-	tests := []pulsedefinition.CreateIntent{
+	tests := []CreateIntent{
 		{},
 		{Name: "Revenue", DatasourceLUID: "ds", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "TOTAL"},
 		{Name: "Snapshot", DatasourceLUID: "ds", MeasureField: "Inventory", TimeDimension: "Date", Aggregation: "SUM", Temporality: "LATEST", RunningTotal: true},
@@ -183,7 +182,7 @@ func TestCreateRejectsUnsafeIntentBeforeRemoteCalls(t *testing.T) {
 	}
 	for index, intent := range tests {
 		v, f, c := &createValidator{}, &createFinder{}, &createCreator{}
-		_, err := create(context.Background(), v, f, c, pulsedefinition.CreateInput{Intent: intent}, false)
+		_, err := create(context.Background(), v, f, c, CreateInput{Intent: intent}, false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || v.calls != 0 || f.calls != 0 || c.calls != 0 {
 			t.Fatalf("case %d error=%#v calls=%d/%d/%d", index, err, v.calls, f.calls, c.calls)
@@ -194,10 +193,10 @@ func TestCreateRejectsUnsafeIntentBeforeRemoteCalls(t *testing.T) {
 func TestCreatePreservesFieldValidationErrorContract(t *testing.T) {
 	v := &createValidator{err: errors.New(`field "Calculation_margin" is already aggregated; use --aggregation USER`)}
 	f, c := &createFinder{}, &createCreator{}
-	_, err := create(context.Background(), v, f, c, pulsedefinition.CreateInput{
+	_, err := create(context.Background(), v, f, c, CreateInput{
 		Environment: "dev",
 		Site:        "sales",
-		Intent: pulsedefinition.CreateIntent{
+		Intent: CreateIntent{
 			Name:              "Margin",
 			DatasourceLUID:    "datasource-1",
 			MeasureField:      "Calculation_margin",
@@ -220,9 +219,9 @@ func TestCreatePreservesFieldValidationErrorContract(t *testing.T) {
 
 func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 	v := &createValidator{}
-	f := &createFinder{items: []pulsedefinition.Definition{{LUID: "definition-old", Name: "Revenue", DatasourceLUID: "datasource-1"}}}
+	f := &createFinder{items: []Definition{{LUID: "definition-old", Name: "Revenue", DatasourceLUID: "datasource-1"}}}
 	c := &createCreator{}
-	_, err := create(context.Background(), v, f, c, pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM", AllowedDimensions: []string{"Region"}}}, false)
+	_, err := create(context.Background(), v, f, c, CreateInput{Intent: CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM", AllowedDimensions: []string{"Region"}}}, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "pulse.definition.create.conflict" || c.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, c.calls)

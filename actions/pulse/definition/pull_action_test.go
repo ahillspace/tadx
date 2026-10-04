@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"bytes"
@@ -9,17 +9,16 @@ import (
 	"strings"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
 func TestPullOutputGolden(t *testing.T) {
-	output := pulsedefinition.PullOutput{
-		Status: "pulled", Definition: pulsedefinition.PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
-		Artifact:    pulsedefinition.PullArtifactResult{Path: "artifacts/pulse-definition/Revenue--identity", CanonicalPath: "artifacts/pulse-definition/Revenue--identity/resource.json", BaselineFingerprint: "sha256:value"},
-		Provenance:  pulsedefinition.PullProvenance{Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", DatasourceLUID: "datasource-1"},
+	output := PullOutput{
+		Status: "pulled", Definition: PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
+		Artifact:    PullArtifactResult{Path: "artifacts/pulse-definition/Revenue--identity", CanonicalPath: "artifacts/pulse-definition/Revenue--identity/resource.json", BaselineFingerprint: "sha256:value"},
+		Provenance:  PullProvenance{Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", DatasourceLUID: "datasource-1"},
 		MetricCount: 2, RequestID: "request-1", Help: []string{"Inspect artifacts/pulse-definition/Revenue--identity/resource.json."},
 	}
 	pullAssertGolden(t, "compact.toon", output, false)
@@ -49,35 +48,35 @@ func pullAssertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 type pullReader struct {
-	definition pulsedefinition.PullDefinition
+	definition PullDefinition
 }
 
-func (r pullReader) GetDefinition(context.Context, string) (pulsedefinition.PullDefinition, error) {
+func (r pullReader) GetDefinition(context.Context, string) (PullDefinition, error) {
 	return r.definition, nil
 }
 
 type pullWriter struct {
-	input  pulsedefinition.PullArtifact
-	result pulsedefinition.PullArtifactResult
+	input  PullArtifact
+	result PullArtifactResult
 	err    error
 }
 
-func (w *pullWriter) PreviewDefinition(context.Context, pulsedefinition.PullInput, pulsedefinition.PullDefinition) (value.AcquisitionPlan, error) {
+func (w *pullWriter) PreviewDefinition(context.Context, PullInput, PullDefinition) (value.AcquisitionPlan, error) {
 	return value.AcquisitionPlan{}, errors.New("unexpected acquisition preview")
 }
 
-func (w *pullWriter) WriteDefinition(_ context.Context, input pulsedefinition.PullArtifact) (pulsedefinition.PullArtifactResult, error) {
+func (w *pullWriter) WriteDefinition(_ context.Context, input PullArtifact) (PullArtifactResult, error) {
 	w.input = input
 	if w.result.Path == "" {
-		w.result = pulsedefinition.PullArtifactResult{Path: `artifacts\pulse-definition\Revenue--identity`, CanonicalPath: `artifacts\pulse-definition\Revenue--identity\resource.json`, BaselineFingerprint: "sha256:value"}
+		w.result = PullArtifactResult{Path: `artifacts\pulse-definition\Revenue--identity`, CanonicalPath: `artifacts\pulse-definition\Revenue--identity\resource.json`, BaselineFingerprint: "sha256:value"}
 	}
 	return w.result, w.err
 }
 
 func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
-	definition := pulsedefinition.PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"name":"Revenue"}`), RequestID: "request-1", MetricsComplete: true, Metrics: []pulsedefinition.PullMetric{{LUID: "metric-1"}}}
+	definition := PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"name":"Revenue"}`), RequestID: "request-1", MetricsComplete: true, Metrics: []PullMetric{{LUID: "metric-1"}}}
 	w := &pullWriter{}
-	output, err := pull(context.Background(), pullReader{definition: definition}, w, pulsedefinition.PullInput{
+	output, err := pull(context.Background(), pullReader{definition: definition}, w, PullInput{
 		Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", WorkspaceName: "workspace", LUID: "definition-1",
 	})
 	if err != nil {
@@ -89,16 +88,16 @@ func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
 	if output.Provenance.Environment != "dev" || output.Provenance.Site != "sales" || output.Provenance.ServerOrigin != "https://example.test" || output.Provenance.SiteLUID != "site-1" || output.Provenance.Workspace != "workspace" || output.Provenance.DatasourceLUID != "datasource-1" {
 		t.Fatalf("provenance=%#v", output.Provenance)
 	}
-	full := output.FullOutput().(pulsedefinition.PullFullResult)
+	full := output.FullOutput().(PullFullResult)
 	if full.Provenance != output.Provenance {
 		t.Fatalf("full provenance=%#v output=%#v", full.Provenance, output.Provenance)
 	}
 }
 
 func TestPullRejectsAbsoluteWriterPath(t *testing.T) {
-	w := &pullWriter{result: pulsedefinition.PullArtifactResult{Path: `C:\outside`}}
-	definition := pulsedefinition.PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"metadata":{"id":"definition-1"}}`), MetricsComplete: true, Metrics: []pulsedefinition.PullMetric{{LUID: "metric-1"}}}
-	_, err := pull(context.Background(), pullReader{definition: definition}, w, pulsedefinition.PullInput{Workspace: "workspace", LUID: "definition-1"})
+	w := &pullWriter{result: PullArtifactResult{Path: `C:\outside`}}
+	definition := PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"metadata":{"id":"definition-1"}}`), MetricsComplete: true, Metrics: []PullMetric{{LUID: "metric-1"}}}
+	_, err := pull(context.Background(), pullReader{definition: definition}, w, PullInput{Workspace: "workspace", LUID: "definition-1"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "pulse.definition.pull.normalize" {
 		t.Fatalf("error=%#v", err)

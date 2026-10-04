@@ -308,7 +308,7 @@ func (s *previewActionSpy) UnfollowPulseMetric(_ context.Context, input pulsemet
 	s.record(preview)
 	return pulsemetric.UnfollowOutput{}, nil
 }
-func (s *previewActionSpy) Execute(_ context.Context, _ workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
+func (s *previewActionSpy) PublishWorkbook(_ context.Context, _ workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
 	s.record(preview)
 	return workbookops.PublishOutput{}, nil
 }

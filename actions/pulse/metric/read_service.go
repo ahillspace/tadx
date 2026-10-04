@@ -51,9 +51,15 @@ type ReadProvider interface {
 }
 
 // Service owns Pulse metric operations and their target-bound observations.
-type Service struct{ ReadProvider ReadProvider }
+type Service struct{ ports Ports }
 
-func New(readProvider ReadProvider) *Service { return &Service{ReadProvider: readProvider} }
+type Ports struct {
+	Read      ReadProvider
+	Mutation  MutationProvider
+	Followers FollowerProvider
+}
+
+func New(ports Ports) *Service { return &Service{ports: ports} }
 
 // ListPulseMetrics selects cached or native listing after validating input.
 func (s *Service) ListPulseMetrics(ctx context.Context, input ListInput) (ListOutput, error) {
@@ -63,10 +69,10 @@ func (s *Service) ListPulseMetrics(ctx context.Context, input ListInput) (ListOu
 	var target ReadTarget
 	if input.Cursor != "" || input.Cache {
 		var err error
-		target, err = s.ReadProvider.CacheTarget(input.Environment)
+		target, err = s.ports.Read.CacheTarget(input.Environment)
 		if err != nil {
 			if input.Cache && input.Cursor == "" {
-				return ListOutput{}, s.ReadProvider.CacheSetupError("pulse.metric.list", input.Environment, err)
+				return ListOutput{}, s.ports.Read.CacheSetupError("pulse.metric.list", input.Environment, err)
 			}
 			return ListOutput{}, err
 		}
@@ -76,14 +82,14 @@ func (s *Service) ListPulseMetrics(ctx context.Context, input ListInput) (ListOu
 		}
 	}
 	if input.Cache {
-		reader := s.ReadProvider.CachedList(target)
+		reader := s.ports.Read.CachedList(target)
 		output, err := listValidated(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.Source()
 		}
 		return output, err
 	}
-	session, err := s.ReadProvider.Open(ctx, input.Environment, input.Site, "pulse.metric.list")
+	session, err := s.ports.Read.Open(ctx, input.Environment, input.Site, "pulse.metric.list")
 	if err != nil {
 		return ListOutput{}, err
 	}
@@ -92,7 +98,7 @@ func (s *Service) ListPulseMetrics(ctx context.Context, input ListInput) (ListOu
 	if err != nil {
 		return output, err
 	}
-	output.Source = new(readsource.Live(s.ReadProvider.Now()))
+	output.Source = new(readsource.Live(s.ports.Read.Now()))
 	session.List.Publish()
 	return output, nil
 }
@@ -103,12 +109,12 @@ func (s *Service) InspectPulseMetric(ctx context.Context, input InspectInput) (I
 		return InspectOutput{}, err
 	}
 	if input.Cache {
-		target, err := s.ReadProvider.CacheTarget(input.Environment)
+		target, err := s.ports.Read.CacheTarget(input.Environment)
 		if err != nil {
-			return InspectOutput{}, s.ReadProvider.CacheSetupError("pulse.metric.inspect", input.Environment, err)
+			return InspectOutput{}, s.ports.Read.CacheSetupError("pulse.metric.inspect", input.Environment, err)
 		}
 		input.Environment, input.Site = target.Environment, target.Site
-		reader := s.ReadProvider.CachedInspect(target)
+		reader := s.ports.Read.CachedInspect(target)
 		output, err := inspectValidated(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.Source()
@@ -117,7 +123,7 @@ func (s *Service) InspectPulseMetric(ctx context.Context, input InspectInput) (I
 		}
 		return output, err
 	}
-	session, err := s.ReadProvider.Open(ctx, input.Environment, input.Site, "pulse.metric.inspect")
+	session, err := s.ports.Read.Open(ctx, input.Environment, input.Site, "pulse.metric.inspect")
 	if err != nil {
 		return InspectOutput{}, err
 	}
@@ -126,7 +132,7 @@ func (s *Service) InspectPulseMetric(ctx context.Context, input InspectInput) (I
 	if err != nil {
 		return output, err
 	}
-	output.Source = new(readsource.Live(s.ReadProvider.Now()))
+	output.Source = new(readsource.Live(s.ports.Read.Now()))
 	session.Inspect.Publish()
 	return output, nil
 }

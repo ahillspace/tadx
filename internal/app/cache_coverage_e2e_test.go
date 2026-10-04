@@ -22,7 +22,7 @@ func TestCacheStatusRetainsIndependentEvidenceWithoutGeneration(t *testing.T) {
 		if full {
 			args = append(args, "--full")
 		}
-		out := runGroupOneCLI(t, options, args...)
+		out := runProjectFlowCLI(t, options, args...)
 		for _, fact := range []string{`"status": "uninitialized"`, `"kind": "datasource_schema"`, `"records": 1`, `"complete": false`, `"stale": true`} {
 			if !strings.Contains(out, strings.ReplaceAll(fact, ": ", ":")) {
 				t.Fatalf("missing %s: %s", fact, out)
@@ -35,8 +35,8 @@ func TestCacheStatusRetainsIndependentEvidenceWithoutGeneration(t *testing.T) {
 	if requests.Load() != 0 {
 		t.Fatal("local status contacted Tableau")
 	}
-	runGroupOneCLI(t, options, "cache", "refresh", "--environment", "test", "--scope", "projects")
-	out := runGroupOneCLI(t, options, "cache", "status", "--environment", "test", "--json")
+	runProjectFlowCLI(t, options, "cache", "refresh", "--environment", "test", "--scope", "projects")
+	out := runProjectFlowCLI(t, options, "cache", "status", "--environment", "test", "--json")
 	for _, fact := range []string{`"scope": "projects"`, `"requested": true`, `"kind": "datasource_schema"`, `"stale": true`} {
 		if !strings.Contains(out, strings.ReplaceAll(fact, ": ", ":")) {
 			t.Fatalf("missing %s: %s", fact, out)

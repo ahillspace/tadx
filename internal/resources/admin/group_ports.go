@@ -10,6 +10,13 @@ import (
 // GroupPorts translates native administration records into the group action's ports.
 type GroupPorts struct{ Adapter *Adapter }
 
+// GroupListFilterPort validates and encodes a native group selection before authentication.
+type GroupListFilterPort struct{}
+
+func (GroupListFilterPort) ListFilter(input group.ListInput) (string, error) {
+	return tableau.GroupListFilter(tableau.ListGroupsRequest{Name: input.Name, Domain: input.Domain})
+}
+
 func (p GroupPorts) ListGroups(ctx context.Context, in group.ListPageRequest) (group.ListPage, error) {
 	page, err := p.Adapter.ListGroups(ctx, tableau.ListGroupsRequest{PageNumber: in.PageNumber, PageSize: in.PageSize, Name: in.Name, Domain: in.Domain})
 	items := make([]group.Record, len(page.Items))

@@ -1,4 +1,4 @@
-// Package refresh orchestrates complete cache generation hydration.
+// Package cache owns cache refresh and local generation status.
 package cache
 
 import (

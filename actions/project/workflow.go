@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -52,10 +53,8 @@ type Provider interface {
 	CacheTarget(string) (Target, error)
 	CachedList(Target) CachedListReader
 	CachedInspect(Target) CachedInspectResolver
-	LegacyInventoryCursor(string) bool
 	ListFilter(ListInput) (string, error)
 	Open(context.Context, string, string, string, bool) (LiveSession, error)
-	ValidateComplete(bool, *readsource.Metadata) error
 	Now() time.Time
 }
 
@@ -77,10 +76,10 @@ func (a *Service) ListProjects(ctx context.Context, input ListInput) (result Lis
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = a.Provider.ValidateComplete(input.All, result.Source)
+			resultErr = inventory.ValidateAll(input.All, result.Source)
 		}
 	}()
-	if input.Cache || a.Provider.LegacyInventoryCursor(input.Cursor) {
+	if input.Cache || inventory.LegacyInventoryCursor(input.Cursor) {
 		target, err := a.Provider.CacheTarget(input.Environment)
 		if err != nil {
 			return ListOutput{}, err

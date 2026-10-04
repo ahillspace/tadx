@@ -46,7 +46,7 @@ var _ consumer.Reader
 }
 
 func TestProjectCachePortAllowsOnlyItsRequiredInfrastructure(t *testing.T) {
-	for _, imported := range []string{"internal/cache", "internal/readsource"} {
+	for _, imported := range []string{"internal/cache", "internal/readsource", "internal/inventory"} {
 		t.Run(imported, func(t *testing.T) {
 			root := moduleFixture(t)
 			writeGo(t, root, "internal/resources/project/cache.go", fmt.Sprintf("package project\nimport _ %q\n", "example.test/tadx/"+imported))
@@ -65,6 +65,8 @@ func TestProjectCachePortAllowsOnlyItsRequiredInfrastructure(t *testing.T) {
 		{"other resource cache", "internal/resources/lineage/cache.go", "internal/cache"},
 		{"other resource read coverage", "internal/resources/lineage/cache.go", "internal/readsource"},
 		{"nested project package", "internal/resources/project/nested/cache.go", "internal/cache"},
+		{"nested project inventory", "internal/resources/project/nested/inventory.go", "internal/inventory"},
+		{"sibling resource inventory", "internal/resources/lineage/inventory.go", "internal/inventory"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := moduleFixture(t)
@@ -77,6 +79,60 @@ func TestProjectCachePortAllowsOnlyItsRequiredInfrastructure(t *testing.T) {
 				tc.file + " imports example.test/tadx/" + tc.imported + ": resource adapters must not import unapproved local packages",
 			})
 		})
+	}
+}
+
+func TestReadActionsAllowOnlyExactInventoryOwners(t *testing.T) {
+	for _, owner := range []string{"workbook", "datasource", "flow", "project", "admin/user", "admin/group"} {
+		t.Run("owner/"+owner, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "actions/"+owner+"/read.go", "package action\nimport _ \"example.test/tadx/internal/inventory\"\n")
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+	}
+	for _, file := range []string{"actions/admin/permission/read.go", "actions/project/nested/read.go"} {
+		t.Run("rejected/"+file, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, file, "package action\nimport _ \"example.test/tadx/internal/inventory\"\n")
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) != 1 || violations[0].File != file {
+				t.Fatalf("violations=%v", violations)
+			}
+		})
+	}
+}
+
+func TestDoctorLocalProbesAllowOnlyExactOwner(t *testing.T) {
+	for _, imported := range []string{"internal/artifact", "internal/cache", "internal/workspace"} {
+		t.Run("owner/"+imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "actions/doctor/probes.go", fmt.Sprintf("package doctor\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+		for _, file := range []string{"actions/doctor/nested/probes.go", "actions/version/probes.go"} {
+			t.Run("rejected/"+file+"/"+imported, func(t *testing.T) {
+				root := moduleFixture(t)
+				writeGo(t, root, file, fmt.Sprintf("package probes\nimport _ %q\n", "example.test/tadx/"+imported))
+				violations, err := architecture.Check(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(violations) != 1 || violations[0].File != file {
+					t.Fatalf("violations=%v", violations)
+				}
+			})
+		}
 	}
 }
 
@@ -98,7 +154,7 @@ func TestAdminCachePortsAllowOnlyTheirRequiredInfrastructure(t *testing.T) {
 		{"other resource inventory", "internal/resources/lineage/cache.go", "internal/inventory"},
 		{"other resource admin errors", "internal/resources/project/cache.go", "internal/errs"},
 		{"nested admin package", "internal/resources/admin/nested/cache.go", "internal/cache"},
-		{"sibling action inventory", "actions/admin/group/action.go", "internal/inventory"},
+		{"sibling action inventory", "actions/admin/permission/action.go", "internal/inventory"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := moduleFixture(t)
@@ -248,6 +304,39 @@ func TestContentReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
 	}
 }
 
+func TestPublicationAdaptersAllowOnlyExactReceiptEdge(t *testing.T) {
+	for _, resource := range []string{"workbook", "datasource"} {
+		file := "internal/resources/" + resource + "/publish_destination.go"
+		t.Run("allowed/"+resource, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, file, "package fixture\nimport _ \"example.test/tadx/internal/jobmonitor\"\n")
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+	}
+	for _, file := range []string{
+		"internal/resources/flow/publish_destination.go",
+		"internal/resources/project/publish_destination.go",
+		"internal/resources/workbook/nested/publish_destination.go",
+		"internal/resources/datasource/nested/publish_destination.go",
+	} {
+		t.Run("rejected/"+file, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, file, "package fixture\nimport _ \"example.test/tadx/internal/jobmonitor\"\n")
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) != 1 || violations[0].File != file {
+				t.Fatalf("violations=%v", violations)
+			}
+		})
+	}
+}
+
 func TestPulseReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
 	for _, imported := range []string{"internal/cache", "internal/readsource", "internal/inventory"} {
 		t.Run(imported, func(t *testing.T) {
@@ -328,5 +417,32 @@ func TestCheckAdapterContractAllowancePreservesForbiddenDirections(t *testing.T)
 			}
 			assertViolationStrings(t, violations, []string{test.file + " imports " + test.imported + ": " + test.reason})
 		})
+	}
+}
+
+func TestPulseArtifactPortAllowsOnlyExactOwner(t *testing.T) {
+	for _, imported := range []string{"internal/artifact", "internal/errs"} {
+		t.Run("allowed/"+imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/pulse/bundle.go", fmt.Sprintf("package pulse\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+		for _, file := range []string{"internal/resources/project/bundle.go", "internal/resources/pulse/nested/bundle.go"} {
+			t.Run("rejected/"+file+"/"+imported, func(t *testing.T) {
+				root := moduleFixture(t)
+				writeGo(t, root, file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+imported))
+				violations, err := architecture.Check(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(violations) != 1 || violations[0].File != file {
+					t.Fatalf("violations=%v", violations)
+				}
+			})
+		}
 	}
 }

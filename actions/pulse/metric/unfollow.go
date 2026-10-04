@@ -17,7 +17,7 @@ type UnfollowDeleter interface {
 	DeleteSubscription(context.Context, string) error
 }
 
-func Unfollow(ctx context.Context, reader UnfollowReader, deleter UnfollowDeleter, input UnfollowInput, preview bool) (UnfollowOutput, error) {
+func runUnfollow(ctx context.Context, reader UnfollowReader, deleter UnfollowDeleter, input UnfollowInput, preview bool) (UnfollowOutput, error) {
 	input.SubscriptionLUID = strings.TrimSpace(input.SubscriptionLUID)
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	input.UserLUID = strings.TrimSpace(input.UserLUID)
@@ -127,7 +127,7 @@ func (o UnfollowOutput) CompactOutput() any { return o }
 func (o UnfollowOutput) FullOutput() any    { return o }
 
 // ValidateInput checks subscription-or-relationship selection without remote reads.
-func UnfollowValidateInput(input UnfollowInput) error {
+func unfollowValidateInput(input UnfollowInput) error {
 	subscription, metric, user, group := strings.TrimSpace(input.SubscriptionLUID), strings.TrimSpace(input.MetricLUID), strings.TrimSpace(input.UserLUID), strings.TrimSpace(input.GroupLUID)
 	direct := subscription != "" && metric == "" && user == "" && group == ""
 	relation := subscription == "" && metric != "" && (user != "") != (group != "")

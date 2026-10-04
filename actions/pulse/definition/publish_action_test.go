@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"context"
@@ -8,12 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type publishDependencies struct {
-	bundle                                       pulsedefinition.PublishBundle
+	bundle                                       PublishBundle
 	validations, writes                          int
 	failValidation                               int
 	failCreate, failMetric, failVerify           bool
@@ -22,7 +21,7 @@ type publishDependencies struct {
 	events                                       []string
 }
 
-func (d *publishDependencies) ValidateDefinition(context.Context, json.RawMessage, []pulsedefinition.PublishMetric) error {
+func (d *publishDependencies) ValidateDefinition(context.Context, json.RawMessage, []PublishMetric) error {
 	d.events = append(d.events, "validate")
 	d.validations++
 	if d.validations == d.failValidation {
@@ -30,19 +29,19 @@ func (d *publishDependencies) ValidateDefinition(context.Context, json.RawMessag
 	}
 	return nil
 }
-func (d *publishDependencies) CreateDefinition(context.Context, json.RawMessage) (pulsedefinition.PublishDefinitionResult, error) {
+func (d *publishDependencies) CreateDefinition(context.Context, json.RawMessage) (PublishDefinitionResult, error) {
 	d.events = append(d.events, "create definition")
 	d.writes++
-	result := pulsedefinition.PublishDefinitionResult{LUID: "new-definition"}
+	result := PublishDefinitionResult{LUID: "new-definition"}
 	if d.failCreate {
 		return result, errors.New("default resolution failed")
 	}
 	return result, nil
 }
-func (d *publishDependencies) CreateMetric(context.Context, string, json.RawMessage) (pulsedefinition.PublishMetricResult, error) {
+func (d *publishDependencies) CreateMetric(context.Context, string, json.RawMessage) (PublishMetricResult, error) {
 	d.events = append(d.events, "create metric")
 	d.writes++
-	result := pulsedefinition.PublishMetricResult{LUID: "new-metric"}
+	result := PublishMetricResult{LUID: "new-metric"}
 	if d.failMetric {
 		return result, errors.New("metric response failed")
 	}
@@ -67,7 +66,7 @@ func (d *publishDependencies) VerifyDefinition(context.Context, string, string, 
 
 func TestPublishVerifiesSharedDefinitionOnceBeforeMetrics(t *testing.T) {
 	d := &publishDependencies{bundle: publishBundleFixture()}
-	d.bundle.Metrics = append(d.bundle.Metrics, pulsedefinition.PublishMetric{LUID: "metric-2", Specification: d.bundle.Metrics[0].Specification})
+	d.bundle.Metrics = append(d.bundle.Metrics, PublishMetric{LUID: "metric-2", Specification: d.bundle.Metrics[0].Specification})
 	output, err := publish(context.Background(), d, publishInputFixture())
 	if err != nil || !output.Complete || d.definitionVerifications != 1 || d.metricVerifications != 2 {
 		t.Fatalf("output=%#v err=%v definition checks=%d metric checks=%d", output, err, d.definitionVerifications, d.metricVerifications)
@@ -85,11 +84,11 @@ func TestPublishDefinitionMismatchRetainsIdentityAndStopsBeforeMetrics(t *testin
 		t.Fatalf("output=%#v err=%v writes=%d", output, err, d.writes)
 	}
 }
-func publishBundleFixture() pulsedefinition.PublishBundle {
-	return pulsedefinition.PublishBundle{DefinitionLUID: "definition-1", DatasourceLUID: "ds-1", Configuration: json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"ds-1"},"basic_specification":{"measure":{"field":"Revenue","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"},"filters":[]}},"extension_options":{"allowed_dimensions":[],"allowed_granularities":["GRANULARITY_BY_DAY"]}}`), Metrics: []pulsedefinition.PublishMetric{{LUID: "metric-1", Specification: json.RawMessage(`{"datasource":{"id":"ds-1"},"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":9007199254740993},"filters":[]}`)}}}
+func publishBundleFixture() PublishBundle {
+	return PublishBundle{DefinitionLUID: "definition-1", DatasourceLUID: "ds-1", Configuration: json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"ds-1"},"basic_specification":{"measure":{"field":"Revenue","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"},"filters":[]}},"extension_options":{"allowed_dimensions":[],"allowed_granularities":["GRANULARITY_BY_DAY"]}}`), Metrics: []PublishMetric{{LUID: "metric-1", Specification: json.RawMessage(`{"datasource":{"id":"ds-1"},"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":9007199254740993},"filters":[]}`)}}}
 }
-func publishInputFixture() pulsedefinition.PublishInput {
-	return pulsedefinition.PublishInput{Environment: "target", Site: "target-site", SiteLUID: "target-site-id", Artifact: "artifacts/pulse-definition/example", DatasourceMap: []string{"ds-1=ds-2"}}
+func publishInputFixture() PublishInput {
+	return PublishInput{Environment: "target", Site: "target-site", SiteLUID: "target-site-id", Artifact: "artifacts/pulse-definition/example", DatasourceMap: []string{"ds-1=ds-2"}}
 }
 
 func TestPublishPlansWithoutMutationAndPreservesExactNumbers(t *testing.T) {
@@ -177,7 +176,7 @@ func TestPublishRejectsBadLocalMappingsAndUnknownSections(t *testing.T) {
 }
 
 func TestPublishCompactMarksCappedDecisionDetailsIncomplete(t *testing.T) {
-	output := pulsedefinition.PublishOutput{Plan: pulsedefinition.PublishPlan{ReviewComplete: true, Metrics: make([]pulsedefinition.PublishMetric, 11)}, Mappings: make([]pulsedefinition.PublishMapping, 21)}
+	output := PublishOutput{Plan: PublishPlan{ReviewComplete: true, Metrics: make([]PublishMetric, 11)}, Mappings: make([]PublishMapping, 21)}
 	encoded, _ := json.Marshal(output.CompactOutput())
 	if !strings.Contains(string(encoded), `"review_complete":false`) || !strings.Contains(string(encoded), `"details":"--full"`) {
 		t.Fatalf("compact=%s", encoded)

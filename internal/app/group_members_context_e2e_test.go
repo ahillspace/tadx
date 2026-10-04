@@ -33,7 +33,7 @@ func TestExplicitGroupMembersStayCompleteInCompactCLI(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			out := runGroupOneCLI(t, diagnosticOptions(t, server), "admin", "group", "inspect", "--environment", "test", "--id", "group-1", "--members", "--json")
+			out := runProjectFlowCLI(t, diagnosticOptions(t, server), "admin", "group", "inspect", "--environment", "test", "--id", "group-1", "--members", "--json")
 			var result struct {
 				Group struct {
 					Members []struct {

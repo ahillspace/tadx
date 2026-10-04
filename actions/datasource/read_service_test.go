@@ -33,15 +33,12 @@ func (*readServiceProvider) CachedList(datasource.ReadTarget) datasource.CachedL
 func (*readServiceProvider) CachedInspect(datasource.ReadTarget) datasource.CachedInspectResolver {
 	return nil
 }
-func (*readServiceProvider) LegacyInventoryCursor(string) bool               { return false }
 func (*readServiceProvider) ListFilter(datasource.ListInput) (string, error) { return "", nil }
 func (p *readServiceProvider) OpenDatasourceRead(context.Context, string, string, string) (datasource.ReadSession, error) {
 	p.opens++
 	return datasource.ReadSession{ReadTarget: datasource.ReadTarget{Environment: "canonical", Site: "exact-site"}, Reader: readServicePages{}}, nil
 }
-func (*readServiceProvider) ValidateComplete(bool, *readsource.Metadata) error { return nil }
-func (*readServiceProvider) RefreshError(_, _, _ string, err error) error      { return err }
-func (*readServiceProvider) Now() time.Time                                    { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) }
+func (*readServiceProvider) Now() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) }
 
 func TestReadServiceCanonicalCursorAndPreOpenValidation(t *testing.T) {
 	provider := &readServiceProvider{}

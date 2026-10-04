@@ -6,6 +6,43 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Final architecture corrections
+
+The first whole-architecture review rejects final D1-D7 acceptance despite the preceding bounded migration passes.
+It identifies remaining app-owned cache and publication behavior, optional publication freshness contracts, and mixed-resource CLI navigation.
+Those findings require cohesive corrections, not a documentation exception or a weaker gate.
+The combined source fingerprint reviewed at that point is `935680ce8489f481b37d81f1d22e0c4f27771a97e96b69b5fdd2c80dc996b65e`.
+That candidate remains historical evidence and is not accepted as the finished architecture.
+
+The cache correction moves source, coverage, recovery, and legacy cursor policy to inventory.
+Typed filtering, project collection and publication, and discovery freshness live with resource adapters.
+Doctor actions interpret local probe evidence; app supplies selected targets and dependencies.
+Independent review accepts this 44-path correction at fingerprint `943767eff3ea362e9a1f1fcf7dc45c95e599656ed307e4ceb954f70e65a848fd`.
+Affected-owner tests, nine focused app tests, CLI tests, and scoped vet pass in a restricted environment with a test-owned home.
+Exact dependency permissions retain positive and sibling or nested rejection fixtures.
+Evidence remains in `.tadx-refactor/cache-owner-revision-efd/` and `.tadx-refactor/cache-owner-review-sol/`.
+This bounded result does not establish combined gates, race checks, native CI, or live acceptance.
+
+Independent review also accepts the resource-named CLI correction at fingerprint `87b80ab226b721df33973f944dd1b9c89ce0e7080ac0bb0d4fe147c32b038f6e`.
+The 37-path change preserves command constructors and registration bodies while grouping resource help facts beside their constructors.
+Independent isolated builds match all 72 checked help routes in stdout, stderr, and exit status.
+CLI tests and scoped vet pass without regenerating expected output.
+
+The test-purpose correction has fingerprint `953be35dc0dc9766d4264ce4499058b3fb682d41b423e6d15857b42e3aa1fa73` and 36 changed paths.
+It retains all 21 tests from six mixed app files and renames seven other historical test files without changing their contents.
+Permission previews now assert the requested username filter and resolved principal; the default-site test asserts the exact group endpoint.
+Independent negative overlays show that the original tests accept both wrong behaviors and the strengthened tests reject them.
+All 21 relocated tests pass when selected by their current names, and no active gate selector retains the old identifiers.
+Evidence for these two bounded reviews remains in `.tadx-refactor/review-test-sol/`.
+Their combined-source verification and final acceptance remain pending.
+
+## Current pushed checkpoint
+
+Exact revision `efd38610e1dbb681a006e621b054ed10276f2e25` passes hosted CI run `37185449552` and tooling run `37185449380`.
+The successful jobs include Linux and Windows quality checks, cross-platform builds, and native policy checks.
+These results close the hosted rerun requirement for the separately reviewed Windows fixture corrections below.
+They do not transfer to the later publication, Pulse, navigation, documentation, or final architecture corrections.
+
 ## Command-owned help facts
 
 Command-specific flag values, requirements, defaults, summaries, examples, and notes live beside their category constructors.
@@ -793,6 +830,32 @@ The retained ZIP SHA-256 is `9edd8503352055b4c78f93db0ca4c899671df7a2970e1f0222c
 Independent Sol review verifies both path hashes, preserved assertions, the diagnostic evidence, focused E2E tests, and repository compilation.
 No production bytes change in this correction.
 The new source still requires a hosted Windows rerun and the remaining full candidate gates.
+
+## Publication and Pulse lifecycle ownership
+
+Publication now uses named workbook, datasource, and flow Service operations.
+Resource adapters own artifact source selection, native request/result conversion, and exact destination confirmation.
+App retains construction and shared mechanism binding; its publication facades and native conversion files are removed.
+Publication confirmation retains partial workbook identity when project-path enrichment fails, unlike the distinct recovery fallback contract.
+Existing algorithm assertions survive behind private runners or public Service boundaries; test-only public publisher constructors are removed.
+The reporting and recovery gate manifests follow their relocated owners, without changing their failure assertions.
+
+Independent Sol review accepts the 54-path exact-current publication snapshot based on `efd38610e1dbb681a006e621b054ed10276f2e25`.
+Its 1,604-file source fingerprint is `e3747d1baf45c3a7622c5ad40e5acd383e6214c394f4bbb64b9994cad0dff9ed`, and ZIP SHA-256 is `dfcc2f16917da153ba81a299ab0f377c982c18d1e1bd96a0c6b995279e8ad09b`.
+Independent focused action, resource, CLI, app, jobmonitor, and architecture tests pass.
+The reporting manifest passes two controls and two isolated defect seeds; the baseline-fixes manifest passes three controls and three seeds.
+
+Pulse definition and metric Services now own their complete lifecycle operations, including pull, bundle publish, followers, and mutations.
+Pulse resource adapters own native conversions, artifact handling, and follower-cache snapshots; app retains provider construction.
+The current-head merge removes the final app acquisition-preview implementations after all consumers move to their resource owners.
+Exact Pulse artifact/error import permissions retain positive, nested-package, and unrelated-owner rejection tests.
+Independent Sol review accepts the 58-path exact-current Pulse snapshot, also based on `efd38610e1dbb681a006e621b054ed10276f2e25`.
+Its 1,598-file source fingerprint is `9cb462ecefab83350e2f8020a903c620feee45d0513de035d212d91406604ab1`, and ZIP SHA-256 is `77469a9849bc362c0442f4007299b5a2b6cc017b998faa6228b5b9bdfff9b72c`.
+Independent focused Pulse, resource, CLI, app, architecture, compilation, and vet checks pass.
+
+The combined candidate includes both disjoint ownership changes, reviewed test relocation, and contributor documentation.
+Historical test navigation, test-purpose findings, combined validation, final architecture comparison, and exact-build live acceptance remain separate requirements.
+Individual snapshot results do not establish those remaining gates.
 
 ## Acceptance dependencies
 

@@ -1,4 +1,3 @@
-// Package logout removes TADX-stored PAT credentials for one environment.
 package auth
 
 import (
@@ -10,17 +9,17 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-// Resolver resolves one configured environment without reading credentials.
+// LogoutResolver resolves one configured environment without reading credentials.
 type LogoutResolver interface {
 	Resolve(context.Context, string) (LogoutTarget, error)
 }
 
-// Store removes credentials from TADX's native OS credential store.
+// LogoutStore removes credentials from TADX's native OS credential store.
 type LogoutStore interface {
 	Remove(context.Context, LogoutTarget) (LogoutRemoveResult, error)
 }
 
-// Execute removes TADX's stored credential and preserves remote PAT state.
+// Logout removes TADX's stored credential and preserves remote PAT state.
 func (a *Service) Logout(ctx context.Context, input LogoutInput) (LogoutOutput, error) {
 	if a == nil || a.LogoutResolver == nil || a.LogoutStore == nil {
 		return LogoutOutput{}, &errs.Error{ID: "auth.logout.unconfigured", Kind: errs.KindRuntime, Operation: "auth.logout", Summary: "PAT logout is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure environment resolution and OS credential storage before retrying."}

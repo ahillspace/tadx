@@ -13,6 +13,17 @@ type ProjectPaths interface {
 	ResolveProjectPaths(context.Context, []string) (map[string]string, error)
 }
 
+// ListFilterPort validates and encodes a native datasource selection before authentication.
+type ListFilterPort struct{}
+
+func (ListFilterPort) ListFilter(input datasource.ListInput) (string, error) {
+	return tableaudatasource.ListFilter(tableaudatasource.ListRequest{
+		Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID,
+		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
+		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
+	})
+}
+
 type ReadPorts struct {
 	Adapter  *Adapter
 	Projects ProjectPaths

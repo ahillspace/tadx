@@ -6,6 +6,7 @@ import (
 
 	definition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/resources/pulse"
 )
 
@@ -32,7 +33,7 @@ func (c *pulseCommands) cacheStore(alias string) *cache.Store {
 }
 
 func pulseCacheSupport() pulse.CacheSupport {
-	return pulse.CacheSupport{ReadError: cacheReadError, ReadSource: cacheReadSource, RecordSource: cacheRecordSource}
+	return pulse.CacheSupport{ReadError: inventory.CacheReadError, ReadSource: inventory.CacheReadSource, RecordSource: inventory.CacheRecordSource}
 }
 
 func (p pulseDefinitionReadProvider) Open(ctx context.Context, alias, site, operation string) (definition.ReadSession, error) {

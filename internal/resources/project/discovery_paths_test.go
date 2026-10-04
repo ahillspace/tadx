@@ -11,8 +11,9 @@ import (
 )
 
 type discoveryProjectsClient struct {
-	calls int
-	root  string
+	calls         int
+	root          string
+	omitUnrelated bool
 }
 
 func TestExplicitProjectPhaseSharesIndexAndFreshPhaseObservesDrift(t *testing.T) {
@@ -53,7 +54,11 @@ func TestExplicitProjectPhaseSharesIndexAndFreshPhaseObservesDrift(t *testing.T)
 
 func (c *discoveryProjectsClient) List(_ context.Context, in tableauproject.ListRequest) (tableauproject.Page, error) {
 	c.calls++
-	return tableauproject.Page{Number: in.PageNumber, Size: in.PageSize, Total: 3, Items: []tableauproject.Project{{LUID: "root", Name: c.root}, {LUID: "child", Name: "Orders", ParentLUID: "root"}, {LUID: "unrelated", Name: "Unrelated", ParentLUID: "missing"}}}, nil
+	items := []tableauproject.Project{{LUID: "root", Name: c.root}, {LUID: "child", Name: "Orders", ParentLUID: "root"}}
+	if !c.omitUnrelated {
+		items = append(items, tableauproject.Project{LUID: "unrelated", Name: "Unrelated", ParentLUID: "missing"})
+	}
+	return tableauproject.Page{Number: in.PageNumber, Size: in.PageSize, Total: len(items), Items: items}, nil
 }
 
 func TestDiscoveryHierarchyIsLazyImmutableAndNeverChangesLiveResolution(t *testing.T) {
@@ -85,5 +90,27 @@ func TestDiscoveryHierarchyIsLazyImmutableAndNeverChangesLiveResolution(t *testi
 	}
 	if _, err = discovery.ResolveProjectPaths(ctx, []string{"unrelated"}); err == nil {
 		t.Fatal("requested invalid hierarchy was accepted")
+	}
+}
+
+func TestDiscoveryPathsUseFreshHierarchyForMutationSelectors(t *testing.T) {
+	ctx := t.Context()
+	client := &discoveryProjectsClient{root: "Original", omitUnrelated: true}
+	discovery := project.NewDiscoveryPaths(project.NewAdapter(client))
+	if path, err := discovery.ResolveProjectPath(ctx, "child"); err != nil || path != "Original/Orders" {
+		t.Fatalf("discovery path = %q, %v", path, err)
+	}
+	client.root = "Fresh"
+	if err := discovery.ValidateProjectPath(ctx, "Fresh/Orders"); err != nil {
+		t.Fatalf("fresh path validation failed: %v", err)
+	}
+	if path, err := discovery.ResolveProjectSelectorPath(ctx, "Fresh/Orders"); err != nil || path != "Fresh/Orders" {
+		t.Fatalf("fresh selector = %q, %v", path, err)
+	}
+	if _, err := discovery.ResolveProjectSelectorPath(ctx, "Original/Orders"); err == nil {
+		t.Fatal("mutation selector reused the immutable discovery snapshot")
+	}
+	if path, err := discovery.ResolveProjectPath(ctx, "child"); err != nil || path != "Original/Orders" {
+		t.Fatalf("discovery path changed = %q, %v", path, err)
 	}
 }

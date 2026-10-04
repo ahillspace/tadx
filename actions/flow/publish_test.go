@@ -1,4 +1,4 @@
-package flow_test
+package flow
 
 import (
 	"bytes"
@@ -8,20 +8,19 @@ import (
 	"path/filepath"
 	"testing"
 
-	flowpublish "github.com/ahillspace/tadx/actions/flow"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
-type publishArtifactReader struct{ artifact flowpublish.PublishArtifact }
+type publishArtifactReader struct{ artifact PublishArtifact }
 
-func (r publishArtifactReader) ReadFlow(context.Context, string) (flowpublish.PublishArtifact, error) {
+func (r publishArtifactReader) ReadFlow(context.Context, string) (PublishArtifact, error) {
 	return r.artifact, nil
 }
 
 func TestPublishOutputGolden(t *testing.T) {
-	output := flowpublish.PublishOutput{Plan: flowpublish.PublishPlan{Mode: "execute", Operation: "flow.publish", ArtifactPath: "artifacts/flow/Daily", ArtifactFingerprint: "sha256:abc", Filename: "Daily.tflx", FlowName: "Daily", Target: flowpublish.PublishTarget{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1", ProjectPath: "Ops"}, Substeps: []string{"resolve exact destination", "publish flow"}}, Result: &flowpublish.PublishResult{Status: "succeeded", FlowLUID: "flow-1", FlowName: "Daily", ProjectLUID: "project-1", TableauRequestID: "request-1"}, Help: []string{"tadx content flow inspect --id flow-1"}}
+	output := PublishOutput{Plan: PublishPlan{Mode: "execute", Operation: "flow.publish", ArtifactPath: "artifacts/flow/Daily", ArtifactFingerprint: "sha256:abc", Filename: "Daily.tflx", FlowName: "Daily", Target: PublishTarget{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1", ProjectPath: "Ops"}, Substeps: []string{"resolve exact destination", "publish flow"}}, Result: &PublishResult{Status: "succeeded", FlowLUID: "flow-1", FlowName: "Daily", ProjectLUID: "project-1", TableauRequestID: "request-1"}, Help: []string{"tadx content flow inspect --id flow-1"}}
 	publishAssertGolden(t, "compact.toon", output, false)
 	publishAssertGolden(t, "full.toon", output, true)
 }
@@ -42,25 +41,31 @@ func publishAssertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 type publishResolver struct {
-	project                 flowpublish.Project
-	collisions              []flowpublish.Record
+	project                 Project
+	collisions              []Record
 	resolveCalls, findCalls int
+	phaseCalls              int
 }
 
-func (r *publishResolver) ResolveProject(context.Context, identity.Selector) (flowpublish.Project, error) {
+func (r *publishResolver) BeginProjectResolution(ctx context.Context) context.Context {
+	r.phaseCalls++
+	return ctx
+}
+
+func (r *publishResolver) ResolveProject(context.Context, identity.Selector) (Project, error) {
 	r.resolveCalls++
 	return r.project, nil
 }
-func (r *publishResolver) FindFlows(context.Context, string, string) ([]flowpublish.Record, error) {
+func (r *publishResolver) FindFlows(context.Context, string, string) ([]Record, error) {
 	r.findCalls++
 	return r.collisions, nil
 }
 
 type publishPrepared struct{ committed bool }
 
-func (p *publishPrepared) Commit(context.Context) (flowpublish.PublishResult, error) {
+func (p *publishPrepared) Commit(context.Context) (PublishResult, error) {
 	p.committed = true
-	return flowpublish.PublishResult{Status: "succeeded", FlowLUID: "new-flow"}, nil
+	return PublishResult{Status: "succeeded", FlowLUID: "new-flow"}, nil
 }
 
 type publishPublisher struct {
@@ -68,16 +73,16 @@ type publishPublisher struct {
 	prepared *publishPrepared
 }
 
-func (p *publishPublisher) Prepare(context.Context, flowpublish.PublishRequest) (flowpublish.PreparedPublish, error) {
+func (p *publishPublisher) Prepare(context.Context, PublishRequest) (PreparedPublish, error) {
 	p.calls++
 	p.prepared = &publishPrepared{}
 	return p.prepared, nil
 }
 
 func TestPublishPreviewDoesNotPrepareOrCommitPublish(t *testing.T) {
-	r := &publishResolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}
+	r := &publishResolver{project: Project{LUID: "p-1", Path: "Ops"}}
 	p := &publishPublisher{}
-	output, err := flowpublish.NewPublish(publishArtifactReader{artifact: flowpublish.PublishArtifact{Path: "artifacts/flow/Daily", PayloadPath: "Daily.tflx", Filename: "Daily.tflx", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifacts/flow/Daily", Name: "Copy", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
+	output, err := newPublisher(publishArtifactReader{artifact: PublishArtifact{Path: "artifacts/flow/Daily", PayloadPath: "Daily.tflx", Filename: "Daily.tflx", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifacts/flow/Daily", Name: "Copy", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,9 +93,9 @@ func TestPublishPreviewDoesNotPrepareOrCommitPublish(t *testing.T) {
 
 func TestPublishPublishDefaultSiteRequiresResolvedTarget(t *testing.T) {
 	for _, resolved := range []bool{false, true} {
-		r := &publishResolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}
+		r := &publishResolver{project: Project{LUID: "p-1", Path: "Ops"}}
 		p := &publishPublisher{}
-		out, err := flowpublish.NewPublish(publishArtifactReader{artifact: flowpublish.PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.PublishInput{Environment: "dev", TargetResolved: resolved, ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
+		out, err := newPublisher(publishArtifactReader{artifact: PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), PublishInput{Environment: "dev", TargetResolved: resolved, ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
 		if (err == nil) != resolved || p.calls != 0 {
 			t.Fatalf("resolved=%t output=%#v err=%v publisher=%#v", resolved, out, err, p)
 		}
@@ -101,13 +106,13 @@ func TestPublishPublishDefaultSiteRequiresResolvedTarget(t *testing.T) {
 }
 
 func TestPublishPublishRevalidatesThenPreparesAndCommits(t *testing.T) {
-	r := &publishResolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}
+	r := &publishResolver{project: Project{LUID: "p-1", Path: "Ops"}}
 	p := &publishPublisher{}
-	output, err := flowpublish.NewPublish(publishArtifactReader{artifact: flowpublish.PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, false)
+	output, err := newPublisher(publishArtifactReader{artifact: PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Result == nil || p.calls != 1 || !p.prepared.committed || r.resolveCalls != 2 || r.findCalls != 2 {
+	if output.Result == nil || p.calls != 1 || !p.prepared.committed || r.phaseCalls != 2 || r.resolveCalls != 2 || r.findCalls != 2 {
 		t.Fatalf("output=%#v resolver=%#v publisher=%#v", output, r, p)
 	}
 }
@@ -115,26 +120,30 @@ func TestPublishPublishRevalidatesThenPreparesAndCommits(t *testing.T) {
 // driftingResolver returns a different destination project on its second
 // resolution, simulating the destination changing between planning and mutation.
 type publishDriftingResolver struct {
-	first, second flowpublish.Project
-	collisions    []flowpublish.Record
+	first, second Project
+	collisions    []Record
 	resolveCalls  int
 }
 
-func (r *publishDriftingResolver) ResolveProject(context.Context, identity.Selector) (flowpublish.Project, error) {
+func (r *publishDriftingResolver) BeginProjectResolution(ctx context.Context) context.Context {
+	return ctx
+}
+
+func (r *publishDriftingResolver) ResolveProject(context.Context, identity.Selector) (Project, error) {
 	r.resolveCalls++
 	if r.resolveCalls == 1 {
 		return r.first, nil
 	}
 	return r.second, nil
 }
-func (r *publishDriftingResolver) FindFlows(context.Context, string, string) ([]flowpublish.Record, error) {
+func (r *publishDriftingResolver) FindFlows(context.Context, string, string) ([]Record, error) {
 	return r.collisions, nil
 }
 
 func TestPublishPublishDoesNotPrepareWhenRevalidationFails(t *testing.T) {
-	r := &publishDriftingResolver{first: flowpublish.Project{LUID: "p-1", Path: "Ops"}, second: flowpublish.Project{LUID: "p-2", Path: "Ops"}}
+	r := &publishDriftingResolver{first: Project{LUID: "p-1", Path: "Ops"}, second: Project{LUID: "p-2", Path: "Ops"}}
 	p := &publishPublisher{}
-	_, err := flowpublish.NewPublish(publishArtifactReader{artifact: flowpublish.PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, false)
+	_, err := newPublisher(publishArtifactReader{artifact: PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, false)
 	if err == nil {
 		t.Fatal("expected revalidation to fail when the destination changed during execution")
 	}

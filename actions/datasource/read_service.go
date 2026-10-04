@@ -6,6 +6,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/readsource"
 	"github.com/ahillspace/tadx/internal/value"
 )
@@ -48,11 +49,8 @@ type ReadProvider interface {
 	CacheTarget(string) (ReadTarget, error)
 	CachedList(ReadTarget) CachedListReader
 	CachedInspect(ReadTarget) CachedInspectResolver
-	LegacyInventoryCursor(string) bool
 	ListFilter(ListInput) (string, error)
 	OpenDatasourceRead(context.Context, string, string, string) (ReadSession, error)
-	ValidateComplete(bool, *readsource.Metadata) error
-	RefreshError(string, string, string, error) error
 	Now() time.Time
 }
 
@@ -74,10 +72,10 @@ func (s *Service) ListDatasources(ctx context.Context, input ListInput) (result 
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = p.ValidateComplete(input.All, result.Source)
+			resultErr = inventory.ValidateAll(input.All, result.Source)
 		}
 	}()
-	if input.Cache || p.LegacyInventoryCursor(input.Cursor) {
+	if input.Cache || inventory.LegacyInventoryCursor(input.Cursor) {
 		target, err := p.CacheTarget(input.Environment)
 		if err != nil {
 			return ListOutput{}, err
@@ -124,7 +122,7 @@ func (s *Service) ListDatasources(ctx context.Context, input ListInput) (result 
 		observedAt := p.Now().UTC()
 		collected, err := session.Inventory.CollectDatasources(ctx, filter, observedAt)
 		if err != nil {
-			return ListOutput{}, p.RefreshError("datasource.list", input.Environment, input.Site, err)
+			return ListOutput{}, inventory.RefreshError("datasource.list", input.Environment, input.Site, err)
 		}
 		output, err := listValidated(ctx, collected.Reader, input, selection)
 		if err != nil {

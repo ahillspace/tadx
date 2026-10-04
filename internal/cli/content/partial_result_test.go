@@ -16,7 +16,7 @@ type partialPublisher struct{ unknown bool }
 
 type warningPublisher struct{}
 
-func (warningPublisher) Execute(_ context.Context, _ workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
+func (warningPublisher) PublishWorkbook(_ context.Context, _ workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
 	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Mode: "preview", Operation: "workbook.publish", ArtifactFingerprint: "diagnostic-fingerprint", Warnings: []string{"Workbook retains published datasource bindings to its source site."}}}, nil
 }
 
@@ -32,7 +32,7 @@ func TestPublishPreviewDisplaysConsequentialWarningWithoutFull(t *testing.T) {
 	}
 }
 
-func (p partialPublisher) Execute(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
+func (p partialPublisher) PublishWorkbook(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
 	result := &workbookops.PublishResult{Status: "created", WorkbookLUID: "created-workbook", TableauRequestID: "readback-request"}
 	if p.unknown {
 		result = &workbookops.PublishResult{Status: "unknown", JobID: "accepted-job"}

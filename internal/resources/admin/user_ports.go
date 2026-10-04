@@ -14,6 +14,13 @@ type UserPorts struct {
 	ServerURL  string
 }
 
+// UserListFilterPort validates and encodes a native user selection before authentication.
+type UserListFilterPort struct{}
+
+func (UserListFilterPort) ListFilter(input user.ListInput) (string, error) {
+	return tableau.UserListFilter(tableau.ListUsersRequest{Name: input.Name, SiteRole: input.SiteRole})
+}
+
 func (p UserPorts) ListUsers(ctx context.Context, in user.ListPageRequest) (user.ListPage, error) {
 	page, err := p.Adapter.ListUsers(ctx, tableau.ListUsersRequest{PageNumber: in.PageNumber, PageSize: in.PageSize, Name: in.Name, SiteRole: in.SiteRole})
 	items := make([]user.Record, len(page.Items))

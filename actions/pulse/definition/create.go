@@ -112,7 +112,7 @@ func createFailureAdvice(input CreateInput, cause error) string {
 }
 
 // Create plans every call and creates unless preview is requested.
-func Create(ctx context.Context, validator CreateFieldValidator, finder CreateCollisionFinder, creator CreateCreator, input CreateInput, preview bool) (CreateOutput, error) {
+func runCreate(ctx context.Context, validator CreateFieldValidator, finder CreateCollisionFinder, creator CreateCreator, input CreateInput, preview bool) (CreateOutput, error) {
 	plan, err := createPlan(ctx, validator, finder, input)
 	if err != nil {
 		return CreateOutput{}, err
@@ -302,7 +302,7 @@ func createError(id string, kind errs.Kind, input CreateInput, summary string, c
 }
 
 // ValidateInput checks the complete authoring intent without live field validation.
-func CreateValidateInput(input *CreateInput) error {
+func createValidateInput(input *CreateInput) error {
 	request, err := createRequestFromIntent(input.Intent)
 	if err != nil {
 		return createError("pulse.definition.create.usage", errs.KindUsage, *input, "Pulse definition intent is invalid.", err)

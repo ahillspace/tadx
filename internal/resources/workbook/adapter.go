@@ -38,11 +38,16 @@ type ProjectPathResolver interface {
 	ResolveProjectPath(context.Context, string) (string, error)
 }
 
-// ProjectIdentityResolver also supplies exact destination identities and phase freshness.
-type ProjectIdentityResolver interface {
-	ProjectPathResolver
+// ProjectResolution is the required exact destination and phase capability for writes.
+type ProjectResolution interface {
 	ResolveProjectIdentity(context.Context, identity.Selector) (value.ProjectIdentity, error)
 	BeginProjectResolution(context.Context) context.Context
+}
+
+// ProjectIdentityResolver also supplies canonical paths for read-only adapters.
+type ProjectIdentityResolver interface {
+	ProjectPathResolver
+	ProjectResolution
 }
 
 type projectPathBatchResolver interface {
@@ -462,22 +467,6 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 		return Project{}, err
 	}
 	return projects[resolved.LUID], nil
-}
-
-// BeginProjectResolution forwards an explicit validation phase when configured.
-func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
-	if a == nil {
-		return ctx
-	}
-	if a.projectIdentities != nil {
-		return a.projectIdentities.BeginProjectResolution(ctx)
-	}
-	if resolver, ok := a.projects.(interface {
-		BeginProjectResolution(context.Context) context.Context
-	}); ok {
-		return resolver.BeginProjectResolution(ctx)
-	}
-	return ctx
 }
 
 type projectPathIndex struct {

@@ -60,12 +60,3 @@ func listRecord(item Record) listDatasource {
 		AskDataEnablement: item.AskDataEnablement,
 	}
 }
-
-func beginProjectResolution(ctx context.Context, resolver any) context.Context {
-	if phased, ok := resolver.(interface {
-		BeginProjectResolution(context.Context) context.Context
-	}); ok {
-		return phased.BeginProjectResolution(ctx)
-	}
-	return ctx
-}

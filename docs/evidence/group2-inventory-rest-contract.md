@@ -63,7 +63,7 @@ The list and inspect tests in `actions/datasource` cover compact and full TOON p
 `internal/app/search_test.go` locks native content routing, dedicated administration and Pulse routing, content-first broad ordering, bounded phase filling, and cache isolation.
 `internal/app/inventory_all_e2e_test.go` covers explicit full collection across all six list-backed resource types and subsequent cache reads.
 `internal/app/read_discovery_e2e_test.go` covers public discovery without opaque cursors.
-`internal/app/group1_remote_e2e_test.go` covers preservation of live results when cache publication fails.
+`internal/app/project_flow_e2e_test.go` covers preservation of live results when cache publication fails.
 `internal/app/inventory_snapshot_compatibility_test.go` covers legacy partial snapshots without Tableau requests or public cursor output.
 `internal/cache/sqlite_test.go` locks the versioned strict schema, environment and site isolation, transactional rollback, atomic publication, generation pruning, exact lookup, bounded search, staleness, corruption handling, and concurrent readers.
 `internal/app/cache_generation_contract_test.go` proves that the engine streams through the composed cache boundary into SQLite and that a failed collector cannot publish a partial generation.

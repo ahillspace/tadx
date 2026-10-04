@@ -6,6 +6,7 @@ import (
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/identity"
+	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"os"
 	"path/filepath"
@@ -43,6 +44,23 @@ func (workbookDependencyPullReader) DownloadPublishedDatasource(context.Context,
 }
 
 type datasourcePublishPreviewDependency struct{}
+
+func (datasourcePublishPreviewDependency) BeginProjectResolution(ctx context.Context) context.Context {
+	return ctx
+}
+
+type datasourcePublishPreviewProvider struct {
+	reader datasourceops.ArtifactReader
+	ports  datasourcePublishPreviewDependency
+}
+
+func (p datasourcePublishPreviewProvider) OpenDatasourcePublishSource(_ context.Context, input datasourceops.PublishInput) (datasourceops.PublishInput, datasourceops.ArtifactReader, string, error) {
+	return input, p.reader, input.ArtifactPath, nil
+}
+
+func (p datasourcePublishPreviewProvider) OpenDatasourcePublish(_ context.Context, input datasourceops.PublishInput, _ string) (datasourceops.PublishSession, error) {
+	return datasourceops.PublishSession{Environment: input.Environment, Site: input.Site, Resolver: p.ports, Preparer: p.ports}, nil
+}
 
 func (datasourcePublishPreviewDependency) ResolveProject(context.Context, identity.Selector) (datasourceops.Project, error) {
 	return datasourceops.Project{LUID: "target-project", Name: "Target", Path: "Target"}, nil
@@ -100,11 +118,7 @@ func TestWorkbookPullDependencyArtifactPassesDatasourcePublishPreflight(t *testi
 	}
 
 	dependency := datasourcePublishPreviewDependency{}
-	preview, err := datasourceops.NewPublish(
-		datasourceArtifactReader{manager: manager, displayPath: pulled.Artifact.Dependencies[0].Path},
-		dependency,
-		dependency,
-	).Execute(context.Background(), datasourceops.PublishInput{
+	preview, err := datasourceops.New(datasourceops.Ports{Publish: datasourcePublishPreviewProvider{reader: resourcedatasource.ManagedPublishReader{Manager: manager, DisplayPath: pulled.Artifact.Dependencies[0].Path}, ports: dependency}}).PublishDatasource(context.Background(), datasourceops.PublishInput{
 		ArtifactPath: dependencyPath, Environment: "target", Site: "target-site",
 		ProjectSelector: identity.Selector{LUID: "target-project"}, Mode: datasourceops.ModeCreate,
 	}, true)

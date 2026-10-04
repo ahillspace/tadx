@@ -10,7 +10,7 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-// Inspect inspects the requested exact job without changing remote state.
+// inspectOutput inspects the requested exact job without changing remote state.
 func inspectOutput(ctx context.Context, inspect func(context.Context, InspectInput) (InspectResult, error), input InspectInput) (InspectOutput, error) {
 	if err := ValidateInspectInput(input); err != nil {
 		return InspectOutput{}, err

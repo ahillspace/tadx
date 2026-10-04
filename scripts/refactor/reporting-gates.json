@@ -9,10 +9,16 @@
       "package": "./internal/app",
       "tests": [
         "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
-        "TestPublicationAcceptedReceiptPersistenceFailureBeforeObservation",
         "TestDatasourcePublicationDelayedDestinationRecoveryThroughCLI"
       ],
       "contract": "Accepted workbook and datasource receipt failures preserve job/request IDs, persistence phase, pending unknown outcome, and non-retry guidance without additional native requests. Datasource delayed visibility recovery does not resubmit or invent destination identity."
+    },
+    {
+      "id": "g3-publication-acceptance-persistence",
+      "gate": "G3",
+      "package": "./internal/jobmonitor",
+      "tests": ["TestPublicationAcceptedReceiptPersistenceFailureBeforeObservation"],
+      "contract": "An accepted job and request identity survive receipt persistence failure before observation begins."
     }
   ],
   "seeds": [
@@ -20,7 +26,7 @@
       "id": "seed-receipt-phase",
       "control": "g3-publication-reporting",
       "test": "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
-      "path": "internal/app/publication.go",
+      "path": "internal/jobmonitor/publication.go",
       "before": "Cause:   err, Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown,",
       "after": "Cause:   err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown,",
       "failure_contains": "receipt failure must preserve pending remote outcome and identify persistence phase"
@@ -29,7 +35,7 @@
       "id": "seed-receipt-request-identity",
       "control": "g3-publication-reporting",
       "test": "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
-      "path": "internal/app/publication.go",
+      "path": "internal/jobmonitor/publication.go",
       "before": "TableauJobID: id, TableauRequestID: requestID,",
       "after": "TableauJobID: id, TableauRequestID: \"\",",
       "failure_contains": "accepted request identity lost from the error contract"

@@ -75,7 +75,7 @@ func TestJobInspectCancelAndWaitUseExactRemoteJobs(t *testing.T) {
 
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
-	configPath := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	configPath := writeCLIConfigWithSite(t, server.URL, "team-site")
 	options := withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 
 	var inspect strings.Builder

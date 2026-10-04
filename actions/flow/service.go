@@ -25,6 +25,7 @@ type Ports struct {
 	Mutation MutationProvider
 	Read     ReadProvider
 	Pull     PullProvider
+	Publish  PublishProvider
 }
 
 type Service struct{ ports Ports }

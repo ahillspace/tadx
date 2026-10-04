@@ -26,6 +26,7 @@ type Ports struct {
 	Read     ReadProvider
 	Schema   SchemaProvider
 	Pull     PullProvider
+	Publish  PublishProvider
 }
 
 type Service struct{ ports Ports }

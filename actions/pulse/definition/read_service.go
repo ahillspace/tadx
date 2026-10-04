@@ -55,9 +55,16 @@ type ReadProvider interface {
 }
 
 // Service owns Pulse definition operations and their target-bound observations.
-type Service struct{ ReadProvider ReadProvider }
+type Service struct{ ports Ports }
 
-func New(readProvider ReadProvider) *Service { return &Service{ReadProvider: readProvider} }
+type Ports struct {
+	Read     ReadProvider
+	Pull     PullProvider
+	Mutation MutationProvider
+	Publish  PublishProvider
+}
+
+func New(ports Ports) *Service { return &Service{ports: ports} }
 
 // ListPulseDefinitions selects cached or native listing after validating input.
 func (s *Service) ListPulseDefinitions(ctx context.Context, input ListInput) (ListOutput, error) {
@@ -67,10 +74,10 @@ func (s *Service) ListPulseDefinitions(ctx context.Context, input ListInput) (Li
 	var target ReadTarget
 	if input.Cursor != "" || input.Cache {
 		var err error
-		target, err = s.ReadProvider.CacheTarget(input.Environment)
+		target, err = s.ports.Read.CacheTarget(input.Environment)
 		if err != nil {
 			if input.Cache && input.Cursor == "" {
-				return ListOutput{}, s.ReadProvider.CacheSetupError("pulse.definition.list", input.Environment, err)
+				return ListOutput{}, s.ports.Read.CacheSetupError("pulse.definition.list", input.Environment, err)
 			}
 			return ListOutput{}, err
 		}
@@ -80,14 +87,14 @@ func (s *Service) ListPulseDefinitions(ctx context.Context, input ListInput) (Li
 		}
 	}
 	if input.Cache {
-		reader := s.ReadProvider.CachedList(target)
+		reader := s.ports.Read.CachedList(target)
 		output, err := List(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.Source()
 		}
 		return output, err
 	}
-	session, err := s.ReadProvider.Open(ctx, input.Environment, input.Site, "pulse.definition.list")
+	session, err := s.ports.Read.Open(ctx, input.Environment, input.Site, "pulse.definition.list")
 	if err != nil {
 		return ListOutput{}, err
 	}
@@ -96,7 +103,7 @@ func (s *Service) ListPulseDefinitions(ctx context.Context, input ListInput) (Li
 	if err != nil {
 		return output, err
 	}
-	output.Source = new(readsource.Live(s.ReadProvider.Now()))
+	output.Source = new(readsource.Live(s.ports.Read.Now()))
 	session.List.Publish()
 	return output, nil
 }
@@ -107,12 +114,12 @@ func (s *Service) InspectPulseDefinition(ctx context.Context, input InspectInput
 		return InspectOutput{}, err
 	}
 	if input.Cache {
-		target, err := s.ReadProvider.CacheTarget(input.Environment)
+		target, err := s.ports.Read.CacheTarget(input.Environment)
 		if err != nil {
-			return InspectOutput{}, s.ReadProvider.CacheSetupError("pulse.definition.inspect", input.Environment, err)
+			return InspectOutput{}, s.ports.Read.CacheSetupError("pulse.definition.inspect", input.Environment, err)
 		}
 		input.Environment, input.Site = target.Environment, target.Site
-		reader := s.ReadProvider.CachedInspect(target)
+		reader := s.ports.Read.CachedInspect(target)
 		output, err := inspectValidated(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.Source()
@@ -121,7 +128,7 @@ func (s *Service) InspectPulseDefinition(ctx context.Context, input InspectInput
 		}
 		return output, err
 	}
-	session, err := s.ReadProvider.Open(ctx, input.Environment, input.Site, "pulse.definition.inspect")
+	session, err := s.ports.Read.Open(ctx, input.Environment, input.Site, "pulse.definition.inspect")
 	if err != nil {
 		return InspectOutput{}, err
 	}
@@ -130,7 +137,7 @@ func (s *Service) InspectPulseDefinition(ctx context.Context, input InspectInput
 	if err != nil {
 		return output, err
 	}
-	output.Source = new(readsource.Live(s.ReadProvider.Now()))
+	output.Source = new(readsource.Live(s.ports.Read.Now()))
 	session.Inspect.Publish()
 	return output, nil
 }

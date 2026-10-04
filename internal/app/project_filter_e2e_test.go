@@ -58,7 +58,7 @@ func TestProjectIDWorkbookListThroughCLI(t *testing.T) {
 	var output strings.Builder
 	exit := app.Run(t.Context(), []string{
 		"content", "workbook", "list", "--environment", "production", "--project-id", "project-1", "--limit", "1",
-	}, &output, app.Options{ConfigPath: writePhaseOneConfig(t, server.URL), HTTPClient: server.Client()})
+	}, &output, app.Options{ConfigPath: writeCLIConfig(t, server.URL), HTTPClient: server.Client()})
 	if exit != 0 {
 		t.Fatalf("exit=%d output=%s", exit, output.String())
 	}
@@ -68,7 +68,7 @@ func TestProjectIDWorkbookListThroughCLI(t *testing.T) {
 	output.Reset()
 	exit = app.Run(t.Context(), []string{
 		"content", "workbook", "list", "--environment", "production", "--project-id", "project-1", "--all",
-	}, &output, app.Options{ConfigPath: writePhaseOneConfig(t, server.URL), HTTPClient: server.Client()})
+	}, &output, app.Options{ConfigPath: writeCLIConfig(t, server.URL), HTTPClient: server.Client()})
 	if exit != 0 || !strings.Contains(output.String(), "project-1") || strings.Contains(output.String(), "project-other") {
 		t.Fatalf("--all project ID lookup was not exact: exit=%d output=%s", exit, output.String())
 	}
@@ -124,7 +124,7 @@ func TestProjectIDDatasourceListThroughCLI(t *testing.T) {
 	var output strings.Builder
 	exit := app.Run(t.Context(), []string{
 		"content", "datasource", "list", "--environment", "production", "--project-id", "project-1", "--limit", "1",
-	}, &output, app.Options{ConfigPath: writePhaseOneConfig(t, server.URL), HTTPClient: server.Client()})
+	}, &output, app.Options{ConfigPath: writeCLIConfig(t, server.URL), HTTPClient: server.Client()})
 	if exit != 0 {
 		t.Fatalf("exit=%d output=%s", exit, output.String())
 	}
@@ -134,7 +134,7 @@ func TestProjectIDDatasourceListThroughCLI(t *testing.T) {
 	output.Reset()
 	exit = app.Run(t.Context(), []string{
 		"content", "datasource", "list", "--environment", "production", "--project-id", "project-1", "--all",
-	}, &output, app.Options{ConfigPath: writePhaseOneConfig(t, server.URL), HTTPClient: server.Client()})
+	}, &output, app.Options{ConfigPath: writeCLIConfig(t, server.URL), HTTPClient: server.Client()})
 	if exit != 0 || !strings.Contains(output.String(), "project-1") || strings.Contains(output.String(), "project-other") {
 		t.Fatalf("--all project ID lookup was not exact: exit=%d output=%s", exit, output.String())
 	}

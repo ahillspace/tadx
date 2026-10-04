@@ -1,10 +1,8 @@
-package metric_test
+package metric
 
 import (
 	"strings"
 	"testing"
-
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 )
 
 func TestForkCompactPopulationBoundsAndMissingSemanticsAreExplicit(t *testing.T) {
@@ -17,8 +15,8 @@ func TestForkCompactPopulationBoundsAndMissingSemanticsAreExplicit(t *testing.T)
 		filters[i] = map[string]any{"field": "Region", "operator": "OPERATOR_NOT_EQUAL", "categorical_values": values, "include_null": true}
 	}
 	source := map[string]any{"filters": filters, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_MONTH", "range": "RANGE_LAST_COMPLETE"}}
-	output := pulsemetric.ForkOutput{Plan: pulsemetric.ForkPlan{Specification: source, DefinitionFiltersKnown: true}}
-	compact := output.CompactOutput().(pulsemetric.ForkCompactOutput)
+	output := ForkOutput{Plan: ForkPlan{Specification: source, DefinitionFiltersKnown: true}}
+	compact := output.CompactOutput().(ForkCompactOutput)
 	if compact.Plan.ReviewComplete || !compact.Plan.RequiresFull || compact.Plan.Population.FiltersOmitted != 1 || len(compact.Plan.Population.Filters) != 25 {
 		t.Fatalf("compact=%#v", compact.Plan)
 	}
@@ -32,12 +30,12 @@ func TestForkCompactPopulationBoundsAndMissingSemanticsAreExplicit(t *testing.T)
 	output.Plan.Specification = map[string]any{"filters": []any{}, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_CURRENT_PARTIAL"}}
 	output.Plan.DefinitionFiltersKnown = false
 	output.Plan.DefinitionFilters = []any{map[string]any{"field": "Fixed", "operator": "OPERATOR_EQUAL", "categorical_values": []any{map[string]any{"bool_value": false}}, "include_null": false}}
-	compact = output.CompactOutput().(pulsemetric.ForkCompactOutput)
+	compact = output.CompactOutput().(ForkCompactOutput)
 	if compact.Plan.ReviewComplete || compact.Plan.Population.Unrepresented == 0 || compact.Plan.Population.Filters[0].Source != "DEFINITION_FIXED" || compact.Plan.Population.Filters[0].Values[0].Value != "false" {
 		t.Fatalf("missing evidence hidden: %#v", compact.Plan)
 	}
 	output.Plan.Specification["filters"] = []any{map[string]any{"field": "Unknown", "operator": "OPERATOR_CUSTOM", "categorical_values": []any{map[string]any{"future_value": "future"}}}}
-	compact = output.CompactOutput().(pulsemetric.ForkCompactOutput)
+	compact = output.CompactOutput().(ForkCompactOutput)
 	if compact.Plan.ReviewComplete || compact.Plan.Population.Filters[0].Nulls != "UNSPECIFIED" || compact.Plan.Population.Filters[0].Unrepresented < 2 {
 		t.Fatalf("unsupported semantics hidden: %#v", compact.Plan)
 	}

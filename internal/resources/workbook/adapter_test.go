@@ -59,12 +59,13 @@ func (p *exactProjectIdentities) BeginProjectResolution(ctx context.Context) con
 	return ctx
 }
 
-func TestAdapterUsesExplicitProjectIdentityResolverAndPhase(t *testing.T) {
+func TestPublishPortsUseExplicitProjectIdentityResolverAndPhase(t *testing.T) {
 	projects := &exactProjectIdentities{}
 	adapter := resource.NewAdapterWithProjectIdentityResolver(client{}, projects)
 	selector := identity.Selector{ProjectPath: "Department/Ops"}
-	phase := adapter.BeginProjectResolution(t.Context())
-	project, err := adapter.ResolveProject(phase, selector)
+	ports := resource.PublishPorts{Adapter: adapter, Projects: projects}
+	phase := ports.BeginProjectResolution(t.Context())
+	project, err := ports.ResolveProject(phase, selector)
 	if err != nil || project.LUID != "child" || project.Path != selector.ProjectPath {
 		t.Fatalf("project=%#v err=%v", project, err)
 	}

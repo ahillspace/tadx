@@ -71,7 +71,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("stored artifact = %#v", stored)
 	}
 
-	preview, err := commands.PublishDatasource(context.Background(), datasourceops.PublishInput{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, Environment: "production", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeOverwrite}, true)
+	preview, err := datasourceops.New(datasourceops.Ports{Publish: datasourcePublishProvider{commands: commands}}).PublishDatasource(context.Background(), datasourceops.PublishInput{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, Environment: "production", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeOverwrite}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,17 +94,6 @@ func TestDatasourceLifecycleReturnsStructuredSetupErrors(t *testing.T) {
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.workspace" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
 		t.Fatalf("error = %#v", err)
-	}
-}
-
-func TestDatasourcePublishModeMappingIsExhaustive(t *testing.T) {
-	for _, mode := range []datasourceops.Mode{datasourceops.ModeCreate, datasourceops.ModeOverwrite, datasourceops.ModeAppend, datasourceops.ModeReplace} {
-		if _, err := datasourcePublishMode(mode); err != nil {
-			t.Fatalf("mode %q: %v", mode, err)
-		}
-	}
-	if _, err := datasourcePublishMode("unexpected"); err == nil {
-		t.Fatal("unexpected mode succeeded")
 	}
 }
 

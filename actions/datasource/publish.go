@@ -21,31 +21,34 @@ type ArtifactReader interface {
 type PublishResolver interface {
 	ProjectResolver
 	CollisionReader
+	BeginProjectResolution(context.Context) context.Context
 	ResolvePublishedDatasource(context.Context, string, string) (Record, error)
 }
 type PublishPreparer interface {
 	Prepare(context.Context, PublishRequest) (PreparedPublish, error)
 }
-type Publisher struct {
+type publisher struct {
 	artifacts ArtifactReader
 	resolver  PublishResolver
 	publisher PublishPreparer
 }
 
-func NewPublish(artifacts ArtifactReader, resolver PublishResolver, publisher PublishPreparer) *Publisher {
-	return &Publisher{artifacts: artifacts, resolver: resolver, publisher: publisher}
+func newPublisher(artifacts ArtifactReader, resolver PublishResolver, preparer PublishPreparer) *publisher {
+	return &publisher{artifacts: artifacts, resolver: resolver, publisher: preparer}
 }
 
-func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
+func (a *publisher) Execute(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
 	if err := ValidatePublishInput(input); err != nil {
 		return PublishOutput{}, err
 	}
-	if a != nil {
-		ctx = beginProjectResolution(ctx, a.resolver)
-	}
+	return a.executeValidated(ctx, input, preview)
+}
+
+func (a *publisher) executeValidated(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return PublishOutput{}, publishRuntimeError("datasource.publish.unconfigured", "Datasource publish is not configured.", nil)
 	}
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	plan, err := a.plan(ctx, input)
 	if err != nil {
 		return PublishOutput{}, err
@@ -60,7 +63,7 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	}
 	out.Plan.Mode = "execute"
 	out.Help = nil
-	ctx = beginProjectResolution(ctx, a.resolver)
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	artifact, err := a.artifacts.ReadDatasource(ctx, input.ArtifactPath)
 	if err != nil {
 		return PublishOutput{}, publishOperationError("datasource.publish.reread", "Datasource artifact revalidation failed.", input, err)
@@ -126,7 +129,7 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 }
 
 // Complete confirms a completed publish without ever repeating its write.
-func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOutput, error) {
+func (a *publisher) Complete(ctx context.Context, out PublishOutput) (PublishOutput, error) {
 	out.Help = nil
 	if out.Result == nil {
 		return out, nil
@@ -187,7 +190,7 @@ func publishUnknownOutcomeError(plan PublishPlan, input PublishInput, result Pub
 	}
 }
 
-func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, error) {
+func (a *publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, error) {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return PublishPlan{}, publishUsage("environment", "datasource publish requires an explicit resolved environment and site")
 	}
@@ -230,7 +233,7 @@ func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "automatically monitor an accepted job"}, AsJob: input.AsJob, request: req}, nil
 }
 
-func (a *Publisher) resolveProject(ctx context.Context, input PublishInput, artifact PublishArtifact) (Project, error) {
+func (a *publisher) resolveProject(ctx context.Context, input PublishInput, artifact PublishArtifact) (Project, error) {
 	selector := input.ProjectSelector
 	if input.SourceDefaulted {
 		selector = identity.Selector{LUID: identity.LUID(artifact.SourceProjectID), ProjectPath: artifact.SourceProjectName}

@@ -22,7 +22,7 @@ type PublishWriter interface {
 	VerifyMetric(context.Context, string, string, string, string, json.RawMessage) error
 }
 
-func PublishValidateInput(input *PublishInput) error {
+func publishValidateInput(input *PublishInput) error {
 	selectors := 0
 	for _, value := range []string{input.Artifact, input.ArtifactID, input.ArtifactName} {
 		if strings.TrimSpace(value) != "" {
@@ -59,7 +59,7 @@ func publishDatasourceMappings(values []string) (map[string]string, error) {
 }
 
 // Publish uses the locally prepared bundle after composition resolves the destination.
-func Publish(ctx context.Context, validator PublishValidator, writer PublishWriter, input PublishInput, plan PublishPlan) (PublishOutput, error) {
+func runPublish(ctx context.Context, validator PublishValidator, writer PublishWriter, input PublishInput, plan PublishPlan) (PublishOutput, error) {
 	plan.Environment, plan.Site = input.Environment, input.Site
 	document, destination := plan.DefinitionConfiguration, plan.DestinationDatasourceLUID
 	output := PublishOutput{Status: "preview", Plan: plan, Mappings: []PublishMapping{}, Complete: true, Help: []string{"Publishing creates new Pulse objects; existing definitions and metrics are never overwritten. Followers, users, values, and generated insights are not copied."}}
@@ -125,7 +125,7 @@ func Publish(ctx context.Context, validator PublishValidator, writer PublishWrit
 }
 
 // PrepareBundle performs local payload and mapping checks before authentication.
-func PublishPrepareBundle(input PublishInput, bundle PublishBundle) (PublishPlan, error) {
+func preparePublishBundle(input PublishInput, bundle PublishBundle) (PublishPlan, error) {
 	mappings := input.mappings
 	destination, ok := mappings[bundle.DatasourceLUID]
 	if !ok || len(mappings) != 1 {

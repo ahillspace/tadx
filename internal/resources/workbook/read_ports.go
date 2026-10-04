@@ -17,6 +17,13 @@ import (
 
 type ReadPorts struct{ Adapter *Adapter }
 
+// ListFilterPort validates and encodes a native workbook list selection before authentication.
+type ListFilterPort struct{}
+
+func (ListFilterPort) ListFilter(input workbook.ListInput) (string, error) {
+	return tableauworkbook.ListFilter(tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
+}
+
 func (p ReadPorts) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbook.Record, error) {
 	return p.Adapter.ResolveWorkbook(ctx, selector)
 }

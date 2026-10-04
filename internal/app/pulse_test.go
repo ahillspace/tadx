@@ -9,16 +9,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	"github.com/ahillspace/tadx/internal/cache"
-	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
-	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
 
@@ -74,14 +70,14 @@ environments:
 	t.Cleanup(func() { _ = runtime.Close() })
 	commands := newPulseCommands(runtime)
 
-	definitionPreview, err := commands.DeletePulseDefinition(context.Background(), pulsedefinition.DeleteInput{Environment: "production", LUID: "definition-1", Preview: true})
+	definitionPreview, err := commands.dependencies().DefinitionDeleter.DeletePulseDefinition(context.Background(), pulsedefinition.DeleteInput{Environment: "production", LUID: "definition-1", Preview: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if definitionPreview.Plan.Mode != "preview" || definitionPreview.Result != nil || definitionGets != 1 || definitionDeletes != 0 {
 		t.Fatalf("definition preview = %#v, gets = %d, deletes = %d", definitionPreview, definitionGets, definitionDeletes)
 	}
-	definitionResult, err := commands.DeletePulseDefinition(context.Background(), pulsedefinition.DeleteInput{Environment: "production", LUID: "definition-1"})
+	definitionResult, err := commands.dependencies().DefinitionDeleter.DeletePulseDefinition(context.Background(), pulsedefinition.DeleteInput{Environment: "production", LUID: "definition-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,14 +85,14 @@ environments:
 		t.Fatalf("definition result = %#v, gets = %d, deletes = %d", definitionResult, definitionGets, definitionDeletes)
 	}
 
-	metricPreview, err := commands.DeletePulseMetric(context.Background(), pulsemetric.DeleteInput{Environment: "production", LUID: "metric-1", Preview: true})
+	metricPreview, err := commands.dependencies().MetricDeleter.DeletePulseMetric(context.Background(), pulsemetric.DeleteInput{Environment: "production", LUID: "metric-1", Preview: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if metricPreview.Plan.Mode != "preview" || metricPreview.Result != nil || metricGets != 1 || metricDeletes != 0 {
 		t.Fatalf("metric preview = %#v, gets = %d, deletes = %d", metricPreview, metricGets, metricDeletes)
 	}
-	metricResult, err := commands.DeletePulseMetric(context.Background(), pulsemetric.DeleteInput{Environment: "production", LUID: "metric-1"})
+	metricResult, err := commands.dependencies().MetricDeleter.DeletePulseMetric(context.Background(), pulsemetric.DeleteInput{Environment: "production", LUID: "metric-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +126,7 @@ environments:
 	entries := []cache.ResourceEntry{
 		pulseCacheEntry(t, now, "definition", definition.LUID, definition.Name, "", "", definition),
 		pulseCacheEntry(t, now, "metric", metric.LUID, metric.Name, definition.LUID, "", metric),
-		pulseCacheEntry(t, now, pulseFollowerSnapshotKind, metric.LUID, metric.LUID, "", "", pulseFollowerSnapshot{Version: 1, MetricLUID: metric.LUID, Subscriptions: []pulsemetric.Subscription{{LUID: follower.LUID, MetricLUID: metric.LUID, FollowerType: follower.FollowerType, FollowerLUID: follower.FollowerLUID, FollowerName: follower.FollowerName}}}),
+		pulseCacheEntry(t, now, "pulse_follower_snapshot", metric.LUID, metric.LUID, "", "", map[string]any{"version": 1, "metric_luid": metric.LUID, "subscriptions": []pulsemetric.Subscription{{LUID: follower.LUID, MetricLUID: metric.LUID, FollowerType: follower.FollowerType, FollowerLUID: follower.FollowerLUID, FollowerName: follower.FollowerName}}}),
 	}
 	if err := targetCacheFixture(t, configPath, func() time.Time { return now }).UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
@@ -159,7 +155,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
-	followers, err := commands.ListPulseMetricFollowers(context.Background(), pulsemetric.FollowersInput{Cache: true, MetricLUID: metric.LUID})
+	followers, err := commands.dependencies().MetricFollowers.ListPulseMetricFollowers(context.Background(), pulsemetric.FollowersInput{Cache: true, MetricLUID: metric.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,92 +180,6 @@ environments:
 	}
 }
 
-func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *testing.T) {
-	schema := fieldcatalog.Schema{
-		DatasourceLUID: "datasource-1",
-		DatasourceName: "Orders",
-		Fields: []fieldcatalog.Field{
-			{ID: "[Revenue]", Caption: "Revenue", Role: "measure", DataType: "NUMBER"},
-			{ID: "[Margin Ratio]", Caption: "Margin Ratio", Role: "measure", DataType: "NUMBER", RequiresUserAggregation: true},
-			{ID: "[Flat Fee]", Caption: "Flat Fee", Role: "measure", DataType: "NUMBER", DefaultAggregation: "SUM"},
-			{ID: "[Nested Rank]", Caption: "Nested Rank", Role: "excluded", DataType: "NUMBER", Excluded: true, ExclusionReason: "table_calc"},
-			{ID: "[Order Date]", Caption: "Order Date", Role: "date", DataType: "DATE"},
-			{ID: "[Region]", Caption: "Region", Role: "dimension", DataType: "STRING"},
-			{ID: "[Hidden]", Caption: "Hidden", Role: "excluded", DataType: "STRING", Excluded: true, ExclusionReason: "internal"},
-		},
-	}
-	adapter := resourcedatasource.NewSchemaAdapter(pulseSchemaIdentityStub{}, pulseSchemaStub{schema: schema})
-	validator := &pulseDefinitionFieldValidator{schema: adapter}
-	fields := make(map[string][]fieldcatalog.Field, len(schema.Fields))
-	for _, field := range schema.Fields {
-		fields[field.ID] = append(fields[field.ID], field)
-	}
-
-	valid := pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]", AllowedDimensions: []string{"[Region]"}}
-	if err := validator.validateFields(fields, valid); err != nil {
-		t.Fatal(err)
-	}
-	for name, test := range map[string]struct {
-		input       pulsedefinition.CreateFieldReferences
-		wantMessage string
-	}{
-		"caption instead of raw ID":      {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "Revenue", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]"}},
-		"wrong date role":                {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Region]"}},
-		"excluded dimension":             {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]", AllowedDimensions: []string{"[Hidden]"}}},
-		"nested table calculation":       {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Nested Rank]", Aggregation: "AGGREGATION_USER", TimeDimension: "[Order Date]"}, wantMessage: "table calculations cannot be used as Pulse measures"},
-		"aggregate calculation plus SUM": {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Margin Ratio]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]"}, wantMessage: "already aggregated; use --aggregation USER"},
-		"unexpected user aggregation":    {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_USER", TimeDimension: "[Order Date]"}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			err := validator.validateFields(fields, test.input)
-			if err == nil {
-				t.Fatal("expected validation failure")
-			}
-			if test.wantMessage != "" && !strings.Contains(err.Error(), test.wantMessage) {
-				t.Fatalf("error = %q, want substring %q", err, test.wantMessage)
-			}
-		})
-	}
-	for name, measure := range map[string]struct {
-		field       string
-		aggregation string
-	}{
-		"aggregate calculation plus USER": {field: "[Margin Ratio]", aggregation: "AGGREGATION_USER"},
-		"row-level calculation plus SUM":  {field: "[Flat Fee]", aggregation: "AGGREGATION_SUM"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			valid.MeasureField = measure.field
-			valid.Aggregation = measure.aggregation
-			if err := validator.validateFields(fields, valid); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-}
-
-func TestPulseFieldResolutionAndBundleValidationPreserveCanonicalIdentity(t *testing.T) {
-	schema := fieldcatalog.Schema{DatasourceLUID: "datasource-1", DatasourceName: "Orders", Fields: []fieldcatalog.Field{
-		{ID: "[count_raw]", Caption: "People", Role: "dimension", DataType: "STRING"},
-		{ID: "[date_raw]", Caption: "Order Date", Role: "date", DataType: "DATE"},
-		{ID: "[region_raw]", Caption: "Region", Role: "dimension", DataType: "STRING"},
-	}}
-	v := &pulseDefinitionFieldValidator{schema: resourcedatasource.NewSchemaAdapter(pulseSchemaIdentityStub{}, pulseSchemaStub{schema: schema})}
-	refs, err := v.ResolveDefinitionFields(context.Background(), pulsedefinition.CreateFieldReferences{DatasourceLUID: "datasource-1", MeasureField: "People", Aggregation: "AGGREGATION_COUNT_DISTINCT", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}})
-	if err != nil || refs.MeasureField != "[count_raw]" || refs.TimeDimension != "[date_raw]" || refs.AllowedDimensions[0] != "[region_raw]" {
-		t.Fatalf("refs=%#v err=%v", refs, err)
-	}
-	// A disappeared canonical ID must not be reinterpreted as another field's caption.
-	schema.Fields[0].ID = "[replacement]"
-	schema.Fields[0].Caption = "[count_raw]"
-	fields := make(map[string][]fieldcatalog.Field, len(schema.Fields))
-	for _, field := range schema.Fields {
-		fields[field.ID] = append(fields[field.ID], field)
-	}
-	if err := v.validateFields(fields, refs); err == nil {
-		t.Fatal("canonical field disappearance silently retargeted to a caption")
-	}
-}
-
 func pulseCacheEntry(t *testing.T, observedAt time.Time, kind, luid, name, parent, owner string, payload any) cache.ResourceEntry {
 	t.Helper()
 	encoded, err := json.Marshal(payload)
@@ -277,16 +187,4 @@ func pulseCacheEntry(t *testing.T, observedAt time.Time, kind, luid, name, paren
 		t.Fatal(err)
 	}
 	return cache.ResourceEntry{Environment: "production", Site: "marketing", Kind: kind, LUID: luid, Name: name, ProjectPath: parent, Owner: owner, Payload: encoded, Coverage: "detail", ObservedAt: observedAt}
-}
-
-type pulseSchemaIdentityStub struct{}
-
-func (pulseSchemaIdentityStub) Get(context.Context, string) (tableaudatasource.Datasource, error) {
-	return tableaudatasource.Datasource{LUID: "datasource-1", Name: "Orders"}, nil
-}
-
-type pulseSchemaStub struct{ schema fieldcatalog.Schema }
-
-func (s pulseSchemaStub) Read(context.Context, string, string) (fieldcatalog.Schema, error) {
-	return s.schema, nil
 }

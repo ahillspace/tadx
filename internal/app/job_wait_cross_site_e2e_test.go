@@ -109,8 +109,8 @@ func TestJobWaitSurvivesIndependentCrossSiteAuthCheckWithoutResubmission(t *test
 
 	t.Setenv("PROD_PAT_NAME", "cross-site-pat")
 	t.Setenv("PROD_PAT_SECRET", "cross-site-secret")
-	configA := writePhaseOneConfigWithSite(t, server.URL, "site-a")
-	configB := writePhaseOneConfigWithSite(t, server.URL, "site-b")
+	configA := writeCLIConfigWithSite(t, server.URL, "site-a")
+	configB := writeCLIConfigWithSite(t, server.URL, "site-b")
 	jobDirectory := t.TempDir()
 	store := jobmonitor.Store{Directory: jobDirectory}
 	if _, err := store.Register(t.Context(), jobmonitor.Receipt{

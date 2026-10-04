@@ -14,7 +14,7 @@ type FollowCreator interface {
 	CreateSubscription(context.Context, FollowCreateRequest) (FollowCreateResult, error)
 }
 
-func Follow(ctx context.Context, resolver FollowResolver, creator FollowCreator, input FollowInput, preview bool) (FollowOutput, error) {
+func runFollow(ctx context.Context, resolver FollowResolver, creator FollowCreator, input FollowInput, preview bool) (FollowOutput, error) {
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	input.UserLUID = strings.TrimSpace(input.UserLUID)
 	input.GroupLUID = strings.TrimSpace(input.GroupLUID)
@@ -136,7 +136,7 @@ func (o FollowOutput) CompactOutput() any {
 func (o FollowOutput) FullOutput() any { return o }
 
 // ValidateInput checks exact metric/follower selection before authentication.
-func FollowValidateInput(input FollowInput) error {
+func followValidateInput(input FollowInput) error {
 	if strings.TrimSpace(input.MetricLUID) == "" || (strings.TrimSpace(input.UserLUID) == "") == (strings.TrimSpace(input.GroupLUID) == "") {
 		return followFail("pulse.metric.follow.usage", errs.KindUsage, input, "Pulse metric follow requires an exact metric and exactly one user or group LUID.", nil)
 	}

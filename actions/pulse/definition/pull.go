@@ -22,7 +22,7 @@ type PullWriter interface {
 }
 
 // Pull retrieves and atomically materializes one definition.
-func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullInput) (PullOutput, error) {
+func runPull(ctx context.Context, reader PullReader, writer PullWriter, input PullInput) (PullOutput, error) {
 	input.LUID = strings.TrimSpace(input.LUID)
 	if strings.TrimSpace(input.Workspace) == "" {
 		return PullOutput{}, pullError("pulse.definition.pull.usage", errs.KindUsage, input, "Pulse definition pull requires a workspace and exact definition LUID.", nil)
@@ -208,7 +208,7 @@ func (o PullOutput) FullOutput() any {
 }
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.
-func PullValidateInput(input PullInput) error {
+func pullValidateInput(input PullInput) error {
 	if strings.TrimSpace(input.LUID) == "" {
 		return pullError("pulse.definition.pull.usage", errs.KindUsage, input, "Pulse definition pull requires an exact LUID.", nil)
 	}

@@ -40,7 +40,6 @@ func (p testProjectProvider) CachedList(projectops.Target) projectops.CachedList
 func (p testProjectProvider) CachedInspect(projectops.Target) projectops.CachedInspectResolver {
 	return testCachedInspect{p.ports.InspectResolver}
 }
-func (p testProjectProvider) LegacyInventoryCursor(string) bool               { return false }
 func (p testProjectProvider) ListFilter(projectops.ListInput) (string, error) { return "", nil }
 func (p testProjectProvider) Open(_ context.Context, environment, site, _ string, _ bool) (projectops.LiveSession, error) {
 	target := p.selected(environment, site)
@@ -52,8 +51,7 @@ func (p testProjectProvider) Open(_ context.Context, environment, site, _ string
 	}
 	return projectops.LiveSession{Target: target, Ports: p.ports, Inventory: testInventory{p.ports.ListReader}}, nil
 }
-func (p testProjectProvider) ValidateComplete(bool, *readsource.Metadata) error { return nil }
-func (p testProjectProvider) Now() time.Time                                    { return time.Unix(0, 0) }
+func (p testProjectProvider) Now() time.Time { return time.Unix(0, 0) }
 
 type testCachedList struct{ projectops.ListReader }
 

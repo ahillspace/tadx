@@ -38,7 +38,7 @@ func TestArtifactWriteFailureDoesNotRenderAbsoluteWorkspacePaths(t *testing.T) {
 	defer server.Close()
 	options := diagnosticOptions(t, server)
 	workspaceRoot := filepath.Join(t.TempDir(), "workspace")
-	runGroupOneCLI(t, options, "workspace", "create", "work", "--path", workspaceRoot)
+	runProjectFlowCLI(t, options, "workspace", "create", "work", "--path", workspaceRoot)
 	locked := filepath.Join(workspaceRoot, "artifacts", "workbook")
 	if err := os.MkdirAll(locked, 0o700); err != nil {
 		t.Fatal(err)

@@ -13,6 +13,7 @@ func TestInventoryBoundaryAllowsOnlyExactRequiredEdges(t *testing.T) {
 	}{
 		{"app construction", "internal/app/inventory.go", "internal/inventory"},
 		{"inventory cache", "internal/inventory/collector.go", "internal/cache"},
+		{"inventory recovery command", "internal/inventory/cache_read.go", "internal/commandhint"},
 		{"inventory errors", "internal/inventory/collector.go", "internal/errs"},
 		{"inventory source", "internal/inventory/collector.go", "internal/readsource"},
 		{"inventory native collector", "internal/inventory/collector.go", "internal/tableau/cache"},
@@ -42,8 +43,8 @@ func TestInventoryBoundaryRejectsUnapprovedDirections(t *testing.T) {
 		{"inventory config", "internal/inventory/collector.go", "internal/config", "foundation packages must not import unapproved local packages"},
 		{"nested inventory", "internal/inventory/nested/collector.go", "internal/cache", "foundation packages must not import unapproved local packages"},
 		{"nested inventory value", "internal/inventory/nested/generation.go", "internal/value", "foundation packages must not import unapproved local packages"},
-		{"action consumer", "actions/workbook/action.go", "internal/inventory", "actions must not import unapproved local packages"},
-		{"resource consumer", "internal/resources/project/adapter.go", "internal/inventory", "resource adapters must not import unapproved local packages"},
+		{"action consumer", "actions/admin/permission/action.go", "internal/inventory", "actions must not import unapproved local packages"},
+		{"resource consumer", "internal/resources/lineage/adapter.go", "internal/inventory", "resource adapters must not import unapproved local packages"},
 		{"CLI consumer", "internal/cli/content/command.go", "internal/inventory", "CLI plumbing must not import unapproved local packages"},
 		{"foundation consumer", "internal/cache/store.go", "internal/inventory", "foundation packages must not import unapproved local packages"},
 	} {

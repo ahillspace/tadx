@@ -1,10 +1,10 @@
-package workbook_test
+package workbook
 
 import (
 	"bytes"
 	"context"
 	"errors"
-	workbookops "github.com/ahillspace/tadx/actions/workbook"
+
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
@@ -15,41 +15,47 @@ import (
 )
 
 type publishArtifactReader struct {
-	artifact workbookops.PublishArtifact
+	artifact PublishArtifact
 	err      error
 }
 
-func (r publishArtifactReader) ReadWorkbook(context.Context, string) (workbookops.PublishArtifact, error) {
+func (r publishArtifactReader) ReadWorkbook(context.Context, string) (PublishArtifact, error) {
 	return r.artifact, r.err
 }
 
 type publishResolver struct {
-	project      workbookops.Project
-	existing     []workbookops.Record
+	project      Project
+	existing     []Record
 	projectErr   error
 	collisionErr error
 }
 
-func (r publishResolver) ResolveProject(context.Context, identity.Selector) (workbookops.Project, error) {
+func (r publishResolver) BeginProjectResolution(ctx context.Context) context.Context { return ctx }
+
+func (r publishResolver) ResolveProject(context.Context, identity.Selector) (Project, error) {
 	return r.project, r.projectErr
 }
 
-func (r publishResolver) FindWorkbooks(context.Context, string, string) ([]workbookops.Record, error) {
+func (r publishResolver) FindWorkbooks(context.Context, string, string) ([]Record, error) {
 	return r.existing, r.collisionErr
 }
 
 type publishPublisher struct {
 	calls     int
-	input     workbookops.PublishRequest
-	result    workbookops.PublishResult
+	input     PublishRequest
+	result    PublishResult
 	err       error
 	onPrepare func()
 }
 
 type publishChangingResolver struct {
-	project  workbookops.Project
-	results  [][]workbookops.Record
+	project  Project
+	results  [][]Record
 	findCall int
+}
+
+func (r *publishChangingResolver) BeginProjectResolution(ctx context.Context) context.Context {
+	return ctx
 }
 
 type publishRetryableResolverError struct{}
@@ -61,33 +67,37 @@ func (publishRetryableResolverError) CorrectiveAction() string {
 }
 
 type publishRevalidationResolver struct {
-	project workbookops.Project
+	project Project
 	calls   int
 }
 
-func (r *publishRevalidationResolver) ResolveProject(context.Context, identity.Selector) (workbookops.Project, error) {
+func (r *publishRevalidationResolver) BeginProjectResolution(ctx context.Context) context.Context {
+	return ctx
+}
+
+func (r *publishRevalidationResolver) ResolveProject(context.Context, identity.Selector) (Project, error) {
 	return r.project, nil
 }
 
-func (r *publishRevalidationResolver) FindWorkbooks(context.Context, string, string) ([]workbookops.Record, error) {
+func (r *publishRevalidationResolver) FindWorkbooks(context.Context, string, string) ([]Record, error) {
 	r.calls++
 	if r.calls == 1 {
-		return []workbookops.Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}, nil
+		return []Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}, nil
 	}
 	return nil, publishRetryableResolverError{}
 }
 
-func (r *publishChangingResolver) ResolveProject(context.Context, identity.Selector) (workbookops.Project, error) {
+func (r *publishChangingResolver) ResolveProject(context.Context, identity.Selector) (Project, error) {
 	return r.project, nil
 }
 
-func (r *publishChangingResolver) FindWorkbooks(context.Context, string, string) ([]workbookops.Record, error) {
+func (r *publishChangingResolver) FindWorkbooks(context.Context, string, string) ([]Record, error) {
 	result := r.results[r.findCall]
 	r.findCall++
 	return result, nil
 }
 
-func (p *publishPublisher) Prepare(_ context.Context, input workbookops.PublishRequest) (workbookops.PreparedPublish, error) {
+func (p *publishPublisher) Prepare(_ context.Context, input PublishRequest) (PreparedPublish, error) {
 	p.input = input
 	if p.onPrepare != nil {
 		p.onPrepare()
@@ -95,18 +105,18 @@ func (p *publishPublisher) Prepare(_ context.Context, input workbookops.PublishR
 	return p, nil
 }
 
-func (p *publishPublisher) Commit(context.Context) (workbookops.PublishResult, error) {
+func (p *publishPublisher) Commit(context.Context) (PublishResult, error) {
 	p.calls++
 	return p.result, p.err
 }
 
 func TestPublishPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
 	p := &publishPublisher{}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}}, p,
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance"}},
+		publishResolver{project: Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}}, p,
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{
+	plan, err := action.Plan(context.Background(), PublishInput{
 		ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing",
 		ProjectSelector: identity.Selector{ProjectPath: "Department/Ops"}, AsJob: true,
 	})
@@ -119,12 +129,12 @@ func TestPublishPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
 }
 
 func TestPublishApplyExecutesOnlyPlanProducedByPlan(t *testing.T) {
-	p := &publishPublisher{result: workbookops.PublishResult{Status: "succeeded", WorkbookLUID: "wb-new", JobID: "job-1"}}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Name: "Ops", Path: "Ops"}}, p,
+	p := &publishPublisher{result: PublishResult{Status: "succeeded", WorkbookLUID: "wb-new", JobID: "job-1"}}
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		publishResolver{project: Project{LUID: "project-1", Name: "Ops", Path: "Ops"}}, p,
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,25 +145,25 @@ func TestPublishApplyExecutesOnlyPlanProducedByPlan(t *testing.T) {
 	if p.calls != 1 || result.WorkbookLUID != "wb-new" || p.input.ProjectLUID != "project-1" {
 		t.Fatalf("result = %#v, request = %#v", result, p.input)
 	}
-	if _, err := action.Apply(context.Background(), workbookops.PublishPlan{}); err == nil {
+	if _, err := action.Apply(context.Background(), PublishPlan{}); err == nil {
 		t.Fatal("Apply() accepted an unplanned mutation")
 	}
 }
 
 func TestPublishPlanRejectsCollisionWithoutExplicitOverwrite(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}, existing: []workbookops.Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}}, &publishPublisher{},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		publishResolver{project: Project{LUID: "project-1", Path: "Ops"}, existing: []Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}}, &publishPublisher{},
 	)
-	_, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	_, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
 	if err == nil || !strings.Contains(err.Error(), "overwrite") {
 		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestPublishPlanRequiresExplicitWriteEnvironment(t *testing.T) {
-	action := workbookops.NewPublish(publishArtifactReader{}, publishResolver{}, &publishPublisher{})
-	_, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	action := newPublisher(publishArtifactReader{}, publishResolver{}, &publishPublisher{})
+	_, err := action.Plan(context.Background(), PublishInput{ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "project-1"}})
 	if err == nil || !strings.Contains(err.Error(), "environment") {
 		t.Fatalf("error = %v", err)
 	}
@@ -166,12 +176,12 @@ func TestPublishPlanCompletesPlanningErrorAdvice(t *testing.T) {
 		resolver  publishResolver
 	}{
 		{name: "artifact", artifacts: publishArtifactReader{err: errors.New("artifact invalid")}, resolver: publishResolver{}},
-		{name: "project", artifacts: publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twb", Name: "Finance"}}, resolver: publishResolver{projectErr: errors.New("project unavailable")}},
-		{name: "collision", artifacts: publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twb", Name: "Finance"}}, resolver: publishResolver{project: workbookops.Project{LUID: "project-1"}, collisionErr: errors.New("list unavailable")}},
+		{name: "project", artifacts: publishArtifactReader{artifact: PublishArtifact{Path: "artifact", Filename: "Finance.twb", Name: "Finance"}}, resolver: publishResolver{projectErr: errors.New("project unavailable")}},
+		{name: "collision", artifacts: publishArtifactReader{artifact: PublishArtifact{Path: "artifact", Filename: "Finance.twb", Name: "Finance"}}, resolver: publishResolver{project: Project{LUID: "project-1"}, collisionErr: errors.New("list unavailable")}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := workbookops.NewPublish(test.artifacts, test.resolver, &publishPublisher{}).Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
+			_, err := newPublisher(test.artifacts, test.resolver, &publishPublisher{}).Plan(context.Background(), PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
 			payload := errs.Structure(err).Error
 			if payload.Retryable == nil || *payload.Retryable || payload.CorrectiveAction == "" || payload.Operation != "workbook.publish" {
 				t.Fatalf("structured error = %#v", payload)
@@ -181,11 +191,11 @@ func TestPublishPlanCompletesPlanningErrorAdvice(t *testing.T) {
 }
 
 func TestPublishPlanAcceptsResolvedDefaultSite(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}}, &publishPublisher{},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		publishResolver{project: Project{LUID: "project-1", Path: "Ops"}}, &publishPublisher{},
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", TargetResolved: true, ProjectSelector: identity.Selector{LUID: "project-1"}})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", TargetResolved: true, ProjectSelector: identity.Selector{LUID: "project-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,18 +206,18 @@ func TestPublishPlanAcceptsResolvedDefaultSite(t *testing.T) {
 
 func TestPublishApplyRejectsChangedOverwriteTarget(t *testing.T) {
 	r := &publishChangingResolver{
-		project: workbookops.Project{LUID: "project-1", Path: "Ops"},
-		results: [][]workbookops.Record{
+		project: Project{LUID: "project-1", Path: "Ops"},
+		results: [][]Record{
 			{{LUID: "wb-planned", Name: "Finance", ProjectLUID: "project-1"}},
 			{{LUID: "wb-replacement", Name: "Finance", ProjectLUID: "project-1"}},
 		},
 	}
 	p := &publishPublisher{}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		r, p,
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,19 +233,19 @@ func TestPublishApplyRejectsChangedOverwriteTarget(t *testing.T) {
 
 func TestPublishApplyRevalidatesOverwriteTargetAfterPublishPreparation(t *testing.T) {
 	r := &publishChangingResolver{
-		project: workbookops.Project{LUID: "project-1", Path: "Ops"},
-		results: [][]workbookops.Record{
+		project: Project{LUID: "project-1", Path: "Ops"},
+		results: [][]Record{
 			{{LUID: "wb-planned", Name: "Finance", ProjectLUID: "project-1"}},
 			{{LUID: "wb-planned", Name: "Finance", ProjectLUID: "project-1"}},
 			{{LUID: "wb-replacement", Name: "Finance", ProjectLUID: "project-1"}},
 		},
 	}
 	p := &publishPublisher{}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		r, p,
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,12 +260,12 @@ func TestPublishApplyRevalidatesOverwriteTargetAfterPublishPreparation(t *testin
 }
 
 func TestPublishApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) {
-	r := &publishRevalidationResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+	r := &publishRevalidationResolver{project: Project{LUID: "project-1", Path: "Ops"}}
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		r, &publishPublisher{},
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,12 +277,12 @@ func TestPublishApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) 
 }
 
 func TestPublishPlanWarnsWhenSourceBoundWorkbookTargetsDifferentSite(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
+		publishResolver{project: Project{LUID: "project-1", Path: "Ops"}},
 		&publishPublisher{},
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "staging", Site: "analytics", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: "artifact", Environment: "staging", Site: "analytics", ProjectSelector: identity.Selector{LUID: "project-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,12 +293,12 @@ func TestPublishPlanWarnsWhenSourceBoundWorkbookTargetsDifferentSite(t *testing.
 }
 
 func TestPublishPlanDoesNotWarnWhenTargetMatchesSource(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}, existing: []workbookops.Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
+		publishResolver{project: Project{LUID: "project-1", Path: "Ops"}, existing: []Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}},
 		&publishPublisher{},
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,19 +308,19 @@ func TestPublishPlanDoesNotWarnWhenTargetMatchesSource(t *testing.T) {
 }
 
 func TestPublishPlanDefaultsTargetToArtifactSource(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{
 			Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src",
 			SourceEnvironment: "production", SourceSite: "marketing",
 			SourceProjectName: "Department/Ops", SourceProjectID: "project-1",
 		}},
 		publishResolver{
-			project:  workbookops.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"},
-			existing: []workbookops.Record{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}},
+			project:  Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"},
+			existing: []Record{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}},
 		},
 		&publishPublisher{},
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{
+	plan, err := action.Plan(context.Background(), PublishInput{
 		ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing",
 		TargetResolved: true, SourceDefaulted: true,
 	})
@@ -325,19 +335,19 @@ func TestPublishPlanDefaultsTargetToArtifactSource(t *testing.T) {
 func TestPublishPlanFailsWhenArtifactSourceChanged(t *testing.T) {
 	tests := []struct {
 		name     string
-		existing []workbookops.Record
+		existing []Record
 	}{
 		{name: "deleted-or-moved", existing: nil},
-		{name: "name-now-points-elsewhere", existing: []workbookops.Record{{LUID: "wb-other", Name: "Finance", ProjectLUID: "project-1"}}},
+		{name: "name-now-points-elsewhere", existing: []Record{{LUID: "wb-other", Name: "Finance", ProjectLUID: "project-1"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			action := workbookops.NewPublish(
-				publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"}},
-				publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Department/Ops"}, existing: test.existing},
+			action := newPublisher(
+				publishArtifactReader{artifact: PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"}},
+				publishResolver{project: Project{LUID: "project-1", Path: "Department/Ops"}, existing: test.existing},
 				&publishPublisher{},
 			)
-			_, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
+			_, err := action.Plan(context.Background(), PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.ID != "workbook.publish.source_changed" {
 				t.Fatalf("error = %T %v", err, err)
@@ -350,12 +360,12 @@ func TestPublishPlanFailsWhenArtifactSourceChanged(t *testing.T) {
 }
 
 func TestPublishSourcePreviewGoldenOutput(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src", Fingerprint: "sha256:abc", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}, existing: []workbookops.Record{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}}},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src", Fingerprint: "sha256:abc", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"}},
+		publishResolver{project: Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}, existing: []Record{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}}},
 		&publishPublisher{},
 	)
-	value, err := action.Execute(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true}, true)
+	value, err := action.Execute(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,12 +383,12 @@ func TestPublishSourcePreviewGoldenOutput(t *testing.T) {
 }
 
 func TestPublishPreviewGoldenOutput(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Fingerprint: "sha256:abc"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Name: "Ops", Path: "Ops"}},
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Fingerprint: "sha256:abc"}},
+		publishResolver{project: Project{LUID: "project-1", Name: "Ops", Path: "Ops"}},
 		&publishPublisher{},
 	)
-	value, err := action.Execute(context.Background(), workbookops.PublishInput{
+	value, err := action.Execute(context.Background(), PublishInput{
 		ArtifactPath:    `C:\workspace\Finance`,
 		Environment:     "production",
 		Site:            "marketing",
@@ -401,18 +411,18 @@ func TestPublishPreviewGoldenOutput(t *testing.T) {
 }
 
 func TestPublishOutputGoldens(t *testing.T) {
-	value := workbookops.PublishOutput{
-		Plan: workbookops.PublishPlan{
+	value := PublishOutput{
+		Plan: PublishPlan{
 			Mode: "execute", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Finance",
 			ArtifactFingerprint: "sha256:diagnostic", Filename: "Finance.twbx", WorkbookName: "Finance",
-			Target:    workbookops.PublishTarget{Origin: "explicit", Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops", ExistingLUID: "wb-existing"},
+			Target:    PublishTarget{Origin: "explicit", Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops", ExistingLUID: "wb-existing"},
 			Overwrite: true, AsJob: true,
 			Warnings: []string{"Detailed portability warning."},
 			Substeps: []string{"resolve exact destination", "publish workbook"},
 		},
-		Result: &workbookops.PublishResult{
+		Result: &PublishResult{
 			Status: "succeeded", WorkbookLUID: "wb-new", WorkbookName: "Finance", ProjectLUID: "project-1", JobID: "job-1", TableauRequestID: "request-1",
-			ValidationWarnings: []workbookops.PublishValidationIssue{{Severity: "warning", Message: "Detailed validation warning.", Line: 12, ElementName: "map"}},
+			ValidationWarnings: []PublishValidationIssue{{Severity: "warning", Message: "Detailed validation warning.", Line: 12, ElementName: "map"}},
 		},
 		Help: []string{"tadx search --type workbook --environment <alias> to confirm the published workbook."},
 	}
@@ -450,20 +460,20 @@ func publishAssertOutputGolden(t *testing.T, name string, value any, full bool) 
 
 func TestPublishFullOutputBoundsDetailedWarnings(t *testing.T) {
 	warnings := make([]string, 25)
-	validationWarnings := make([]workbookops.PublishValidationIssue, 25)
+	validationWarnings := make([]PublishValidationIssue, 25)
 	for index := range warnings {
 		warnings[index] = "warning"
-		validationWarnings[index] = workbookops.PublishValidationIssue{Severity: "warning", Message: "validation warning"}
+		validationWarnings[index] = PublishValidationIssue{Severity: "warning", Message: "validation warning"}
 	}
-	value := workbookops.PublishOutput{Plan: workbookops.PublishPlan{Warnings: warnings}, Result: &workbookops.PublishResult{ValidationWarnings: validationWarnings}}
-	full, ok := value.FullOutput().(workbookops.PublishFullResult)
+	value := PublishOutput{Plan: PublishPlan{Warnings: warnings}, Result: &PublishResult{ValidationWarnings: validationWarnings}}
+	full, ok := value.FullOutput().(PublishFullResult)
 	if !ok {
 		t.Fatalf("full projection type = %T", value.FullOutput())
 	}
 	if len(full.Plan.Warnings) != 20 || full.Plan.WarningsOmitted != 5 {
 		t.Fatalf("plan warnings = %d, omitted = %d", len(full.Plan.Warnings), full.Plan.WarningsOmitted)
 	}
-	compact := value.CompactOutput().(workbookops.PublishCompactResult)
+	compact := value.CompactOutput().(PublishCompactResult)
 	if len(compact.Plan.Warnings) != 20 || compact.Plan.WarningsOmitted != 5 {
 		t.Fatalf("compact warning evidence must be bounded and explicit: %#v", compact.Plan)
 	}
@@ -473,12 +483,12 @@ func TestPublishFullOutputBoundsDetailedWarnings(t *testing.T) {
 }
 
 func TestPublishApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
-	p := &publishPublisher{result: workbookops.PublishResult{Status: "unknown", JobID: "job-1", TableauRequestID: "poll-request"}, err: errors.New("poll forbidden")}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}}, p,
+	p := &publishPublisher{result: PublishResult{Status: "unknown", JobID: "job-1", TableauRequestID: "poll-request"}, err: errors.New("poll forbidden")}
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		publishResolver{project: Project{LUID: "project-1", Path: "Ops"}}, p,
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, AsJob: true})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, AsJob: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,12 +503,12 @@ func TestPublishApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing
 }
 
 func TestPublishApplyReportsUnknownOutcomeWithoutClaimingAcceptance(t *testing.T) {
-	p := &publishPublisher{result: workbookops.PublishResult{Status: "unknown", TableauRequestID: "publish-request"}, err: errors.New("decode publish response")}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}}, p,
+	p := &publishPublisher{result: PublishResult{Status: "unknown", TableauRequestID: "publish-request"}, err: errors.New("decode publish response")}
+	action := newPublisher(
+		publishArtifactReader{artifact: PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		publishResolver{project: Project{LUID: "project-1", Path: "Ops"}}, p,
 	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	plan, err := action.Plan(context.Background(), PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}

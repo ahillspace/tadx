@@ -81,7 +81,7 @@ type WorkbookPuller interface {
 	PullWorkbook(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
 }
 type WorkbookPublisher interface {
-	Execute(context.Context, workbookops.PublishInput, bool) (workbookops.PublishOutput, error)
+	PublishWorkbook(context.Context, workbookops.PublishInput, bool) (workbookops.PublishOutput, error)
 }
 
 // Renderer writes structured command output.

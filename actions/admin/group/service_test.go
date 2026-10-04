@@ -21,14 +21,12 @@ func (p *groupProviderSpy) CachedList(group.Target) group.CachedListReader {
 	return cachedGroupPage{provider: p}
 }
 func (*groupProviderSpy) CachedInspect(group.Target) group.CachedInspectResolver { return nil }
-func (*groupProviderSpy) LegacyInventoryCursor(string) bool                      { return false }
 func (*groupProviderSpy) ListFilter(group.ListInput) (string, error)             { return "", nil }
 func (p *groupProviderSpy) Open(context.Context, string, string, string, bool) (group.LiveSession, error) {
 	p.opens++
 	return group.LiveSession{}, nil
 }
-func (*groupProviderSpy) ValidateComplete(bool, *readsource.Metadata) error { return nil }
-func (*groupProviderSpy) Now() time.Time                                    { return time.Time{} }
+func (*groupProviderSpy) Now() time.Time { return time.Time{} }
 
 type cachedGroupPage struct{ provider *groupProviderSpy }
 

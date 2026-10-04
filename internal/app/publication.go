@@ -2,86 +2,65 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
-	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/cli/progress"
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/output"
+	resourcejob "github.com/ahillspace/tadx/internal/resources/job"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
 )
-
-// publication owns one accepted write's durable identity, never the write itself.
-type publication struct {
-	runtime    *runtimeDependencies
-	connection authenticatedTableau
-	*jobmonitor.Publication
-	asJob bool
-}
 
 func authTarget(c authenticatedTableau) coreauth.Target {
 	e := c.environment
 	return coreauth.Target{Environment: e.Alias, ServerURL: e.URL, SiteContentURL: e.SiteContentURL, PATNameVariable: e.Auth.PATNameEnv, PATSecretVariable: e.Auth.PATSecretEnv, CredentialReference: e.Auth.CredentialRef}
 }
 
-func (r *runtimeDependencies) publication(ctx context.Context, environment, kind, source, project, name string) (*publication, error) {
+func (r *runtimeDependencies) publication(ctx context.Context, environment, kind, source, project, name string) (*jobmonitor.Publication, bool, error) {
 	c, err := r.tableauConnection(ctx, environment, true)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	directory := r.jobDirectory
-	if directory == "" {
-		cache, err := os.UserCacheDir()
-		if err != nil {
-			return nil, err
-		}
-		directory = filepath.Join(cache, "tadx", "jobs")
+	store, err := jobmonitor.NewStore(r.jobDirectory)
+	if err != nil {
+		return nil, false, err
 	}
 	// Query Job requires administrator permissions. Automatically retain the
 	// synchronous contract where that monitoring prerequisite is unavailable.
 	key, err := r.commandSessions().CoordinationKey(ctx, authTarget(c))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	async := false
-	// The role read only selects optional job monitoring. A denied inspection
-	// preserves synchronous publication without making the administrative read.
-	if kind != "flow" && r.checkManagedCapability("admin.user.inspect") == nil {
-		r.command.mu.Lock()
-		known, present := r.command.jobMonitoring[key]
-		r.command.mu.Unlock()
-		if !present {
-			user, roleErr := tableauadmin.NewClient(c.transport, c.session, c.environment.URL).GetUser(ctx, c.session.UserLUID())
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
+	async, err := r.command.jobMonitoring.CanMonitor(ctx, kind, key,
+		func() bool { return r.checkManagedCapability("admin.user.inspect") == nil },
+		func(ctx context.Context) (bool, error) {
+			port := resourcejob.MonitoringRolePort{Reader: tableauadmin.NewClient(c.transport, c.session, c.environment.URL), UserLUID: c.session.UserLUID()}
+			return port.Eligible(ctx)
+		})
+	if err != nil {
+		return nil, false, err
+	}
+	var operationID string
+	var prepare func(context.Context, jobmonitor.Receipt) error
+	if execution := r.publicationExecution; execution != nil {
+		if execution.HasPrepareIntent() {
+			operationID = execution.OperationID
+			prepare = func(ctx context.Context, receipt jobmonitor.Receipt) error {
+				return execution.RecordIntent(ctx, receipt.Operation, receipt.ReceiptID, jobmonitor.ReceiptScope(receipt))
 			}
-			known = roleErr == nil && (user.SiteRole == "ServerAdministrator" || user.SiteRole == "SiteAdministratorExplorer" || user.SiteRole == "SiteAdministratorCreator")
-			r.command.mu.Lock()
-			if r.command.jobMonitoring == nil {
-				r.command.jobMonitoring = make(map[string]bool)
-			}
-			r.command.jobMonitoring[key] = known
-			r.command.mu.Unlock()
 		}
-		async = known
 	}
-	p := &publication{runtime: r, connection: c, asJob: async}
-	p.Publication = &jobmonitor.Publication{
-		Store:         jobmonitor.Store{Directory: directory},
-		Base:          jobmonitor.Receipt{ReceiptID: rand.Text(), Version: 1, Operation: kind + ".publish", Environment: c.environment.Alias, Server: c.environment.URL, Site: c.environment.SiteContentURL, SiteID: c.session.SiteLUID(), ConfigPath: r.configPath, SourcePath: filepath.ToSlash(source), ProjectID: project, Name: name, CoordinationKey: key},
-		Deadline:      r.publicationWaitDeadline,
-		StopRequested: r.publicationNoWait,
-		OnAccepted: func(ctx context.Context, path string) error {
-			if execution := r.publicationExecution; execution != nil && execution.accepted != nil {
-				return execution.accepted(ctx, path)
-			}
-			return nil
-		},
+	monitor, err := jobmonitor.StartPublication(ctx, store, jobmonitor.PublicationTarget{
+		Kind: kind, Environment: c.environment.Alias, Server: c.environment.URL,
+		Site: c.environment.SiteContentURL, SiteID: c.session.SiteLUID(),
+		ConfigPath: r.configPath, SourcePath: source, ProjectID: project, Name: name,
+		CoordinationKey: key, OperationID: operationID,
+	}, jobmonitor.PublicationHooks{
+		Deadline:      r.publicationExecution.WaitDeadline,
+		StopRequested: r.publicationExecution.StopRequested,
+		Prepare:       prepare,
+		OnAccepted:    r.publicationExecution.LinkAccepted,
 		NotifyAccepted: func(id, path string) {
 			writer := r.progressWriter
 			if writer == nil {
@@ -95,35 +74,10 @@ func (r *runtimeDependencies) publication(ctx context.Context, environment, kind
 		},
 		StartWaiting: func(ctx context.Context) { progress.SetLabel(ctx, "Waiting for Tableau publication") },
 		Suspend:      func(ctx context.Context) error { return r.commandSessions().Suspend(ctx) },
-		Observe:      p.observe,
+		Observe:      r.jobObserver(c, c.environment.URL, "job monitoring target does not match the authenticated site").Observe,
+	})
+	if err != nil {
+		return nil, false, err
 	}
-	if execution := r.publicationExecution; execution != nil && execution.prepare != nil {
-		p.Base.OperationID = execution.operationID
-		if err := execution.prepare(ctx, p.Base); err != nil {
-			return nil, fmt.Errorf("record publication receipt intent before submission: %w", err)
-		}
-	}
-	return p, nil
-}
-
-func (p *publication) observe(ctx context.Context, jobs []jobmonitor.Receipt) []jobmonitor.CheckResult {
-	return p.runtime.jobObserver(p.connection, p.Base.Server, "job monitoring target does not match the authenticated site").Observe(ctx, jobs)
-}
-
-func publicationError(operation, environment, site, id string, status string, cause error) error {
-	if cause == nil {
-		return nil
-	}
-	if known, ok := errors.AsType[*errs.Error](cause); ok && known.Phase == errs.PhasePersistence {
-		return cause
-	}
-	state := errs.OutcomeUnknown
-	summary := "Publication was accepted, but local monitoring did not establish its final outcome."
-	if status == "succeeded" {
-		state, summary = errs.OutcomeConfirmed, "Publication succeeded, but destination confirmation is incomplete."
-	}
-	if status == "failed" || status == "cancelled" {
-		summary = "Tableau reports that publication " + status + "."
-	}
-	return &errs.Error{ID: operation + ".monitor", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: cause, Phase: errs.PhaseVerification, Outcome: state, TableauJobID: id, Retryable: errs.Bool(false), CorrectiveAction: "Recover status using the saved job identity. Do not repeat publication to recover its outcome."}
+	return monitor, async, nil
 }

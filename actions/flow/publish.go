@@ -15,6 +15,7 @@ type ArtifactReader interface {
 type PublishResolver interface {
 	ProjectResolver
 	CollisionReader
+	BeginProjectResolution(context.Context) context.Context
 }
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
@@ -22,23 +23,27 @@ type PreparedPublish interface {
 type PublishPreparer interface {
 	Prepare(context.Context, PublishRequest) (PreparedPublish, error)
 }
-type Publisher struct {
+type publisher struct {
 	artifacts ArtifactReader
 	resolver  PublishResolver
 	publisher PublishPreparer
 }
 
-func NewPublish(artifacts ArtifactReader, resolver PublishResolver, publisher PublishPreparer) *Publisher {
-	return &Publisher{artifacts: artifacts, resolver: resolver, publisher: publisher}
+func newPublisher(artifacts ArtifactReader, resolver PublishResolver, preparer PublishPreparer) *publisher {
+	return &publisher{artifacts: artifacts, resolver: resolver, publisher: preparer}
 }
-func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
-	if err := ValidatePublishInput(input); err != nil {
+func (a *publisher) Execute(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
+	if err := validatePublishInput(input); err != nil {
 		return PublishOutput{}, err
 	}
-	ctx = a.beginProjectResolution(ctx)
+	return a.executeValidated(ctx, input, preview)
+}
+
+func (a *publisher) executeValidated(ctx context.Context, input PublishInput, preview bool) (PublishOutput, error) {
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return PublishOutput{}, publishUnconfigured()
 	}
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	plan, err := a.plan(ctx, input)
 	if err != nil {
 		return PublishOutput{}, err
@@ -53,7 +58,7 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	}
 	output.Plan.Mode = "execute"
 	output.Help = nil
-	ctx = a.beginProjectResolution(ctx)
+	ctx = a.resolver.BeginProjectResolution(ctx)
 	// Revalidate the exact artifact, destination, and collision BEFORE preparing
 	// the upload. Prepare uploads the native flow (a server-side side effect); a
 	// revalidation failure after Prepare would strand that upload with no cleanup
@@ -104,7 +109,7 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	output.Result = &result
 	return output, nil
 }
-func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, error) {
+func (a *publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, error) {
 	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return PublishPlan{}, publishUsage("environment", "flow publish requires an explicit resolved environment and site")
 	}
@@ -160,8 +165,8 @@ func publishUnconfigured() error {
 	return &errs.Error{ID: "flow.publish.unconfigured", Kind: errs.KindRuntime, Operation: "flow.publish", Summary: "Flow publish is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow publishing before retrying."}
 }
 
-// ValidatePublishInput checks caller-controlled arguments before dependency setup.
-func ValidatePublishInput(input PublishInput) error {
+// validatePublishInput checks caller-controlled arguments before dependency setup.
+func validatePublishInput(input PublishInput) error {
 	if strings.TrimSpace(input.ArtifactPath) == "" && strings.TrimSpace(input.File) == "" && strings.TrimSpace(input.ArtifactID) == "" && strings.TrimSpace(input.ArtifactName) == "" {
 		return publishUsage("artifact", "an explicit flow artifact is required")
 	}
@@ -169,20 +174,4 @@ func ValidatePublishInput(input PublishInput) error {
 		return publishUsage("project", "a project LUID cannot be combined with a project path")
 	}
 	return nil
-}
-
-// A resolver may share project reads within one explicit validation phase.
-// Each prewrite phase starts again, never inheriting the planning snapshot.
-type publishProjectResolutionPhase interface {
-	BeginProjectResolution(context.Context) context.Context
-}
-
-func (a *Publisher) beginProjectResolution(ctx context.Context) context.Context {
-	if a == nil {
-		return ctx
-	}
-	if resolver, ok := a.resolver.(publishProjectResolutionPhase); ok {
-		return resolver.BeginProjectResolution(ctx)
-	}
-	return ctx
 }

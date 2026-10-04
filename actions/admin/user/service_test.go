@@ -21,14 +21,12 @@ func (p *userProviderSpy) CachedList(user.Target) user.CachedListReader {
 	return cachedUserPage{provider: p}
 }
 func (*userProviderSpy) CachedInspect(user.Target) user.CachedInspectResolver { return nil }
-func (*userProviderSpy) LegacyInventoryCursor(string) bool                    { return false }
 func (*userProviderSpy) ListFilter(user.ListInput) (string, error)            { return "", nil }
 func (p *userProviderSpy) Open(context.Context, string, string, string, bool) (user.LiveSession, error) {
 	p.opens++
 	return user.LiveSession{}, nil
 }
-func (*userProviderSpy) ValidateComplete(bool, *readsource.Metadata) error { return nil }
-func (*userProviderSpy) Now() time.Time                                    { return time.Time{} }
+func (*userProviderSpy) Now() time.Time { return time.Time{} }
 
 type cachedUserPage struct{ provider *userProviderSpy }
 

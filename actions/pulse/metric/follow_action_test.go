@@ -1,40 +1,39 @@
-package metric_test
+package metric
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type followCreator struct{ calls int }
 
-func (c *followCreator) CreateSubscription(context.Context, pulsemetric.FollowCreateRequest) (pulsemetric.FollowCreateResult, error) {
+func (c *followCreator) CreateSubscription(context.Context, FollowCreateRequest) (FollowCreateResult, error) {
 	c.calls++
-	return pulsemetric.FollowCreateResult{Status: "already_following"}, nil
+	return FollowCreateResult{Status: "already_following"}, nil
 }
 
 type followResolver struct{ metrics, users, groups int }
 
-func (r *followResolver) ResolveMetric(_ context.Context, luid string) (pulsemetric.FollowMetric, error) {
+func (r *followResolver) ResolveMetric(_ context.Context, luid string) (FollowMetric, error) {
 	r.metrics++
-	return pulsemetric.FollowMetric{LUID: luid}, nil
+	return FollowMetric{LUID: luid}, nil
 }
-func (r *followResolver) ResolveUser(_ context.Context, luid string) (pulsemetric.FollowUser, error) {
+func (r *followResolver) ResolveUser(_ context.Context, luid string) (FollowUser, error) {
 	r.users++
-	return pulsemetric.FollowUser{LUID: luid}, nil
+	return FollowUser{LUID: luid}, nil
 }
-func (r *followResolver) ResolveGroup(_ context.Context, luid string) (pulsemetric.FollowGroup, error) {
+func (r *followResolver) ResolveGroup(_ context.Context, luid string) (FollowGroup, error) {
 	r.groups++
-	return pulsemetric.FollowGroup{LUID: luid}, nil
+	return FollowGroup{LUID: luid}, nil
 }
 
 func TestFollowPreviewsAndTreatsDuplicateAsConverged(t *testing.T) {
 	c := &followCreator{}
 	r := &followResolver{}
-	input := pulsemetric.FollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}
+	input := FollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}
 	preview, err := follow(context.Background(), r, c, input, true)
 	if err != nil || preview.Result != nil || c.calls != 0 || r.metrics != 1 || r.users != 1 {
 		t.Fatalf("preview=%#v creator=%d resolver=%#v err=%v", preview, c.calls, r, err)
@@ -46,7 +45,7 @@ func TestFollowPreviewsAndTreatsDuplicateAsConverged(t *testing.T) {
 }
 
 func TestFollowRequiresExactlyOneFollower(t *testing.T) {
-	for _, input := range []pulsemetric.FollowInput{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", UserLUID: "u", GroupLUID: "g"}} {
+	for _, input := range []FollowInput{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", UserLUID: "u", GroupLUID: "g"}} {
 		if _, err := follow(context.Background(), &followResolver{}, &followCreator{}, input, false); err == nil {
 			t.Fatalf("input accepted: %#v", input)
 		}
@@ -55,12 +54,12 @@ func TestFollowRequiresExactlyOneFollower(t *testing.T) {
 
 type followMissingUserResolver struct{ followResolver }
 
-func (followMissingUserResolver) ResolveUser(context.Context, string) (pulsemetric.FollowUser, error) {
-	return pulsemetric.FollowUser{}, errors.New("user not found")
+func (followMissingUserResolver) ResolveUser(context.Context, string) (FollowUser, error) {
+	return FollowUser{}, errors.New("user not found")
 }
 
 func TestFollowUserResolutionReportsRecoveryFacts(t *testing.T) {
-	_, err := follow(context.Background(), &followMissingUserResolver{}, &followCreator{}, pulsemetric.FollowInput{Environment: "production", Site: "marketing", MetricLUID: "metric-1", UserLUID: "user-1"}, true)
+	_, err := follow(context.Background(), &followMissingUserResolver{}, &followCreator{}, FollowInput{Environment: "production", Site: "marketing", MetricLUID: "metric-1", UserLUID: "user-1"}, true)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error = %v", err)

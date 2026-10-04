@@ -124,7 +124,7 @@ func schemaSelectionServer(t *testing.T) (*httptest.Server, *schemaSelectionCall
 
 func runSchemaSelection(t *testing.T, options app.Options, args ...string) datasourceops.SchemaFullResult {
 	t.Helper()
-	output := runGroupOneCLI(t, options, args...)
+	output := runProjectFlowCLI(t, options, args...)
 	decoded, err := toon.Decode([]byte(output))
 	if err != nil {
 		t.Fatal(err)

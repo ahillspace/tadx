@@ -7,18 +7,21 @@ This is a compact source map; update it when routing, identity, or source contra
 
 ```text
 internal/cli/search.go
-  -> internal/app/search.go: resolve environment, choose source, wire adapters
-  -> actions/search: validate, request bounded results, check identities, shape output
-     -> internal/resources/search/native.go -> internal/tableau/search/client.go
-     -> internal/resources/search/adapter.go -> classic REST/Pulse list readers
-     -> cacheSearchLister -> internal/cache
+  -> actions/search/service.go: validate and select the source contract
+     -> actions/search/live_source.go: route native and dedicated sources
+        -> internal/resources/search/native.go -> internal/tableau/search/client.go
+        -> internal/resources/search/adapter.go -> typed REST/Pulse list readers
+     -> actions/search/complete_lists.go -> injected resource Service.SearchPage methods
+     -> internal/resources/search/cache.go -> internal/cache
   -> shared CLI renderer: compact/full projection, TOON or JSON encoding
 ```
 
 The CLI accepts a term, `--type`, `--environment`, `--cache`, and `--limit` (default 20, maximum 2,000).
 `--cursor` remains hidden for compatibility; provider continuation is normally internal.
 `actions/search/{action,validation,types}.go` owns selector expansion, input and cursor validation, result bounds, duplicate checks, output fields, and contextual follow-up commands.
-`internal/app/search.go` owns source selection and composition; adapters do not choose the environment.
+`actions/search/service.go` selects the cached, complete-list, or live source after validating input.
+`internal/app/search.go` constructs those sources and binds the selected environment; it does not own search routing or result conversion.
+Resource actions own their typed search projections, and app binds them through neutral `value.SearchPage` callbacks without cross-action imports.
 Live branches use the command's authenticated Tableau connection and shared transport; `--cache` resolves local configuration without authenticating to Tableau.
 
 ## Source selection
@@ -29,9 +32,9 @@ Live branches use the command's authenticated Tableau connection and shared tran
 | Term, `--type admin`, user, or group | Dedicated classic REST inventories | TADX case-insensitive name substring match. |
 | Term, `--type pulse`, definition, or metric | Dedicated Pulse inventories | TADX case-insensitive name substring match. |
 | Term, no type | Native content phase, then dedicated definition/group/metric/user phase | Content is returned first; no globally merged relevance score. |
-| No term, content/admin or a concrete non-Pulse type | `completeLiveSearchLister` calls normal list commands | Bounded inventories, without relevance search. |
+| No term, content/admin or a concrete non-Pulse type | `actions/search.CompleteLists` calls injected list service methods | Bounded inventories, without relevance search. |
 | No term, pulse/definition/metric | Dedicated Pulse inventories | Same list traversal, without term filtering. |
-| `--cache` | `cacheGlobalSearchSource` and `cacheSearchLister` | Local resource records; same substring matcher as dedicated inventories. |
+| `--cache` | `resources/search.CacheSource` and its private cache reader | Local resource records; same substring matcher as dedicated inventories. |
 
 For dedicated and cache sources, `internal/resources/search/adapter.go` sorts types lexically and items within each provider page by name, then LUID.
 This is not a global sort across all provider pages.
@@ -53,11 +56,11 @@ The OpenAPI contract lists no collapse/grouping parameter or published-datasourc
 
 | Additional source | Internal implementation | Endpoint |
 | --- | --- | --- |
-| Users and groups | `internal/app/search.go:liveSearchLister`, `internal/resources/admin`, `internal/tableau/admin/client.go` | `GET /api/{version}/sites/{site}/users` and `/groups` |
-| Pulse definitions | `actions/pulse/definition/list.go`, `internal/tableau/pulse/client.go` | `GET /api/-/pulse/definitions` |
-| Pulse metrics | `internal/app/search.go:listMetrics`, Pulse client | List definitions, then `GET /api/-/pulse/definitions/{id}/metrics` for each definition. |
+| Users and groups | `actions/admin/{user,group}/search.go`, `internal/resources/admin`, `internal/tableau/admin/client.go` | `GET /api/{version}/sites/{site}/users` and `/groups` |
+| Pulse definitions | `actions/pulse/definition/search.go`, `internal/resources/pulse/definition_read.go`, Pulse client | `GET /api/-/pulse/definitions` |
+| Pulse metrics | `internal/resources/pulse/search_metrics.go`, Pulse client | List definitions, then `GET /api/-/pulse/definitions/{id}/metrics` for each definition. |
 | Native datasource identity | `internal/tableau/datasource/client.go:ResolveContentURLs` | Classic REST datasource listing filtered by content URL, in batches of at most 25 URLs. |
-| No-term inventories | `internal/app/{workbook_inventory,datasource_inventory,content_remote,admin}.go` | Corresponding classic REST workbook, datasource, flow, project, user, or group list. |
+| No-term inventories | Typed `SearchPage` methods in workbook, datasource, flow, project, user, and group actions | Corresponding classic REST workbook, datasource, flow, project, user, or group list. |
 
 Metric names fall back to the definition name when the metric has none.
 Definition pages are memoized within the command, and metric continuation records both definition and metric progress.
@@ -98,7 +101,8 @@ No-term search calls list services with `Limit`/`Cursor`, not `All`; those bound
 
 ## Catalog and UI boundaries
 
-The separate `catalog search` command is implemented by `actions/catalog/search/action.go`, `internal/app/catalog.go`, `internal/resources/catalog/adapter.go`, and `internal/tableau/metadataassets/graphql.go`.
+The separate `catalog search` command uses `actions/catalog/{service,search}.go` and `internal/tableau/metadataassets/graphql.go`.
+`internal/app/catalog.go` constructs the native client, which implements the action's narrow port directly; no catalog forwarding adapter remains.
 It uses `POST /api/metadata/graphql` to discover databases/tables and optionally columns within a specified table, preserving Metadata API identities alongside available LUIDs.
 It is distinct from both `search --cache` and `/api/-/search`; success in one path does not validate another path's decoder.
 Tableau's [UI search documentation](https://help.tableau.com/current/pro/desktop/en-us/search.htm) distinguishes quick/full search and mixed/single-type views, including Tables and Objects and Databases and Files.

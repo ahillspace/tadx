@@ -27,7 +27,7 @@ func (a *Service) Status(ctx context.Context, input StatusInput) (StatusOutput, 
 	return InspectStatus(target, a.StatusLookup), nil
 }
 
-// Inspect reports local readiness for an already resolved configuration target.
+// InspectStatus reports local readiness for an already resolved configuration target.
 // It reads process variables at the time of inspection and never opens the store.
 func InspectStatus(target StatusTarget, lookup StatusLookupEnv) StatusOutput {
 	readiness := coreauth.InspectLocalPATReadiness(target.PATNameVariable, target.PATSecretVariable, target.StoredCredentialReferencePresent, lookup)

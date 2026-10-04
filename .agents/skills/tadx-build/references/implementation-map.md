@@ -13,7 +13,7 @@ Read only the layers you need to change, then their focused tests.
 | HTTP provider | `internal/tableau/project/client.go` | `internal/tableau/workbook/client.go` |
 | Cobra plumbing | `internal/cli/content/project.go` | `internal/cli/content/workbook_delete.go` |
 | Composition | `internal/app/project_provider.go` | `internal/app/content_mutation_provider.go` |
-| App/HTTP regression | `internal/app/inventory_all_e2e_test.go` | `internal/app/group3_workbook_delete_e2e_test.go` |
+| App/HTTP regression | `internal/app/inventory_all_e2e_test.go` | `internal/app/workbook_delete_e2e_test.go` |
 
 These paths show responsibilities, not a requirement to add a file or forwarding layer at every step.
 For a new operation, locate the existing owner and define only the contracts it needs.
@@ -45,6 +45,11 @@ Consult [the repository structure](../../../../docs/repository-structure.md) for
 | Safe follow-up commands | `internal/commandhint/command.go` |
 | Live/cache provenance | `internal/readsource/` |
 | Shared bounded inventory and scoped cache publication | `internal/inventory/` |
+| Accepted Tableau job receipts and observation | `internal/jobmonitor/publication.go` |
+| Detached worker state and coordination | `internal/operationrun/coordinator.go`, `worker.go` |
+| Saved-operation recovery without resubmission | `actions/job/operation_recovery.go`, `operation_receipts.go` |
+| Resource publication and destination confirmation | `actions/workbook/publish_service.go`, `internal/resources/workbook/publish_destination.go` |
+| Category-owned help facts and shared rendering metadata | `internal/cli/<category>/help_facts.go`, `internal/cli/helpmeta/` |
 | Upstream Catalog metadata and label contracts | `internal/tableau/metadataassets/`, `internal/value/metadata.go` |
 
 ## Registration and verification

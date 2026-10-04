@@ -84,7 +84,7 @@ func TestDatasourceDiscoveryReusesHierarchyOnlyWithinInvocationThroughCLI(t *tes
 	}
 	// A later standalone list receives its own fresh lazy hierarchy as well.
 	projectReads, datasourceReads = 0, 0
-	out := runGroupOneCLI(t, options, "content", "datasource", "list", "--environment", "production", "--limit", "20", "--full")
+	out := runProjectFlowCLI(t, options, "content", "datasource", "list", "--environment", "production", "--limit", "20", "--full")
 	if projectReads != 2 || datasourceReads != 1 || !strings.Contains(out, "Root1/Renamed") {
 		t.Fatalf("standalone reads=%d/%d output=%s", projectReads, datasourceReads, out)
 	}

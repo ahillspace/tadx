@@ -15,23 +15,6 @@ import (
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 )
 
-func TestPulseProjectionRequiredEmptyFields(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		value any
-		want  string
-	}{
-		{"follower snapshot", pulseFollowerSnapshot{Version: 1, MetricLUID: "metric", Subscriptions: []pulsemetric.Subscription{{LUID: "subscription"}}}, `{"version":1,"metric_luid":"metric","subscriptions":[{"luid":"subscription","metric_luid":"","follower_type":"","follower_luid":""}]}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := json.Marshal(tc.value)
-			if err != nil || string(got) != tc.want {
-				t.Fatalf("JSON = %s, %v; want %s", got, err, tc.want)
-			}
-		})
-	}
-}
-
 func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 	var requests []string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +52,7 @@ func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 	if _, err := commands.dependencies().DefinitionInspector.InspectPulseDefinition(t.Context(), pulsedefinition.InspectInput{LUID: "definition-1"}); err == nil {
 		t.Fatal("inspect unexpectedly accepted a configuration number outside float64")
 	}
-	definition, err := commands.DeletePulseDefinition(t.Context(), pulsedefinition.DeleteInput{LUID: "definition-1", Preview: true})
+	definition, err := commands.dependencies().DefinitionDeleter.DeletePulseDefinition(t.Context(), pulsedefinition.DeleteInput{LUID: "definition-1", Preview: true})
 	if err != nil {
 		t.Fatalf("delete acquired inspect's configuration decoding failure: %v", err)
 	}
@@ -78,7 +61,7 @@ func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 		t.Fatalf("definition target = %s, %v", encoded, err)
 	}
 	for _, id := range []string{"unknown", "known"} {
-		output, err := commands.DeletePulseMetric(t.Context(), pulsemetric.DeleteInput{LUID: id, Preview: true})
+		output, err := commands.dependencies().MetricDeleter.DeletePulseMetric(t.Context(), pulsemetric.DeleteInput{LUID: id, Preview: true})
 		if err != nil {
 			t.Fatal(err)
 		}

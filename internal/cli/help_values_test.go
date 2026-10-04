@@ -93,7 +93,8 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 			case "dimension":
 				in.Intent.AllowedDimensions = nil
 			}
-			return pulsedefinition.CreateValidateInput(&in)
+			_, err := pulsedefinition.New(pulsedefinition.Ports{}).CreatePulseDefinition(t.Context(), in, true)
+			return pulseHelpValidation(err, "pulse.definition.create.unconfigured")
 		}},
 	} {
 		t.Run(test.path, func(t *testing.T) {
@@ -228,7 +229,8 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			if v == "CUSTOM_N_DAYS" {
 				in.CustomDays = 30
 			}
-			return pulsemetric.ForkValidateInput(&in)
+			_, err := pulsemetric.New(pulsemetric.Ports{}).ForkPulseMetric(t.Context(), in, true)
+			return pulseHelpValidation(err, "pulse.metric.fork.unconfigured")
 		}},
 	}
 	for flag, count := range map[string]int{"kind": 4, "principal-type": 2, "mode": 2, "default-for": 3} {
@@ -288,11 +290,20 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			case "temporality":
 				intent.Temporality = value
 			}
-			if err := pulsedefinition.CreateValidateInput(&pulsedefinition.CreateInput{Intent: intent}); err != nil {
+			_, err := pulsedefinition.New(pulsedefinition.Ports{}).CreatePulseDefinition(t.Context(), pulsedefinition.CreateInput{Intent: intent}, true)
+			if err := pulseHelpValidation(err, "pulse.definition.create.unconfigured"); err != nil {
 				t.Errorf("%s=%s rejected: %v", flag, value, err)
 			}
 		}
 	}
+}
+
+func pulseHelpValidation(err error, unconfiguredID string) error {
+	var structured *errs.Error
+	if errors.As(err, &structured) && structured.ID == unconfiguredID {
+		return nil
+	}
+	return err
 }
 
 func TestHelpValuesAreScopedAndPreserveFlagBehavior(t *testing.T) {

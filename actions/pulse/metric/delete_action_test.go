@@ -1,4 +1,4 @@
-package metric_test
+package metric
 
 import (
 	"context"
@@ -7,47 +7,46 @@ import (
 	"strings"
 	"testing"
 
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type deleteBackend struct {
-	targets     []pulsemetric.DeleteMetric
+	targets     []DeleteMetric
 	calls       []string
 	readError   error
 	deleteError error
 }
 
-func (b *deleteBackend) GetMetric(_ context.Context, luid string) (pulsemetric.Metric, error) {
+func (b *deleteBackend) GetMetric(_ context.Context, luid string) (Metric, error) {
 	b.calls = append(b.calls, "get:"+luid)
 	if b.readError != nil {
-		return pulsemetric.Metric{}, b.readError
+		return Metric{}, b.readError
 	}
 	if len(b.targets) == 0 {
-		return pulsemetric.Metric{}, errors.New("missing target")
+		return Metric{}, errors.New("missing target")
 	}
 	target := b.targets[0]
 	b.targets = b.targets[1:]
-	observed := pulsemetric.Metric{LUID: target.LUID, Name: target.Name, DefinitionLUID: target.DefinitionLUID, DefaultKnown: target.IsDefault != nil}
+	observed := Metric{LUID: target.LUID, Name: target.Name, DefinitionLUID: target.DefinitionLUID, DefaultKnown: target.IsDefault != nil}
 	if target.IsDefault != nil {
 		observed.IsDefault = *target.IsDefault
 	}
 	return observed, nil
 }
-func (b *deleteBackend) DeleteMetric(_ context.Context, luid string) (pulsemetric.DeleteResult, error) {
+func (b *deleteBackend) DeleteMetric(_ context.Context, luid string) (DeleteResult, error) {
 	b.calls = append(b.calls, "delete:"+luid)
-	return pulsemetric.DeleteResult{Status: "deleted", MetricLUID: luid, HTTPStatus: 204, TableauRequestID: "request-1"}, b.deleteError
+	return DeleteResult{Status: "deleted", MetricLUID: luid, HTTPStatus: 204, TableauRequestID: "request-1"}, b.deleteError
 }
-func deleteInput() pulsemetric.DeleteInput {
-	return pulsemetric.DeleteInput{Environment: "dev", Site: "sandbox", LUID: "metric-1"}
+func deleteInput() DeleteInput {
+	return DeleteInput{Environment: "dev", Site: "sandbox", LUID: "metric-1"}
 }
-func deleteTarget() pulsemetric.DeleteMetric {
-	return pulsemetric.DeleteMetric{LUID: "metric-1", Name: "Revenue"}
+func deleteTarget() DeleteMetric {
+	return DeleteMetric{LUID: "metric-1", Name: "Revenue"}
 }
 
 func TestDeleteRunsByDefaultWithExactRevalidation(t *testing.T) {
-	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget(), deleteTarget()}}
-	output, err := delete(context.Background(), b, b, deleteInput())
+	b := &deleteBackend{targets: []DeleteMetric{deleteTarget(), deleteTarget()}}
+	output, err := deleteWorkflow(context.Background(), b, b, deleteInput())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,10 +59,10 @@ func TestDeleteRunsByDefaultWithExactRevalidation(t *testing.T) {
 	}
 }
 func TestDeletePreviewDoesNotDelete(t *testing.T) {
-	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget()}}
+	b := &deleteBackend{targets: []DeleteMetric{deleteTarget()}}
 	in := deleteInput()
 	in.Preview = true
-	output, err := delete(context.Background(), b, b, in)
+	output, err := deleteWorkflow(context.Background(), b, b, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,10 +78,10 @@ func TestDeleteRefusesKnownDefaultMetricWithoutWriting(t *testing.T) {
 	defaultMetric := true
 	for _, preview := range []bool{true, false} {
 		t.Run(map[bool]string{true: "preview", false: "execute"}[preview], func(t *testing.T) {
-			b := &deleteBackend{targets: []pulsemetric.DeleteMetric{{LUID: "metric-1", DefinitionLUID: "definition-1", IsDefault: &defaultMetric}}}
+			b := &deleteBackend{targets: []DeleteMetric{{LUID: "metric-1", DefinitionLUID: "definition-1", IsDefault: &defaultMetric}}}
 			in := deleteInput()
 			in.Preview = preview
-			output, err := delete(context.Background(), b, b, in)
+			output, err := deleteWorkflow(context.Background(), b, b, in)
 			var structured *errs.Error
 			if err == nil || !errors.As(err, &structured) || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted || !strings.Contains(err.Error(), "default") || output.Plan.Target.DefinitionLUID != "definition-1" {
 				t.Fatalf("output=%#v err=%v", output, err)
@@ -95,13 +94,13 @@ func TestDeleteRefusesKnownDefaultMetricWithoutWriting(t *testing.T) {
 }
 
 func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
-	for _, targets := range [][]pulsemetric.DeleteMetric{
+	for _, targets := range [][]DeleteMetric{
 		{{LUID: "wrong"}},
 		{deleteTarget(), {LUID: "wrong"}},
 		{deleteTarget(), {}},
 	} {
 		b := &deleteBackend{targets: targets}
-		_, err := delete(context.Background(), b, b, deleteInput())
+		_, err := deleteWorkflow(context.Background(), b, b, deleteInput())
 		if err == nil {
 			t.Fatal("expected exact identity failure")
 		}
@@ -113,11 +112,11 @@ func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 	}
 }
 func TestDeleteRequiresExactSelector(t *testing.T) {
-	for _, in := range []pulsemetric.DeleteInput{
+	for _, in := range []DeleteInput{
 		{Environment: "dev", Site: "sandbox", LUID: "  "},
 	} {
 		b := &deleteBackend{}
-		_, err := delete(context.Background(), b, b, in)
+		_, err := deleteWorkflow(context.Background(), b, b, in)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || len(b.calls) != 0 {
 			t.Fatalf("err=%v calls=%v", err, b.calls)
@@ -126,8 +125,8 @@ func TestDeleteRequiresExactSelector(t *testing.T) {
 }
 func TestDeletePreservesUpstreamFailureWithoutRetry(t *testing.T) {
 	upstream := errors.New("upstream dependency rejection")
-	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget(), deleteTarget()}, deleteError: upstream}
-	_, err := delete(context.Background(), b, b, deleteInput())
+	b := &deleteBackend{targets: []DeleteMetric{deleteTarget(), deleteTarget()}, deleteError: upstream}
+	_, err := deleteWorkflow(context.Background(), b, b, deleteInput())
 	if !errors.Is(err, upstream) || len(b.calls) != 3 {
 		t.Fatalf("err=%v calls=%v", err, b.calls)
 	}
@@ -135,7 +134,7 @@ func TestDeletePreservesUpstreamFailureWithoutRetry(t *testing.T) {
 func TestDeletePreservesMissingTarget(t *testing.T) {
 	upstream := errors.New("upstream target not found")
 	b := &deleteBackend{readError: upstream}
-	_, err := delete(context.Background(), b, b, deleteInput())
+	_, err := deleteWorkflow(context.Background(), b, b, deleteInput())
 	if !errors.Is(err, upstream) || len(b.calls) != 1 {
 		t.Fatalf("err=%v calls=%v", err, b.calls)
 	}

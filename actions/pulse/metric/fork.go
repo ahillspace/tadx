@@ -29,7 +29,7 @@ type ForkReconciler interface {
 	ReconcileMetric(context.Context, ForkExpectedMetric) (ForkReconciliation, error)
 }
 
-func Fork(ctx context.Context, reader ForkReader, creator ForkCreator, reconciler ForkReconciler, input ForkInput, preview bool) (ForkOutput, error) {
+func runFork(ctx context.Context, reader ForkReader, creator ForkCreator, reconciler ForkReconciler, input ForkInput, preview bool) (ForkOutput, error) {
 	plan, err := forkPlan(ctx, reader, input)
 	if err != nil {
 		return ForkOutput{}, err
@@ -308,7 +308,7 @@ func forkFail(id string, kind errs.Kind, input ForkInput, summary string, cause 
 }
 
 // ValidateInput validates local changes; allowed fields and grains require live evidence.
-func ForkValidateInput(input *ForkInput) error {
+func forkValidateInput(input *ForkInput) error {
 	timeframe := strings.ToUpper(strings.TrimSpace(input.Timeframe))
 	if strings.TrimSpace(input.MetricLUID) == "" {
 		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "Pulse metric fork requires an exact source metric LUID.", nil)

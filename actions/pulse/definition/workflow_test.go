@@ -1,89 +1,88 @@
-package definition_test
+package definition
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 // These helpers follow composition's input-validation boundary before invoking operations.
-func list(ctx context.Context, reader pulsedefinition.ListReader, input pulsedefinition.ListInput) (pulsedefinition.ListOutput, error) {
-	if err := pulsedefinition.ListValidateInput(&input); err != nil {
-		return pulsedefinition.ListOutput{}, err
+func list(ctx context.Context, reader ListReader, input ListInput) (ListOutput, error) {
+	if err := ListValidateInput(&input); err != nil {
+		return ListOutput{}, err
 	}
-	if err := pulsedefinition.ListValidateContinuation(input); err != nil {
-		return pulsedefinition.ListOutput{}, err
+	if err := ListValidateContinuation(input); err != nil {
+		return ListOutput{}, err
 	}
-	return pulsedefinition.List(ctx, reader, input)
+	return List(ctx, reader, input)
 }
 
-func inspect(ctx context.Context, reader pulsedefinition.InspectReader, input pulsedefinition.InspectInput) (pulsedefinition.InspectOutput, error) {
-	return pulsedefinition.New(workflowDefinitionProvider{target: pulsedefinition.ReadTarget{Environment: input.Environment, Site: input.Site}, port: workflowDefinitionPort{InspectReader: reader}}).InspectPulseDefinition(ctx, input)
+func inspect(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
+	return New(Ports{Read: workflowDefinitionProvider{target: ReadTarget{Environment: input.Environment, Site: input.Site}, port: workflowDefinitionPort{InspectReader: reader}}}).InspectPulseDefinition(ctx, input)
 }
 
-type workflowDefinitionPort struct{ pulsedefinition.InspectReader }
+type workflowDefinitionPort struct{ InspectReader }
 
-func (workflowDefinitionPort) ListDefinitions(context.Context, pulsedefinition.ListPageRequest) (pulsedefinition.ListPage, error) {
-	return pulsedefinition.ListPage{}, errors.New("unexpected definition list")
+func (workflowDefinitionPort) ListDefinitions(context.Context, ListPageRequest) (ListPage, error) {
+	return ListPage{}, errors.New("unexpected definition list")
 }
 func (workflowDefinitionPort) Source() *readsource.Metadata { return nil }
 func (workflowDefinitionPort) Publish()                     {}
 
 type workflowDefinitionProvider struct {
-	target pulsedefinition.ReadTarget
+	target ReadTarget
 	port   workflowDefinitionPort
 }
 
-func (p workflowDefinitionProvider) CacheTarget(string) (pulsedefinition.ReadTarget, error) {
+func (p workflowDefinitionProvider) CacheTarget(string) (ReadTarget, error) {
 	return p.target, nil
 }
-func (p workflowDefinitionProvider) CachedList(pulsedefinition.ReadTarget) pulsedefinition.CachedListPort {
+func (p workflowDefinitionProvider) CachedList(ReadTarget) CachedListPort {
 	return p.port
 }
-func (p workflowDefinitionProvider) CachedInspect(pulsedefinition.ReadTarget) pulsedefinition.CachedInspectPort {
+func (p workflowDefinitionProvider) CachedInspect(ReadTarget) CachedInspectPort {
 	return p.port
 }
-func (p workflowDefinitionProvider) Open(context.Context, string, string, string) (pulsedefinition.ReadSession, error) {
-	return pulsedefinition.ReadSession{ReadTarget: p.target, List: p.port, Inspect: p.port}, nil
+func (p workflowDefinitionProvider) Open(context.Context, string, string, string) (ReadSession, error) {
+	return ReadSession{ReadTarget: p.target, List: p.port, Inspect: p.port}, nil
 }
 func (workflowDefinitionProvider) CacheSetupError(_, _ string, err error) error { return err }
 func (workflowDefinitionProvider) Now() time.Time                               { return time.Now() }
 
-func delete(ctx context.Context, reader pulsedefinition.DeleteReader, deleter pulsedefinition.Deleter, input pulsedefinition.DeleteInput) (pulsedefinition.DeleteOutput, error) {
-	if err := pulsedefinition.DeleteValidateInput(input); err != nil {
-		return pulsedefinition.DeleteOutput{}, err
+func deleteWorkflow(ctx context.Context, reader DeleteReader, deleter Deleter, input DeleteInput) (DeleteOutput, error) {
+	if err := deleteValidateInput(input); err != nil {
+		return DeleteOutput{}, err
 	}
-	return pulsedefinition.Delete(ctx, reader, deleter, input)
+	return runDelete(ctx, reader, deleter, input)
 }
 
-func pull(ctx context.Context, reader pulsedefinition.PullReader, writer pulsedefinition.PullWriter, input pulsedefinition.PullInput) (pulsedefinition.PullOutput, error) {
-	if err := pulsedefinition.PullValidateInput(input); err != nil {
-		return pulsedefinition.PullOutput{}, err
+func pull(ctx context.Context, reader PullReader, writer PullWriter, input PullInput) (PullOutput, error) {
+	if err := pullValidateInput(input); err != nil {
+		return PullOutput{}, err
 	}
-	return pulsedefinition.Pull(ctx, reader, writer, input)
+	return runPull(ctx, reader, writer, input)
 }
 
-func create(ctx context.Context, validator pulsedefinition.CreateFieldValidator, finder pulsedefinition.CreateCollisionFinder, creator pulsedefinition.CreateCreator, input pulsedefinition.CreateInput, preview bool) (pulsedefinition.CreateOutput, error) {
-	if err := pulsedefinition.CreateValidateInput(&input); err != nil {
-		return pulsedefinition.CreateOutput{}, err
+func create(ctx context.Context, validator CreateFieldValidator, finder CreateCollisionFinder, creator CreateCreator, input CreateInput, preview bool) (CreateOutput, error) {
+	if err := createValidateInput(&input); err != nil {
+		return CreateOutput{}, err
 	}
-	return pulsedefinition.Create(ctx, validator, finder, creator, input, preview)
+	return runCreate(ctx, validator, finder, creator, input, preview)
 }
 
-func preparePublish(input pulsedefinition.PublishInput, bundle pulsedefinition.PublishBundle) (pulsedefinition.PublishPlan, error) {
-	if err := pulsedefinition.PublishValidateInput(&input); err != nil {
-		return pulsedefinition.PublishPlan{}, err
+func preparePublish(input PublishInput, bundle PublishBundle) (PublishPlan, error) {
+	if err := publishValidateInput(&input); err != nil {
+		return PublishPlan{}, err
 	}
-	return pulsedefinition.PublishPrepareBundle(input, bundle)
+	return preparePublishBundle(input, bundle)
 }
 
-func publish(ctx context.Context, deps *publishDependencies, input pulsedefinition.PublishInput) (pulsedefinition.PublishOutput, error) {
+func publish(ctx context.Context, deps *publishDependencies, input PublishInput) (PublishOutput, error) {
 	plan, err := preparePublish(input, deps.bundle)
 	if err != nil {
-		return pulsedefinition.PublishOutput{}, err
+		return PublishOutput{}, err
 	}
-	return pulsedefinition.Publish(ctx, deps, deps, input, plan)
+	return runPublish(ctx, deps, deps, input, plan)
 }

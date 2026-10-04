@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"bytes"
@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -15,7 +14,7 @@ func TestPublishOutputGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := pulsedefinition.PublishOutput{Status: "preview", Plan: plan, Mappings: []pulsedefinition.PublishMapping{}, Complete: true, Help: []string{"Publishing creates new objects; existing objects are never overwritten."}}
+	result := PublishOutput{Status: "preview", Plan: plan, Mappings: []PublishMapping{}, Complete: true, Help: []string{"Publishing creates new objects; existing objects are never overwritten."}}
 	for _, full := range []bool{false, true} {
 		name := "compact.toon"
 		if full {

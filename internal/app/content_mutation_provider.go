@@ -19,7 +19,7 @@ func (p contentMutationProvider) OpenWorkbookMutation(ctx context.Context, alias
 	if err != nil {
 		return workbookops.MutationSession{}, remoteSetupError(operation, alias, site, connection.environment, err)
 	}
-	port := resourceworkbook.NewMutationPort(connection.workbooks, connection.workbookChanges)
+	port := resourceworkbook.NewMutationPort(connection.workbooks, connection.projects, connection.workbookChanges)
 	return workbookops.MutationSession{
 		Environment:  connection.environment.Alias,
 		Site:         connection.environment.SiteContentURL,

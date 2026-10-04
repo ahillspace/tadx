@@ -12,7 +12,7 @@ import (
 )
 
 // Delete reads and revalidates the exact target before deletion.
-func Delete(ctx context.Context, reader DeleteReader, deleter Deleter, input DeleteInput) (DeleteOutput, error) {
+func runDelete(ctx context.Context, reader DeleteReader, deleter Deleter, input DeleteInput) (DeleteOutput, error) {
 	input.LUID = strings.TrimSpace(input.LUID)
 	observed, err := reader.GetMetric(ctx, input.LUID)
 	if err != nil {
@@ -173,7 +173,7 @@ func (o DeleteOutput) CompactOutput() any {
 func (o DeleteOutput) FullOutput() any { return o }
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.
-func DeleteValidateInput(input DeleteInput) error {
+func deleteValidateInput(input DeleteInput) error {
 	if strings.TrimSpace(input.LUID) == "" {
 		return deleteFailure("usage", errs.KindUsage, input, "Pulse metric delete requires an exact LUID.", nil)
 	}

@@ -1,4 +1,4 @@
-package metric_test
+package metric
 
 import (
 	"bytes"
@@ -11,21 +11,20 @@ import (
 	"strings"
 	"testing"
 
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 type forkService struct {
 	created int
-	metric  pulsemetric.Metric
-	request pulsemetric.ForkCreateRequest
+	metric  Metric
+	request ForkCreateRequest
 }
 
 type forkFailingReconciler struct{ *forkService }
 
-func (f forkFailingReconciler) ReconcileMetric(context.Context, pulsemetric.ForkExpectedMetric) (pulsemetric.ForkReconciliation, error) {
-	return pulsemetric.ForkReconciliation{}, errors.New("readback unavailable")
+func (f forkFailingReconciler) ReconcileMetric(context.Context, ForkExpectedMetric) (ForkReconciliation, error) {
+	return ForkReconciliation{}, errors.New("readback unavailable")
 }
 
 func (s *forkService) ResolveFilterFields(_ context.Context, _ string, fields []string) ([]string, error) {
@@ -39,8 +38,8 @@ func (s *forkService) ResolveFilterFields(_ context.Context, _ string, fields []
 }
 
 func TestForkResolvesCaptionBeforeReplacingInheritedFilter(t *testing.T) {
-	s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{map[string]any{"field": "Region", "categorical_values": []any{map[string]any{"string_value": "East"}}}}}}}
-	in := pulsemetric.ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []pulsemetric.ForkFilter{{Field: "Region caption", Values: []string{"West"}}}}
+	s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{map[string]any{"field": "Region", "categorical_values": []any{map[string]any{"string_value": "East"}}}}}}}
+	in := ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []ForkFilter{{Field: "Region caption", Values: []string{"West"}}}}
 	out, err := fork(context.Background(), s, s, s, in, true)
 	if err != nil || len(out.Plan.Filters) != 1 || out.Plan.Filters[0].Field != "Region" || s.created != 0 {
 		t.Fatalf("preview=%#v err=%v writes=%d", out, err, s.created)
@@ -57,8 +56,8 @@ func TestForkResolvesCaptionBeforeReplacingInheritedFilter(t *testing.T) {
 
 func TestForkMergesAliasAndRawFiltersAndRejectsConflictingOperators(t *testing.T) {
 	for _, exclude := range []bool{false, true} {
-		s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
-		in := pulsemetric.ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []pulsemetric.ForkFilter{{Field: "Region caption", Values: []string{"West"}}, {Field: "Region", Values: []string{"East", "West"}, Exclude: exclude}}}
+		s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
+		in := ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []ForkFilter{{Field: "Region caption", Values: []string{"West"}}, {Field: "Region", Values: []string{"East", "West"}, Exclude: exclude}}}
 		out, err := fork(context.Background(), s, s, s, in, true)
 		if exclude {
 			if err == nil || !strings.Contains(err.Error(), "conflicting") || s.created != 0 {
@@ -75,7 +74,7 @@ type forkDriftingAliasService struct {
 	resolutions int
 }
 
-func (s *forkDriftingAliasService) GetDefinition(ctx context.Context, id string) (pulsemetric.ForkDefinition, error) {
+func (s *forkDriftingAliasService) GetDefinition(ctx context.Context, id string) (ForkDefinition, error) {
 	d, err := s.forkService.GetDefinition(ctx, id)
 	d.AllowedDimensions = append(d.AllowedDimensions, "OtherRegion")
 	return d, err
@@ -88,15 +87,15 @@ func (s *forkDriftingAliasService) ResolveFilterFields(context.Context, string, 
 	return []string{"Region"}, nil
 }
 func TestForkRejectsAliasRetargetBeforeWrite(t *testing.T) {
-	s := &forkDriftingAliasService{forkService: forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}}
-	_, err := fork(context.Background(), s, s, s, pulsemetric.ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []pulsemetric.ForkFilter{{Field: "Region caption", Values: []string{"West"}}}}, false)
+	s := &forkDriftingAliasService{forkService: forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}}
+	_, err := fork(context.Background(), s, s, s, ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []ForkFilter{{Field: "Region caption", Values: []string{"West"}}}}, false)
 	if err == nil || !strings.Contains(err.Error(), "changed") || s.created != 0 {
 		t.Fatalf("err=%v writes=%d", err, s.created)
 	}
 }
 
 func TestForkBoundsCombinedAliasAndRawFilterValues(t *testing.T) {
-	s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
+	s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
 	left, right := []string{}, []string{}
 	for i := 0; i < 10001; i++ {
 		if i < 5000 {
@@ -105,30 +104,30 @@ func TestForkBoundsCombinedAliasAndRawFilterValues(t *testing.T) {
 			right = append(right, strconv.Itoa(i))
 		}
 	}
-	_, err := fork(context.Background(), s, s, s, pulsemetric.ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []pulsemetric.ForkFilter{{Field: "Region caption", Values: left}, {Field: "Region", Values: right}}}, false)
+	_, err := fork(context.Background(), s, s, s, ForkInput{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []ForkFilter{{Field: "Region caption", Values: left}, {Field: "Region", Values: right}}}, false)
 	if err == nil || !strings.Contains(err.Error(), "combined values") || s.created != 0 {
 		t.Fatalf("err=%v writes=%d", err, s.created)
 	}
 }
 
-func (s *forkService) GetMetric(context.Context, string) (pulsemetric.Metric, error) {
+func (s *forkService) GetMetric(context.Context, string) (Metric, error) {
 	return s.metric, nil
 }
-func (s *forkService) GetDefinition(context.Context, string) (pulsemetric.ForkDefinition, error) {
-	return pulsemetric.ForkDefinition{LUID: "definition-1", DatasourceLUID: "datasource-1", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_DAY", "GRANULARITY_BY_WEEK", "GRANULARITY_BY_MONTH", "GRANULARITY_BY_QUARTER", "GRANULARITY_BY_YEAR"}}, nil
+func (s *forkService) GetDefinition(context.Context, string) (ForkDefinition, error) {
+	return ForkDefinition{LUID: "definition-1", DatasourceLUID: "datasource-1", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_DAY", "GRANULARITY_BY_WEEK", "GRANULARITY_BY_MONTH", "GRANULARITY_BY_QUARTER", "GRANULARITY_BY_YEAR"}}, nil
 }
-func (s *forkService) GetOrCreateMetric(_ context.Context, request pulsemetric.ForkCreateRequest) (pulsemetric.ForkCreateResult, error) {
+func (s *forkService) GetOrCreateMetric(_ context.Context, request ForkCreateRequest) (ForkCreateResult, error) {
 	s.created++
 	s.request = request
-	return pulsemetric.ForkCreateResult{MetricLUID: "metric-fork", Created: true}, nil
+	return ForkCreateResult{MetricLUID: "metric-fork", Created: true}, nil
 }
-func (s *forkService) ReconcileMetric(_ context.Context, expected pulsemetric.ForkExpectedMetric) (pulsemetric.ForkReconciliation, error) {
-	return pulsemetric.ForkReconciliation{Status: "verified", Attempts: 1, OwnershipVerified: true, SpecificationVerified: true, SavedSpecification: expected.Specification, SavedDefinition: pulsemetric.ForkSavedDefinition{LUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID}}, nil
+func (s *forkService) ReconcileMetric(_ context.Context, expected ForkExpectedMetric) (ForkReconciliation, error) {
+	return ForkReconciliation{Status: "verified", Attempts: 1, OwnershipVerified: true, SpecificationVerified: true, SavedSpecification: expected.Specification, SavedDefinition: ForkSavedDefinition{LUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID}}, nil
 }
 
 func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
-	s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}, "comparison": map[string]any{"comparison": "PREVIOUS"}, "provider_extension": map[string]any{"keep": true}}}}
-	input := pulsemetric.ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []pulsemetric.ForkFilter{{Field: "Region", Values: []string{"West"}}}}
+	s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}, "comparison": map[string]any{"comparison": "PREVIOUS"}, "provider_extension": map[string]any{"keep": true}}}}
+	input := ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []ForkFilter{{Field: "Region", Values: []string{"West"}}}}
 	preview, err := fork(context.Background(), s, s, s, input, true)
 	if err != nil {
 		t.Fatal(err)
@@ -143,8 +142,8 @@ func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
 }
 
 func TestForkPreservesCreatedMetricWhenReconciliationFails(t *testing.T) {
-	s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}
-	input := pulsemetric.ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}
+	s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}
+	input := ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}
 	output, err := fork(context.Background(), s, s, forkFailingReconciler{s}, input, false)
 	var structured *errs.Error
 	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-fork" || !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed {
@@ -157,13 +156,13 @@ func TestForkPreservesCreatedMetricWhenReconciliationFails(t *testing.T) {
 
 type forkUncertainCreateService struct{ forkService }
 
-func (s *forkUncertainCreateService) GetOrCreateMetric(context.Context, pulsemetric.ForkCreateRequest) (pulsemetric.ForkCreateResult, error) {
-	return pulsemetric.ForkCreateResult{MetricLUID: "metric-uncertain", Created: true}, errors.New("provider response was interrupted")
+func (s *forkUncertainCreateService) GetOrCreateMetric(context.Context, ForkCreateRequest) (ForkCreateResult, error) {
+	return ForkCreateResult{MetricLUID: "metric-uncertain", Created: true}, errors.New("provider response was interrupted")
 }
 
 func TestForkRetainsIdentityWhenCreateOutcomeIsUncertain(t *testing.T) {
-	s := &forkUncertainCreateService{forkService: forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}}
-	output, err := fork(context.Background(), s, s, s, pulsemetric.ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}, false)
+	s := &forkUncertainCreateService{forkService: forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}}
+	output, err := fork(context.Background(), s, s, s, ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}, false)
 	var structured *errs.Error
 	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-uncertain" || !errors.As(err, &structured) || structured.Outcome != errs.OutcomeUnknown {
 		t.Fatalf("output=%#v err=%v", output, err)
@@ -175,18 +174,18 @@ func TestForkRetainsIdentityWhenCreateOutcomeIsUncertain(t *testing.T) {
 
 type forkExistingForkService struct{ forkService }
 
-func (s *forkExistingForkService) GetOrCreateMetric(_ context.Context, request pulsemetric.ForkCreateRequest) (pulsemetric.ForkCreateResult, error) {
+func (s *forkExistingForkService) GetOrCreateMetric(_ context.Context, request ForkCreateRequest) (ForkCreateResult, error) {
 	s.created++
 	s.request = request
-	return pulsemetric.ForkCreateResult{MetricLUID: "metric-existing", Created: false}, nil
+	return ForkCreateResult{MetricLUID: "metric-existing", Created: false}, nil
 }
-func (*forkExistingForkService) ReconcileMetric(context.Context, pulsemetric.ForkExpectedMetric) (pulsemetric.ForkReconciliation, error) {
-	return pulsemetric.ForkReconciliation{}, errors.New("readback unavailable")
+func (*forkExistingForkService) ReconcileMetric(context.Context, ForkExpectedMetric) (ForkReconciliation, error) {
+	return ForkReconciliation{}, errors.New("readback unavailable")
 }
 
 func TestForkPreservesExistingMetricWhenReconciliationFails(t *testing.T) {
-	s := &forkExistingForkService{forkService: forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}}
-	output, err := fork(context.Background(), s, s, s, pulsemetric.ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}, false)
+	s := &forkExistingForkService{forkService: forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}}
+	output, err := fork(context.Background(), s, s, s, ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}, false)
 	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-existing" || output.Result.Status != "existing" || output.Result.Created {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
@@ -201,8 +200,8 @@ func TestForkPreservesIntegerSpecFidelity(t *testing.T) {
 			"period": json.Number("30"),
 		},
 	}
-	s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: spec}}
-	input := pulsemetric.ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}
+	s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: spec}}
+	input := ForkInput{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}
 	result, err := fork(context.Background(), s, s, s, input, false)
 	if err != nil || result.Result == nil {
 		t.Fatalf("result=%#v err=%v", result, err)
@@ -232,8 +231,8 @@ func TestForkPreservesIntegerSpecFidelity(t *testing.T) {
 func TestForkAcceptsOnlySupportedCustomDayWindows(t *testing.T) {
 	for _, days := range []int{7, 14, 30, 60, 90} {
 		t.Run(strconv.Itoa(days), func(t *testing.T) {
-			s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}
-			input := pulsemetric.ForkInput{MetricLUID: "metric-1", Timeframe: "CUSTOM_N_DAYS", CustomDays: days, CustomDaysSet: true}
+			s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}
+			input := ForkInput{MetricLUID: "metric-1", Timeframe: "CUSTOM_N_DAYS", CustomDays: days, CustomDaysSet: true}
 			preview, err := fork(context.Background(), s, s, s, input, true)
 			if err != nil {
 				t.Fatal(err)
@@ -250,12 +249,12 @@ func TestForkAcceptsOnlySupportedCustomDayWindows(t *testing.T) {
 }
 
 func TestForkOutputGolden(t *testing.T) {
-	output := pulsemetric.ForkOutput{
-		Plan: pulsemetric.ForkPlan{
+	output := ForkOutput{
+		Plan: ForkPlan{
 			Mode: "execute", Operation: "pulse.metric.fork", Environment: "dev", Site: "sandbox",
 			SourceMetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1",
 			Timeframe: "LAST_30_DAYS",
-			Filters:   []pulsemetric.ForkFilter{{Field: "Region", Values: []string{"West"}}},
+			Filters:   []ForkFilter{{Field: "Region", Values: []string{"West"}}},
 			Specification: map[string]any{
 				"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG", "last_x_period": map[string]any{"period": 30, "period_type": "GRANULARITY_BY_DAY", "include_current_period": true}},
 				"filters":            []any{map[string]any{"field": "Region", "operator": "OPERATOR_EQUAL", "categorical_values": []any{map[string]any{"string_value": "West"}}, "include_null": false}},
@@ -263,11 +262,11 @@ func TestForkOutputGolden(t *testing.T) {
 			DefinitionFilters: []any{}, DefinitionFiltersKnown: true,
 			Fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		},
-		Result: &pulsemetric.ForkResult{
+		Result: &ForkResult{
 			Status: "created", MetricLUID: "metric-fork", MetricName: "Revenue West", Created: true,
 			ReconciliationStatus: "verified", ReconciliationAttempts: 1, OwnershipVerified: true, SpecificationVerified: true,
 			SavedSpecification: map[string]any{"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG"}},
-			SavedDefinition:    pulsemetric.ForkSavedDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
+			SavedDefinition:    ForkSavedDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
 			RequestID:          "request-1", ReconciliationRequestID: "request-2",
 		},
 		Help: []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."},
@@ -293,8 +292,8 @@ func forkAssertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 func TestForkRejectsNoChangeAndDisallowedDimension(t *testing.T) {
-	s := &forkService{metric: pulsemetric.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_CURRENT_PARTIAL"}}}}
-	for _, input := range []pulsemetric.ForkInput{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", Filters: []pulsemetric.ForkFilter{{Field: "Secret", Values: []string{"x"}}}}} {
+	s := &forkService{metric: Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_CURRENT_PARTIAL"}}}}
+	for _, input := range []ForkInput{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", Filters: []ForkFilter{{Field: "Secret", Values: []string{"x"}}}}} {
 		_, err := fork(context.Background(), s, s, s, input, false)
 		if err == nil {
 			t.Fatalf("input accepted: %#v", input)

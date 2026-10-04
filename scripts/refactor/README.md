@@ -10,10 +10,12 @@ Use a clean source snapshot extracted from the approved Git revision, not the wo
 The snapshot must contain the tracked files, without `.git`, symlinks, credentials, or unrelated files.
 Materialize tracked symlinks as regular files containing their exact link text; never follow them.
 The runner compares its file contents with Git objects from `--repo`.
+Use the gate manifest from the same checkpoint as the source.
+Current manifests follow relocated owners and do not necessarily run against the original baseline.
 It rejects undeclared additions, removals, and modifications.
 
 ```powershell
-python -B scripts/refactor/run.py --source <snapshot> --repo . --revision dd22c33bd1d123066f25ec09e2d612cd95717400
+python -B scripts/refactor/run.py --source <snapshot> --repo . --revision <approved-revision>
 ```
 
 For a candidate snapshot, repeat `--allow-change <relative-path>` for each approved changed file or directory.

@@ -1,4 +1,4 @@
-package definition_test
+package definition
 
 import (
 	"bytes"
@@ -8,16 +8,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 func TestInspectOutputGolden(t *testing.T) {
-	output := pulsedefinition.InspectOutput{
+	output := InspectOutput{
 		Status: "found", Environment: "dev", Site: "sales",
-		Definition: pulsedefinition.Definition{LUID: "definition-1", Name: "Revenue", Description: "Recognized revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", Temporality: "TEMPORALITY_OVER_TIME", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_MONTH"}, Configuration: map[string]any{"version": "1"}},
+		Definition: Definition{LUID: "definition-1", Name: "Revenue", Description: "Recognized revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", Temporality: "TEMPORALITY_OVER_TIME", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_MONTH"}, Configuration: map[string]any{"version": "1"}},
 		RequestID:  "request-1", Help: []string{"tadx pulse definition pull --id definition-1"}, Source: &readsource.Metadata{Mode: readsource.Cache, ObservedAt: "2026-09-04T12:00:00Z", Coverage: readsource.CoverageComplete, GenerationID: "generation-1", GenerationCreated: "2026-09-04T11:00:00Z"},
 	}
 	inspectAssertGolden(t, "compact.toon", output, false)
@@ -40,24 +39,24 @@ func inspectAssertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 type inspectReader struct {
-	definition pulsedefinition.Definition
+	definition Definition
 	luid       string
 	calls      int
 }
 
-func (r *inspectReader) GetDefinition(_ context.Context, luid string) (pulsedefinition.Definition, error) {
+func (r *inspectReader) GetDefinition(_ context.Context, luid string) (Definition, error) {
 	r.calls++
 	r.luid = luid
 	return r.definition, nil
 }
 
 func TestInspectRequiresAndVerifiesExactLUID(t *testing.T) {
-	r := &inspectReader{definition: pulsedefinition.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales"}}
-	output, err := inspect(context.Background(), r, pulsedefinition.InspectInput{Environment: "dev", Site: "sales", LUID: " definition-1 "})
+	r := &inspectReader{definition: Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales"}}
+	output, err := inspect(context.Background(), r, InspectInput{Environment: "dev", Site: "sales", LUID: " definition-1 "})
 	if err != nil || r.luid != "definition-1" || output.Definition.LUID != "definition-1" {
 		t.Fatalf("luid=%q output=%#v err=%v", r.luid, output, err)
 	}
-	full := output.FullOutput().(pulsedefinition.InspectFullResult)
+	full := output.FullOutput().(InspectFullResult)
 	if full.Definition.MeasureField != "Sales" {
 		t.Fatalf("full=%#v", full)
 	}
@@ -72,10 +71,10 @@ func TestInspectCompactOutputIncludesBoundedSavedConfigurationSummary(t *testing
 	for index := range granularities {
 		granularities[index] = "GRANULARITY_" + string(rune('A'+index%26)) + string(rune('0'+index/26))
 	}
-	output := pulsedefinition.InspectOutput{Definition: pulsedefinition.Definition{
+	output := InspectOutput{Definition: Definition{
 		LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", RunningTotal: true, Temporality: "TEMPORALITY_OVER_TIME", AllowedDimensions: dimensions, AllowedGranularities: granularities,
 	}}
-	compact := output.CompactOutput().(pulsedefinition.InspectCompactResult)
+	compact := output.CompactOutput().(InspectCompactResult)
 	if compact.Definition.MeasureField != "Sales" || compact.Definition.Aggregation != "AGGREGATION_SUM" || compact.Definition.TimeDimension != "Order Date" || !compact.Definition.RunningTotal || compact.Definition.Temporality != "TEMPORALITY_OVER_TIME" {
 		t.Fatalf("configuration summary=%#v", compact.Definition)
 	}
@@ -87,12 +86,12 @@ func TestInspectCompactOutputIncludesBoundedSavedConfigurationSummary(t *testing
 func TestInspectRejectsMissingOrMismatchedLUID(t *testing.T) {
 	for _, test := range []struct {
 		name   string
-		input  pulsedefinition.InspectInput
-		result pulsedefinition.Definition
+		input  InspectInput
+		result Definition
 		kind   errs.Kind
 	}{
-		{name: "missing", input: pulsedefinition.InspectInput{}, kind: errs.KindUsage},
-		{name: "mismatch", input: pulsedefinition.InspectInput{LUID: "definition-1"}, result: pulsedefinition.Definition{LUID: "definition-2"}, kind: errs.KindOperation},
+		{name: "missing", input: InspectInput{}, kind: errs.KindUsage},
+		{name: "mismatch", input: InspectInput{LUID: "definition-1"}, result: Definition{LUID: "definition-2"}, kind: errs.KindOperation},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := inspect(context.Background(), &inspectReader{definition: test.result}, test.input)

@@ -20,7 +20,7 @@ func TestCacheRefreshCannotAcknowledgeInconsistentSchemaMarkers(t *testing.T) {
 			defer server.Close()
 			options := diagnosticOptions(t, server)
 			args := []string{"cache", "refresh", "--environment", "test", "--scope", "projects"}
-			runGroupOneCLI(t, options, args...)
+			runProjectFlowCLI(t, options, args...)
 			path := filepath.Join(filepath.Dir(options.ConfigPath), targetCacheFixture(t, options.ConfigPath, nil).RelativePath())
 			db, err := sql.Open("sqlite", path)
 			if err != nil {

@@ -68,7 +68,7 @@ func TestEnvironmentAddPreviewMissingConfigurationAndExplicitFalse(t *testing.T)
 	path := filepath.Join(t.TempDir(), "new", "config.yaml")
 	options := app.Options{ConfigPath: path}
 	args := []string{"env", "add", "new", "--url", "https://tableau.example.test", "--preview"}
-	runGroupOneCLI(t, options, args...)
+	runProjectFlowCLI(t, options, args...)
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("preview created config: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestEnvironmentAddPreviewMissingConfigurationAndExplicitFalse(t *testing.T)
 		t.Fatalf("preview created lock: %v", err)
 	}
 	args[len(args)-1] = "--preview=false"
-	output := runGroupOneCLI(t, options, args...)
+	output := runProjectFlowCLI(t, options, args...)
 	if !strings.Contains(output, "status: added") {
 		t.Fatalf("explicit false did not execute: %s", output)
 	}

@@ -1,4 +1,4 @@
-package metric_test
+package metric
 
 import (
 	"context"
@@ -6,22 +6,21 @@ import (
 	"testing"
 	"time"
 
-	metric "github.com/ahillspace/tadx/actions/pulse/metric"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type metricReadPort struct {
-	page      metric.ListPage
-	item      metric.Metric
+	page      ListPage
+	item      Metric
 	listError error
 	published int
 }
 
-func (p *metricReadPort) ListMetrics(context.Context, string, metric.ListPageRequest) (metric.ListPage, error) {
+func (p *metricReadPort) ListMetrics(context.Context, string, ListPageRequest) (ListPage, error) {
 	return p.page, p.listError
 }
 
-func (p *metricReadPort) GetMetric(context.Context, string) (metric.Metric, error) {
+func (p *metricReadPort) GetMetric(context.Context, string) (Metric, error) {
 	return p.item, nil
 }
 
@@ -34,22 +33,22 @@ type metricReadProvider struct {
 	openCalls  int
 }
 
-func (p *metricReadProvider) CacheTarget(string) (metric.ReadTarget, error) {
+func (p *metricReadProvider) CacheTarget(string) (ReadTarget, error) {
 	p.cacheCalls++
-	return metric.ReadTarget{Environment: "canonical", Site: "sales"}, nil
+	return ReadTarget{Environment: "canonical", Site: "sales"}, nil
 }
 
-func (p *metricReadProvider) CachedList(metric.ReadTarget) metric.CachedListPort {
+func (p *metricReadProvider) CachedList(ReadTarget) CachedListPort {
 	return p.port
 }
 
-func (p *metricReadProvider) CachedInspect(metric.ReadTarget) metric.CachedInspectPort {
+func (p *metricReadProvider) CachedInspect(ReadTarget) CachedInspectPort {
 	return p.port
 }
 
-func (p *metricReadProvider) Open(context.Context, string, string, string) (metric.ReadSession, error) {
+func (p *metricReadProvider) Open(context.Context, string, string, string) (ReadSession, error) {
 	p.openCalls++
-	return metric.ReadSession{ReadTarget: metric.ReadTarget{Environment: "canonical", Site: "sales"}, List: p.port, Inspect: p.port}, nil
+	return ReadSession{ReadTarget: ReadTarget{Environment: "canonical", Site: "sales"}, List: p.port, Inspect: p.port}, nil
 }
 
 func (p *metricReadProvider) CacheSetupError(_, _ string, err error) error { return err }
@@ -59,11 +58,11 @@ func (p *metricReadProvider) Now() time.Time {
 
 func TestMetricServiceRejectsLocalInputsBeforePortAcquisition(t *testing.T) {
 	provider := &metricReadProvider{port: &metricReadPort{}}
-	service := metric.New(provider)
-	if _, err := service.ListPulseMetrics(t.Context(), metric.ListInput{}); err == nil {
+	service := New(Ports{Read: provider})
+	if _, err := service.ListPulseMetrics(t.Context(), ListInput{}); err == nil {
 		t.Fatal("missing exact definition LUID was accepted")
 	}
-	if _, err := service.InspectPulseMetric(t.Context(), metric.InspectInput{}); err == nil {
+	if _, err := service.InspectPulseMetric(t.Context(), InspectInput{}); err == nil {
 		t.Fatal("missing exact metric LUID was accepted")
 	}
 	if provider.cacheCalls != 0 || provider.openCalls != 0 {
@@ -72,13 +71,13 @@ func TestMetricServiceRejectsLocalInputsBeforePortAcquisition(t *testing.T) {
 }
 
 func TestMetricServiceBindsContinuationBeforeNativeOpen(t *testing.T) {
-	provider := &metricReadProvider{port: &metricReadPort{page: metric.ListPage{NextPageToken: "opaque"}}}
-	service := metric.New(provider)
-	first, err := service.ListPulseMetrics(t.Context(), metric.ListInput{Environment: "alias", DefinitionLUID: "definition-1", Limit: 7})
+	provider := &metricReadProvider{port: &metricReadPort{page: ListPage{NextPageToken: "opaque"}}}
+	service := New(Ports{Read: provider})
+	first, err := service.ListPulseMetrics(t.Context(), ListInput{Environment: "alias", DefinitionLUID: "definition-1", Limit: 7})
 	if err != nil || first.Page.NextCursor == "" || first.Environment != "canonical" || first.Site != "sales" {
 		t.Fatalf("first page = %#v, %v", first, err)
 	}
-	_, err = service.ListPulseMetrics(t.Context(), metric.ListInput{Environment: "alias", DefinitionLUID: "definition-1", Limit: 8, Cursor: first.Page.NextCursor})
+	_, err = service.ListPulseMetrics(t.Context(), ListInput{Environment: "alias", DefinitionLUID: "definition-1", Limit: 8, Cursor: first.Page.NextCursor})
 	if err == nil {
 		t.Fatal("cursor changed limit was accepted")
 	}
@@ -89,7 +88,7 @@ func TestMetricServiceBindsContinuationBeforeNativeOpen(t *testing.T) {
 
 func TestMetricServiceDoesNotPublishFailedNativeRead(t *testing.T) {
 	provider := &metricReadProvider{port: &metricReadPort{listError: errors.New("upstream failed")}}
-	_, err := metric.New(provider).ListPulseMetrics(t.Context(), metric.ListInput{Environment: "alias", DefinitionLUID: "definition-1"})
+	_, err := New(Ports{Read: provider}).ListPulseMetrics(t.Context(), ListInput{Environment: "alias", DefinitionLUID: "definition-1"})
 	if err == nil || provider.port.published != 0 {
 		t.Fatalf("failed read = %v; publication count = %d", err, provider.port.published)
 	}

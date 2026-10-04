@@ -28,6 +28,7 @@ type Ports struct {
 	Mutation MutationProvider
 	Read     ReadProvider
 	Pull     PullProvider
+	Publish  PublishProvider
 }
 
 // Service owns named workbook read and mutation operations.

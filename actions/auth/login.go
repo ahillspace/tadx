@@ -1,4 +1,3 @@
-// Package login validates and stores PAT credentials for one environment.
 package auth
 
 import (
@@ -11,22 +10,22 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-// Resolver resolves one configured environment without reading credentials.
+// LoginResolver resolves one configured environment without reading credentials.
 type LoginResolver interface {
 	Resolve(context.Context, string) (LoginTarget, error)
 }
 
-// Authenticator validates an in-memory PAT against Tableau.
+// LoginAuthenticator validates an in-memory PAT against Tableau.
 type LoginAuthenticator interface {
 	Authenticate(context.Context, LoginTarget, LoginCredential) (LoginAuthentication, error)
 }
 
-// Store persists a validated PAT in TADX's native OS credential store.
+// LoginStore persists a validated PAT in TADX's native OS credential store.
 type LoginStore interface {
 	Store(context.Context, LoginTarget, LoginCredential) (LoginStoreResult, error)
 }
 
-// Preflight resolves the environment before CLI plumbing requests any PAT input.
+// LoginPreflight resolves the environment before CLI plumbing requests any PAT input.
 func (a *Service) LoginPreflight(ctx context.Context, environment string) error {
 	if a == nil || a.LoginResolver == nil || a.StatusLookup == nil {
 		return usage("Authentication setup is unavailable.")
@@ -38,7 +37,7 @@ func (a *Service) LoginPreflight(ctx context.Context, environment string) error 
 	return a.rejectLoginOverride(target)
 }
 
-// Execute validates the PAT before allowing storage.
+// Login validates the PAT before allowing storage.
 func (a *Service) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
 	if a == nil || a.LoginResolver == nil || a.LoginAuthenticator == nil || a.LoginStore == nil || a.StatusLookup == nil {
 		return LoginOutput{}, &errs.Error{ID: "auth.login.unconfigured", Kind: errs.KindRuntime, Operation: "auth.login", Summary: "PAT login is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure PAT validation and OS credential storage before retrying."}

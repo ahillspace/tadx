@@ -1,4 +1,4 @@
-package metric_test
+package metric
 
 import (
 	"bytes"
@@ -7,13 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 func TestDeleteOutputGolden(t *testing.T) {
-	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget(), deleteTarget()}}
-	output, err := delete(context.Background(), b, b, deleteInput())
+	b := &deleteBackend{targets: []DeleteMetric{deleteTarget(), deleteTarget()}}
+	output, err := deleteWorkflow(context.Background(), b, b, deleteInput())
 	if err != nil {
 		t.Fatal(err)
 	}

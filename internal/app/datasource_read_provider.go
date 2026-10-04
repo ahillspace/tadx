@@ -7,15 +7,14 @@ import (
 	datasource "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/inventory"
-	"github.com/ahillspace/tadx/internal/readsource"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
 type datasourceReadProvider struct {
 	commands *remoteContentCommands
 	projects *resourceproject.DiscoveryPaths
+	resourcedatasource.ListFilterPort
 }
 
 func (p *datasourceReadProvider) CacheTarget(alias string) (datasource.ReadTarget, error) {
@@ -29,18 +28,6 @@ func (p *datasourceReadProvider) CachedList(target datasource.ReadTarget) dataso
 
 func (p *datasourceReadProvider) CachedInspect(target datasource.ReadTarget) datasource.CachedInspectResolver {
 	return resourcedatasource.NewCachedInspectPort(p.commands.cacheStore(target.Environment), target.Environment, target.Site, p.cacheSupport())
-}
-
-func (*datasourceReadProvider) LegacyInventoryCursor(cursor string) bool {
-	return legacyInventorySnapshot(cursor)
-}
-
-func (*datasourceReadProvider) ListFilter(input datasource.ListInput) (string, error) {
-	return tableaudatasource.ListFilter(tableaudatasource.ListRequest{
-		Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID,
-		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
-		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
-	})
 }
 
 func (p *datasourceReadProvider) OpenDatasourceRead(ctx context.Context, alias, site, operation string) (datasource.ReadSession, error) {
@@ -63,15 +50,7 @@ func (p *datasourceReadProvider) OpenDatasourceRead(ctx context.Context, alias, 
 }
 
 func (p *datasourceReadProvider) cacheSupport() resourcedatasource.CacheSupport {
-	return resourcedatasource.CacheSupport{ReadError: cacheReadError, UnsupportedFilters: unsupportedCacheFilters, ReadSource: cacheReadSource, RecordSource: cacheRecordSource}
-}
-
-func (*datasourceReadProvider) ValidateComplete(all bool, source *readsource.Metadata) error {
-	return inventory.ValidateAll(all, source)
-}
-
-func (*datasourceReadProvider) RefreshError(operation, environment, site string, err error) error {
-	return inventory.RefreshError(operation, environment, site, err)
+	return resourcedatasource.CacheSupport{ReadError: inventory.CacheReadError, UnsupportedFilters: inventory.UnsupportedCacheFilters, ReadSource: inventory.CacheReadSource, RecordSource: inventory.CacheRecordSource}
 }
 
 func (p *datasourceReadProvider) Now() time.Time { return p.commands.runtime.now() }

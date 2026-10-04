@@ -51,7 +51,7 @@ func ValidateCancelInput(input CancelInput) error {
 	return nil
 }
 
-// Cancel requests cancellation only for the supported job types selected by
+// cancelOutput requests cancellation only for the supported job types selected by
 // the source. Preview never authorizes or performs a remote cancellation.
 func cancelOutput(ctx context.Context, cancel func(context.Context, CancelInput) (CancelResult, error), input CancelInput) (CancelOutput, error) {
 	if err := ValidateCancelInput(input); err != nil {

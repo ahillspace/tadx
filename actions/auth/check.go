@@ -1,4 +1,3 @@
-// Package check implements the PAT-only auth.check capability.
 package auth
 
 import (
@@ -9,17 +8,17 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-// EnvironmentResolver resolves one exact non-secret environment profile.
+// CheckEnvironmentResolver resolves one exact non-secret environment profile.
 type CheckEnvironmentResolver interface {
 	Resolve(context.Context, string) (CheckTarget, error)
 }
 
-// Authenticator performs PAT sign-in without exposing credentials.
+// CheckAuthenticator performs PAT sign-in without exposing credentials.
 type CheckAuthenticator interface {
 	Authenticate(context.Context, CheckTarget) (CheckAuthentication, error)
 }
 
-// Execute signs in and returns only non-secret identity and target context.
+// Check signs in and returns only non-secret identity and target context.
 func (a *Service) Check(ctx context.Context, input CheckInput) (CheckOutput, error) {
 	if a == nil || a.CheckResolver == nil || a.CheckAuthenticator == nil {
 		return CheckOutput{}, &errs.Error{ID: "auth.check.unconfigured", Kind: errs.KindRuntime, Operation: "auth.check", Summary: "Authentication check is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure authentication before retrying."}

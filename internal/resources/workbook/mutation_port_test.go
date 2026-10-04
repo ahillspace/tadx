@@ -27,7 +27,7 @@ func (c *workbookChanges) Delete(context.Context, string) (tableauworkbook.Mutat
 func TestMutationPortPreservesExactWorkbookFieldsAndReceipt(t *testing.T) {
 	project, name, owner, description := "project-2", "Renamed", "owner-2", ""
 	changes := &workbookChanges{result: tableauworkbook.MutationResult{Status: "succeeded", WorkbookLUID: "wb-1", WorkbookName: name, ProjectLUID: project, OwnerLUID: owner, Description: &description, EvidenceSource: "tableau_update_response", TableauRequestID: "request-wb"}}
-	port := resourceworkbook.NewMutationPort(nil, changes)
+	port := resourceworkbook.NewMutationPort(nil, nil, changes)
 	move, err := port.MoveWorkbook(t.Context(), "wb-1", project)
 	if err != nil || changes.request.LUID != "wb-1" || changes.request.ProjectLUID == nil || *changes.request.ProjectLUID != project || changes.request.Name != nil || changes.request.OwnerLUID != nil || changes.request.Description != nil || move.WorkbookLUID != "wb-1" || move.ProjectLUID != project || move.TableauRequestID != "request-wb" {
 		t.Fatalf("move=%#v request=%#v err=%v", move, changes.request, err)

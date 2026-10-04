@@ -7,12 +7,13 @@ import (
 	workbook "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/inventory"
-	"github.com/ahillspace/tadx/internal/readsource"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
-	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
-type workbookReadProvider struct{ commands *remoteContentCommands }
+type workbookReadProvider struct {
+	commands *remoteContentCommands
+	resourceworkbook.ListFilterPort
+}
 
 func (p workbookReadProvider) CacheTarget(alias string) (workbook.ReadTarget, error) {
 	environment, site, err := p.commands.resolveCacheTarget(alias)
@@ -27,14 +28,6 @@ func (p workbookReadProvider) CachedInspect(target workbook.ReadTarget) workbook
 	return resourceworkbook.NewCachedInspectPort(p.commands.cacheStore(target.Environment), target.Environment, target.Site, p.cacheSupport())
 }
 
-func (workbookReadProvider) LegacyInventoryCursor(cursor string) bool {
-	return legacyInventorySnapshot(cursor)
-}
-
-func (workbookReadProvider) ListFilter(input workbook.ListInput) (string, error) {
-	return tableauworkbook.ListFilter(tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
-}
-
 func (p workbookReadProvider) OpenWorkbookRead(ctx context.Context, alias, site, operation string) (workbook.ReadSession, error) {
 	connection, err := p.commands.connect(ctx, alias, false)
 	if err != nil {
@@ -47,13 +40,7 @@ func (p workbookReadProvider) OpenWorkbookRead(ctx context.Context, alias, site,
 }
 
 func (p workbookReadProvider) cacheSupport() resourceworkbook.CacheSupport {
-	return resourceworkbook.CacheSupport{ReadError: cacheReadError, UnsupportedFilters: unsupportedCacheFilters, ReadSource: cacheReadSource, RecordSource: cacheRecordSource}
+	return resourceworkbook.CacheSupport{ReadError: inventory.CacheReadError, UnsupportedFilters: inventory.UnsupportedCacheFilters, ReadSource: inventory.CacheReadSource, RecordSource: inventory.CacheRecordSource}
 }
 
-func (workbookReadProvider) ValidateComplete(all bool, source *readsource.Metadata) error {
-	return inventory.ValidateAll(all, source)
-}
-func (workbookReadProvider) RefreshError(operation, environment, site string, err error) error {
-	return inventory.RefreshError(operation, environment, site, err)
-}
 func (p workbookReadProvider) Now() time.Time { return p.commands.runtime.now() }

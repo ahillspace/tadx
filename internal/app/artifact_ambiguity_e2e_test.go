@@ -12,7 +12,7 @@ import (
 )
 
 func TestAmbiguousArtifactCLIReportsExactCandidates(t *testing.T) {
-	configPath := writePhaseOneConfigWithSite(t, "https://tableau.example.test", "marketing")
+	configPath := writeCLIConfigWithSite(t, "https://tableau.example.test", "marketing")
 	workspace := createNamedWorkspace(t, configPath, "ambiguous")
 	manager := artifact.NewWorkbookManager(nil)
 	for _, candidate := range []struct {

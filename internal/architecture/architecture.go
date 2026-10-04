@@ -184,6 +184,14 @@ func localImportAllowed(file, imported string) bool {
 	}
 	switch layerForFile(file) {
 	case layerAction:
+		// Doctor interprets selected local cache and workspace artifact health.
+		if path.Dir(file) == "actions/doctor" && matchesExact(imported, "internal/artifact", "internal/cache", "internal/workspace") {
+			return true
+		}
+		// Read owners consume neutral cache coverage and recovery decisions.
+		if matchesExact(path.Dir(file), "actions/workbook", "actions/datasource", "actions/flow", "actions/project", "actions/admin/user", "actions/admin/group") && imported == "internal/inventory" {
+			return true
+		}
 		// Exact job recovery consumes durable receipts and bounded observation.
 		if path.Dir(file) == "actions/job" && matchesExact(imported, "internal/jobmonitor", "internal/operationrun") {
 			return true
@@ -271,7 +279,7 @@ func localImportAllowed(file, imported string) bool {
 		}
 		// Project cache ports translate indexed records and preserve read coverage.
 		// This exact dependency does not authorize other adapters to own caches.
-		if path.Dir(file) == "internal/resources/project" && matchesExact(imported, "internal/cache", "internal/readsource") {
+		if path.Dir(file) == "internal/resources/project" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory") {
 			return true
 		}
 		// Admin cache ports translate indexed user/group records, while the
@@ -279,8 +287,8 @@ func localImportAllowed(file, imported string) bool {
 		if path.Dir(file) == "internal/resources/admin" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory", "internal/errs") {
 			return true
 		}
-		// Pulse ports translate typed cache records and publish observed reads.
-		if path.Dir(file) == "internal/resources/pulse" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory") {
+		// Pulse ports translate typed observations and managed bundle artifacts.
+		if path.Dir(file) == "internal/resources/pulse" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory", "internal/artifact", "internal/errs") {
 			return true
 		}
 		// Lineage owns the metadata-only artifact port and its local preview error.
@@ -297,6 +305,11 @@ func localImportAllowed(file, imported string) bool {
 		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource") && matchesExact(imported, "internal/artifact", "internal/errs") {
 			return true
 		}
+		// Publication adapters translate shared accepted receipts into typed
+		// workbook and datasource completion without owning receipt persistence.
+		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource") && imported == "internal/jobmonitor" {
+			return true
+		}
 		// Content read ports own typed cache and inventory projections. The
 		// collector and source policy remain in the neutral inventory package.
 		if matchesExact(path.Dir(file), "internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow") &&
@@ -311,7 +324,7 @@ func localImportAllowed(file, imported string) bool {
 		// Inventory coordinates only neutral cache collection and publication.
 		// Its native collector edge does not authorize other foundation packages.
 		if path.Dir(file) == "internal/inventory" {
-			return matchesExact(imported, "internal/cache", "internal/errs", "internal/readsource", "internal/tableau/cache", "internal/value")
+			return matchesExact(imported, "internal/cache", "internal/commandhint", "internal/errs", "internal/readsource", "internal/tableau/cache", "internal/value")
 		}
 		// Metadata traversal consumes shared page records, never providers or actions.
 		if hasPathPrefix(file, "internal/paging") {
@@ -347,8 +360,8 @@ func localImportAllowed(file, imported string) bool {
 		}
 		// Detached operations persist bounded worker state and use the leaf lock
 		// package for cross-process coordination and the leaf replace package to
-		// install records. The composition root is the only higher layer allowed
-		// to consume this durable boundary.
+		// install records. App constructs worker coordination; the job action
+		// consumes operation records for evidence-based recovery.
 		if hasPathPrefix(file, "internal/operationrun") {
 			return (path.Dir(file) == "internal/operationrun" && matchesExact(imported, "internal/value", "internal/errs")) ||
 				matchesExact(imported, "internal/fsreplace", "internal/lock")

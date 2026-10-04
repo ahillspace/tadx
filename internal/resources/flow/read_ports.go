@@ -17,6 +17,13 @@ import (
 
 type ReadPorts struct{ Adapter *Adapter }
 
+// ListFilterPort validates and encodes a native flow selection before authentication.
+type ListFilterPort struct{}
+
+func (ListFilterPort) ListFilter(input flow.ListInput) (string, error) {
+	return tableauflow.ListFilter(tableauflow.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
+}
+
 func (p ReadPorts) ResolveFlow(ctx context.Context, selector identity.Selector) (flow.Record, error) {
 	return p.Adapter.ResolveFlow(ctx, selector)
 }

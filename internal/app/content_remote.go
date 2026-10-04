@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
-	"path/filepath"
 
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
@@ -15,14 +13,13 @@ import (
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/config"
-	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/jobmonitor"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
-	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 )
 
@@ -36,13 +33,13 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	projects := projectops.New(projectops.Ports{Provider: projectProvider{commands: c}})
 	mutations := contentMutationProvider{commands: c}
 	workbooks := workbookops.New(workbookops.Ports{Mutation: mutations, Read: workbookReadProvider{commands: c}})
-	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}, Schema: datasourceSchemaProvider{commands: c}, Pull: datasourcePullProvider{commands: c}})
-	flows := flowops.New(flowops.Ports{Mutation: mutations, Read: flowReadProvider{commands: c}, Pull: flowPullProvider{commands: c}})
+	datasources := datasourceops.New(datasourceops.Ports{Mutation: mutations, Read: &datasourceReadProvider{commands: c}, Schema: datasourceSchemaProvider{commands: c}, Pull: datasourcePullProvider{commands: c}, Publish: datasourcePublishProvider{commands: c}})
+	flows := flowops.New(flowops.Ports{Mutation: mutations, Read: flowReadProvider{commands: c}, Pull: flowPullProvider{commands: c}, Publish: flowPublishProvider{commands: c}})
 	return &contentcli.Dependencies{
 		WorkbookLister: workbooks, WorkbookInspector: workbooks, WorkbookDeleter: workbooks, WorkbookMover: workbooks, WorkbookUpdater: workbooks,
-		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: datasources, DatasourcePuller: datasources, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
+		DatasourceLister: datasources, DatasourceInspector: datasources, DatasourceSchema: datasources, DatasourcePuller: datasources, DatasourcePublisher: datasources, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
 		ProjectLister: projects, ProjectInspector: projects, ProjectCreator: projects, ProjectUpdater: projects, ProjectDeleter: projects, ProjectMover: projects,
-		FlowLister: flows, FlowInspector: flows, FlowPuller: flows, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
+		FlowLister: flows, FlowInspector: flows, FlowPuller: flows, FlowPublisher: flows, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
 	}
 }
 
@@ -100,57 +97,36 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	}, nil
 }
 
-func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.PublishInput, preview bool) (flowops.PublishOutput, error) {
-	if err := flowops.ValidatePublishInput(input); err != nil {
-		return flowops.PublishOutput{}, err
-	}
-	manager := artifact.NewFlowManager(c.runtime.now)
-	var reader flowops.ArtifactReader
-	if input.File != "" {
-		if _, err := artifact.ReadNative(ctx, input.File, "flow"); err != nil {
-			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.file", "flow.publish", input.Environment, input.Site, "Native flow validation failed.", "Select a valid native flow file, then retry.", err)
-		}
-		input.ArtifactPath = input.File
-		reader = nativeFlowArtifactReader{}
-	} else {
-		workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-		if err != nil {
-			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.workspace", "flow.publish", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-		}
-		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
-		if err != nil {
-			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-				return flowops.PublishOutput{}, artifact.MapResolutionError("flow.publish", workspace.Name, input.ArtifactID, err)
-			}
-			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact resolution failed.", "Select one exact workspace-relative managed flow artifact, then retry.", err)
-		}
-		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
-		input.WorkspaceName = workspace.Name
-		_, err = manager.Read(ctx, absolutePath)
-		if err != nil {
-			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact read failed.", "Repair or pull the exact flow artifact, then retry.", err)
-		}
-		input.ArtifactPath = absolutePath
-		reader = flowArtifactReader{manager: manager, displayPath: managed.Path}
-	}
-	connection, err := c.connect(ctx, input.Environment, true)
+type flowPublishProvider struct{ commands *remoteContentCommands }
+
+func (p flowPublishProvider) OpenFlowPublishSource(ctx context.Context, input flowops.PublishInput) (flowops.PublishInput, flowops.ArtifactReader, string, error) {
+	source := resourceflow.PublishSource{Manager: artifact.NewFlowManager(p.commands.runtime.now), Workspace: func(ctx context.Context, selector, alias string) (string, string, error) {
+		workspace, err := (&workspaceRuntime{runtime: p.commands.runtime}).resolveForEnvironment(ctx, selector, alias)
+		return workspace.Name, workspace.Root, err
+	}}
+	return source.Open(ctx, input)
+}
+
+func (p flowPublishProvider) OpenFlowPublish(ctx context.Context, input flowops.PublishInput, sourcePath string) (flowops.PublishSession, error) {
+	connection, err := p.commands.connect(ctx, input.Environment, true)
 	if err != nil {
-		return flowops.PublishOutput{}, remoteSetupError("flow.publish", input.Environment, input.Site, connection.environment, err)
+		return flowops.PublishSession{}, remoteSetupError("flow.publish", input.Environment, input.Site, connection.environment, err)
 	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
-	var lifecycle *publication
-	adapter := flowPublishAdapter{Adapter: connection.flows, projects: connection.projects, changes: connection.flowChanges, runtime: c.runtime, environment: input.Environment, sourcePath: input.ArtifactPath, lifecycle: &lifecycle}
-	if managed, ok := reader.(flowArtifactReader); ok {
-		adapter.sourcePath = managed.displayPath
+	var lifecycle *jobmonitor.Publication
+	ports := resourceflow.PublishPorts{Adapter: connection.flows, Projects: connection.projects, Changes: connection.flowChanges,
+		Begin: func(ctx context.Context, request flowops.PublishRequest) error {
+			started, _, err := p.commands.runtime.publication(ctx, connection.environment.Alias, "flow", sourcePath, request.ProjectLUID, request.Name)
+			if err != nil {
+				return err
+			}
+			lifecycle = started
+			return nil
+		},
+		Progress: func(ctx context.Context, label string) { progress.SetLabel(ctx, label) },
 	}
-	out, err := flowops.NewPublish(reader, adapter, adapter).Execute(ctx, input, preview)
-	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
-		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.Record(ctx, "", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, "")
-		err = errors.Join(err, saveErr)
-	}
-	return out, err
+	return flowops.PublishSession{Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Resolver: ports, Preparer: ports,
+		Lifecycle: func() flowops.PublishLifecycle { return lifecycle },
+	}, nil
 }
 
 type lineageWorkspace struct{ runtime *runtimeDependencies }
@@ -181,53 +157,4 @@ func (p lineageProvider) OpenLineage(ctx context.Context, environment string) (l
 func remoteSetupError(operation, environment, site string, resolved config.Environment, err error) error {
 	environment, site = resolvedTarget(environment, site, resolved)
 	return capabilitySetupError(operation+".setup", operation, environment, site, "Tableau operation setup failed.", "Review the selected environment, site, and PAT configuration.", err)
-}
-
-type flowArtifactReader struct {
-	manager     *artifact.FlowManager
-	displayPath string
-}
-
-func (r flowArtifactReader) ReadFlow(ctx context.Context, path string) (flowops.PublishArtifact, error) {
-	item, err := r.manager.Read(ctx, path)
-	return flowops.PublishArtifact{TableauID: item.Metadata.TableauID, Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, Fingerprint: item.Fingerprint, SourceEnvironment: item.Metadata.SourceEnvironment, SourceSite: item.Metadata.SourceSite, SourceProjectName: item.Metadata.SourceProjectName, SourceProjectID: item.Metadata.SourceProjectID, Size: item.Size}, err
-}
-
-type flowPublishAdapter struct {
-	*resourceflow.Adapter
-	projects                *resourceproject.Adapter
-	changes                 *resourceflow.MutationAdapter
-	runtime                 *runtimeDependencies
-	environment, sourcePath string
-	lifecycle               **publication
-}
-
-func (a flowPublishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (flowops.Project, error) {
-	item, err := a.projects.ResolveProject(ctx, selector)
-	return flowops.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
-}
-
-func (a flowPublishAdapter) Prepare(ctx context.Context, input flowops.PublishRequest) (flowops.PreparedPublish, error) {
-	if a.runtime != nil {
-		p, err := a.runtime.publication(ctx, a.environment, "flow", a.sourcePath, input.ProjectLUID, input.Name)
-		if err != nil {
-			return nil, err
-		}
-		if a.lifecycle != nil {
-			*a.lifecycle = p
-		}
-	}
-	prepared, err := a.changes.PrepareFlow(ctx, tableauflow.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite})
-	if err != nil {
-		return nil, err
-	}
-	return preparedFlowPublish{prepared}, nil
-}
-
-type preparedFlowPublish struct{ prepared tableauflow.PreparedPublish }
-
-func (p preparedFlowPublish) Commit(ctx context.Context) (flowops.PublishResult, error) {
-	progress.SetLabel(ctx, "Uploading and submitting flow")
-	result, err := p.prepared.Commit(ctx)
-	return flowops.PublishResult{Status: result.Status, FlowLUID: result.FlowLUID, FlowName: result.FlowName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
 }

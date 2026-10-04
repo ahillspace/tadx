@@ -5,15 +5,15 @@ import (
 	"time"
 
 	projectops "github.com/ahillspace/tadx/actions/project"
-	"github.com/ahillspace/tadx/internal/cache"
 	inventorycore "github.com/ahillspace/tadx/internal/inventory"
-	"github.com/ahillspace/tadx/internal/readsource"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
-	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 // projectProvider constructs project ports only after the action validates input.
-type projectProvider struct{ commands *remoteContentCommands }
+type projectProvider struct {
+	commands *remoteContentCommands
+	resourceproject.ListFilterPort
+}
 
 var _ projectops.Provider = projectProvider{}
 
@@ -31,19 +31,7 @@ func (p projectProvider) CachedInspect(target projectops.Target) projectops.Cach
 }
 
 func projectCacheSupport() resourceproject.CacheSupport {
-	return resourceproject.CacheSupport{ReadError: cacheReadError, UnsupportedFilters: unsupportedCacheFilters, ReadSource: cacheReadSource, RecordSource: cacheRecordSource}
-}
-
-func (p projectProvider) LegacyInventoryCursor(value string) bool {
-	return legacyInventorySnapshot(value)
-}
-
-func (p projectProvider) ListFilter(input projectops.ListInput) (string, error) {
-	return resourceproject.ListFilter(input)
-}
-
-func (p projectProvider) ValidateComplete(all bool, source *readsource.Metadata) error {
-	return inventorycore.ValidateAll(all, source)
+	return resourceproject.CacheSupport{ReadError: inventorycore.CacheReadError, UnsupportedFilters: inventorycore.UnsupportedCacheFilters, ReadSource: inventorycore.CacheReadSource, RecordSource: inventorycore.CacheRecordSource}
 }
 
 func (p projectProvider) Now() time.Time { return p.commands.runtime.now() }
@@ -64,29 +52,6 @@ func (p projectProvider) Open(ctx context.Context, alias, site, operation string
 			CreateResolver: create, Creator: create, UpdateResolver: update, Updater: update,
 			DeleteResolver: remove, Deleter: remove, MoveResolver: move, Mover: move,
 		},
-		Inventory: projectInventoryPort{commands: p.commands, connection: connection},
+		Inventory: resourceproject.InventoryPorts{Executor: connection.inventory, Store: p.commands.cacheStore, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, MaxConcurrency: connection.environment.CacheMaxConcurrency, Now: p.commands.runtime.now},
 	}, nil
-}
-
-type projectInventoryPort struct {
-	commands   *remoteContentCommands
-	connection remoteConnection
-}
-
-func (p projectInventoryPort) CollectProjects(ctx context.Context, filter string, observedAt time.Time) (projectops.CollectedList, error) {
-	environment, site := p.connection.environment.Alias, p.connection.environment.SiteContentURL
-	inventory, err := inventorycore.Collect(ctx, p.connection.inventory, p.commands.cacheStore(environment), tableaucache.ScopeProjects, environment, site, observedAt, inventorycore.Options{MaxConcurrency: p.connection.environment.CacheMaxConcurrency, Filter: filter})
-	if err != nil {
-		return projectops.CollectedList{}, inventorycore.RefreshError("project.list", environment, site, err)
-	}
-	reader := resourceproject.InventoryListPort{Entries: inventory.Entries, RequestID: inventory.FinalRequestID(), AllowContinuation: true}
-	source, help := inventory.SourceAndHelp(observedAt, p.commands.runtime.now)
-	return projectops.CollectedList{Reader: reader, RequestID: reader.RequestID, Source: source, Help: help}, nil
-}
-
-func (p projectInventoryPort) PublishProjectInspect(_ context.Context, output projectops.InspectOutput, observedAt time.Time) {
-	entry, err := resourceproject.InspectEntry(output, observedAt)
-	if err == nil {
-		writeThrough(p.commands.cacheStore(output.Environment), []cache.ResourceEntry{entry})
-	}
 }

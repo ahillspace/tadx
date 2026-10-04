@@ -55,7 +55,7 @@ func ValidateWaitInput(input WaitInput) error {
 	return nil
 }
 
-// Wait waits for authoritative terminal state or returns an honest
+// waitOutput waits for authoritative terminal state or returns an honest
 // interruption/unknown outcome from local job tracking.
 func waitOutput(ctx context.Context, wait func(context.Context, WaitInput) (WaitResult, error), input WaitInput) (WaitOutput, error) {
 	if err := ValidateWaitInput(input); err != nil {

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -154,4 +155,35 @@ func addPermissionCapabilityHelp(cmd *cobra.Command, capabilities func(string) [
 		}
 		return capabilities(kind), cobra.ShellCompDirectiveNoFileComp
 	})
+}
+
+func newPermissionInspect(deps Dependencies) *cobra.Command {
+	var in permission.InspectInput
+	cmd := &cobra.Command{Use: "inspect", Short: "Inspect permission rules for one exact resource.", Annotations: map[string]string{"tadx.capability": "admin.permission.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
+		if err := noArgs("admin.permission.inspect")(cmd, args); err != nil {
+			return err
+		}
+		if in.ResourceKind == "" || in.ResourceLUID == "" {
+			return clierr.Usage("admin.permission.inspect", errors.New("--kind and --id are required"))
+		}
+		if in.PrincipalUsername != "" && (in.PrincipalLUID != "" || in.PrincipalType != "user") {
+			return clierr.Usage("admin.permission.inspect", errors.New("--principal-username requires --principal-type user and is mutually exclusive with --principal-id"))
+		}
+		return nil
+	}, RunE: func(cmd *cobra.Command, _ []string) error {
+		out, err := deps.PermissionInspector.InspectAdminPermission(cmd.Context(), in)
+		if err != nil {
+			return clierr.WithOutput(out, err)
+		}
+		return deps.Renderer.Render(out)
+	}}
+	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
+	cmd.Flags().StringVar(&in.ResourceKind, "kind", "", "exact resource kind: workbook, datasource, flow, or project")
+	cmd.Flags().StringVar(&in.ResourceLUID, "id", "", "authoritative resource LUID")
+	cmd.Flags().StringVar(&in.DefaultFor, "default-for", "", "project default content kind: workbooks, datasources, or flows")
+	cmd.Flags().StringVar(&in.PrincipalType, "principal-type", "", "exact principal type: user or group")
+	cmd.Flags().StringVar(&in.PrincipalLUID, "principal-id", "", "authoritative principal LUID filter")
+	cmd.Flags().StringVar(&in.PrincipalUsername, "principal-username", "", "exact site username filter; mutually exclusive with --principal-id")
+	cmd.Flags().StringVar(&in.Capability, "capability", "", "exact capability-name filter")
+	return cmd
 }

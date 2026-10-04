@@ -7,7 +7,6 @@ import (
 	"time"
 
 	projectops "github.com/ahillspace/tadx/actions/project"
-	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type workflowProvider struct {
@@ -23,7 +22,6 @@ func (p *workflowProvider) CachedList(projectops.Target) projectops.CachedListRe
 func (p *workflowProvider) CachedInspect(projectops.Target) projectops.CachedInspectResolver {
 	return nil
 }
-func (p *workflowProvider) LegacyInventoryCursor(string) bool { return false }
 func (p *workflowProvider) ListFilter(projectops.ListInput) (string, error) {
 	p.filterCalls++
 	return "", p.filterError
@@ -32,8 +30,7 @@ func (p *workflowProvider) Open(context.Context, string, string, string, bool) (
 	p.opens++
 	return projectops.LiveSession{}, errors.New("unexpected target open")
 }
-func (p *workflowProvider) ValidateComplete(bool, *readsource.Metadata) error { return nil }
-func (p *workflowProvider) Now() time.Time                                    { return time.Unix(0, 0) }
+func (p *workflowProvider) Now() time.Time { return time.Unix(0, 0) }
 
 func TestProjectWorkflowRejectsInvalidInputBeforeOpeningTarget(t *testing.T) {
 	tests := []struct {

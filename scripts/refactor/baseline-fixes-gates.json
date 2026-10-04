@@ -20,7 +20,7 @@
     {
       "id": "g3-receipt-recovery",
       "gate": "G3",
-      "package": "./internal/app",
+      "package": "./actions/job",
       "tests": ["TestRecoverPublicationReceiptLinksRequiresRegisteredExactScope"],
       "contract": "Interrupted publication recovery links only receipts matching the registered exact intent scope."
     }
@@ -30,9 +30,9 @@
       "id": "seed-flow-request-identity",
       "control": "g3-flow-persistence",
       "test": "TestFlowPublicationPersistenceFailureRetainsConfirmedIdentity",
-      "path": "internal/app/content_remote.go",
-      "before": "lifecycle.record(ctx, \"\", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, \"\")",
-      "after": "lifecycle.record(ctx, \"\", out.Result.Status, out.Result.FlowLUID, \"\", \"\")",
+      "path": "actions/flow/publish_service.go",
+      "before": "lifecycle.Record(ctx, \"\", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, \"\")",
+      "after": "lifecycle.Record(ctx, \"\", out.Result.Status, out.Result.FlowLUID, \"\", \"\")",
       "failure_contains": "confirmed flow request identity lost from error contract"
     },
     {
@@ -48,8 +48,8 @@
       "id": "seed-receipt-intent-scope",
       "control": "g3-receipt-recovery",
       "test": "TestRecoverPublicationReceiptLinksRequiresRegisteredExactScope",
-      "path": "internal/app/publication_status.go",
-      "before": " || publicationReceiptScope(receipt) != intent.Scope",
+      "path": "actions/job/operation_receipts.go",
+      "before": " || jobmonitor.ReceiptScope(receipt) != intent.Scope",
       "after": "",
       "failure_contains": "mismatched receipt was adopted"
     }
