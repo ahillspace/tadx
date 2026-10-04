@@ -37,82 +37,66 @@ import (
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
-// searchCommands composes the live-first global search action.
-type searchCommands struct{ runtime *runtimeDependencies }
+// searchProvider constructs command-scoped live and cached search sources.
+type searchProvider struct{ runtime *runtimeDependencies }
 
-func newSearchCommands(runtime *runtimeDependencies) *searchCommands {
-	return &searchCommands{runtime: runtime}
+func newSearchCommands(runtime *runtimeDependencies) *searchaction.Service {
+	return searchaction.New(searchProvider{runtime: runtime})
 }
 
-func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) (searchaction.Output, error) {
-	types, err := searchaction.ValidateInput(input)
-	if err != nil {
-		return searchaction.Output{}, err
-	}
-	for _, kind := range types {
-		if kind == "user" || kind == "group" {
-			if err := c.runtime.checkManagedCapability("admin." + kind + ".list"); err != nil {
-				return searchaction.Output{}, err
-			}
-		}
-	}
-	if input.Cursor != "" {
-		_, environment, err := c.runtime.environment(input.Environment, false)
-		if err != nil {
-			return searchaction.Output{}, err
-		}
-		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
-		input.SiteResolved = true
-		if err := searchaction.ValidateContinuation(input); err != nil {
-			return searchaction.Output{}, err
-		}
-	}
-	if input.Cache {
-		_, environment, err := c.runtime.environment(input.Environment, false)
-		if err != nil {
-			return searchaction.Output{}, capabilitySetupError("search.cache.setup", "search", input.Environment, input.Site, "Cache search setup failed.", "Review the selected environment and cache configuration.", err)
-		}
-		input.Environment = environment.Alias
-		if input.Site == "" {
-			input.Site = environment.SiteContentURL
-		}
-		input.SiteResolved = true
-		store := c.runtime.cacheStore(environment)
-		return searchaction.Execute(ctx, cacheGlobalSearchSource{store: store}, input, types)
-	}
-	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
-		_, environment, err := c.runtime.environment(input.Environment, false)
-		if err != nil {
-			return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, environment, err)
-		}
-		input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
-		lister := &completeLiveSearchLister{
-			environment: environment.Alias,
-			content:     newRemoteContentCommands(c.runtime),
-			admin:       newRemoteAdminCommands(c.runtime),
-		}
-		lister.projects = projectops.New(projectops.Ports{Provider: projectProvider{commands: lister.content}})
-		lister.workbooks = workbookops.New(workbookops.Ports{Read: workbookReadProvider{commands: lister.content}})
-		lister.datasources = datasourceops.New(datasourceops.Ports{Read: &datasourceReadProvider{commands: lister.content}})
-		lister.flows = flowops.New(flowops.Ports{Read: flowReadProvider{commands: lister.content}})
-		return searchaction.Execute(ctx, globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}, input, types)
-	}
+func (p searchProvider) CheckCapability(id string) error { return p.runtime.checkManagedCapability(id) }
 
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (p searchProvider) Target(alias string) (searchaction.Target, error) {
+	_, environment, err := p.runtime.environment(alias, false)
+	return searchaction.Target{Environment: environment.Alias, Site: environment.SiteContentURL}, err
+}
+
+func (p searchProvider) Cached(alias string) (searchaction.Session, error) {
+	_, environment, err := p.runtime.environment(alias, false)
+	session := searchaction.Session{Target: searchaction.Target{Environment: environment.Alias, Site: environment.SiteContentURL}}
 	if err != nil {
-		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
+		return session, err
 	}
-	input.Environment, input.Site, input.SiteResolved = connection.environment.Alias, connection.environment.SiteContentURL, true
-	lister, err := newLiveSearchLister(connection, c.runtime.checkManagedCapability)
+	session.Source = cacheGlobalSearchSource{store: p.runtime.cacheStore(environment)}
+	return session, nil
+}
+
+func (p searchProvider) Complete(alias string) (searchaction.Session, error) {
+	_, environment, err := p.runtime.environment(alias, false)
+	session := searchaction.Session{Target: searchaction.Target{Environment: environment.Alias, Site: environment.SiteContentURL}}
 	if err != nil {
-		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
+		return session, err
+	}
+	lister := &completeLiveSearchLister{
+		environment: environment.Alias,
+		content:     newRemoteContentCommands(p.runtime),
+		admin:       newRemoteAdminCommands(p.runtime),
+	}
+	lister.projects = projectops.New(projectops.Ports{Provider: projectProvider{commands: lister.content}})
+	lister.workbooks = workbookops.New(workbookops.Ports{Read: workbookReadProvider{commands: lister.content}})
+	lister.datasources = datasourceops.New(datasourceops.Ports{Read: &datasourceReadProvider{commands: lister.content}})
+	lister.flows = flowops.New(flowops.Ports{Read: flowReadProvider{commands: lister.content}})
+	session.Source = globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}
+	return session, nil
+}
+
+func (p searchProvider) Live(ctx context.Context, alias string) (searchaction.Session, error) {
+	connection, err := p.runtime.tableauConnection(ctx, alias, false)
+	session := searchaction.Session{Target: searchaction.Target{Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL}}
+	if err != nil {
+		return session, err
+	}
+	lister, err := newLiveSearchLister(connection, p.runtime.checkManagedCapability)
+	if err != nil {
+		return session, err
 	}
 	nativeClient, err := tableausearch.NewClient(connection.transport, connection.session, connection.environment.URL)
 	if err != nil {
-		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
+		return session, err
 	}
 	datasourceResolver := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return searchaction.Execute(ctx, globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}, input, types)
+	session.Source = globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}
+	return session, nil
 }
 
 type appSearchAdapter interface {
@@ -132,7 +116,7 @@ type globalSearchSource struct {
 func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
 	resourceInput := resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit}
 	if strings.TrimSpace(input.Terms) == "" {
-		if completeListSearchSelector(input.Type) {
+		if searchaction.CompleteListSelector(input.Type) {
 			return executeAppSearch(ctx, s.lists, resourceInput)
 		}
 		return executeAppSearch(ctx, s.dedicated, resourceInput)
@@ -144,15 +128,6 @@ func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input
 		return executeAppSearch(ctx, s.native, resourceInput)
 	}
 	return s.searchAll(ctx, input)
-}
-
-func completeListSearchSelector(selector string) bool {
-	switch selector {
-	case "content", "admin", "workbook", "datasource", "flow", "project", "user", "group":
-		return true
-	default:
-		return false
-	}
 }
 
 func executeAppSearch(ctx context.Context, adapter appSearchAdapter, input resourcesearch.Input) (searchaction.Result, error) {

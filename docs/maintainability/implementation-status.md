@@ -6,6 +6,20 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Search source-selection ownership
+
+The search Service owns input validation, administrative prerequisites, cursor preflight, source selection, canonical target binding, and setup errors.
+App constructs cached, complete-list, or native/dedicated sources through explicit provider methods.
+Administrative denial and invalid continuations still reject before source construction.
+Cache and live default-site rules remain distinct and unchanged.
+
+Independent review passes for the three-path snapshot based on `df6f34c17a6e2e102c58f870a69f736038995f3a`.
+Its 1,453-file fingerprint is `e81957cb539e82c2aefb9322e44d564acfddf4d30ea0328cabb574e373d7a25f`.
+Focused search, app, and architecture tests, scoped vet, and full compilation pass.
+The intervening lineage change does not overlap these paths.
+Evidence remains in `.tadx-refactor/search-service-df6/`.
+Lower routing, combined cursors, cache translation, and native listers remain pending; this is not complete search migration.
+
 ## Lineage ownership
 
 The cohesive lineage Service owns validation, workspace selection, canonical target binding, and operation sequencing.
