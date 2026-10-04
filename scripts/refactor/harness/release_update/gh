@@ -1,0 +1,2 @@
+#!/usr/bin/env node
+require('/cli-state/release-transport/transport.cjs').main('gh');

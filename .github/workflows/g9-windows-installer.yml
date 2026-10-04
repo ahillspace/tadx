@@ -1,0 +1,74 @@
+name: G9 Windows installer disposable fixture
+
+on:
+  push:
+    branches:
+      - 'g9-win/**'
+    paths:
+      - '.g9-windows-installer-setup.json'
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact request commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Set up candidate Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up fixture Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Prepare native state before the model task
+        shell: pwsh
+        env:
+          G9_BASELINE_PATH: ${{ runner.temp }}/g9-evidence/baseline.json
+          G9_SETUP_FAILURE_PATH: ${{ runner.temp }}/g9-evidence/setup-failure.json
+        run: python -B scripts/g9/windows_worker.py prepare
+
+      - name: Retain bounded setup failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: g9-windows-setup-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/g9-evidence/setup-failure.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Publish immutable pre-task baseline
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: g9-windows-baseline-${{ github.run_id }}
+          path: ${{ runner.temp }}/g9-evidence/baseline.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Run one audited model-selected native command
+        shell: pwsh
+        env:
+          G9_BASELINE_PATH: ${{ runner.temp }}/g9-evidence/baseline.json
+          G9_RESULT_PATH: ${{ runner.temp }}/g9-result/result.json
+          G9_GITHUB_TOKEN: ${{ github.token }}
+        run: python -B scripts/g9/windows_worker.py execute
+
+      - name: Retain bounded native result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: g9-windows-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/g9-result/result.json
+          if-no-files-found: error
+          retention-days: 1

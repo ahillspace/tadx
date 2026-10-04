@@ -1,7 +1,7 @@
 # Architecture implementation status
 
-Status: resource and service ownership migrations are in progress; completed slices and evidence are recorded below.
-Full migration and candidate gates remain incomplete.
+Status: the D1-D7 production migrations pass independent architecture review and current-source offline checks.
+Final harness integration, exact-build live validation, cleanup, and acceptance remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -36,7 +36,31 @@ All 21 relocated tests pass when selected by their current names, and no active 
 Evidence for these two bounded reviews remains in `.tadx-refactor/review-test-sol/`.
 Their combined-source verification and final acceptance remain pending.
 
-## Current pushed checkpoint
+## Current verified checkpoint
+
+Revision `14351c694260f23f32e04d3ef21a084dc5051923` contains the reviewed production integration and a separately reviewed reporting-gate test correction.
+Its 1,670-file source fingerprint is `fd3dc10421f9c74786114e721c8e80473729ee10d4ec953819280141629cb026`.
+The retained archive SHA-256 is `d05192beac1b6e80f4556b823cf42ed1bf196230d380cdaaac7a7303d0f97f0f`.
+Full Go tests, race tests, vet, formatting, module tidiness, generation checks, three fuzz targets, and architecture and assessment validators pass.
+All four historical release migration fixtures run and pass with explicit repository-history context.
+The three gate manifests pass 13 controls and detect all 14 seeded defects.
+Offline tooling passes 108 Python tests, five site tests, and 15 exploration tests; one Windows symlink-permission test remains explicitly skipped.
+The architecture SVG renders legibly without clipping.
+Hosted [CI run 37191539637](https://github.com/ahillspace/tadx/actions/runs/37191539637) and [tooling run 37191539473](https://github.com/ahillspace/tadx/actions/runs/37191539473) succeed, including Linux and Windows quality, four build targets, and three native policy jobs.
+Evidence remains in `.tadx-refactor/integrated-14351-20261004-verify/`.
+
+Independent review of the integrated production corrections finds no material D1-D7 gap against the approved plan and pinned GitHub CLI and Helm references.
+Fresh project-list, workbook-move, and auth-logout navigation traces match the contributor documentation.
+The app composes dependencies; action owners sequence operations; resource ports translate native contracts; shared mechanisms retain explicit safety boundaries.
+The review retains one nonblocking receipt-store construction duplication for later consideration rather than requiring another workflow abstraction.
+Evidence remains in `.tadx-refactor/review-publication-sol/integration-review.md`.
+
+These results apply to this exact source, not to later harness changes or G9.
+The mutation overlay passes bounded independent review, while Windows installer and pinned update fixtures still require integration and qualification.
+No final-catalog live result or cleanup acceptance is claimed.
+The historical sections below record earlier checkpoints and unresolved work at those dates; they do not override this current status.
+
+## Earlier pushed checkpoint
 
 Exact revision `efd38610e1dbb681a006e621b054ed10276f2e25` passes hosted CI run `37185449552` and tooling run `37185449380`.
 The successful jobs include Linux and Windows quality checks, cross-platform builds, and native policy checks.

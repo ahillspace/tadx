@@ -25,6 +25,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Test contract runner
         run: python -B -m unittest discover -s scripts/refactor -p "test_*.py"
 
@@ -42,3 +48,18 @@ jobs:
 
       - name: Test isolated harness preparation
         run: python -B -m unittest discover -s scripts/refactor/harness -p "test_*.py"
+
+      - name: Test authored harness profiles
+        run: python -B -m unittest discover -s scripts/refactor/harness/tests -p "test_*.py"
+
+      - name: Test exact Windows worker and relay
+        run: python -B -m unittest discover -s scripts/g9 -p "test_*.py"
+
+      - name: Test authored harness brokers
+        run: >-
+          node --test
+          scripts/refactor/harness/tests/job_broker.test.cjs
+          scripts/refactor/harness/tests/mutation_site_broker.test.cjs
+          scripts/refactor/harness/tests/policy_broker.test.cjs
+          scripts/refactor/harness/tests/policy_install_broker.test.cjs
+          scripts/g9/tests/windows_installer_broker.test.cjs
