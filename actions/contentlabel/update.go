@@ -74,7 +74,7 @@ func ValidateUpdateInput(in UpdateInput) error {
 	}
 	return nil
 }
-func Update(ctx context.Context, reader UpdateReader, writer UpdateWriter, in UpdateInput, preview bool) (UpdateOutput, error) {
+func updateLabel(ctx context.Context, reader UpdateReader, writer UpdateWriter, in UpdateInput, preview bool) (UpdateOutput, error) {
 	out := UpdateOutput{}
 	if reader == nil {
 		return out, updateUsage("label update reader is not configured")

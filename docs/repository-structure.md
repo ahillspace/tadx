@@ -22,6 +22,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/mutation` | Exact-site mutation consent status, changes, and policy observations |
 | `actions/cache` | Cache refresh/status workflows, scope selection, and policy prerequisites |
 | `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
+| `actions/contentlabel` | Attached-label operations, distinct from admin-owned shared label definitions |
 | `actions/agent`, `actions/version` | Guidance installation/removal and installed-version/release-check services |
 | `actions/auth` | Authentication, pre-prompt validation, status projection, and credential/configuration coordination |
 | `actions/capability` | Registry discovery and policy/site readiness through named get and list operations |

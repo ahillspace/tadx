@@ -9,16 +9,16 @@ import (
 )
 
 type LabelLister interface {
-	Execute(context.Context, contentlabel.ListInput) (contentlabel.ListOutput, error)
+	ListLabels(context.Context, contentlabel.ListInput) (contentlabel.ListOutput, error)
 }
 type LabelInspector interface {
-	Execute(context.Context, contentlabel.InspectInput) (contentlabel.InspectOutput, error)
+	InspectLabel(context.Context, contentlabel.InspectInput) (contentlabel.InspectOutput, error)
 }
 type LabelUpdater interface {
-	Execute(context.Context, contentlabel.UpdateInput, bool) (contentlabel.UpdateOutput, error)
+	UpdateLabel(context.Context, contentlabel.UpdateInput, bool) (contentlabel.UpdateOutput, error)
 }
 type LabelDeleter interface {
-	Execute(context.Context, contentlabel.DeleteInput, bool) (contentlabel.DeleteOutput, error)
+	DeleteLabel(context.Context, contentlabel.DeleteInput, bool) (contentlabel.DeleteOutput, error)
 }
 type LabelDependencies struct {
 	Lister    LabelLister
@@ -47,7 +47,7 @@ func newLabelLister(deps LabelDependencies) *cobra.Command {
 		if deps.Lister == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.list", errors.New("label command dependencies are not configured"))
 		}
-		out, err := deps.Lister.Execute(cmd.Context(), in)
+		out, err := deps.Lister.ListLabels(cmd.Context(), in)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}
@@ -73,7 +73,7 @@ func newLabelInspector(deps LabelDependencies) *cobra.Command {
 		if deps.Inspector == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.inspect", errors.New("label command dependencies are not configured"))
 		}
-		out, err := deps.Inspector.Execute(cmd.Context(), in)
+		out, err := deps.Inspector.InspectLabel(cmd.Context(), in)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}
@@ -113,7 +113,7 @@ func newLabelUpdater(deps LabelDependencies) *cobra.Command {
 		if deps.Updater == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.update", errors.New("label command dependencies are not configured"))
 		}
-		out, err := deps.Updater.Execute(cmd.Context(), in, preview)
+		out, err := deps.Updater.UpdateLabel(cmd.Context(), in, preview)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}
@@ -142,7 +142,7 @@ func newLabelDeleter(deps LabelDependencies) *cobra.Command {
 		if deps.Deleter == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.delete", errors.New("label command dependencies are not configured"))
 		}
-		out, err := deps.Deleter.Execute(cmd.Context(), in, preview)
+		out, err := deps.Deleter.DeleteLabel(cmd.Context(), in, preview)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}

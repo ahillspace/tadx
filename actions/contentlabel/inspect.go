@@ -67,7 +67,7 @@ func ValidateInspectInput(in InspectInput) error {
 	}
 	return nil
 }
-func Inspect(ctx context.Context, reader InspectReader, in InspectInput) (InspectOutput, error) {
+func inspectLabel(ctx context.Context, reader InspectReader, in InspectInput) (InspectOutput, error) {
 	out := InspectOutput{Status: "inspected", Environment: in.Environment, Site: in.Site}
 	if reader == nil {
 		return out, inspectUsage("label reader is not configured")

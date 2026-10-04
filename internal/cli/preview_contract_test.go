@@ -34,14 +34,14 @@ import (
 
 type contentlabel_updateSpy struct{ spy *previewActionSpy }
 
-func (s contentlabel_updateSpy) Execute(_ context.Context, _ contentlabel.UpdateInput, preview bool) (contentlabel.UpdateOutput, error) {
+func (s contentlabel_updateSpy) UpdateLabel(_ context.Context, _ contentlabel.UpdateInput, preview bool) (contentlabel.UpdateOutput, error) {
 	s.spy.record(preview)
 	return contentlabel.UpdateOutput{}, nil
 }
 
 type contentlabel_deleteSpy struct{ spy *previewActionSpy }
 
-func (s contentlabel_deleteSpy) Execute(_ context.Context, _ contentlabel.DeleteInput, preview bool) (contentlabel.DeleteOutput, error) {
+func (s contentlabel_deleteSpy) DeleteLabel(_ context.Context, _ contentlabel.DeleteInput, preview bool) (contentlabel.DeleteOutput, error) {
 	s.spy.record(preview)
 	return contentlabel.DeleteOutput{}, nil
 }

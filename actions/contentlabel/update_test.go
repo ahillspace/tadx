@@ -1,9 +1,8 @@
-package contentlabel_test
+package contentlabel
 
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/actions/contentlabel"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 	"testing"
@@ -63,7 +62,7 @@ func TestWriteResponseFailureDistinguishesAcknowledgementFromTransport(t *testin
 			s.writeErr = acknowledgedWriteError{}
 		}
 		msg := "new"
-		out, e := contentlabel.Update(context.Background(), s, s, contentlabel.UpdateInput{Environment: "test", ID: "label-1", Message: &msg}, false)
+		out, e := updateLabel(t.Context(), s, s, UpdateInput{Environment: "test", ID: "label-1", Message: &msg}, false)
 		var classified *errs.Error
 		if !errors.As(e, &classified) || out.Result == nil || s.writes != 1 {
 			t.Fatalf("missing outcome: %+v %v", out, e)
@@ -83,8 +82,8 @@ func TestWriteResponseFailureDistinguishesAcknowledgementFromTransport(t *testin
 func TestPreviewPreservesOmittedFlagsAndExplicitClear(t *testing.T) {
 	s := fixture()
 	empty := ""
-	in := contentlabel.UpdateInput{Environment: "test", ID: "label-1", Message: &empty}
-	out, e := contentlabel.Update(context.Background(), s, s, in, true)
+	in := UpdateInput{Environment: "test", ID: "label-1", Message: &empty}
+	out, e := updateLabel(t.Context(), s, s, in, true)
 	if e != nil || s.writes != 0 || out.Plan.Desired.Message != "" || !out.Plan.Desired.Active || !out.Plan.Desired.Elevated {
 		t.Fatalf("preview: %+v %v", out, e)
 	}
@@ -93,7 +92,7 @@ func TestAcknowledgedWriteSurvivesReadbackFailure(t *testing.T) {
 	s := fixture()
 	s.readbackErr = true
 	msg := "new"
-	out, e := contentlabel.Update(context.Background(), s, s, contentlabel.UpdateInput{Environment: "test", ID: "label-1", Message: &msg}, false)
+	out, e := updateLabel(t.Context(), s, s, UpdateInput{Environment: "test", ID: "label-1", Message: &msg}, false)
 	var classified *errs.Error
 	if !errors.As(e, &classified) || classified.Outcome != errs.OutcomeConfirmed || out.Result == nil || out.Result.Item.LUID != "label-1" || s.writes != 1 {
 		t.Fatalf("receipt: %+v %v", out, e)
@@ -106,7 +105,7 @@ func TestConflictAndSystemManagedValueNeverWrite(t *testing.T) {
 			s.conflict = mode == "conflict"
 			s.internal = mode == "internal"
 			msg := "new"
-			_, e := contentlabel.Update(context.Background(), s, s, contentlabel.UpdateInput{Environment: "test", ID: "label-1", Message: &msg}, false)
+			_, e := updateLabel(t.Context(), s, s, UpdateInput{Environment: "test", ID: "label-1", Message: &msg}, false)
 			if e == nil || s.writes != 0 {
 				t.Fatalf("unsafe write: %v", e)
 			}
@@ -116,8 +115,8 @@ func TestConflictAndSystemManagedValueNeverWrite(t *testing.T) {
 func TestNewAttachmentDefaults(t *testing.T) {
 	s := &labelStub{}
 	name := "Warning"
-	in := contentlabel.UpdateInput{Environment: "test", Type: "table", TargetID: "table-1", Value: &name}
-	out, e := contentlabel.Update(context.Background(), s, s, in, false)
+	in := UpdateInput{Environment: "test", Type: "table", TargetID: "table-1", Value: &name}
+	out, e := updateLabel(t.Context(), s, s, in, false)
 	if e != nil || out.Result == nil || !out.Result.Item.Active || !out.Result.Item.Elevated {
 		t.Fatalf("create: %+v %v", out, e)
 	}

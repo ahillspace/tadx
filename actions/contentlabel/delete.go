@@ -44,7 +44,7 @@ func ValidateDeleteInput(in DeleteInput) error {
 	}
 	return nil
 }
-func Delete(ctx context.Context, reader DeleteReader, writer DeleteWriter, in DeleteInput, preview bool) (DeleteOutput, error) {
+func deleteLabel(ctx context.Context, reader DeleteReader, writer DeleteWriter, in DeleteInput, preview bool) (DeleteOutput, error) {
 	out := DeleteOutput{Mode: "preview", Operation: "content.label.delete", Environment: in.Environment, Site: in.Site, Status: "planned"}
 	if reader == nil {
 		return out, deleteUsage("label delete reader is not configured")

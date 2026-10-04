@@ -93,7 +93,7 @@ func ValidateListInput(in ListInput) error {
 	}
 	return nil
 }
-func List(ctx context.Context, reader ListReader, in ListInput) (ListOutput, error) {
+func listLabels(ctx context.Context, reader ListReader, in ListInput) (ListOutput, error) {
 	out := ListOutput{Status: "listed", Environment: in.Environment, Site: in.Site, Target: ListRequestedTarget{Type: in.Type, TargetID: in.TargetID, Categories: slices.Clone(in.Categories)}}
 	if reader == nil {
 		return out, listUsage("label reader is not configured")

@@ -6,6 +6,21 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Attached-label workflow ownership
+
+One `actions/contentlabel` Service now owns list, inspect, update, and delete entry points, replacing four app operation facades.
+Private production runners retain the existing attachment algorithms and distinct output contracts.
+The existing native metadata client implements the narrow shared-value ports directly, without a new forwarding adapter.
+Update and delete retain the indirect label-definition authorization check before target setup, including preview requests.
+Existing algorithm assertions move into the owner package; new Service tests protect validation, authorization, canonical target binding, preview behavior, and setup failures.
+
+The independently reviewed 14-path draft is based on `21b1051dea1abb1b27a160e87e38978fd13a64ad`.
+Its 1,411-file ordinal fingerprint is `2ee4b9c18174c4118b9ea980f4a3479a348e9d699df832a655cd5fc65c1819ed`.
+All affected baseline hashes remain unchanged through the intervening subscription and cache integrations.
+Focused action, catalog/root CLI, label app E2E, architecture, full compilation, and scoped vet checks pass.
+Ignored evidence remains in `.tadx-refactor/contentlabel-21b/`.
+Integrated gates and live attachment acceptance remain outstanding.
+
 ## Cache service and generation ownership
 
 Cache refresh and status now belong to one `actions/cache` Service.

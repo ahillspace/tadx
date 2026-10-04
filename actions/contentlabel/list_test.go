@@ -1,10 +1,9 @@
-package contentlabel_test
+package contentlabel
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/ahillspace/tadx/actions/contentlabel"
 	"github.com/ahillspace/tadx/internal/value"
 	"testing"
 )
@@ -20,7 +19,7 @@ func (s *listReaderStub) GetLabels(context.Context, value.LabelTarget, []string)
 }
 func TestValidationBeforeRead(t *testing.T) {
 	r := &listReaderStub{}
-	e := contentlabel.ValidateListInput(contentlabel.ListInput{Limit: -1})
+	e := ValidateListInput(ListInput{Limit: -1})
 	if e == nil || r.calls != 0 {
 		t.Fatalf("invalid input contacted reader: %v", e)
 	}
@@ -28,12 +27,12 @@ func TestValidationBeforeRead(t *testing.T) {
 func TestBoundedOrderedListAndDuplicateRejection(t *testing.T) {
 	v := value.ContentLabel{LUID: "label-1", Type: "table", TargetLUID: "table-1", Value: "Warning"}
 	r := &listReaderStub{items: []value.ContentLabel{v}}
-	out, e := contentlabel.List(context.Background(), r, contentlabel.ListInput{Type: "table", TargetID: "table-1"})
+	out, e := listLabels(t.Context(), r, ListInput{Type: "table", TargetID: "table-1"})
 	if e != nil || out.Returned != 1 {
 		t.Fatalf("list: %+v %v", out, e)
 	}
 	r.items = append(r.items, v)
-	if _, e := contentlabel.List(context.Background(), r, contentlabel.ListInput{Type: "table", TargetID: "table-1"}); e == nil {
+	if _, e := listLabels(t.Context(), r, ListInput{Type: "table", TargetID: "table-1"}); e == nil {
 		t.Fatal("duplicate identity accepted")
 	}
 	r.items = r.items[:1]
@@ -42,7 +41,7 @@ func TestBoundedOrderedListAndDuplicateRejection(t *testing.T) {
 		copy.LUID = string(rune('a' + i))
 		r.items = append(r.items, copy)
 	}
-	out, e = contentlabel.List(context.Background(), r, contentlabel.ListInput{Type: "table", TargetID: "table-1"})
+	out, e = listLabels(t.Context(), r, ListInput{Type: "table", TargetID: "table-1"})
 	if e != nil || out.Returned != 20 || !out.MoreAvailable {
 		t.Fatalf("limit: %+v %v", out, e)
 	}
@@ -53,14 +52,14 @@ func TestAllReturnsCompleteInventory(t *testing.T) {
 	for i := range items {
 		items[i] = value.ContentLabel{LUID: string(rune('a' + i)), Type: "table", TargetLUID: "table-1"}
 	}
-	out, err := contentlabel.List(t.Context(), &listReaderStub{items: items}, contentlabel.ListInput{Type: "table", TargetID: "table-1", All: true})
+	out, err := listLabels(t.Context(), &listReaderStub{items: items}, ListInput{Type: "table", TargetID: "table-1", All: true})
 	if err != nil || len(out.Items) != len(items) || out.Returned != len(items) || out.Total != len(items) || out.MoreAvailable || out.NextCommand != "" {
 		t.Fatalf("all: %+v %v", out, err)
 	}
 }
 
 func TestAllRejectsLimit(t *testing.T) {
-	if err := contentlabel.ValidateListInput(contentlabel.ListInput{Type: "table", TargetID: "table-1", All: true, Limit: 1}); err == nil {
+	if err := ValidateListInput(ListInput{Type: "table", TargetID: "table-1", All: true, Limit: 1}); err == nil {
 		t.Fatal("--all accepted with --limit")
 	}
 }
@@ -72,7 +71,7 @@ func (listFailingReader) GetLabels(context.Context, value.LabelTarget, []string)
 }
 
 func TestFailureRetainsRequestedTargetWithoutFabricatedItems(t *testing.T) {
-	out, err := contentlabel.List(t.Context(), listFailingReader{}, contentlabel.ListInput{Type: "table", TargetID: "table-1", Categories: []string{"warning"}})
+	out, err := listLabels(t.Context(), listFailingReader{}, ListInput{Type: "table", TargetID: "table-1", Categories: []string{"warning"}})
 	if err == nil || out.Target.Type != "table" || out.Target.TargetID != "table-1" {
 		t.Fatalf("failure lost requested target: %+v %v", out, err)
 	}
@@ -84,7 +83,7 @@ func TestFailureRetainsRequestedTargetWithoutFabricatedItems(t *testing.T) {
 
 func TestNativeDatasourceTypeIsCanonicalized(t *testing.T) {
 	r := &listReaderStub{items: []value.ContentLabel{{LUID: "label-1", Type: "DATASOURCE", TargetLUID: "source-1", Value: "Warning"}}}
-	out, err := contentlabel.List(t.Context(), r, contentlabel.ListInput{Type: "datasource", TargetID: "source-1"})
+	out, err := listLabels(t.Context(), r, ListInput{Type: "datasource", TargetID: "source-1"})
 	if err != nil || len(out.Items) != 1 || out.Items[0].Type != "datasource" {
 		t.Fatalf("native datasource type rejected: %+v %v", out, err)
 	}
