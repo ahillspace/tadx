@@ -146,6 +146,42 @@ class SourceTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def assert_reporting_owners_and_seeds(self, manifest):
+        result = gates.validate_manifest(manifest)
+        self.assertEqual(
+            {check["id"]: (check["package"], frozenset(check["tests"]))
+             for check in result["checks"]},
+            {
+                "g3-publication-reporting": (
+                    "./internal/app",
+                    frozenset({
+                        "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
+                        "TestDatasourcePublicationDelayedDestinationRecoveryThroughCLI",
+                    }),
+                ),
+                "g3-publication-acceptance-persistence": (
+                    "./internal/jobmonitor",
+                    frozenset({"TestPublicationAcceptedReceiptPersistenceFailureBeforeObservation"}),
+                ),
+            },
+        )
+        self.assertEqual(
+            {seed["id"]: (seed["control"], seed["test"], seed["path"])
+             for seed in result["seeds"]},
+            {
+                "seed-receipt-phase": (
+                    "g3-publication-reporting",
+                    "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
+                    "internal/jobmonitor/publication.go",
+                ),
+                "seed-receipt-request-identity": (
+                    "g3-publication-reporting",
+                    "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
+                    "internal/jobmonitor/publication.go",
+                ),
+            },
+        )
+
     def test_repository_manifest_validates(self):
         manifest = json.loads(Path(__file__).with_name("gates.json").read_text())
         self.assertEqual({seed["id"] for seed in gates.validate_manifest(manifest)["seeds"]}, {
@@ -162,10 +198,26 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_reporting_manifest_has_both_approved_defect_demonstrations(self):
         manifest = json.loads(Path(__file__).with_name("reporting-gates.json").read_text())
-        result = gates.validate_manifest(manifest)
-        self.assertEqual(len(result["checks"][0]["tests"]), 3)
-        self.assertEqual({seed["id"] for seed in result["seeds"]},
-                         {"seed-receipt-phase", "seed-receipt-request-identity"})
+        self.assert_reporting_owners_and_seeds(manifest)
+
+    def test_reporting_manifest_ownership_or_seed_loss_is_rejected(self):
+        original = json.loads(Path(__file__).with_name("reporting-gates.json").read_text())
+        for missing in ("owner", "protected-test-app", "protected-test-jobmonitor",
+                        "seed-phase", "seed-request"):
+            with self.subTest(missing=missing):
+                manifest = json.loads(json.dumps(original))
+                if missing == "owner":
+                    manifest["checks"].pop(1)
+                elif missing == "protected-test-app":
+                    manifest["checks"][0]["tests"].remove(
+                        "TestDatasourcePublicationDelayedDestinationRecoveryThroughCLI")
+                elif missing == "protected-test-jobmonitor":
+                    manifest["checks"][1]["tests"].clear()
+                else:
+                    seed_id = "seed-receipt-phase" if missing == "seed-phase" else "seed-receipt-request-identity"
+                    manifest["seeds"] = [seed for seed in manifest["seeds"] if seed["id"] != seed_id]
+                with self.assertRaises((AssertionError, gates.GateError)):
+                    self.assert_reporting_owners_and_seeds(manifest)
 
     def test_baseline_fixes_manifest_has_three_approved_defect_demonstrations(self):
         manifest = json.loads(Path(__file__).with_name("baseline-fixes-gates.json").read_text())
