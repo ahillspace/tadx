@@ -76,10 +76,10 @@ func TestUpdatePreviewsAndAppliesOnlyChangedFields(t *testing.T) {
 		{LUID: "project-1", Name: "Operations", Path: "RenamedParent/Operations", ParentLUID: "parent-1", Description: "Current", ContentPermissions: "LockedToProject"},
 	}}
 	u := &updater{}
-	action := projectops.New(projectops.Ports{UpdateResolver: r, Updater: u})
+	action := newTestService(projectops.Ports{UpdateResolver: r, Updater: u})
 	input := projectops.UpdateInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Name: updateStringPointer("Renamed"), Description: updateStringPointer("Current"), ContentPermissions: updateStringPointer("ManagedByOwner")}
 
-	preview, err := action.Update(context.Background(), input, true)
+	preview, err := action.UpdateProject(context.Background(), input, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestUpdatePreviewsAndAppliesOnlyChangedFields(t *testing.T) {
 		t.Fatalf("preview=%#v updater=%#v", preview, u)
 	}
 
-	result, err := action.Update(context.Background(), input, false)
+	result, err := action.UpdateProject(context.Background(), input, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestUpdateEqualValuesAreNoOpWithoutPut(t *testing.T) {
 	project := projectops.UpdateProject{LUID: "project-1", Name: "Operations", Path: "Operations", Description: "Same", ContentPermissions: "ManagedByOwner"}
 	r := &updateResolver{projects: []projectops.UpdateProject{project}}
 	u := &updater{}
-	output, err := projectops.New(projectops.Ports{UpdateResolver: r, Updater: u}).Update(context.Background(), projectops.UpdateInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Description: updateStringPointer("Same")}, false)
+	output, err := newTestService(projectops.Ports{UpdateResolver: r, Updater: u}).UpdateProject(context.Background(), projectops.UpdateInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Description: updateStringPointer("Same")}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestUpdateEqualValuesAreNoOpWithoutPut(t *testing.T) {
 func TestUpdateRejectsChangedTargetIdentity(t *testing.T) {
 	r := &updateResolver{projects: []projectops.UpdateProject{{LUID: "project-1", Name: "Operations"}, {LUID: "project-2", Name: "Operations"}}}
 	u := &updater{}
-	_, err := projectops.New(projectops.Ports{UpdateResolver: r, Updater: u}).Update(context.Background(), projectops.UpdateInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Name: updateStringPointer("Renamed")}, false)
+	_, err := newTestService(projectops.Ports{UpdateResolver: r, Updater: u}).UpdateProject(context.Background(), projectops.UpdateInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Name: updateStringPointer("Renamed")}, false)
 	if err == nil || u.calls != 0 {
 		t.Fatalf("error=%v calls=%d", err, u.calls)
 	}
@@ -129,7 +129,7 @@ func TestUpdateRequiresExplicitTargetSelectorAndChanges(t *testing.T) {
 		{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1", ProjectPath: "Department/Operations"}, Name: updateStringPointer("Renamed")},
 	}
 	for _, input := range tests {
-		if _, err := projectops.New(projectops.Ports{UpdateResolver: &updateResolver{projects: []projectops.UpdateProject{project}}, Updater: &updater{}}).Update(context.Background(), input, false); err == nil {
+		if _, err := newTestService(projectops.Ports{UpdateResolver: &updateResolver{projects: []projectops.UpdateProject{project}}, Updater: &updater{}}).UpdateProject(context.Background(), input, false); err == nil {
 			t.Fatalf("input accepted: %#v", input)
 		}
 	}

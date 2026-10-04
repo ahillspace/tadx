@@ -23,16 +23,16 @@ type CreateCreator interface {
 	CreateProject(context.Context, CreateRequest) (CreateResult, error)
 }
 
-func (a *Service) beginCreateResolution(ctx context.Context) context.Context {
+func (a *runner) beginCreateResolution(ctx context.Context) context.Context {
 	return a.CreateResolver.BeginProjectResolution(ctx)
 }
 
-// Create previews or creates one exact project after immediate revalidation.
-func (a *Service) Create(ctx context.Context, input CreateInput, preview bool) (CreateOutput, error) {
+// createValidated previews or creates one exact project after immediate revalidation.
+func (a *runner) createValidated(ctx context.Context, input CreateInput, preview bool) (CreateOutput, error) {
 	if a == nil || a.CreateResolver == nil || a.Creator == nil {
 		return CreateOutput{}, &errs.Error{ID: "project.create.unconfigured", Kind: errs.KindRuntime, Operation: "project.create", Summary: "Project create is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project creation before retrying."}
 	}
-	if err := createValidateInput(input); err != nil {
+	if err := createValidateResolvedTarget(input); err != nil {
 		return CreateOutput{}, err
 	}
 	ctx = a.beginCreateResolution(ctx)
@@ -98,7 +98,7 @@ func (a *Service) Create(ctx context.Context, input CreateInput, preview bool) (
 	return output, nil
 }
 
-func (a *Service) resolveParent(ctx context.Context, selector identity.Selector) (*CreateProject, error) {
+func (a *runner) resolveParent(ctx context.Context, selector identity.Selector) (*CreateProject, error) {
 	if selector.LUID == "" && strings.TrimSpace(selector.ProjectPath) == "" {
 		return nil, nil
 	}
@@ -112,7 +112,7 @@ func (a *Service) resolveParent(ctx context.Context, selector identity.Selector)
 	return &project, nil
 }
 
-func (a *Service) rejectCollision(ctx context.Context, input CreateInput, parentLUID string) error {
+func (a *runner) rejectCollision(ctx context.Context, input CreateInput, parentLUID string) error {
 	matches, err := a.CreateResolver.FindProjectCollisions(ctx, input.Name, parentLUID)
 	if err != nil {
 		return createResolutionError(input, "Project collision check failed.", err)
@@ -123,11 +123,11 @@ func (a *Service) rejectCollision(ctx context.Context, input CreateInput, parent
 	return &errs.Error{ID: "project.create.collision", Kind: errs.KindOperation, Operation: "project.create", Resource: matches[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A sibling project with the same case-insensitive name already exists.", Cause: fmt.Errorf("project %q already exists under the selected parent", matches[0].LUID), Retryable: errs.Bool(false), CorrectiveAction: "Choose a different name or exact parent, then review a new preview."}
 }
 
-func createValidateInput(input CreateInput) error {
+func createValidateResolvedTarget(input CreateInput) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return createUsage("environment", "project create requires an explicit resolved environment and site")
 	}
-	return ValidateCreateInput(input)
+	return nil
 }
 
 // ValidateInput checks caller-controlled arguments before local or remote setup.

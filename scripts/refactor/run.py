@@ -213,14 +213,22 @@ def stop_process_tree(process, environment):
 
 
 def redact(text, roots):
+    home_names = set()
     for root in sorted({str(p) for p in roots}, key=len, reverse=True):
         if root in {"/", "\\"}:
             continue
         parts = re.split(r"[\\/]+", root)
+        for index, part in enumerate(parts[:-1]):
+            if part.lower() in {"users", "home"} and parts[index + 1]:
+                home_names.add(parts[index + 1])
         spelling = r"[\\/]+".join(re.escape(part) for part in parts)
         text = re.sub(spelling, "<local-root>", text)
     text = re.sub(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\r\n\"]+", "<user-root>", text)
     text = re.sub(r"(?i)[\\/]+(?:users|home)[\\/]+[^\\/\r\n\"]+", "<user-root>", text)
+    for name in sorted(home_names, key=len, reverse=True):
+        # Nested test output can contain only the tail of a Windows home path.
+        fragment = r"(?i)(?:[\\/]+(?:users|home)[\\/]+|(?:users|home)[\\/]+|[\\/]+)" + re.escape(name) + r"(?=[\\/]+)"
+        text = re.sub(fragment, "<user-root>", text)
     return text
 
 

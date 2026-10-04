@@ -39,11 +39,30 @@ func ValidateListInput(input ListInput) error {
 	return err
 }
 
+// ListFromReader uses an already resolved project reader, such as search's shared session.
+func ListFromReader(ctx context.Context, reader ListReader, input ListInput) (ListOutput, error) {
+	selected, err := listParseInput(input)
+	if err != nil {
+		return ListOutput{}, err
+	}
+	return (&runner{Ports: Ports{ListReader: reader}}).listValidated(ctx, input, selected)
+}
+
 type listSelection struct {
 	fingerprint string
 	pageNumber  int
 	pageSize    int
 	snapshot    string
+}
+
+// bindTarget binds a first page to its canonical target and rechecks a continuation after resolution.
+func (selection *listSelection) bindTarget(input ListInput) error {
+	fingerprint := listProjectFilterFingerprint(input)
+	if input.Cursor != "" && selection.fingerprint != fingerprint {
+		return errs.New(errs.KindUsage, "project continuation cursor does not match the current filters")
+	}
+	selection.fingerprint = fingerprint
+	return nil
 }
 
 func listParseInput(input ListInput) (listSelection, error) {
@@ -61,12 +80,8 @@ func listParseInput(input ListInput) (listSelection, error) {
 	return listSelection{fingerprint: fingerprint, pageNumber: pageNumber, pageSize: pageSize, snapshot: snapshot}, nil
 }
 
-// List reads one page without hidden continuation reads.
-func (a *Service) List(ctx context.Context, input ListInput) (ListOutput, error) {
-	selected, err := listParseInput(input)
-	if err != nil {
-		return ListOutput{}, err
-	}
+// listValidated reads one page using the selection bound to the resolved target.
+func (a *runner) listValidated(ctx context.Context, input ListInput, selected listSelection) (ListOutput, error) {
 	if input.All {
 		out, err := a.collectAll(ctx, input)
 		if err == nil && len(out.Projects) == 0 && listOwnerLUIDPattern.MatchString(input.OwnerName) {
@@ -107,7 +122,7 @@ func (a *Service) List(ctx context.Context, input ListInput) (ListOutput, error)
 // Tableau's project list supports ownerName but not owner LUID filtering.
 // When the documented name filter finds no rows, a UUID-shaped selector is
 // resolved against a complete inventory using authoritative owner LUIDs.
-func (a *Service) listByOwnerLUID(ctx context.Context, input ListInput, selected listSelection) (ListOutput, error) {
+func (a *runner) listByOwnerLUID(ctx context.Context, input ListInput, selected listSelection) (ListOutput, error) {
 	if a == nil || a.ListReader == nil {
 		return ListOutput{}, errors.New("project list reader is not configured")
 	}
@@ -203,7 +218,7 @@ func listProjectFilterFingerprint(input ListInput) string {
 }
 
 // collectAll follows private bounded pages and fails closed on incomplete inventories.
-func (a *Service) collectAll(ctx context.Context, input ListInput) (ListOutput, error) {
+func (a *runner) collectAll(ctx context.Context, input ListInput) (ListOutput, error) {
 	if a == nil || a.ListReader == nil {
 		return ListOutput{}, errors.New("inventory reader is not configured")
 	}
@@ -226,7 +241,7 @@ func listHelp(environment string, items []ListProject) []string {
 	return []string{commandhint.Environment(environment, "content", "project", "inspect", "--project-id", items[0].LUID)}
 }
 
-func (a *Service) readWindow(ctx context.Context, request ListPageRequest) (ListPage, error) {
+func (a *runner) readWindow(ctx context.Context, request ListPageRequest) (ListPage, error) {
 	if request.PageSize <= 1000 {
 		return a.ListReader.ListProjects(ctx, request)
 	}

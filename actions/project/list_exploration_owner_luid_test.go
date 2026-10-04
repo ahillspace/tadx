@@ -24,12 +24,12 @@ func (r *listExplorationProjectReader) ListProjects(_ context.Context, input Lis
 
 func TestListExplorationOwnerLUIDContinuationSkipsNameFilter(t *testing.T) {
 	reader := &listExplorationProjectReader{}
-	action := New(Ports{ListReader: reader})
-	first, err := action.List(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, Limit: 1})
+	action := newInternalTestService(Ports{ListReader: reader})
+	first, err := action.ListProjects(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, Limit: 1})
 	if err != nil || len(first.Projects) != 1 || first.Projects[0].LUID != "p1" || first.Page.Total != 2 || first.Page.NextCursor == "" {
 		t.Fatalf("first page: %#v, %v", first, err)
 	}
-	second, err := action.List(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, Limit: 1, Cursor: first.Page.NextCursor})
+	second, err := action.ListProjects(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, Limit: 1, Cursor: first.Page.NextCursor})
 	if err != nil || len(second.Projects) != 1 || second.Projects[0].LUID != "p3" || second.Page.MoreAvailable {
 		t.Fatalf("second page: %#v, %v", second, err)
 	}
@@ -40,7 +40,7 @@ func TestListExplorationOwnerLUIDContinuationSkipsNameFilter(t *testing.T) {
 
 func TestListExplorationOwnerLUIDCacheSubsetCannotClaimComplete(t *testing.T) {
 	reader := &listExplorationProjectReader{}
-	_, err := New(Ports{ListReader: reader}).List(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, Cache: true})
+	_, err := newInternalTestService(Ports{ListReader: reader}).ListProjects(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, Cache: true})
 	if err == nil || reader.inventoryReads != 0 {
 		t.Fatalf("cache owner LUID fallback must fail before subset inventory: %v, reads=%d", err, reader.inventoryReads)
 	}
@@ -48,7 +48,7 @@ func TestListExplorationOwnerLUIDCacheSubsetCannotClaimComplete(t *testing.T) {
 
 func TestListExplorationOwnerLUIDAllUsesCompleteInventory(t *testing.T) {
 	reader := &listExplorationProjectReader{}
-	out, err := New(Ports{ListReader: reader}).List(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, All: true})
+	out, err := newInternalTestService(Ports{ListReader: reader}).ListProjects(t.Context(), ListInput{Environment: "test", OwnerName: listExplorationOwnerLUID, All: true})
 	if err != nil || len(out.Projects) != 2 || out.Page.Total != 2 || reader.inventoryReads != 1 {
 		t.Fatalf("all owner projects: %#v, %v, reads=%d", out, err, reader.inventoryReads)
 	}

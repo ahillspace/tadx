@@ -34,7 +34,7 @@ func (d *deleter) DeleteProject(_ context.Context, luid string) (projectops.Dele
 func TestDeletePreviewsWithoutMutation(t *testing.T) {
 	r := &deleteResolver{results: []projectops.DeleteProject{{LUID: "project-1", Name: "Operations", Path: "Department/Operations"}}}
 	d := &deleter{}
-	output, err := projectops.New(projectops.Ports{DeleteResolver: r, Deleter: d}).Delete(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, true)
+	output, err := newTestService(projectops.Ports{DeleteResolver: r, Deleter: d}).DeleteProject(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestDeleteRevalidatesExactLUID(t *testing.T) {
 	current := projectops.DeleteProject{LUID: "project-1", Name: "Operations renamed", Path: "Archive/Operations renamed"}
 	r := &deleteResolver{results: []projectops.DeleteProject{planned, current}}
 	d := &deleter{}
-	output, err := projectops.New(projectops.Ports{DeleteResolver: r, Deleter: d}).Delete(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, false)
+	output, err := newTestService(projectops.Ports{DeleteResolver: r, Deleter: d}).DeleteProject(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestDeleteRevalidatesExactLUID(t *testing.T) {
 func TestDeleteRejectsInvalidInputBeforeResolution(t *testing.T) {
 	r := &deleteResolver{}
 	d := &deleter{}
-	_, err := projectops.New(projectops.Ports{DeleteResolver: r, Deleter: d}).Delete(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox"}, false)
+	_, err := newTestService(projectops.Ports{DeleteResolver: r, Deleter: d}).DeleteProject(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox"}, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "project.delete.usage" || structured.Kind != errs.KindUsage {
 		t.Fatalf("error=%#v", err)
@@ -79,7 +79,7 @@ func TestDeleteRejectsInvalidInputBeforeResolution(t *testing.T) {
 func TestDeleteRejectsIdentityChange(t *testing.T) {
 	r := &deleteResolver{results: []projectops.DeleteProject{{LUID: "project-1", Name: "Operations"}, {LUID: "project-2", Name: "Operations"}}}
 	d := &deleter{}
-	_, err := projectops.New(projectops.Ports{DeleteResolver: r, Deleter: d}).Delete(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, false)
+	_, err := newTestService(projectops.Ports{DeleteResolver: r, Deleter: d}).DeleteProject(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, false)
 	if err == nil || len(d.calls) != 0 {
 		t.Fatalf("err=%v deletion=%v", err, d.calls)
 	}
@@ -88,7 +88,7 @@ func TestDeleteRejectsIdentityChange(t *testing.T) {
 func TestDeleteRejectsResolutionThatChangesRequestedLUID(t *testing.T) {
 	r := &deleteResolver{results: []projectops.DeleteProject{{LUID: "project-2", Name: "Operations"}}}
 	d := &deleter{}
-	_, err := projectops.New(projectops.Ports{DeleteResolver: r, Deleter: d}).Delete(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, true)
+	_, err := newTestService(projectops.Ports{DeleteResolver: r, Deleter: d}).DeleteProject(context.Background(), projectops.DeleteInput{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1"}, true)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "project.delete.resolve" || len(d.calls) != 0 {
 		t.Fatalf("err=%v deletion=%v", err, d.calls)

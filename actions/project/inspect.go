@@ -22,13 +22,10 @@ func ValidateInspectInput(input InspectInput) error {
 	return nil
 }
 
-// Inspect resolves one authoritative project.
-func (a *Service) Inspect(ctx context.Context, input InspectInput) (InspectOutput, error) {
+// inspectValidated resolves one authoritative project.
+func (a *runner) inspectValidated(ctx context.Context, input InspectInput) (InspectOutput, error) {
 	if a == nil || a.InspectResolver == nil {
 		return InspectOutput{}, &errs.Error{ID: "project.inspect.unconfigured", Kind: errs.KindRuntime, Operation: "project.inspect", Summary: "Project inspection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the project resolver before retrying."}
-	}
-	if err := ValidateInspectInput(input); err != nil {
-		return InspectOutput{}, err
 	}
 	project, err := a.InspectResolver.ResolveProject(ctx, input.Selector)
 	if err != nil {

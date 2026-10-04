@@ -20,12 +20,12 @@ type Updater interface {
 	UpdateProject(context.Context, UpdateRequest) (UpdateResult, error)
 }
 
-// Update changes bounded metadata on one exact project.
-func (a *Service) Update(ctx context.Context, input UpdateInput, preview bool) (UpdateOutput, error) {
+// updateValidated changes bounded metadata on one exact project.
+func (a *runner) updateValidated(ctx context.Context, input UpdateInput, preview bool) (UpdateOutput, error) {
 	if a == nil || a.UpdateResolver == nil || a.Updater == nil {
 		return UpdateOutput{}, &errs.Error{ID: "project.update.unconfigured", Kind: errs.KindRuntime, Operation: "project.update", Summary: "Project update is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project update before retrying."}
 	}
-	if err := updateValidateInput(input); err != nil {
+	if err := updateValidateResolvedTarget(input); err != nil {
 		return UpdateOutput{}, err
 	}
 	project, err := a.UpdateResolver.ResolveProject(ctx, input.Selector)
@@ -78,11 +78,11 @@ func updateChangedRequest(project UpdateProject, input UpdateInput) (UpdateReque
 	return request, request.Name == nil && request.Description == nil && request.ContentPermissions == nil
 }
 
-func updateValidateInput(input UpdateInput) error {
+func updateValidateResolvedTarget(input UpdateInput) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return updateUsage("environment", "project update requires an explicit resolved environment and site")
 	}
-	return ValidateUpdateInput(input)
+	return nil
 }
 
 // ValidateInput checks caller-controlled arguments before local or remote setup.

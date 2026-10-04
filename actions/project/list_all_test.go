@@ -28,7 +28,7 @@ func TestListAllInventoryBoundsAndProgress(t *testing.T) {
 	for _, total := range []int{0, 205, 10000, 10001} {
 		t.Run(fmt.Sprint(total), func(t *testing.T) {
 			reader := &listAllInventoryReader{total: total}
-			out, err := New(Ports{ListReader: reader}).List(context.Background(), ListInput{All: true})
+			out, err := newInternalTestService(Ports{ListReader: reader}).ListProjects(context.Background(), ListInput{All: true})
 			if total > 10000 {
 				if err == nil || !strings.Contains(err.Error(), "10000") {
 					t.Fatalf("expected bound failure: %v", err)
@@ -42,12 +42,12 @@ func TestListAllInventoryBoundsAndProgress(t *testing.T) {
 		})
 	}
 	reader := &listAllInventoryReader{total: 205, duplicate: true}
-	if _, err := New(Ports{ListReader: reader}).List(context.Background(), ListInput{All: true}); err == nil {
+	if _, err := newInternalTestService(Ports{ListReader: reader}).ListProjects(context.Background(), ListInput{All: true}); err == nil {
 		t.Fatal("duplicate identities accepted")
 	}
 	for _, input := range []ListInput{{All: true, Limit: 1}, {All: true, Cursor: "legacy"}} {
 		reader := &listAllInventoryReader{total: 205}
-		if _, err := New(Ports{ListReader: reader}).List(context.Background(), input); err == nil || reader.calls != 0 {
+		if _, err := newInternalTestService(Ports{ListReader: reader}).ListProjects(context.Background(), input); err == nil || reader.calls != 0 {
 			t.Fatalf("conflict accepted or read provider: %v", err)
 		}
 	}

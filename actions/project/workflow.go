@@ -71,7 +71,8 @@ func (a *Service) ListProjects(ctx context.Context, input ListInput) (result Lis
 		}
 		input.Environment, input.Site = target.Environment, target.Site
 	}
-	if err := ValidateListInput(input); err != nil {
+	selected, err := listParseInput(input)
+	if err != nil {
 		return ListOutput{}, err
 	}
 	defer func() {
@@ -85,8 +86,11 @@ func (a *Service) ListProjects(ctx context.Context, input ListInput) (result Lis
 			return ListOutput{}, err
 		}
 		input.Environment, input.Site = target.Environment, target.Site
+		if err := selected.bindTarget(input); err != nil {
+			return ListOutput{}, err
+		}
 		reader := a.Provider.CachedList(target)
-		output, err := New(Ports{ListReader: reader}).List(ctx, input)
+		output, err := (&runner{Ports: Ports{ListReader: reader}}).listValidated(ctx, input, selected)
 		if err == nil {
 			output.Source = reader.Source()
 		}
@@ -101,13 +105,16 @@ func (a *Service) ListProjects(ctx context.Context, input ListInput) (result Lis
 		return ListOutput{}, err
 	}
 	input.Environment, input.Site = session.Environment, session.Site
+	if err := selected.bindTarget(input); err != nil {
+		return ListOutput{}, err
+	}
 	if input.All && !ListMayBeOwnerLUID(input.OwnerName) {
 		observedAt := a.Provider.Now().UTC()
 		inventory, err := session.Inventory.CollectProjects(ctx, filter, observedAt)
 		if err != nil {
 			return ListOutput{}, err
 		}
-		output, err := New(Ports{ListReader: inventory.Reader}).List(ctx, input)
+		output, err := (&runner{Ports: Ports{ListReader: inventory.Reader}}).listValidated(ctx, input, selected)
 		if err != nil {
 			return output, err
 		}
@@ -118,7 +125,7 @@ func (a *Service) ListProjects(ctx context.Context, input ListInput) (result Lis
 		}
 		return output, nil
 	}
-	output, err := New(Ports{ListReader: session.ListReader}).List(ctx, input)
+	output, err := (&runner{Ports: Ports{ListReader: session.ListReader}}).listValidated(ctx, input, selected)
 	if err != nil {
 		return output, err
 	}
@@ -141,7 +148,7 @@ func (a *Service) InspectProject(ctx context.Context, input InspectInput) (Inspe
 		}
 		input.Environment, input.Site = target.Environment, target.Site
 		resolver := a.Provider.CachedInspect(target)
-		output, err := New(Ports{InspectResolver: resolver}).Inspect(ctx, input)
+		output, err := (&runner{Ports: Ports{InspectResolver: resolver}}).inspectValidated(ctx, input)
 		if err == nil {
 			output.Source = resolver.Source()
 		}
@@ -152,7 +159,7 @@ func (a *Service) InspectProject(ctx context.Context, input InspectInput) (Inspe
 		return InspectOutput{}, err
 	}
 	input.Environment, input.Site = session.Environment, session.Site
-	output, err := New(Ports{InspectResolver: session.InspectResolver}).Inspect(ctx, input)
+	output, err := (&runner{Ports: Ports{InspectResolver: session.InspectResolver}}).inspectValidated(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -175,7 +182,7 @@ func (a *Service) CreateProject(ctx context.Context, input CreateInput, preview 
 		return CreateOutput{}, err
 	}
 	input.Environment, input.Site, input.TargetResolved = session.Environment, session.Site, true
-	out, err := New(Ports{CreateResolver: session.CreateResolver, Creator: session.Creator}).Create(ctx, input, preview)
+	out, err := (&runner{Ports: Ports{CreateResolver: session.CreateResolver, Creator: session.Creator}}).createValidated(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
 		out.Help = append(out.Help, MutationPathWarning)
 	}
@@ -195,7 +202,7 @@ func (a *Service) UpdateProject(ctx context.Context, input UpdateInput, preview 
 		return UpdateOutput{}, err
 	}
 	input.Environment, input.Site, input.TargetResolved = session.Environment, session.Site, true
-	out, err := New(Ports{UpdateResolver: session.UpdateResolver, Updater: session.Updater}).Update(ctx, input, preview)
+	out, err := (&runner{Ports: Ports{UpdateResolver: session.UpdateResolver, Updater: session.Updater}}).updateValidated(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
 		out.Help = append(out.Help, MutationPathWarning)
 	}
@@ -215,7 +222,7 @@ func (a *Service) DeleteProject(ctx context.Context, input DeleteInput, preview 
 		return DeleteOutput{}, err
 	}
 	input.Environment, input.Site, input.TargetResolved = session.Environment, session.Site, true
-	return New(Ports{DeleteResolver: session.DeleteResolver, Deleter: session.Deleter}).Delete(ctx, input, preview)
+	return (&runner{Ports: Ports{DeleteResolver: session.DeleteResolver, Deleter: session.Deleter}}).deleteValidated(ctx, input, preview)
 }
 
 // MoveProject validates selectors before opening a mutation-capable session.
@@ -231,7 +238,7 @@ func (a *Service) MoveProject(ctx context.Context, input MoveInput, preview bool
 		return MoveOutput{}, err
 	}
 	input.Environment, input.Site, input.TargetResolved = session.Environment, session.Site, true
-	out, err := New(Ports{MoveResolver: session.MoveResolver, Mover: session.Mover}).Move(ctx, input, preview)
+	out, err := (&runner{Ports: Ports{MoveResolver: session.MoveResolver, Mover: session.Mover}}).moveValidated(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
 		out.Help = append(out.Help, MutationPathWarning)
 	}

@@ -41,12 +41,12 @@ func (m *mover) MoveProject(_ context.Context, source string, parent *string) (p
 func TestMovePreviewsThenRevalidatesParent(t *testing.T) {
 	r := moveResolver{source: projectops.MoveProject{LUID: "p-1", Name: "Child", Path: "Old/Child", ParentLUID: "old"}, parent: projectops.MoveProject{LUID: "new", Name: "New", Path: "New"}}
 	m := &mover{}
-	a := projectops.New(projectops.Ports{MoveResolver: r, Mover: m})
+	a := newTestService(projectops.Ports{MoveResolver: r, Mover: m})
 	in := projectops.MoveInput{Environment: "dev", Site: "site", ProjectSelector: identity.Selector{LUID: "p-1"}, ParentSelector: identity.Selector{LUID: "new"}}
-	if out, err := a.Move(context.Background(), in, true); err != nil || out.Result != nil || m.calls != 0 {
+	if out, err := a.MoveProject(context.Background(), in, true); err != nil || out.Result != nil || m.calls != 0 {
 		t.Fatalf("preview=%#v err=%v", out, err)
 	}
-	if out, err := a.Move(context.Background(), in, false); err != nil || out.Result == nil || m.calls != 1 || m.source != "p-1" || m.parent == nil || *m.parent != "new" {
+	if out, err := a.MoveProject(context.Background(), in, false); err != nil || out.Result == nil || m.calls != 1 || m.source != "p-1" || m.parent == nil || *m.parent != "new" {
 		t.Fatalf("execute=%#v err=%v parent=%v", out, err, m.parent)
 	}
 }
@@ -92,7 +92,7 @@ func TestMoveRejectsFreshPhaseDestinationChangesBeforeWriting(t *testing.T) {
 		t.Run(fmt.Sprintf("descendant=%t", descendant), func(t *testing.T) {
 			r := &moveChangingResolver{descendant: descendant}
 			m := &mover{}
-			_, err := projectops.New(projectops.Ports{MoveResolver: r, Mover: m}).Move(t.Context(), projectops.MoveInput{Environment: "dev", Site: "site", ProjectSelector: identity.Selector{LUID: "source"}, ParentSelector: identity.Selector{LUID: "destination"}}, false)
+			_, err := newTestService(projectops.Ports{MoveResolver: r, Mover: m}).MoveProject(t.Context(), projectops.MoveInput{Environment: "dev", Site: "site", ProjectSelector: identity.Selector{LUID: "source"}, ParentSelector: identity.Selector{LUID: "destination"}}, false)
 			want, reads := "already contains", 2
 			if descendant {
 				want, reads = "descendant", 1
@@ -105,7 +105,7 @@ func TestMoveRejectsFreshPhaseDestinationChangesBeforeWriting(t *testing.T) {
 }
 func TestMoveRejectsDescendantParent(t *testing.T) {
 	r := moveResolver{source: projectops.MoveProject{LUID: "p-1", Name: "Root", Path: "Root"}, parent: projectops.MoveProject{LUID: "child", Name: "Child", Path: "Root/Child"}}
-	if _, err := projectops.New(projectops.Ports{MoveResolver: r, Mover: &mover{}}).Move(context.Background(), projectops.MoveInput{Environment: "dev", Site: "site", ProjectSelector: identity.Selector{LUID: "p-1"}, ParentSelector: identity.Selector{LUID: "child"}}, false); err == nil {
+	if _, err := newTestService(projectops.Ports{MoveResolver: r, Mover: &mover{}}).MoveProject(context.Background(), projectops.MoveInput{Environment: "dev", Site: "site", ProjectSelector: identity.Selector{LUID: "p-1"}, ParentSelector: identity.Selector{LUID: "child"}}, false); err == nil {
 		t.Fatal("expected cycle error")
 	}
 }

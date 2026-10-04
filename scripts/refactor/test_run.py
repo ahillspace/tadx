@@ -211,6 +211,23 @@ class ConfigurationTests(unittest.TestCase):
         escaped_other = other.replace("\\", "\\\\\\\\")
         self.assertNotIn("Private Person", gates.redact(escaped_other, []))
 
+    def test_logs_redact_truncated_windows_home_fragments(self):
+        source = r"C:\Users\Example User\project\source"
+        for fragment in (
+            "/Example User/projects/demo",
+            "Users/Example User/projects/demo",
+            r"\Example User\projects\demo",
+            r"Users\Example User\projects\demo",
+        ):
+            with self.subTest(fragment=fragment):
+                message = json.dumps({"Output": fragment, "digest": "a" * 64, "site": "team-site"})
+                redacted = gates.redact(message, [source])
+                self.assertNotIn("Example User", redacted)
+                self.assertIn("<user-root>", redacted)
+                parsed = json.loads(redacted)
+                self.assertEqual(parsed["digest"], "a" * 64)
+                self.assertEqual(parsed["site"], "team-site")
+
     def test_timeout_stops_tree_and_never_passes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

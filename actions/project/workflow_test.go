@@ -82,3 +82,16 @@ func TestProjectListFilterFailsBeforeOpeningTarget(t *testing.T) {
 		t.Fatalf("error=%v filter calls=%d target opens=%d", err, provider.filterCalls, provider.opens)
 	}
 }
+
+func TestProjectCreateUsesResolvedTargetWithoutRepeatingCallerValidation(t *testing.T) {
+	resolver := &createResolver{}
+	creator := &createCreator{}
+	service := newTestServiceForTarget(projectops.Ports{CreateResolver: resolver, Creator: creator}, projectops.Target{Environment: "canonical", Site: "exact-site"})
+	out, err := service.CreateProject(t.Context(), projectops.CreateInput{Environment: "selected", Site: "stale-site", Name: "Operations"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Plan.Environment != "canonical" || out.Plan.Site != "exact-site" || creator.calls != 0 {
+		t.Fatalf("resolved target or preview contract changed: plan=%+v writes=%d", out.Plan, creator.calls)
+	}
+}

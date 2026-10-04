@@ -20,11 +20,8 @@ type Deleter interface {
 	DeleteProject(context.Context, string) (DeleteResult, error)
 }
 
-// Delete previews and applies one exact project deletion.
-func (a *Service) Delete(ctx context.Context, input DeleteInput, preview bool) (DeleteOutput, error) {
-	if err := ValidateDeleteInput(input); err != nil {
-		return DeleteOutput{}, err
-	}
+// deleteValidated previews and applies one exact project deletion.
+func (a *runner) deleteValidated(ctx context.Context, input DeleteInput, preview bool) (DeleteOutput, error) {
 	if a == nil || a.DeleteResolver == nil || a.Deleter == nil {
 		return DeleteOutput{}, deleteRuntimeError()
 	}
@@ -63,7 +60,7 @@ func (a *Service) Delete(ctx context.Context, input DeleteInput, preview bool) (
 	return output, nil
 }
 
-func (a *Service) resolve(ctx context.Context, input DeleteInput, summary, correctiveAction string) (DeleteProject, error) {
+func (a *runner) resolve(ctx context.Context, input DeleteInput, summary, correctiveAction string) (DeleteProject, error) {
 	project, err := a.DeleteResolver.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(input.ProjectLUID)})
 	if err != nil {
 		return DeleteProject{}, deleteOperationError("project.delete.resolve", input, input.ProjectLUID, summary, correctiveAction, err)

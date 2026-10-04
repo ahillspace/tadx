@@ -79,7 +79,7 @@ func TestListActionListsBoundedProjectPage(t *testing.T) {
 		{LUID: "p-1", Name: "Department"},
 		{LUID: "p-2", Name: "Ops", ParentLUID: "p-1", Description: "Operations", OwnerLUID: "u-1"},
 	}}}
-	output, err := projectops.New(projectops.Ports{ListReader: r}).List(context.Background(), projectops.ListInput{Environment: "dev", Site: "site", Limit: 2})
+	output, err := newTestService(projectops.Ports{ListReader: r}).ListProjects(context.Background(), projectops.ListInput{Environment: "dev", Site: "site", Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +98,12 @@ func TestListActionListsBoundedProjectPage(t *testing.T) {
 
 func TestListActionCursorContinuesWithoutChangingLimit(t *testing.T) {
 	firstReader := &listReader{page: projectops.ListPage{Number: 1, Size: 25, Total: 26, Projects: make([]projectops.ListProject, 25)}}
-	first, err := projectops.New(projectops.Ports{ListReader: firstReader}).List(context.Background(), projectops.ListInput{Environment: "dev"})
+	first, err := newTestService(projectops.Ports{ListReader: firstReader}).ListProjects(context.Background(), projectops.ListInput{Environment: "dev"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := &listReader{page: projectops.ListPage{Number: 2, Size: 25, Total: 26, Projects: []projectops.ListProject{{LUID: "p-26", Name: "Last"}}}}
-	_, err = projectops.New(projectops.Ports{ListReader: r}).List(context.Background(), projectops.ListInput{Environment: "dev", Cursor: first.Page.NextCursor})
+	_, err = newTestService(projectops.Ports{ListReader: r}).ListProjects(context.Background(), projectops.ListInput{Environment: "dev", Cursor: first.Page.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestListActionCursorContinuesWithoutChangingLimit(t *testing.T) {
 func TestListActionCursorIsBoundToProjectFilters(t *testing.T) {
 	topLevel := true
 	firstReader := &listReader{page: projectops.ListPage{Number: 1, Size: 2, Total: 3, Projects: make([]projectops.ListProject, 2)}}
-	first, err := projectops.New(projectops.Ports{ListReader: firstReader}).List(context.Background(), projectops.ListInput{
+	first, err := newTestService(projectops.Ports{ListReader: firstReader}).ListProjects(context.Background(), projectops.ListInput{
 		Environment: "dev",
 		Limit:       2,
 		Name:        "Private project name",
@@ -150,7 +150,7 @@ func TestListActionCursorIsBoundToProjectFilters(t *testing.T) {
 			input := projectops.ListInput{Environment: "dev", Cursor: first.Page.NextCursor, Limit: 2, Name: "Private project name", ParentLUID: "parent-1", OwnerName: "Private owner name", TopLevel: &topLevel}
 			test.mutate(&input)
 			continuationReader := &listReader{}
-			_, err := projectops.New(projectops.Ports{ListReader: continuationReader}).List(context.Background(), input)
+			_, err := newTestService(projectops.Ports{ListReader: continuationReader}).ListProjects(context.Background(), input)
 			if err == nil || err.Error() != "project continuation cursor does not match the current filters" {
 				t.Fatalf("error = %v", err)
 			}
@@ -167,16 +167,20 @@ func TestListActionCursorIsBoundToProjectFilters(t *testing.T) {
 
 func TestListActionCursorIsBoundToResolvedProjectEnvironment(t *testing.T) {
 	firstReader := &listReader{page: projectops.ListPage{Number: 1, Size: 1, Total: 2, Projects: []projectops.ListProject{{LUID: "p-1"}}}}
-	first, err := projectops.New(projectops.Ports{ListReader: firstReader}).List(context.Background(), projectops.ListInput{Environment: "dev", Site: "site-a", Limit: 1, Name: "Ops"})
+	first, err := newTestServiceForTarget(projectops.Ports{ListReader: firstReader}, projectops.Target{Environment: "dev", Site: "site-a"}).ListProjects(context.Background(), projectops.ListInput{Environment: "dev", Site: "site-a", Limit: 1, Name: "Ops"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	matchingReader := &listReader{page: projectops.ListPage{Number: 2, Size: 1, Total: 2, Projects: []projectops.ListProject{{LUID: "p-2"}}}}
+	if _, err := newTestServiceForTarget(projectops.Ports{ListReader: matchingReader}, projectops.Target{Environment: "dev", Site: "site-a"}).ListProjects(context.Background(), projectops.ListInput{Environment: "dev", Cursor: first.Page.NextCursor, Name: "Ops"}); err != nil || matchingReader.calls != 1 {
+		t.Fatalf("matching resolved target rejected: error=%v calls=%d", err, matchingReader.calls)
 	}
 	for _, input := range []projectops.ListInput{
 		{Environment: "production", Site: "site-a", Cursor: first.Page.NextCursor, Name: "Ops"},
 		{Environment: "dev", Site: "site-b", Cursor: first.Page.NextCursor, Name: "Ops"},
 	} {
 		continuationReader := &listReader{}
-		_, err = projectops.New(projectops.Ports{ListReader: continuationReader}).List(context.Background(), input)
+		_, err = newTestServiceForTarget(projectops.Ports{ListReader: continuationReader}, projectops.Target{Environment: input.Environment, Site: input.Site}).ListProjects(context.Background(), input)
 		if err == nil || err.Error() != "project continuation cursor does not match the current filters" {
 			t.Fatalf("error = %v", err)
 		}
@@ -186,17 +190,50 @@ func TestListActionCursorIsBoundToResolvedProjectEnvironment(t *testing.T) {
 	}
 }
 
+func TestListContinuationUsesCanonicalTargetFromFirstPage(t *testing.T) {
+	for _, cache := range []bool{false, true} {
+		t.Run(fmt.Sprint("cache=", cache), func(t *testing.T) {
+			target := projectops.Target{Environment: "canonical", Site: "exact-site"}
+			firstReader := &listReader{page: projectops.ListPage{Number: 1, Size: 1, Total: 2, Projects: []projectops.ListProject{{LUID: "p-1"}}}}
+			first, err := newTestServiceForTarget(projectops.Ports{ListReader: firstReader}, target).ListProjects(t.Context(), projectops.ListInput{Environment: "alias", Cache: cache, Limit: 1})
+			if err != nil || first.Page.NextCursor == "" {
+				t.Fatalf("first page: output=%+v error=%v", first, err)
+			}
+			nextReader := &listReader{page: projectops.ListPage{Number: 2, Size: 1, Total: 2, Projects: []projectops.ListProject{{LUID: "p-2"}}}}
+			second, err := newTestServiceForTarget(projectops.Ports{ListReader: nextReader}, target).ListProjects(t.Context(), projectops.ListInput{Environment: "alias", Cache: cache, Cursor: first.Page.NextCursor})
+			if err != nil || nextReader.calls != 1 || len(second.Projects) != 1 || second.Projects[0].LUID != "p-2" {
+				t.Fatalf("canonical continuation: output=%+v error=%v reads=%d", second, err, nextReader.calls)
+			}
+		})
+	}
+}
+
+func TestListContinuationRejectsTargetChangedBetweenCacheAndOpen(t *testing.T) {
+	canonical := projectops.Target{Environment: "canonical", Site: "site-a"}
+	firstReader := &listReader{page: projectops.ListPage{Number: 1, Size: 1, Total: 2, Projects: []projectops.ListProject{{LUID: "p-1"}}}}
+	first, err := newTestServiceForTarget(projectops.Ports{ListReader: firstReader}, canonical).ListProjects(t.Context(), projectops.ListInput{Environment: "alias", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextReader := &listReader{}
+	provider := testProjectProvider{ports: projectops.Ports{ListReader: nextReader}, target: canonical, openTarget: projectops.Target{Environment: "canonical", Site: "site-b"}}
+	_, err = projectops.New(projectops.Ports{Provider: provider}).ListProjects(t.Context(), projectops.ListInput{Environment: "alias", Cursor: first.Page.NextCursor})
+	if err == nil || err.Error() != "project continuation cursor does not match the current filters" || nextReader.calls != 0 {
+		t.Fatalf("changed target accepted: error=%v reads=%d", err, nextReader.calls)
+	}
+}
+
 func TestListActionRejectsProjectCursorVersionAndLimitMismatch(t *testing.T) {
 	legacy := base64.RawURLEncoding.EncodeToString([]byte(`{"p":2,"s":2}`))
-	_, err := projectops.New(projectops.Ports{ListReader: &listReader{}}).List(context.Background(), projectops.ListInput{Cursor: legacy})
+	_, err := newTestService(projectops.Ports{ListReader: &listReader{}}).ListProjects(context.Background(), projectops.ListInput{Cursor: legacy})
 	listAssertUsageError(t, err, "invalid project continuation cursor")
 
-	first, err := projectops.New(projectops.Ports{ListReader: &listReader{page: projectops.ListPage{Number: 1, Size: 2, Total: 3, Projects: make([]projectops.ListProject, 2)}}}).List(context.Background(), projectops.ListInput{Limit: 2})
+	first, err := newTestService(projectops.Ports{ListReader: &listReader{page: projectops.ListPage{Number: 1, Size: 2, Total: 3, Projects: make([]projectops.ListProject, 2)}}}).ListProjects(context.Background(), projectops.ListInput{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	continuationReader := &listReader{}
-	_, err = projectops.New(projectops.Ports{ListReader: continuationReader}).List(context.Background(), projectops.ListInput{Cursor: first.Page.NextCursor, Limit: 3})
+	_, err = newTestService(projectops.Ports{ListReader: continuationReader}).ListProjects(context.Background(), projectops.ListInput{Cursor: first.Page.NextCursor, Limit: 3})
 	listAssertUsageError(t, err, "project list limit must match the continuation cursor")
 	if continuationReader.calls != 0 {
 		t.Fatalf("reader calls = %d", continuationReader.calls)
@@ -215,7 +252,7 @@ func TestListActionRejectsInvalidProjectPagingBeforeReading(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			r := &listReader{}
-			_, err := projectops.New(projectops.Ports{ListReader: r}).List(t.Context(), test.input)
+			_, err := newTestService(projectops.Ports{ListReader: r}).ListProjects(t.Context(), test.input)
 			listAssertUsageError(t, err, test.message)
 			if r.calls != 0 {
 				t.Fatalf("reader calls = %d", r.calls)
@@ -241,7 +278,7 @@ func TestListFullProjectOutputIsBoundedToCurrentPage(t *testing.T) {
 		projects[index] = projectops.ListProject{LUID: fmt.Sprintf("p-%03d", index), Name: "Project"}
 	}
 	r := &listReader{page: projectops.ListPage{Number: 1, Size: 100, Total: 100, Projects: projects}}
-	output, err := projectops.New(projectops.Ports{ListReader: r}).List(context.Background(), projectops.ListInput{Limit: 100})
+	output, err := newTestService(projectops.Ports{ListReader: r}).ListProjects(context.Background(), projectops.ListInput{Limit: 100})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,10 +23,15 @@ func TestInspectOutputGolden(t *testing.T) {
 		LUID: "project-1", Name: "Ops", Path: "Department/Ops", ParentLUID: "project-root",
 		Description: "Operations", OwnerLUID: "user-1", WorkbookCount: &workbookCount, RequestID: "request-1",
 	}
-	output, err := projectops.New(projectops.Ports{InspectResolver: &inspectResolver{project: item}}).Inspect(t.Context(), projectops.InspectInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}})
+	output, err := newTestService(projectops.Ports{InspectResolver: &inspectResolver{project: item}}).InspectProject(t.Context(), projectops.InspectInput{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if output.Source == nil || output.Source.Mode != "tableau" {
+		t.Fatalf("live entry point lost source evidence: %+v", output.Source)
+	}
+	// The historical golden describes the project projection without source metadata.
+	output.Source = nil
 	inspectAssertGolden(t, "compact.toon", output, false)
 	inspectAssertGolden(t, "full.toon", output, true)
 }
@@ -57,7 +62,7 @@ func (r *inspectResolver) ResolveProject(_ context.Context, selector identity.Se
 
 func TestInspectActionGetsExactProject(t *testing.T) {
 	r := &inspectResolver{project: projectops.InspectProject{LUID: "p-2", Name: "Ops", Path: "Department/Ops", ParentLUID: "p-1", Description: "Operations"}}
-	output, err := projectops.New(projectops.Ports{InspectResolver: r}).Inspect(context.Background(), projectops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{ProjectPath: "Department/Ops"}})
+	output, err := newTestService(projectops.Ports{InspectResolver: r}).InspectProject(context.Background(), projectops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{ProjectPath: "Department/Ops"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +76,7 @@ func TestInspectActionGetsExactProject(t *testing.T) {
 }
 
 func TestInspectActionRequiresExactSelector(t *testing.T) {
-	_, err := projectops.New(projectops.Ports{InspectResolver: &inspectResolver{}}).Inspect(context.Background(), projectops.InspectInput{})
+	_, err := newTestService(projectops.Ports{InspectResolver: &inspectResolver{}}).InspectProject(context.Background(), projectops.InspectInput{})
 	if err == nil {
 		t.Fatal("expected selector error")
 	}

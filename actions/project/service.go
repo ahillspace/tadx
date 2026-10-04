@@ -19,6 +19,9 @@ type Ports struct {
 // Service owns project lifecycle decisions and delegates native requests to ports.
 type Service struct{ Ports }
 
+// runner holds only ports selected for one validated operation.
+type runner struct{ Ports }
+
 // New constructs the project service without contacting Tableau.
 func New(ports Ports) *Service {
 	return &Service{Ports: ports}

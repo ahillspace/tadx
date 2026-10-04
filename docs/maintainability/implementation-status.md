@@ -1,6 +1,6 @@
 # Architecture implementation status
 
-Status: baseline corrections and deterministic authentication test synchronization committed; integrated verification continues and final live coverage needs additional fixture authority.
+Status: the first project candidate passes local and hosted offline checks; follow-up review, other ownership moves, and live acceptance remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -47,7 +47,7 @@ Native process-containment and junction rejection tests use mocked branches; the
 The archived snapshot materializes two tracked Claude skill symlinks as exact link-text files, recorded by the gate; this run does not verify symlink installation behavior.
 
 The first project structural candidate is integrated after the corrected baseline passes local and hosted checks.
-Its own verification remains pending; integration is not checkpoint acceptance.
+Its offline verification is recorded below; integration is not checkpoint acceptance.
 The separately approved reporting correction changes only accepted-publication error reporting.
 The architecture checker now permits the approved exact adapter-to-consumer import pairs, with positive and negative fixtures.
 New publication characterization tests expose the baseline reporting failures described below.
@@ -185,6 +185,36 @@ Mechanical integration verifies all 83 changed paths, preserves unrelated edits,
 The integrated candidate still requires its own complete gates and live verification; it is not an accepted checkpoint or repository-wide D3 completion.
 Auth consolidation proceeds in a separate isolated draft, not in this project candidate.
 
+### Integrated project candidate and subsequent review
+
+Commit `1346e59124b769493d6b56c9b8f1bffbad261f65` passes the full local Windows race suite, vet, formatting, module consistency, and generated-file checks.
+The three defect-detection manifests pass against its isolated source, including the reviewed relocation of the project identity seed.
+Its 1,353-file source manifest SHA-256 is `6b9aae8abe5cb8cd547c077f879c54279bb5ce84de0f422015b291cc39e0c320`.
+Hosted [CI run 37158425041](https://github.com/ahillspace/tadx/actions/runs/37158425041) passes all nine jobs.
+Hosted [gate-tooling run 37158424896](https://github.com/ahillspace/tadx/actions/runs/37158424896) passes both operating-system jobs.
+No live checkpoint acceptance is claimed.
+
+Evidence inspection finds a truncated local-profile path in one emitted seeded-test log.
+A separately reviewed runner correction redacts separator-bounded fragments derived from known roots and passes 24 unit tests.
+It does not change raw-output assertions or source checks.
+The historical log receives redaction-only postprocessing with original and replacement hashes recorded; its evidence remains labeled unclean at creation and is not acceptance evidence.
+A later diagnostic creates five temporary telemetry files in the extracted source after all gate runs.
+Those exact task-owned files are removed, restoring the original source manifest; this cleanup does not retroactively qualify the unclean evidence.
+
+Subsequent architecture review identifies redundant unchanged-input validation and nested service construction in the project candidate.
+An isolated follow-up removes that scaffolding while preserving target-resolution and fresh-state checks.
+Independent review of the follow-up catches a first-page cursor binding regression when provider resolution canonicalizes an empty or aliased target.
+Separate live and cached continuation tests reproduce the regression before its correction and pass afterward.
+Independent review approves the corrected follow-up with source fingerprint `b26e3f43bfd9168516199015462ca781c8959c997f3a0d35224c1fed9507d229` for integration.
+Its focused project and search checks pass, and all eight project output goldens remain byte-identical.
+Mechanical integration copies exactly its 20 reviewed paths after source-fingerprint and existing-edit checks; complete integrated gates remain pending.
+The committed candidate does not contain this draft regression.
+
+Authentication and catalog consolidation remain isolated drafts with focused verification, not integrated or accepted checkpoints.
+Authentication still needs a disposition for the required external-deletion failure followed by failed-restoration scenario.
+Catalog review must also resolve redundant public entry points retained only for tests.
+Shared inventory extraction is prepared separately and has no integrated implementation yet.
+
 ## Acceptance dependencies
 
 The current executable catalog contains 124 action IDs.
@@ -251,6 +281,13 @@ A subsequent read-only consent check confirms that the previously selected site'
 No incomplete gate is waived or reported as passing.
 
 ## Completion rule
+
+The maintainer additionally requires a final independent whole-repository architecture review after implementation.
+Compare the resulting code with every approved D1-D7 decision and the pinned Helm and GitHub CLI references from the proposal.
+Assess cross-category consistency, contributor navigation, redundant handoffs and records, workflow ownership, test purpose, and maintainability.
+Report where TADX matches the reference principles, where its differences are justified, and where material gaps remain, with concrete source evidence.
+Give an explicit overall comparison rather than treating green tests or package counts as architectural acceptance.
+This review supplements G8 and does not replace any other required gate.
 
 Do not report the refactor complete until all approved ownership moves, surviving behavior contracts, documentation, review, and required candidate gates have evidence.
 The strict characterization tests for the three separately reviewed baseline defects are committed with their corrections and pass focused checks.

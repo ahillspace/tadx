@@ -730,7 +730,7 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "project":
-		out, err := projectops.New(projectops.Ports{ListReader: s.projects}).List(ctx, projectops.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		out, err := projectops.ListFromReader(ctx, s.projects, projectops.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}

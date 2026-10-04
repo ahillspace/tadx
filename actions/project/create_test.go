@@ -47,7 +47,7 @@ func (r *createResolver) FindProjectCollisions(context.Context, string, string) 
 func TestCreateRejectsLateSiblingCollisionBeforeWriting(t *testing.T) {
 	r := &createResolver{lateCollisions: []projectops.CreateProject{{LUID: "other", Name: "Operations"}}}
 	c := &createCreator{}
-	_, err := projectops.New(projectops.Ports{CreateResolver: r, Creator: c}).Create(t.Context(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Operations"}, false)
+	_, err := newTestService(projectops.Ports{CreateResolver: r, Creator: c}).CreateProject(t.Context(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Operations"}, false)
 	if err == nil || !strings.Contains(err.Error(), "already") || r.collisionCalls != 2 || c.calls != 0 {
 		t.Fatalf("error=%v collision_reads=%d writes=%d", err, r.collisionCalls, c.calls)
 	}
@@ -85,7 +85,7 @@ func TestCreatePreservesUnverifiedResultEvidence(t *testing.T) {
 		{name: "pre-submission failure"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			output, err := projectops.New(projectops.Ports{CreateResolver: &createResolver{}, Creator: createFailedCreator{result: test.result, err: createRetryableCreateError{}}}).Create(t.Context(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Requested"}, false)
+			output, err := newTestService(projectops.Ports{CreateResolver: &createResolver{}, Creator: createFailedCreator{result: test.result, err: createRetryableCreateError{}}}).CreateProject(t.Context(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Requested"}, false)
 			if err == nil {
 				t.Fatal("expected create failure")
 			}
@@ -145,10 +145,10 @@ func (c *createCreator) CreateProject(_ context.Context, input projectops.Create
 func TestCreatePreviewsThenRevalidatesParentAndCollisionOnApply(t *testing.T) {
 	r := &createResolver{parents: []projectops.CreateProject{{LUID: "parent-1", Name: "Department", Path: "Department"}, {LUID: "parent-1", Name: "Renamed", Path: "Renamed"}}}
 	c := &createCreator{}
-	action := projectops.New(projectops.Ports{CreateResolver: r, Creator: c})
+	action := newTestService(projectops.Ports{CreateResolver: r, Creator: c})
 	input := projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Operations", Description: "Direct operations", ContentPermissions: "LockedToProject", ParentSelector: identity.Selector{LUID: "parent-1"}}
 
-	preview, err := action.Create(context.Background(), input, true)
+	preview, err := action.CreateProject(context.Background(), input, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestCreatePreviewsThenRevalidatesParentAndCollisionOnApply(t *testing.T) {
 		t.Fatalf("preview=%#v creator=%#v", preview, c)
 	}
 
-	result, err := action.Create(context.Background(), input, false)
+	result, err := action.CreateProject(context.Background(), input, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestCreatePreviewsThenRevalidatesParentAndCollisionOnApply(t *testing.T) {
 func TestCreateRootDoesNotResolveOrInferParent(t *testing.T) {
 	r := &createResolver{}
 	c := &createCreator{}
-	output, err := projectops.New(projectops.Ports{CreateResolver: r, Creator: c}).Create(context.Background(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Root"}, false)
+	output, err := newTestService(projectops.Ports{CreateResolver: r, Creator: c}).CreateProject(context.Background(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Root"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestCreateRejectsCollisionAndChangedParentIdentity(t *testing.T) {
 	t.Run("collision", func(t *testing.T) {
 		r := &createResolver{collisions: []projectops.CreateProject{{LUID: "existing", Name: "Operations"}}}
 		c := &createCreator{}
-		_, err := projectops.New(projectops.Ports{CreateResolver: r, Creator: c}).Create(context.Background(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "operations"}, true)
+		_, err := newTestService(projectops.Ports{CreateResolver: r, Creator: c}).CreateProject(context.Background(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "operations"}, true)
 		if err == nil || c.calls != 0 {
 			t.Fatalf("error=%v calls=%d", err, c.calls)
 		}
@@ -189,7 +189,7 @@ func TestCreateRejectsCollisionAndChangedParentIdentity(t *testing.T) {
 	t.Run("parent identity changed", func(t *testing.T) {
 		r := &createResolver{parents: []projectops.CreateProject{{LUID: "parent-1"}, {LUID: "parent-2"}}}
 		c := &createCreator{}
-		_, err := projectops.New(projectops.Ports{CreateResolver: r, Creator: c}).Create(context.Background(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Operations", ParentSelector: identity.Selector{LUID: "parent-1"}}, false)
+		_, err := newTestService(projectops.Ports{CreateResolver: r, Creator: c}).CreateProject(context.Background(), projectops.CreateInput{Environment: "dev", Site: "sandbox", Name: "Operations", ParentSelector: identity.Selector{LUID: "parent-1"}}, false)
 		if err == nil || c.calls != 0 {
 			t.Fatalf("error=%v calls=%d", err, c.calls)
 		}
@@ -205,7 +205,7 @@ func TestCreateRequiresExplicitTargetAndValidFields(t *testing.T) {
 		{Environment: "dev", Site: "sandbox", Name: "Operations", ParentSelector: identity.Selector{LUID: "parent-1", ProjectPath: "Department"}},
 	}
 	for _, input := range tests {
-		if _, err := projectops.New(projectops.Ports{CreateResolver: &createResolver{}, Creator: &createCreator{}}).Create(context.Background(), input, false); err == nil {
+		if _, err := newTestService(projectops.Ports{CreateResolver: &createResolver{}, Creator: &createCreator{}}).CreateProject(context.Background(), input, false); err == nil {
 			t.Fatalf("input accepted: %#v", input)
 		}
 	}

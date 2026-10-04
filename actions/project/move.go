@@ -18,15 +18,15 @@ type Mover interface {
 	MoveProject(context.Context, string, *string) (MoveResult, error)
 }
 
-func (a *Service) beginMoveResolution(ctx context.Context) context.Context {
+func (a *runner) beginMoveResolution(ctx context.Context) context.Context {
 	return a.MoveResolver.BeginProjectResolution(ctx)
 }
 
-func (a *Service) Move(ctx context.Context, in MoveInput, preview bool) (MoveOutput, error) {
+func (a *runner) moveValidated(ctx context.Context, in MoveInput, preview bool) (MoveOutput, error) {
 	if a == nil || a.MoveResolver == nil || a.Mover == nil {
 		return MoveOutput{}, &errs.Error{ID: "project.move.unconfigured", Kind: errs.KindRuntime, Operation: "project.move", Summary: "Project move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project move before retrying."}
 	}
-	if err := moveValidate(in); err != nil {
+	if err := moveValidateResolvedTarget(in); err != nil {
 		return MoveOutput{}, err
 	}
 	ctx = a.beginMoveResolution(ctx)
@@ -74,7 +74,7 @@ func (a *Service) Move(ctx context.Context, in MoveInput, preview bool) (MoveOut
 	out.Help = []string{commandhint.Environment(in.Environment, "content", "project", "inspect", "--project-id", current.LUID)}
 	return out, nil
 }
-func (a *Service) destination(ctx context.Context, in MoveInput, source MoveProject) (*MoveProject, *string, error) {
+func (a *runner) destination(ctx context.Context, in MoveInput, source MoveProject) (*MoveProject, *string, error) {
 	if in.TopLevel {
 		parent := ""
 		return nil, &parent, nil
@@ -85,7 +85,7 @@ func (a *Service) destination(ctx context.Context, in MoveInput, source MoveProj
 	}
 	return &project, &project.LUID, nil
 }
-func (a *Service) destinationByLUID(ctx context.Context, in MoveInput, source MoveProject, destination *MoveProject) (*MoveProject, *string, error) {
+func (a *runner) destinationByLUID(ctx context.Context, in MoveInput, source MoveProject, destination *MoveProject) (*MoveProject, *string, error) {
 	if in.TopLevel {
 		return a.destination(ctx, in, source)
 	}
@@ -93,7 +93,7 @@ func (a *Service) destinationByLUID(ctx context.Context, in MoveInput, source Mo
 	copy.ParentSelector = identity.Selector{LUID: identity.LUID(destination.LUID)}
 	return a.destination(ctx, copy, source)
 }
-func (a *Service) validateMove(ctx context.Context, in MoveInput, source MoveProject, destination *MoveProject, parentLUID *string) error {
+func (a *runner) validateMove(ctx context.Context, in MoveInput, source MoveProject, destination *MoveProject, parentLUID *string) error {
 	if parentLUID == nil {
 		return moveUsage("parent", "project move requires an exact parent or --top-level")
 	}
@@ -117,11 +117,11 @@ func (a *Service) validateMove(ctx context.Context, in MoveInput, source MovePro
 	}
 	return nil
 }
-func moveValidate(in MoveInput) error {
+func moveValidateResolvedTarget(in MoveInput) error {
 	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return moveUsage("environment", "project move requires an explicit resolved environment and site")
 	}
-	return ValidateMoveInput(in)
+	return nil
 }
 
 // ValidateInput checks caller-controlled arguments before local or remote setup.
