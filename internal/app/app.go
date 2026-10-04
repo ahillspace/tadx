@@ -245,7 +245,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return fail(err, renderOptions)
 	}
 	bindPublicationExecution(root, runtime, capture, args, options)
-	bindManagedPolicy(root, runtime)
+	cli.BindManagedPolicy(root, runtime.checkManagedCapability, runtime.checkManagedRemoteMutation)
 	if err := root.ExecuteContext(ctx); err != nil {
 		if clierr.IsRendered(err) {
 			return errs.ExitCode(err)

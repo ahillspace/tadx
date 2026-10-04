@@ -15,7 +15,7 @@ func TestManagedPolicyKeepsExplicitFoundationBoundaries(t *testing.T) {
 		{"internal/managedpolicy/policy.go", "internal/capability", true},
 		{"internal/managedpolicy/policy.go", "internal/value", true},
 		{"actions/policy/status.go", "internal/value", true},
-		{"actions/policy/status.go", "internal/managedpolicy", false},
+		{"actions/policy/status.go", "internal/managedpolicy", true},
 		{"actions/auth/check/action.go", "internal/auth", false},
 		{"internal/managedpolicy/policy.go", "internal/auth", false},
 		{"internal/managedpolicy/policy.go", "internal/config", false},

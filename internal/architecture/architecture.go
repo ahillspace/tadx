@@ -184,6 +184,10 @@ func localImportAllowed(file, imported string) bool {
 	}
 	switch layerForFile(file) {
 	case layerAction:
+		// Only the cohesive policy workflow coordinates native policy mechanisms.
+		if path.Dir(file) == "actions/policy" && imported == "internal/managedpolicy" {
+			return true
+		}
 		// The auth workflow coordinates native credential references with config.
 		// Other actions and obsolete verb packages cannot access credential storage.
 		if path.Dir(file) == "actions/auth" && imported == "internal/auth" {

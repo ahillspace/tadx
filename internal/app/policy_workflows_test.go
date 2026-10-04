@@ -2,16 +2,12 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 
 	policyops "github.com/ahillspace/tadx/actions/policy"
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 )
 
@@ -108,33 +104,5 @@ func TestPolicyWorkflowPreservesExactCandidatePaths(t *testing.T) {
 	var result policyops.ValidationOutput
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.Candidate != filepath.ToSlash(candidate) {
 		t.Fatalf("candidate path changed: %s error=%v", &out, err)
-	}
-}
-
-// WriteSamples checks cancellation before each file after directory/preflight work.
-type cancelPolicySamplesAfterFirst struct {
-	context.Context
-	checks int
-}
-
-func (c *cancelPolicySamplesAfterFirst) Err() error {
-	c.checks++
-	if c.checks > 1 {
-		return context.Canceled
-	}
-	return nil
-}
-
-func TestPolicySamplesRetainsConfirmedFilesOnCancellation(t *testing.T) {
-	directory := filepath.Join(t.TempDir(), "samples")
-	runtime := &runtimeDependencies{managedPolicy: fixtureManagedPolicy{state: managedpolicy.StateUnmanaged}}
-	out, err := runtime.WriteSamples(&cancelPolicySamplesAfterFirst{Context: t.Context()}, directory)
-	structured, ok := errors.AsType[*errs.Error](err)
-	want := filepath.ToSlash(filepath.Join(directory, "read-only.json"))
-	if !ok || !errors.Is(err, context.Canceled) || structured.ID != "policy.samples.write" || structured.Outcome != errs.OutcomeUnknown || out.Status != "partial" || !slices.Equal(out.Files, []string{want}) || !slices.Equal(structured.Completed, out.Files) {
-		t.Fatalf("output=%+v error=%v", out, err)
-	}
-	if _, err := os.Stat(filepath.Join(directory, "read-write-no-admin.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("unexpected second candidate: %v", err)
 	}
 }

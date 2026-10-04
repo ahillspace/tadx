@@ -6,6 +6,23 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Managed policy ownership
+
+The cohesive `actions/policy` Service owns installation sequencing, candidate validation, sample creation, status assembly, and partial-effect errors.
+Native policy protection and persistence remain in `internal/managedpolicy`.
+App binds the command-scoped policy source and retains invocation prerequisite capture.
+Cobra enforcement wrapping moves to `internal/cli`, which receives callbacks and does not import policy classification mechanisms.
+Validation, recovery access, preview handling, exact paths, exclusive sample creation, and native installation remain unchanged.
+
+Independent review passes for the corrected 12-path snapshot based on `d2b07d4651d6076c2ab345e54ea75164cf64ef8d`.
+Its 1,434-file fingerprint is `30d7c14b7d618a17ddb1e4859fab9431292722d610d10a228c4e522684151923`.
+Focused policy, app, and CLI tests, complete architecture checks, compilation, scoped vet, and changed-file formatting pass.
+The initial frozen draft failed architecture checks; the corrected draft removes its forbidden CLI dependency and reconciles the approved owner edge explicitly.
+The other 15 foundation assertions and new sibling/obsolete-package rejection fixtures remain enforced.
+All integration preimages match after the separate cache-format correction.
+Evidence remains in `.tadx-refactor/policy-owner-revision-d2b/`.
+No native installation, credentials, or Tableau mutations occur in these checks.
+
 ## Integrated verification corrections
 
 Hosted CI for `1ba1e6185ad8dee8532962e1a7beb77da0d8941e` fails its Linux and Windows formatting gate on `actions/cache/refresh_test.go`.
