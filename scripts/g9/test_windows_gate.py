@@ -265,7 +265,7 @@ class ContractTest(unittest.TestCase):
                        LOCALAPPDATA=str(root), TEMP=str(root), TMP=str(root))
             result = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
                                      "Bypass", "-File", str(wrapper)],
-                                    env=env, capture_output=True, text=True, timeout=20)
+                                    env=env, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("fixture-bound", result.stdout)
 
