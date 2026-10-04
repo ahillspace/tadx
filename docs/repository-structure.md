@@ -19,6 +19,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
 | `actions/env/profile` | Profile operations with a shared profile representation |
 | `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
+| `actions/agent`, `actions/version` | Guidance installation/removal and installed-version/release-check services |
 | Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |

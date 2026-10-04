@@ -1,5 +1,5 @@
-// Package get implements version.get.
-package get
+// Package version owns the installed-version and release-check operation.
+package version
 
 import (
 	"context"
@@ -7,14 +7,10 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	versioncore "github.com/ahillspace/tadx/internal/version"
 )
 
 type Input struct{ Check bool }
-type Release struct {
-	Version     string
-	URL         string
-	PublishedAt time.Time
-}
 type Output struct {
 	Status          string   `json:"status"`
 	Version         string   `json:"version"`
@@ -29,17 +25,17 @@ func (o Output) CompactOutput() any { return o }
 func (o Output) FullOutput() any    { return o }
 
 type ReleaseChecker interface {
-	Latest(context.Context) (Release, error)
+	Latest(context.Context) (versioncore.Release, error)
 }
-type Action struct {
+type Service struct {
 	current string
 	checker ReleaseChecker
 }
 
-func New(current string, checker ReleaseChecker) *Action {
-	return &Action{current: current, checker: checker}
+func New(current string, checker ReleaseChecker) *Service {
+	return &Service{current: current, checker: checker}
 }
-func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
+func (a *Service) Get(ctx context.Context, in Input) (Output, error) {
 	current := a.current
 	out := Output{Status: "installed", Version: current, Help: []string{"tadx version --check"}}
 	if !in.Check {

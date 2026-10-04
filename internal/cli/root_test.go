@@ -13,7 +13,7 @@ import (
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
-	versionget "github.com/ahillspace/tadx/actions/version/get"
+	versionaction "github.com/ahillspace/tadx/actions/version"
 	"github.com/ahillspace/tadx/internal/cli"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	versioncli "github.com/ahillspace/tadx/internal/cli/version"
@@ -57,11 +57,11 @@ func (overview) Execute(context.Context) (sessionoverview.Output, error) {
 
 type installedVersionGetter struct{}
 
-func (installedVersionGetter) Execute(_ context.Context, input versionget.Input) (versionget.Output, error) {
+func (installedVersionGetter) Get(_ context.Context, input versionaction.Input) (versionaction.Output, error) {
 	if input.Check {
-		return versionget.Output{}, errors.New("root --version must not check releases")
+		return versionaction.Output{}, errors.New("root --version must not check releases")
 	}
-	return versionget.Output{Status: "installed", Version: "v1.2.3"}, nil
+	return versionaction.Output{Status: "installed", Version: "v1.2.3"}, nil
 }
 
 func TestRegisteredRootOverviewKeepsRootPath(t *testing.T) {
@@ -131,7 +131,7 @@ func TestRootVersionAliasUsesInstalledVersionHandler(t *testing.T) {
 	if len(r.values) != 1 {
 		t.Fatalf("rendered values = %d, want one installed version", len(r.values))
 	}
-	got, ok := r.values[0].(versionget.Output)
+	got, ok := r.values[0].(versionaction.Output)
 	if !ok || got.Status != "installed" || got.Version != "v1.2.3" {
 		t.Fatalf("version output = %#v", r.values[0])
 	}

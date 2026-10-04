@@ -3,32 +3,28 @@ package agent
 
 import (
 	"context"
-	install "github.com/ahillspace/tadx/actions/agent/install"
-	uninstall "github.com/ahillspace/tadx/actions/agent/uninstall"
+	"github.com/ahillspace/tadx/actions/agent"
 	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-// Installer runs one installation or preview.
-type Installer interface {
-	Execute(context.Context, install.Input) (install.Output, error)
+// Service runs the two agent guidance operations.
+type Service interface {
+	Install(context.Context, agent.InstallInput) (agent.InstallOutput, error)
+	Uninstall(context.Context, agent.UninstallInput) (agent.UninstallOutput, error)
 }
 type Renderer interface{ Render(any) error }
-type Uninstaller interface {
-	Execute(context.Context, uninstall.Input) (uninstall.Output, error)
-}
 type Dependencies struct {
-	Installer   Installer
-	Uninstaller Uninstaller
-	Renderer    Renderer
-	Use, Short  string
+	Service    Service
+	Renderer   Renderer
+	Use, Short string
 }
 
 // New creates the agent command group.
 func New(deps Dependencies) *cobra.Command {
-	var input install.Input
+	var input agent.InstallInput
 	use, short := deps.Use, deps.Short
 	if use == "" {
 		use = "install"
@@ -45,7 +41,7 @@ func New(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Installer.Execute(command.Context(), input)
+			result, err := deps.Service.Install(command.Context(), input)
 			if err != nil {
 				return clierr.WithOutput(result, err)
 			}
@@ -63,14 +59,14 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newUninstall(deps Dependencies) *cobra.Command {
-	var input uninstall.Input
+	var input agent.UninstallInput
 	command := &cobra.Command{Use: "uninstall", Short: "Uninstall bundled agent Guidance.", Annotations: map[string]string{"tadx.capability": "agent.uninstall"}, Args: func(command *cobra.Command, args []string) error {
 		if err := cobra.NoArgs(command, args); err != nil {
 			return clierr.Usage("agent.uninstall", err)
 		}
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.Uninstaller.Execute(command.Context(), input)
+		result, err := deps.Service.Uninstall(command.Context(), input)
 		if err != nil {
 			return clierr.WithOutput(result, err)
 		}

@@ -2,16 +2,16 @@ package version_test
 
 import (
 	"context"
-	versionget "github.com/ahillspace/tadx/actions/version/get"
+	versionaction "github.com/ahillspace/tadx/actions/version"
 	versioncli "github.com/ahillspace/tadx/internal/cli/version"
 	"testing"
 )
 
-type getter struct{ input versionget.Input }
+type getter struct{ input versionaction.Input }
 
-func (g *getter) Execute(_ context.Context, input versionget.Input) (versionget.Output, error) {
+func (g *getter) Get(_ context.Context, input versionaction.Input) (versionaction.Output, error) {
 	g.input = input
-	return versionget.Output{}, nil
+	return versionaction.Output{}, nil
 }
 
 type renderer struct{}

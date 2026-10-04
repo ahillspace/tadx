@@ -188,6 +188,10 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "actions/agent") && imported == "internal/agenttarget" {
 			return true
 		}
+		// The version action consumes the release checker's shared result directly.
+		if path.Dir(file) == "actions/version" && imported == "internal/version" {
+			return true
+		}
 		// Pulse actions share raw-payload invariants through a standard-library
 		// leaf package; this does not authorize dependencies for other actions.
 		if hasPathPrefix(file, "actions/pulse") && imported == "internal/pulsecontract" {

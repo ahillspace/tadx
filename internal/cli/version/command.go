@@ -4,13 +4,13 @@ package version
 import (
 	"context"
 
-	versionget "github.com/ahillspace/tadx/actions/version/get"
+	versionaction "github.com/ahillspace/tadx/actions/version"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 type Getter interface {
-	Execute(context.Context, versionget.Input) (versionget.Output, error)
+	Get(context.Context, versionaction.Input) (versionaction.Output, error)
 }
 type Renderer interface{ Render(any) error }
 type Dependencies struct {
@@ -21,7 +21,7 @@ type Dependencies struct {
 }
 
 func New(deps Dependencies) *cobra.Command {
-	var input versionget.Input
+	var input versionaction.Input
 	use := deps.Use
 	if use == "" {
 		use = "version"
@@ -36,7 +36,7 @@ func New(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		out, err := deps.Getter.Execute(command.Context(), input)
+		out, err := deps.Getter.Get(command.Context(), input)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}

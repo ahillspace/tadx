@@ -230,6 +230,16 @@ Mechanical integration verifies the complete draft fingerprint and all 68 change
 Those deletions remain recoverable from Git; the combined candidate still requires integrated gates.
 Shared inventory extraction is prepared separately and has no integrated implementation yet.
 
+### Agent and version consolidation
+
+The independently reviewed agent/version draft consolidates install/uninstall and version/get into their service owners.
+Version consumes the existing release observation directly, removing the app release-copy adapter.
+The version mechanism import exception permits only the exact action package, with a nested-package rejection fixture.
+Focused action, CLI, app, and architecture tests pass; both agent TOON goldens remain byte-identical.
+Mechanical integration checks the before and after hashes for all 17 entries, covering eight relocations and nine modified files.
+The reviewed source fingerprint is `56e9c205b5436a5e871f744f9b0e80f6652d300204dfa74681c44f26372b7f2e` against base `3c2ac9f`.
+Integrated gates and live installer verification remain pending.
+
 ## Acceptance dependencies
 
 The current executable catalog contains 124 action IDs.

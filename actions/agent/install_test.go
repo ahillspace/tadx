@@ -1,4 +1,4 @@
-package install_test
+package agent_test
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ahillspace/tadx/actions/agent/install"
+	"github.com/ahillspace/tadx/actions/agent"
 	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
@@ -18,14 +18,14 @@ import (
 
 type installer struct {
 	calls  int
-	input  install.Input
+	input  agent.InstallInput
 	result value.AgentGuidanceResult
 	err    error
 }
 
 func (i *installer) Install(_ context.Context, target string, preview, force bool) (value.AgentGuidanceResult, error) {
 	i.calls++
-	i.input = install.Input{Target: target, Preview: preview, Force: force}
+	i.input = agent.InstallInput{Target: target, Preview: preview, Force: force}
 	if i.err != nil {
 		return i.result, i.err
 	}
@@ -33,6 +33,10 @@ func (i *installer) Install(_ context.Context, target string, preview, force boo
 		{Name: "tadx", Status: "install", Path: ".codex/skills/tadx", SHA256: "bundle-tadx", Files: 4},
 		{Name: "tadx-pulse", Status: "install", Path: ".codex/skills/tadx-pulse", SHA256: "bundle-pulse", Files: 2},
 	}}, nil
+}
+
+func (i *installer) Uninstall(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
+	panic("unexpected uninstall")
 }
 
 func TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags(t *testing.T) {
@@ -44,7 +48,7 @@ func TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags(t *testing.T) {
 			{Target: "codex", Name: "tadx", Status: "failed"},
 		},
 	}, err: cause}
-	result, err := install.New(dependency).Execute(t.Context(), install.Input{Target: "auto"})
+	result, err := agent.New(dependency).Install(t.Context(), agent.InstallInput{Target: "auto"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "agent.install.failed" || !errors.Is(err, cause) {
 		t.Fatalf("error=%v", err)
@@ -70,7 +74,7 @@ func TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags(t *testing.T) {
 func TestInstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
 	cause := errors.New("target skill directory must contain only real directories inside the user home")
 	dependency := &installer{err: cause}
-	result, err := install.New(dependency).Execute(t.Context(), install.Input{Target: "claude"})
+	result, err := agent.New(dependency).Install(t.Context(), agent.InstallInput{Target: "claude"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "agent.install.failed" || !errors.Is(err, cause) {
 		t.Fatalf("error=%v", err)
@@ -83,7 +87,7 @@ func TestInstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
 func TestExecuteValidatesTargetBeforeSideEffects(t *testing.T) {
 	dependency := &installer{}
 	for _, target := range []string{"", "../codex", "Codex", "all", "other"} {
-		if _, err := install.New(dependency).Execute(context.Background(), install.Input{Target: target}); err == nil {
+		if _, err := agent.New(dependency).Install(context.Background(), agent.InstallInput{Target: target}); err == nil {
 			t.Fatalf("accepted %q", target)
 		}
 	}
@@ -96,7 +100,7 @@ func TestExecuteAcceptsAllSupportedTargets(t *testing.T) {
 	for _, target := range agenttarget.SupportedTargets() {
 		t.Run(target, func(t *testing.T) {
 			dependency := &installer{}
-			if _, err := install.New(dependency).Execute(context.Background(), install.Input{Target: target}); err != nil {
+			if _, err := agent.New(dependency).Install(context.Background(), agent.InstallInput{Target: target}); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -105,8 +109,8 @@ func TestExecuteAcceptsAllSupportedTargets(t *testing.T) {
 
 func TestPreviewProjections(t *testing.T) {
 	dependency := &installer{}
-	input := install.Input{Target: "codex", Preview: true, Force: true}
-	result, err := install.New(dependency).Execute(context.Background(), input)
+	input := agent.InstallInput{Target: "codex", Preview: true, Force: true}
+	result, err := agent.New(dependency).Install(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +139,7 @@ func TestPreviewProjections(t *testing.T) {
 
 func TestCompactProjectionRetainsDestinationAndBackup(t *testing.T) {
 	dependency := &installer{}
-	result, err := install.New(dependency).Execute(t.Context(), install.Input{Target: "codex"})
+	result, err := agent.New(dependency).Install(t.Context(), agent.InstallInput{Target: "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}

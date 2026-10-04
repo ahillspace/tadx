@@ -5,17 +5,20 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ahillspace/tadx/actions/agent/uninstall"
+	"github.com/ahillspace/tadx/actions/agent"
 	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
 )
 
 type partialUninstaller struct {
-	output uninstall.Output
+	output agent.UninstallOutput
 	err    error
 }
 
-func (u partialUninstaller) Execute(context.Context, uninstall.Input) (uninstall.Output, error) {
+func (u partialUninstaller) Uninstall(context.Context, agent.UninstallInput) (agent.UninstallOutput, error) {
 	return u.output, u.err
+}
+func (partialUninstaller) Install(context.Context, agent.InstallInput) (agent.InstallOutput, error) {
+	panic("unexpected install")
 }
 
 type unusedRenderer struct{}
@@ -26,8 +29,8 @@ func (unusedRenderer) Render(any) error {
 
 func TestUninstallFailureCarriesConfirmedPackageStateToTheErrorRenderer(t *testing.T) {
 	cause := errors.New("uninstall failed and rollback is incomplete; inspect target packages")
-	partial := uninstall.Output{Status: "partial", Target: "codex", Skills: []uninstall.Skill{{Name: "tadx", Status: "backed-up", Path: ".codex/skills/tadx", Backup: ".codex/.tadx-skill-staging/tadx-A"}}}
-	command := agentcli.New(agentcli.Dependencies{Uninstaller: partialUninstaller{output: partial, err: cause}, Renderer: unusedRenderer{}})
+	partial := agent.UninstallOutput{Status: "partial", Target: "codex", Skills: []agent.UninstallSkill{{Name: "tadx", Status: "backed-up", Path: ".codex/skills/tadx", Backup: ".codex/.tadx-skill-staging/tadx-A"}}}
+	command := agentcli.New(agentcli.Dependencies{Service: partialUninstaller{output: partial, err: cause}, Renderer: unusedRenderer{}})
 	command.SetArgs([]string{"uninstall", "--target", "codex"})
 	command.SilenceErrors, command.SilenceUsage = true, true
 	err := command.ExecuteContext(t.Context())
@@ -38,7 +41,7 @@ func TestUninstallFailureCarriesConfirmedPackageStateToTheErrorRenderer(t *testi
 	if !errors.As(err, &carrier) {
 		t.Fatalf("error does not carry the partial output: %#v", err)
 	}
-	output, ok := carrier.OperationOutput().(uninstall.Output)
+	output, ok := carrier.OperationOutput().(agent.UninstallOutput)
 	if !ok || output.Status != "partial" || len(output.Skills) != 1 || output.Skills[0].Backup != ".codex/.tadx-skill-staging/tadx-A" {
 		t.Fatalf("carried output = %#v", carrier.OperationOutput())
 	}
@@ -46,7 +49,7 @@ func TestUninstallFailureCarriesConfirmedPackageStateToTheErrorRenderer(t *testi
 
 func TestUninstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
 	cause := errors.New("target locked")
-	command := agentcli.New(agentcli.Dependencies{Uninstaller: partialUninstaller{err: cause}, Renderer: unusedRenderer{}})
+	command := agentcli.New(agentcli.Dependencies{Service: partialUninstaller{err: cause}, Renderer: unusedRenderer{}})
 	command.SetArgs([]string{"uninstall", "--target", "codex"})
 	command.SilenceErrors, command.SilenceUsage = true, true
 	err := command.ExecuteContext(t.Context())

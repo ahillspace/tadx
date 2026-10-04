@@ -1,4 +1,4 @@
-package uninstall_test
+package agent_test
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	uninstall "github.com/ahillspace/tadx/actions/agent/uninstall"
+	"github.com/ahillspace/tadx/actions/agent"
 	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
@@ -16,18 +16,21 @@ import (
 
 type service struct {
 	called bool
-	input  uninstall.Input
+	input  agent.UninstallInput
 }
 
 func (s *service) Uninstall(_ context.Context, target string, preview, force bool) (value.AgentGuidanceResult, error) {
 	s.called = true
-	s.input = uninstall.Input{Target: target, Preview: preview, Force: force}
+	s.input = agent.UninstallInput{Target: target, Preview: preview, Force: force}
 	return value.AgentGuidanceResult{Status: "uninstalled", Skills: []value.AgentGuidanceSkill{{Name: "tadx", Status: "removed"}}}, nil
+}
+func (s *service) Install(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
+	panic("unexpected install")
 }
 func TestExecute(t *testing.T) {
 	s := &service{}
-	input := uninstall.Input{Target: "codex", Preview: true, Force: true}
-	out, err := uninstall.New(s).Execute(context.Background(), input)
+	input := agent.UninstallInput{Target: "codex", Preview: true, Force: true}
+	out, err := agent.New(s).Uninstall(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +41,7 @@ func TestExecute(t *testing.T) {
 
 func TestUninstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
 	cause := errors.New("target locked")
-	result, err := uninstall.New(failedService{err: cause}).Execute(t.Context(), uninstall.Input{Target: "codex"})
+	result, err := agent.New(failedService{err: cause}).Uninstall(t.Context(), agent.UninstallInput{Target: "codex"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "agent.uninstall.failed" || !errors.Is(err, cause) {
 		t.Fatalf("error=%v", err)
@@ -51,7 +54,7 @@ func TestUninstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
 func TestUninstallIncompleteRollbackKeepsConfirmedPackageState(t *testing.T) {
 	cause := errors.New("uninstall failed and rollback is incomplete; inspect target packages")
 	state := value.AgentGuidanceResult{Status: "partial", Skills: []value.AgentGuidanceSkill{{Name: "tadx", Status: "backed-up", Path: ".codex/skills/tadx", Backup: ".codex/.tadx-skill-staging/tadx-A"}, {Name: "tadx-pulse", Status: "unchanged", Path: ".codex/skills/tadx-pulse"}}}
-	result, err := uninstall.New(failedService{result: state, err: cause}).Execute(t.Context(), uninstall.Input{Target: "codex"})
+	result, err := agent.New(failedService{result: state, err: cause}).Uninstall(t.Context(), agent.UninstallInput{Target: "codex"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "agent.uninstall.failed" || !errors.Is(err, cause) {
 		t.Fatalf("error=%v", err)
@@ -69,10 +72,13 @@ type failedService struct {
 func (s failedService) Uninstall(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
 	return s.result, s.err
 }
+func (s failedService) Install(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
+	panic("unexpected install")
+}
 
-func TestCompactProjectionRetainsDestinationAndBackup(t *testing.T) {
+func TestUninstallCompactProjectionRetainsDestinationAndBackup(t *testing.T) {
 	s := &serviceWithBackup{}
-	out, err := uninstall.New(s).Execute(t.Context(), uninstall.Input{Target: "codex"})
+	out, err := agent.New(s).Uninstall(t.Context(), agent.UninstallInput{Target: "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +104,15 @@ type serviceWithBackup struct{}
 func (serviceWithBackup) Uninstall(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
 	return value.AgentGuidanceResult{Status: "uninstalled", Skills: []value.AgentGuidanceSkill{{Name: "tadx", Status: "backed-up", Path: ".codex/skills/tadx", Backup: ".agents/.tadx-skill-backups/tadx"}}}, nil
 }
+func (serviceWithBackup) Install(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
+	panic("unexpected install")
+}
 
-func TestExecuteAcceptsAllSupportedTargets(t *testing.T) {
+func TestUninstallAcceptsAllSupportedTargets(t *testing.T) {
 	for _, target := range agenttarget.SupportedTargets() {
 		t.Run(target, func(t *testing.T) {
 			s := &service{}
-			if _, err := uninstall.New(s).Execute(context.Background(), uninstall.Input{Target: target}); err != nil {
+			if _, err := agent.New(s).Uninstall(context.Background(), agent.UninstallInput{Target: target}); err != nil {
 				t.Fatal(err)
 			}
 		})
