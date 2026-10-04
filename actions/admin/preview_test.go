@@ -16,6 +16,7 @@ func (f *previewUserUpdate) UpdateUser(context.Context, string, userops.UpdateRe
 	f.writes++
 	return userops.Record{}, nil
 }
+func (*previewUserUpdate) ValidateUpdate(context.Context, userops.UpdateRequest) error { return nil }
 
 type previewUserDelete struct {
 	unknownUserDeleteFake

@@ -15,7 +15,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/workbook`, `actions/datasource`, `actions/flow` | Cohesive resource packages for related lifecycle operations |
 | `actions/project` | Project list, inspect, create, update, delete, and move workflows with distinct operation contracts |
 | `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
-| `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
+| `actions/admin` subpackages | Cohesive user, group/membership, permission, and label-definition services with explicit operation contracts |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
 | `actions/env` | Environment profile operations and configuration coordination through one service |
 | `actions/mutation` | Exact-site mutation consent status, changes, and policy observations |
@@ -59,6 +59,10 @@ Workbook, datasource, and flow mutation Services validate input before opening t
 Their resource adapters implement move, update, and delete ports directly, without per-operation app facades or copy-only mutation adapters.
 Fresh prewrite observations, native acknowledgements, partial outcomes, and operation-specific projections remain explicit.
 Content read, pull, publication, and recovery ownership moves remain in progress.
+
+Admin services own operation validation, canonical target binding, and user/group/permission/label-definition workflows.
+`internal/resources/admin` implements their typed ports, including cached user/group observations and inventory projections.
+Neutral inventory publication preserves observed-member coverage and best-effort detail updates; app supplies command-scoped collaborators.
 
 For catalog commands, `internal/cli/catalog` calls one service in `actions/catalog`.
 The service validates input before opening its target-bound provider and retains separate typed read and mutation sequences.

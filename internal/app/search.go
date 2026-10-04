@@ -636,14 +636,14 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "user":
-		out, err := s.admin.ListAdminUsers(ctx, userops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit})
+		out, err := userops.New(adminUserProvider{commands: s.admin}).ListAdminUsers(ctx, userops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "group":
-		out, err := s.admin.ListAdminGroups(ctx, groupops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit})
+		out, err := groupops.New(adminGroupProvider{commands: s.admin}).ListAdminGroups(ctx, groupops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
@@ -699,8 +699,8 @@ func newLiveSearchLister(connection authenticatedTableau, checks ...func(string)
 		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        resourceproject.ListPort{Adapter: projects},
-		users:           adminUserAdapter{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
-		groups:          adminGroupAdapter{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		users:           resourceadmin.UserPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		groups:          resourceadmin.GroupPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		pulse:           pulseClient,
 		definitionPages: make(map[string]tableaupulse.DefinitionPage),
 	}, nil

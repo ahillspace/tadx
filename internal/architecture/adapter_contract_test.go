@@ -80,6 +80,40 @@ func TestProjectCachePortAllowsOnlyItsRequiredInfrastructure(t *testing.T) {
 	}
 }
 
+func TestAdminCachePortsAllowOnlyTheirRequiredInfrastructure(t *testing.T) {
+	for _, imported := range []string{"internal/cache", "internal/readsource", "internal/inventory", "internal/errs"} {
+		t.Run(imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/admin/cache.go", fmt.Sprintf("package admin\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+	}
+	for _, tc := range []struct {
+		name, file, imported string
+	}{
+		{"other resource inventory", "internal/resources/workbook/cache.go", "internal/inventory"},
+		{"other resource admin errors", "internal/resources/workbook/cache.go", "internal/errs"},
+		{"nested admin package", "internal/resources/admin/nested/cache.go", "internal/cache"},
+		{"sibling action inventory", "actions/admin/group/action.go", "internal/inventory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, tc.file, fmt.Sprintf("package fixture\nimport _ %q\n", "example.test/tadx/"+tc.imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) != 1 || violations[0].File != tc.file {
+				t.Fatalf("violations=%v", violations)
+			}
+		})
+	}
+}
+
 func TestCheckRejectsUnmappedAdapterActionImports(t *testing.T) {
 	tests := []struct {
 		name     string

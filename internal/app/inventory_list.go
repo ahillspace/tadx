@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	groupops "github.com/ahillspace/tadx/actions/admin/group"
-	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -49,16 +47,6 @@ func (r inventoryMemoryReader) ListDatasources(_ context.Context, input datasour
 func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowops.ListPageRequest) (flowops.ListPage, error) {
 	items, err := decodeInventoryPage[flowops.Record](r.page(input.PageNumber, input.PageSize))
 	return flowops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
-}
-
-func (r inventoryMemoryReader) ListUsers(_ context.Context, input userops.ListPageRequest) (userops.ListPage, error) {
-	items, err := decodeInventoryPage[userops.Record](r.page(input.PageNumber, input.PageSize))
-	return userops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
-}
-
-func (r inventoryMemoryReader) ListGroups(_ context.Context, input groupops.ListPageRequest) (groupops.ListPage, error) {
-	items, err := decodeInventoryPage[groupops.Record](r.page(input.PageNumber, input.PageSize))
-	return groupops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 // Legacy process-boundary cursors can still target a previously stored snapshot.

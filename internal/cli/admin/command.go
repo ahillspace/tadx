@@ -6,8 +6,7 @@ import (
 	"errors"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
-	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
-	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
+	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
@@ -45,13 +44,13 @@ type GroupDeleter interface {
 	DeleteAdminGroup(context.Context, groupops.DeleteInput, bool) (groupops.DeleteOutput, error)
 }
 type GroupMemberAdder interface {
-	AddAdminGroupMember(context.Context, groupmember.Input, bool) (groupmember.Output, error)
+	AddAdminGroupMember(context.Context, groupops.MembershipInput, bool) (groupops.MembershipOutput, error)
 }
 type GroupMemberRemover interface {
-	RemoveAdminGroupMember(context.Context, groupmember.Input, bool) (groupmember.Output, error)
+	RemoveAdminGroupMember(context.Context, groupops.MembershipInput, bool) (groupops.MembershipOutput, error)
 }
 type PermissionInspector interface {
-	InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error)
+	InspectAdminPermission(context.Context, permission.InspectInput) (permission.InspectOutput, error)
 }
 
 type Dependencies struct {
@@ -89,7 +88,7 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newGroupMemberAdd(deps Dependencies) *cobra.Command {
-	var in groupmember.Input
+	var in groupops.MembershipInput
 	var preview bool
 	cmd := mutation("add", "Add one user to one group.", "admin.group.member.add", func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.member.add")(cmd, args); err != nil {
@@ -118,7 +117,7 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 }
 
 func newGroupMemberRemove(deps Dependencies) *cobra.Command {
-	var in groupmember.Input
+	var in groupops.MembershipInput
 	var preview bool
 	cmd := mutation("remove", "Remove one user from one group.", "admin.group.member.remove", func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.member.remove")(cmd, args); err != nil {
@@ -453,7 +452,7 @@ func newGroupDelete(deps Dependencies) *cobra.Command {
 	return cmd
 }
 func newPermissionInspect(deps Dependencies) *cobra.Command {
-	var in permissioninspect.Input
+	var in permission.InspectInput
 	cmd := &cobra.Command{Use: "inspect", Short: "Inspect permission rules for one exact resource.", Annotations: map[string]string{"tadx.capability": "admin.permission.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.permission.inspect")(cmd, args); err != nil {
 			return err

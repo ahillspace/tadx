@@ -1,4 +1,4 @@
-package inspect
+package permission
 
 import (
 	"context"
@@ -9,71 +9,71 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability string }
-type Rule struct {
+type InspectInput struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability string }
+type InspectRule struct {
 	Source        string `json:"source"`
 	PrincipalType string `json:"principal_type"`
 	PrincipalLUID string `json:"principal_luid"`
 	Capability    string `json:"capability"`
 	Mode          string `json:"mode"`
 }
-type PermissionSet struct {
-	ResourceKind      string `json:"resource_kind"`
-	ResourceLUID      string `json:"resource_luid"`
-	Source            string `json:"source"`
-	ParentProjectLUID string `json:"parent_project_luid,omitempty"`
-	Rules             []Rule `json:"rules"`
-	RulesOmitted      int    `json:"rules_omitted,omitempty"`
-	RequestID         string `json:"-"`
+type InspectPermissionSet struct {
+	ResourceKind      string        `json:"resource_kind"`
+	ResourceLUID      string        `json:"resource_luid"`
+	Source            string        `json:"source"`
+	ParentProjectLUID string        `json:"parent_project_luid,omitempty"`
+	Rules             []InspectRule `json:"rules"`
+	RulesOmitted      int           `json:"rules_omitted,omitempty"`
+	RequestID         string        `json:"-"`
 }
-type Output struct {
+type InspectOutput struct {
 	Status, Environment, Site string
-	Permissions               PermissionSet
+	Permissions               InspectPermissionSet
 	RequestID                 string
 	Help                      []string
 }
-type CompactPermissions struct {
+type InspectCompactPermissions struct {
 	ResourceKind string `json:"resource_kind"`
 	ResourceLUID string `json:"resource_luid"`
 	Source       string `json:"source"`
 	RuleCount    int    `json:"rule_count"`
 }
-type CompactResult struct {
-	Status      string             `json:"status"`
-	Environment string             `json:"environment,omitempty"`
-	Site        string             `json:"site,omitempty"`
-	Permissions CompactPermissions `json:"permissions"`
-	Details     string             `json:"details"`
-	Help        []string           `json:"help"`
+type InspectCompactResult struct {
+	Status      string                    `json:"status"`
+	Environment string                    `json:"environment,omitempty"`
+	Site        string                    `json:"site,omitempty"`
+	Permissions InspectCompactPermissions `json:"permissions"`
+	Details     string                    `json:"details"`
+	Help        []string                  `json:"help"`
 }
-type FullResult struct {
-	Status      string        `json:"status"`
-	Environment string        `json:"environment,omitempty"`
-	Site        string        `json:"site,omitempty"`
-	Permissions PermissionSet `json:"permissions"`
-	RequestID   string        `json:"tableau_request_id,omitempty"`
-	Help        []string      `json:"help"`
+type InspectFullResult struct {
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Permissions InspectPermissionSet `json:"permissions"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
 }
 
-func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Permissions: CompactPermissions{ResourceKind: o.Permissions.ResourceKind, ResourceLUID: o.Permissions.ResourceLUID, Source: o.Permissions.Source, RuleCount: len(o.Permissions.Rules)}, Details: "--full", Help: o.Help}
+func (o InspectOutput) CompactOutput() any {
+	return InspectCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Permissions: InspectCompactPermissions{ResourceKind: o.Permissions.ResourceKind, ResourceLUID: o.Permissions.ResourceLUID, Source: o.Permissions.Source, RuleCount: len(o.Permissions.Rules)}, Details: "--full", Help: o.Help}
 }
-func (o Output) FullOutput() any {
+func (o InspectOutput) FullOutput() any {
 	p := o.Permissions
-	p.Rules = append([]Rule(nil), p.Rules...)
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Permissions: p, RequestID: o.RequestID, Help: o.Help}
+	p.Rules = append([]InspectRule(nil), p.Rules...)
+	return InspectFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Permissions: p, RequestID: o.RequestID, Help: o.Help}
 }
 
-type Reader interface {
-	GetPermissions(context.Context, Input) (PermissionSet, error)
+type InspectReader interface {
+	GetPermissions(context.Context, InspectInput) (InspectPermissionSet, error)
 }
 
-func Inspect(ctx context.Context, reader Reader, in Input) (Output, error) {
+func InspectPermissions(ctx context.Context, reader InspectReader, in InspectInput) (InspectOutput, error) {
 	p, err := reader.GetPermissions(ctx, in)
 	if err != nil {
-		return Output{}, err
+		return InspectOutput{}, err
 	}
-	filtered := make([]Rule, 0, len(p.Rules))
+	filtered := make([]InspectRule, 0, len(p.Rules))
 	for _, rule := range p.Rules {
 		if in.PrincipalType != "" && rule.PrincipalType != in.PrincipalType {
 			continue
@@ -101,10 +101,10 @@ func Inspect(ctx context.Context, reader Reader, in Input) (Output, error) {
 		}
 		return a.Mode < b.Mode
 	})
-	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Permissions: p, RequestID: p.RequestID, Help: []string{permissionHint(in)}}, nil
+	return InspectOutput{Status: "found", Environment: in.Environment, Site: in.Site, Permissions: p, RequestID: p.RequestID, Help: []string{inspectPermissionHint(in)}}, nil
 }
 
-func permissionHint(in Input) string {
+func inspectPermissionHint(in InspectInput) string {
 	args := []string{"admin", "permission", "inspect", "--kind", in.ResourceKind, "--id", in.ResourceLUID, "--full"}
 	for _, flag := range []struct{ name, value string }{{"--default-for", in.DefaultFor}, {"--principal-type", in.PrincipalType}, {"--principal-id", in.PrincipalLUID}, {"--capability", in.Capability}} {
 		if flag.value != "" {
@@ -114,8 +114,8 @@ func permissionHint(in Input) string {
 	return commandhint.Environment(in.Environment, args...)
 }
 
-// ValidateInput checks local permission filters without a remote session.
-func ValidateInput(in Input) error {
+// ValidateInspectInput checks local permission filters without a remote session.
+func ValidateInspectInput(in InspectInput) error {
 	validKind := in.ResourceKind == "workbook" || in.ResourceKind == "datasource" || in.ResourceKind == "flow" || in.ResourceKind == "project"
 	validDefault := in.DefaultFor == "" || in.ResourceKind == "project" && (in.DefaultFor == "workbooks" || in.DefaultFor == "datasources" || in.DefaultFor == "flows")
 	validPrincipal := in.PrincipalType == "" || in.PrincipalType == "user" || in.PrincipalType == "group"

@@ -88,6 +88,7 @@ func (o UpdateOutput) CompactOutput() any {
 func (o UpdateOutput) FullOutput() any { return o }
 
 type UpdateWriter interface {
+	UpdateValidator
 	UpdateUser(context.Context, string, UpdateRequest) (Record, error)
 }
 type UpdateValidator interface {
@@ -119,18 +120,16 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, in Upd
 		out.Result = &UpdateResult{Status: "unchanged", UserLUID: user.LUID, User: new(user)}
 		return out, nil
 	}
-	if validator, ok := updater.(UpdateValidator); ok {
-		validationRequest := req
-		validationRequest.FullName = nil
-		for _, change := range changes {
-			if change.Field == "full_name" {
-				validationRequest.FullName = req.FullName
-				break
-			}
+	validationRequest := req
+	validationRequest.FullName = nil
+	for _, change := range changes {
+		if change.Field == "full_name" {
+			validationRequest.FullName = req.FullName
+			break
 		}
-		if err := validator.ValidateUpdate(ctx, validationRequest); err != nil {
-			return out, err
-		}
+	}
+	if err := updater.ValidateUpdate(ctx, validationRequest); err != nil {
+		return out, err
 	}
 	updatedRecord, err := updater.UpdateUser(ctx, user.LUID, req)
 	updated := updateUser(updatedRecord)

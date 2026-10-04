@@ -254,6 +254,11 @@ func localImportAllowed(file, imported string) bool {
 		if path.Dir(file) == "internal/resources/project" && matchesExact(imported, "internal/cache", "internal/readsource") {
 			return true
 		}
+		// Admin cache ports translate indexed user/group records, while the
+		// shared inventory package retains neutral collection and publication.
+		if path.Dir(file) == "internal/resources/admin" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory", "internal/errs") {
+			return true
+		}
 		return adapterConsumerImportAllowed(file, imported) ||
 			matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:

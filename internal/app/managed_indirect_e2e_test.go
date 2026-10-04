@@ -18,6 +18,7 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
+	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 )
 
 type indirectTestPolicy struct{ denied map[string]bool }
@@ -187,7 +188,7 @@ func TestManagedCacheNonAdminScopeRemainsUsable(t *testing.T) {
 
 func TestManagedCachedAdminReadersCheckBeforeStoreAccess(t *testing.T) {
 	denied := errors.New("denied before cache access")
-	reader := &cacheUserListReader{checkCapability: func(string) error { return denied }}
+	reader := resourceadmin.NewCachedUserListPort(nil, "", "", resourceadmin.CacheSupport{CheckCapability: func(string) error { return denied }})
 	_, err := reader.ListUsers(t.Context(), userops.ListPageRequest{PageNumber: 1, PageSize: 100})
 	if !errors.Is(err, denied) {
 		t.Fatalf("error=%v", err)

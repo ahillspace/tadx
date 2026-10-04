@@ -20,6 +20,7 @@ func (b *recordBackend) UpdateUser(context.Context, string, UpdateRequest) (Reco
 	b.writes++
 	return Record{LUID: "u", Name: "login", FullName: "after", RequestID: "write", PresentFields: map[string]bool{"fullName": true}}, nil
 }
+func (*recordBackend) ValidateUpdate(context.Context, UpdateRequest) error { return nil }
 func (b *recordBackend) DeleteUser(context.Context, string) (DeleteResult, error) {
 	b.writes++
 	return DeleteResult{Status: "deleted", UserLUID: "u"}, nil

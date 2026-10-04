@@ -4,9 +4,7 @@ import (
 	"testing"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
-	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
-	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 )
 
@@ -25,10 +23,10 @@ func TestAdminLocalValidationWithoutResolvedSession(t *testing.T) {
 			return groupops.ValidateDeleteInput(groupops.DeleteInput{Environment: "selected", GroupLUID: "g1"})
 		},
 		"add member": func() error {
-			return groupmember.ValidateAddInput(groupmember.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
+			return groupops.ValidateAddMemberInput(groupops.MembershipInput{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
 		},
 		"remove member": func() error {
-			return groupmember.ValidateRemoveInput(groupmember.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
+			return groupops.ValidateRemoveMemberInput(groupops.MembershipInput{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
 		},
 		"inspect user": func() error {
 			return userops.ValidateInspectInput(userops.InspectInput{Selector: userops.Selector{LUID: "u1"}})
@@ -74,7 +72,7 @@ func TestAdminLocalValidationRejectsInvalidRequests(t *testing.T) {
 		"permission create":       func() error { return permission.ValidateCreateInput(permission.Input{}) },
 		"permission delete":       func() error { return permission.ValidateDeleteInput(permission.Input{}) },
 		"permission inspect kind": func() error {
-			return permissioninspect.ValidateInput(permissioninspect.Input{ResourceKind: "unknown", ResourceLUID: "r1"})
+			return permission.ValidateInspectInput(permission.InspectInput{ResourceKind: "unknown", ResourceLUID: "r1"})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

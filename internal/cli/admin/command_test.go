@@ -8,9 +8,7 @@ import (
 	"testing"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
-	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
-	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	cli "github.com/ahillspace/tadx/internal/cli/admin"
 	"github.com/spf13/cobra"
@@ -23,8 +21,8 @@ type fake struct {
 	userPreview  bool
 	groupUpdate  groupops.UpdateInput
 	groupPreview bool
-	memberAdd    groupmember.Input
-	memberRemove groupmember.Input
+	memberAdd    groupops.MembershipInput
+	memberRemove groupops.MembershipInput
 	permissions  []permission.Input
 }
 
@@ -81,16 +79,16 @@ func (f *fake) UpdateAdminGroup(_ context.Context, in groupops.UpdateInput, prev
 func (f *fake) DeleteAdminGroup(context.Context, groupops.DeleteInput, bool) (groupops.DeleteOutput, error) {
 	return groupops.DeleteOutput{}, nil
 }
-func (f *fake) AddAdminGroupMember(_ context.Context, input groupmember.Input, _ bool) (groupmember.Output, error) {
+func (f *fake) AddAdminGroupMember(_ context.Context, input groupops.MembershipInput, _ bool) (groupops.MembershipOutput, error) {
 	f.memberAdd = input
-	return groupmember.Output{}, nil
+	return groupops.MembershipOutput{}, nil
 }
-func (f *fake) RemoveAdminGroupMember(_ context.Context, input groupmember.Input, _ bool) (groupmember.Output, error) {
+func (f *fake) RemoveAdminGroupMember(_ context.Context, input groupops.MembershipInput, _ bool) (groupops.MembershipOutput, error) {
 	f.memberRemove = input
-	return groupmember.Output{}, nil
+	return groupops.MembershipOutput{}, nil
 }
-func (f *fake) InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error) {
-	return permissioninspect.Output{}, nil
+func (f *fake) InspectAdminPermission(context.Context, permission.InspectInput) (permission.InspectOutput, error) {
+	return permission.InspectOutput{}, nil
 }
 func (f *fake) CreateAdminPermission(_ context.Context, in permission.Input, _ bool) (permission.Output, error) {
 	f.permissions = append(f.permissions, in)

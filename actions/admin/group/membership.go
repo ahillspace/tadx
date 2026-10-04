@@ -1,4 +1,4 @@
-package member
+package group
 
 import (
 	"context"
@@ -6,23 +6,23 @@ import (
 	"strings"
 )
 
-type Input struct {
+type MembershipInput struct {
 	Environment string
 	Site        string
 	GroupLUID   string
 	UserLUID    string
 	Username    string
 }
-type Member struct {
+type MembershipMember struct {
 	LUID string `json:"luid"`
 	Name string `json:"name,omitempty"`
 }
-type Group struct {
-	LUID    string   `json:"luid"`
-	Name    string   `json:"name"`
-	Members []Member `json:"members,omitempty"`
+type MembershipGroup struct {
+	LUID    string             `json:"luid"`
+	Name    string             `json:"name"`
+	Members []MembershipMember `json:"members,omitempty"`
 }
-type Plan struct {
+type MembershipPlan struct {
 	Mode        string `json:"mode"`
 	Operation   string `json:"operation"`
 	Environment string `json:"environment"`
@@ -33,7 +33,7 @@ type Plan struct {
 	Username    string `json:"username,omitempty"`
 	NoOp        bool   `json:"no_op"`
 }
-type Result struct {
+type MembershipResult struct {
 	Status           string `json:"status"`
 	GroupLUID        string `json:"group_luid"`
 	UserLUID         string `json:"user_luid"`
@@ -41,24 +41,24 @@ type Result struct {
 	Evidence         string `json:"evidence"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
-type Output struct {
-	Plan   Plan     `json:"plan"`
-	Result *Result  `json:"result,omitempty"`
-	Help   []string `json:"help"`
+type MembershipOutput struct {
+	Plan   MembershipPlan    `json:"plan"`
+	Result *MembershipResult `json:"result,omitempty"`
+	Help   []string          `json:"help"`
 }
 
-func (o Output) CompactOutput() any { return o }
-func (o Output) FullOutput() any    { return o }
+func (o MembershipOutput) CompactOutput() any { return o }
+func (o MembershipOutput) FullOutput() any    { return o }
 
-type Resolver interface {
-	ResolveGroup(context.Context, string) (Group, error)
-	ResolveUsername(context.Context, string) (Member, error)
+type MembershipResolver interface {
+	ResolveMembershipGroup(context.Context, string) (MembershipGroup, error)
+	ResolveUsername(context.Context, string) (MembershipMember, error)
 }
 
-func contains(items []Member, luid string) bool {
-	return slices.ContainsFunc(items, func(item Member) bool { return item.LUID == luid })
+func containsMembership(items []MembershipMember, luid string) bool {
+	return slices.ContainsFunc(items, func(item MembershipMember) bool { return item.LUID == luid })
 }
-func validateInput(in Input) string {
+func validateMembershipInput(in MembershipInput) string {
 	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.GroupLUID) == "" {
 		return "--environment and --group-id are required"
 	}

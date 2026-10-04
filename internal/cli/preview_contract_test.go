@@ -7,11 +7,9 @@ import (
 	"testing"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
-	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	labelcategoryops "github.com/ahillspace/tadx/actions/admin/labelcategory"
 	labelvalueops "github.com/ahillspace/tadx/actions/admin/labelvalue"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
-	a_admin_permission_inspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/ahillspace/tadx/actions/contentlabel"
@@ -244,15 +242,15 @@ func (s *previewActionSpy) DeleteAdminGroup(_ context.Context, input groupops.De
 	s.record(preview)
 	return groupops.DeleteOutput{}, nil
 }
-func (s *previewActionSpy) AddAdminGroupMember(_ context.Context, input groupmember.Input, preview bool) (groupmember.Output, error) {
+func (s *previewActionSpy) AddAdminGroupMember(_ context.Context, input groupops.MembershipInput, preview bool) (groupops.MembershipOutput, error) {
 	s.record(preview)
-	return groupmember.Output{}, nil
+	return groupops.MembershipOutput{}, nil
 }
-func (s *previewActionSpy) RemoveAdminGroupMember(_ context.Context, input groupmember.Input, preview bool) (groupmember.Output, error) {
+func (s *previewActionSpy) RemoveAdminGroupMember(_ context.Context, input groupops.MembershipInput, preview bool) (groupops.MembershipOutput, error) {
 	s.record(preview)
-	return groupmember.Output{}, nil
+	return groupops.MembershipOutput{}, nil
 }
-func (s *previewActionSpy) InspectAdminPermission(_ context.Context, input a_admin_permission_inspect.Input) (a_admin_permission_inspect.Output, error) {
+func (s *previewActionSpy) InspectAdminPermission(_ context.Context, input permission.InspectInput) (permission.InspectOutput, error) {
 	panic("unexpected read action")
 }
 func (s *previewActionSpy) CreateAdminPermission(_ context.Context, input permission.Input, preview bool) (permission.Output, error) {

@@ -1,10 +1,30 @@
 # Architecture implementation status
 
-Status: project, catalog, auth, agent/version, capability, env/mutation, content mutations, local helper ownership, and initial shared inventory changes are integrated.
+Status: project, catalog, auth, agent/version, capability, env/mutation, admin, content mutations, local helper ownership, and initial shared inventory changes are integrated.
 Full migration and candidate gates remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
+
+## Latest admin integration
+
+The admin revision consolidates membership and permission inspection into their resource packages and adds cohesive user, group, permission, and label-definition services.
+Typed user/group cached reads, inventory projections, and detail publication now belong to `internal/resources/admin`.
+The neutral `internal/inventory.PublishDetail` mechanism preserves best-effort publication; app binds stores, executors, targets, and clocks.
+Observed-member coverage, filtered upserts, request IDs, and unbounded cached details remain distinct from bounded output.
+The exact adapter dependency edges have positive and sibling/nested rejection fixtures.
+No test assertion is intentionally removed; moved membership and permission tests retain their protected contracts.
+
+The reviewed revision is based on `7b153c14d5e74483c21d25cc7c9d56bd65c38fc5` and changes 61 paths.
+Its immutable source contains 1,409 files with ordinal SHA-256 fingerprint `1f08766acacf118ae67d3019944973d09f31e4ae9198d10b0ea2bad28c7337be`.
+Independent review verified all before/after hashes, owner tests, focused app cache/inventory tests, and dependency enforcement.
+Author checks also include full compilation, scoped vet, and formatting.
+Ignored evidence remains in `.tadx-refactor/admin-revision-7b/`.
+Final integrated gates and live acceptance remain outstanding.
+
+The preceding exact `7b153c1` candidate passed all three baseline-relative gate manifests: 12 controls and 14 seeded rejections across 422 declared paths.
+Its exact-source default manifest also passed eight controls and nine seeded rejections, with all 1,389 archive entries unchanged.
+These results do not establish verification of the later admin integration.
 
 ## Approved scope
 

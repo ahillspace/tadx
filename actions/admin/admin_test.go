@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
-	permissionget "github.com/ahillspace/tadx/actions/admin/permission/inspect"
+	permissionget "github.com/ahillspace/tadx/actions/admin/permission"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"github.com/ahillspace/tadx/internal/errs"
 	"testing"
@@ -194,6 +194,7 @@ func (unknownUserFake) ResolveUser(context.Context, userops.Selector) (userops.R
 func (unknownUserFake) UpdateUser(context.Context, string, userops.UpdateRequest) (userops.Record, error) {
 	return userops.Record{LUID: "u1", RequestID: "req-u", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
+func (unknownUserFake) ValidateUpdate(context.Context, userops.UpdateRequest) error { return nil }
 
 type unknownUserDeleteFake struct{}
 
@@ -310,11 +311,11 @@ func TestAdminUsageValidationIsKindUsage(t *testing.T) {
 
 type permissionReader struct{}
 
-func (permissionReader) GetPermissions(_ context.Context, in permissionget.Input) (permissionget.PermissionSet, error) {
-	return permissionget.PermissionSet{ResourceKind: in.ResourceKind, ResourceLUID: in.ResourceLUID, Source: "direct", Rules: []permissionget.Rule{{PrincipalType: "group", PrincipalLUID: "g1", Capability: "Read", Mode: "Allow"}, {PrincipalType: "user", PrincipalLUID: "u1", Capability: "Write", Mode: "Deny"}}}, nil
+func (permissionReader) GetPermissions(_ context.Context, in permissionget.InspectInput) (permissionget.InspectPermissionSet, error) {
+	return permissionget.InspectPermissionSet{ResourceKind: in.ResourceKind, ResourceLUID: in.ResourceLUID, Source: "direct", Rules: []permissionget.InspectRule{{PrincipalType: "group", PrincipalLUID: "g1", Capability: "Read", Mode: "Allow"}, {PrincipalType: "user", PrincipalLUID: "u1", Capability: "Write", Mode: "Deny"}}}, nil
 }
 func TestPermissionGetFiltersWithoutClaimingEffectiveAccess(t *testing.T) {
-	out, err := permissionget.Inspect(context.Background(), permissionReader{}, permissionget.Input{ResourceKind: "workbook", ResourceLUID: "w1", PrincipalType: "group"})
+	out, err := permissionget.InspectPermissions(context.Background(), permissionReader{}, permissionget.InspectInput{ResourceKind: "workbook", ResourceLUID: "w1", PrincipalType: "group"})
 	if err != nil || len(out.Permissions.Rules) != 1 || out.Permissions.Rules[0].Source != "direct" {
 		t.Fatalf("Execute() = %#v, %v", out, err)
 	}
