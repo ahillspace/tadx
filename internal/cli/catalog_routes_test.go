@@ -8,7 +8,7 @@ import (
 
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	"github.com/ahillspace/tadx/internal/cli"
-	contentcli "github.com/ahillspace/tadx/internal/cli/content"
+	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 )
 
 type catalogLineageSpy struct{ spy *previewActionSpy }
@@ -59,8 +59,8 @@ func TestCatalogRoutesWithIndependentDependencies(t *testing.T) {
 		deps cli.Dependencies
 		path string
 	}{
-		{"lineage", cli.Dependencies{Content: &contentcli.Dependencies{LineagePuller: &previewActionSpy{}}}, "catalog lineage pull"},
-		{"label", cli.Dependencies{ContentLabels: &contentcli.LabelDependencies{}}, "catalog label list"},
+		{"lineage", cli.Dependencies{CatalogLineage: &previewActionSpy{}}, "catalog lineage pull"},
+		{"label", cli.Dependencies{CatalogLabels: &catalogcli.LabelDependencies{}}, "catalog label list"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := cli.NewRoot(test.deps)
@@ -97,7 +97,7 @@ func TestCatalogRelocatedActionsPreservePreviewAndBatchBindings(t *testing.T) {
 		t.Run(test.capabilityID, func(t *testing.T) {
 			spy := &previewActionSpy{}
 			deps := previewDependencies(spy)
-			deps.Content.LineagePuller = catalogLineageSpy{spy: spy}
+			deps.CatalogLineage = catalogLineageSpy{spy: spy}
 			deps.BatchSelectors = map[string]string{test.capabilityID: test.selector}
 			root := cli.NewRoot(deps)
 			command, _, err := root.Find(strings.Fields(test.path))

@@ -6,13 +6,13 @@ Read only the layers you need to change, then their focused tests.
 
 ## Two complete paths to follow
 
-| Layer | Bounded read: `workbook.list` | Previewable write: `workbook.delete` |
+| Layer | Bounded read: `project.list` | Previewable write: `workbook.delete` |
 | --- | --- | --- |
-| Action input/output and behavior | `actions/workbook/list.go`, `list_types.go` | `actions/workbook/delete.go`, `delete_types.go` |
-| Resource adapter | `internal/resources/workbook/adapter.go` | Same file: exact delete boundary |
-| HTTP provider | `internal/tableau/workbook/client.go` | Same file: delete through shared transport |
-| Cobra plumbing | `internal/cli/content/workbook_inventory.go` | `internal/cli/content/workbook_delete.go` |
-| Composition | `internal/app/workbook_inventory.go`, `content_remote.go` | `internal/app/content_remote.go` |
+| Action input/output and behavior | `actions/project/service.go`, `workflow.go`, `list.go`, `list_types.go` | `actions/workbook/service.go`, `delete.go`, `delete_types.go` |
+| Resource adapter | `internal/resources/project/ports.go`, `adapter.go`, `cache.go` | `internal/resources/workbook/mutation_port.go` |
+| HTTP provider | `internal/tableau/project/client.go` | `internal/tableau/workbook/client.go` |
+| Cobra plumbing | `internal/cli/content/project.go` | `internal/cli/content/workbook_delete.go` |
+| Composition | `internal/app/project_provider.go` | `internal/app/content_mutation_provider.go` |
 | App/HTTP regression | `internal/app/inventory_all_e2e_test.go` | `internal/app/group3_workbook_delete_e2e_test.go` |
 
 These paths show responsibilities, not a requirement to add a file or forwarding layer at every step.
@@ -21,11 +21,12 @@ For new behavior, write the externally visible failing test, then extend provide
 For refactors, reuse existing tests and characterize uncovered behavior before changing it.
 Do not copy the example's inventory collection or destructive behavior into an unrelated operation.
 Workbook, datasource, and flow group their operations by resource; share internal records without merging distinct CLI projections.
-Admin membership uses `actions/admin/group/member`, and permission mutations use `actions/admin/permission`; both keep explicit operation entry points.
+Admin membership belongs to `actions/admin/group`; permission inspection and mutations belong to `actions/admin/permission`.
+Both services keep explicit operation entry points and distinct outcome contracts.
 Pulse definitions and metrics, environment profiles, Workspace, and Jobs also use cohesive operation packages.
-Catalog reads and updates share matching mechanisms while keeping search and audit traversal separate.
+The `actions/catalog` service owns typed metadata reads, changes, search, and audit, with distinct operation sequences.
 Other domains retain assessed boundaries, including `actions/search` and `actions/last`.
-Mutation consent binds CLI interfaces directly to runtime methods; do not recreate a forwarding action package for symmetry.
+The `actions/mutation` service owns exact-site consent status and changes, while `internal/config` owns persistence and locking.
 Consult [the repository structure](../../../../docs/repository-structure.md) for the full layout.
 
 ## Shared infrastructure
@@ -33,7 +34,8 @@ Consult [the repository structure](../../../../docs/repository-structure.md) for
 | Need | Start here |
 | --- | --- |
 | Invocation-scoped clients and sessions | `internal/app/command_runtime.go`, `internal/auth/command_sessions.go` |
-| PAT provider and credential coordination | `internal/auth/auth.go` |
+| PAT resolution and native credential storage | `internal/auth/auth.go` |
+| Credential/configuration ordering and compensation | `actions/auth/persistence.go` |
 | HTTP bounds, auth headers, request IDs, upstream errors, redaction | `internal/tableau/transport.go` |
 | Structured errors and CLI wrapping | `internal/errs/errs.go`, `internal/cli/clierr/clierr.go` |
 | Shared rendering and page presentation | `internal/output/output.go`, `internal/output/page.go` |
@@ -42,7 +44,8 @@ Consult [the repository structure](../../../../docs/repository-structure.md) for
 | Exact identity and shared resource records | `internal/identity/identity.go`, `internal/value/` |
 | Safe follow-up commands | `internal/commandhint/command.go` |
 | Live/cache provenance | `internal/readsource/` |
-| Upstream Catalog metadata and label contracts | `internal/tableau/metadataassets/`, `internal/resources/catalog/`, `internal/value/metadata.go` |
+| Shared bounded inventory and scoped cache publication | `internal/inventory/` |
+| Upstream Catalog metadata and label contracts | `internal/tableau/metadataassets/`, `internal/value/metadata.go` |
 
 ## Registration and verification
 

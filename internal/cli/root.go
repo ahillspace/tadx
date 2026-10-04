@@ -103,7 +103,8 @@ type Dependencies struct {
 	SessionOverview       SessionOverview
 	Update                *updatecli.Dependencies
 	Catalog               *catalogcli.Dependencies
-	ContentLabels         *contentcli.LabelDependencies
+	CatalogLabels         *catalogcli.LabelDependencies
+	CatalogLineage        catalogcli.LineagePuller
 	AdminLabels           *admincli.LabelDependencies
 	BatchSelectors        map[string]string
 	BatchOptions          map[string]batchspec.Options
@@ -343,20 +344,20 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 			StatusUse: deps.CacheStatusUse, StatusShort: deps.CacheStatusShort,
 		}))
 	}
-	if deps.Catalog != nil || deps.ContentLabels != nil || (deps.Content != nil && deps.Content.LineagePuller != nil) {
+	if deps.Catalog != nil || deps.CatalogLabels != nil || deps.CatalogLineage != nil {
 		node := catalogcli.NewGroup()
 		if deps.Catalog != nil {
 			catalog := *deps.Catalog
 			catalog.Renderer = deps.Renderer
 			node = catalogcli.New(catalog)
 		}
-		if deps.Content != nil && deps.Content.LineagePuller != nil {
-			node.AddCommand(contentcli.NewLineage(deps.Content.LineagePuller, deps.Renderer))
+		if deps.CatalogLineage != nil {
+			node.AddCommand(catalogcli.NewLineage(deps.CatalogLineage, deps.Renderer))
 		}
-		if deps.ContentLabels != nil {
-			labels := *deps.ContentLabels
+		if deps.CatalogLabels != nil {
+			labels := *deps.CatalogLabels
 			labels.Renderer = deps.Renderer
-			node.AddCommand(contentcli.NewLabels(labels))
+			node.AddCommand(catalogcli.NewLabels(labels))
 		}
 		root.AddCommand(node)
 	}

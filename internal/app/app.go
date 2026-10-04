@@ -136,7 +136,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 			return config.ConfiguredPATVariables(runtime.configPath)
 		}}),
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
-		ContentLabels:         contentLabelDependencies(runtime),
+		CatalogLabels:         contentLabelDependencies(runtime),
+		CatalogLineage:        remoteContent,
 		AdminLabels:           adminLabelDependencies(runtime),
 		Lister:                discovery,
 		Getter:                discovery,

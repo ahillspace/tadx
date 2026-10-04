@@ -6,6 +6,21 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Catalog command ownership
+
+Catalog-mounted lineage and attached-label constructors now live in `internal/cli/catalog`, not `internal/cli/content`.
+Root construction binds their dependencies independently and preserves the existing command paths, flags, capability IDs, help, preview handling, and argument errors.
+This completes the constructor-location portion of D6, not the pending lineage and content-label workflow extraction.
+The maintained implementation map also points to the integrated resource/service owners instead of deleted wrappers.
+
+The independently reviewed merge is based on `39b470a6b371ed0bb98db01b47aa74a567e795d3` and changes 13 source paths.
+Its 1,409-file ordinal fingerprint is `db703d8a011115364374b9c0e4bf24f4d53bb70ee785b34b8265a844e63be476`.
+The two overlapping files preserve the integrated admin dependencies and assertions.
+Focused command and app tests, full compilation, scoped vet, formatting, and architecture checks pass with unchanged source hashes.
+Ignored evidence remains in `.tadx-refactor/catalog-cli-merge-39b/`.
+The earlier 7b-based draft remains immutable with its own manifest and ZIP.
+These bounded results do not establish final integrated race or live acceptance.
+
 ## Latest admin integration
 
 The admin revision consolidates membership and permission inspection into their resource packages and adds cohesive user, group, permission, and label-definition services.

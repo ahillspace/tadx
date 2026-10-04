@@ -26,7 +26,7 @@ func contentHelpPilotTree(t *testing.T, options Options) *cobra.Command {
 		}
 	})
 	root := cli.NewRoot(cli.Dependencies{
-		Content: newRemoteContentCommands(runtime).dependencies(), ContentLabels: contentLabelDependencies(runtime),
+		Content: newRemoteContentCommands(runtime).dependencies(), CatalogLabels: contentLabelDependencies(runtime), CatalogLineage: newRemoteContentCommands(runtime),
 		WorkbookPuller: &pullService{runtime: runtime}, WorkbookPublisher: &publishService{runtime: runtime},
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),

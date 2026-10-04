@@ -4,7 +4,7 @@ import (
 	"context"
 
 	contentlabel "github.com/ahillspace/tadx/actions/contentlabel"
-	contentcli "github.com/ahillspace/tadx/internal/cli/content"
+	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 )
 
 type contentLabellistService struct{ runtime *runtimeDependencies }
@@ -75,6 +75,6 @@ func (c contentLabeldeleteService) Execute(ctx context.Context, input contentlab
 	return contentlabel.Delete(ctx, provider, provider, input, preview)
 }
 
-func contentLabelDependencies(r *runtimeDependencies) *contentcli.LabelDependencies {
-	return &contentcli.LabelDependencies{Lister: contentLabellistService{r}, Inspector: contentLabelinspectService{r}, Updater: contentLabelupdateService{r}, Deleter: contentLabeldeleteService{r}}
+func contentLabelDependencies(r *runtimeDependencies) *catalogcli.LabelDependencies {
+	return &catalogcli.LabelDependencies{Lister: contentLabellistService{r}, Inspector: contentLabelinspectService{r}, Updater: contentLabelupdateService{r}, Deleter: contentLabeldeleteService{r}}
 }

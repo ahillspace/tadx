@@ -1,4 +1,4 @@
-package content
+package catalog
 
 import (
 	"context"
@@ -19,8 +19,8 @@ func NewLineage(puller LineagePuller, renderer Renderer) *cobra.Command {
 	var input lineagepull.Input
 	var luid, name, projectPath string
 	pull := &cobra.Command{Use: "pull", Short: "Pull bounded lineage without a native artifact.", Annotations: map[string]string{"tadx.capability": "lineage.pull"}, Args: func(command *cobra.Command, args []string) error {
-		if err := noContentArgs("lineage.pull")(command, args); err != nil {
-			return err
+		if err := cobra.NoArgs(command, args); err != nil {
+			return clierr.Usage("lineage.pull", err)
 		}
 		if input.Kind != "workbook" && input.Kind != "datasource" && input.Kind != "published_datasource" && input.Kind != "flow" {
 			return clierr.Usage("lineage.pull", errors.New("--kind must be workbook, datasource, or flow"))

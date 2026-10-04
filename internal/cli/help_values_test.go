@@ -23,7 +23,6 @@ import (
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
-	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	updatecli "github.com/ahillspace/tadx/internal/cli/update"
@@ -183,7 +182,7 @@ func helpValuesTree() *cobra.Command {
 	admin := admincli.New(admincli.Dependencies{PermissionCapabilities: tableauadmin.PermissionCapabilities})
 	admin.AddCommand(admincli.NewLabels(admincli.LabelDependencies{})...)
 	catalog := catalogcli.New(catalogcli.Dependencies{})
-	catalog.AddCommand(contentcli.NewLabels(contentcli.LabelDependencies{}))
+	catalog.AddCommand(catalogcli.NewLabels(catalogcli.LabelDependencies{}))
 	root.AddCommand(admin, catalog, pulsecli.New(pulsecli.Dependencies{}), envcli.New(envcli.Dependencies{}), workspacecli.New(workspacecli.Dependencies{}), newSearch(nil, nil))
 	return root
 }

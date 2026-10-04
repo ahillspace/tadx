@@ -325,10 +325,11 @@ func (registryPreviewPolicy) IsRemoteMutation(id string) bool {
 }
 func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 	return cli.Dependencies{MutationPolicy: registryPreviewPolicy{}, Renderer: spy, WorkbookPublisher: spy, WorkbookPuller: &puller{},
-		Jobs:          &jobcli.Dependencies{Cancel: (jobCancelPreviewSpy{spy: spy}).Execute},
-		ContentLabels: &contentcli.LabelDependencies{Renderer: spy, Updater: contentlabel_updateSpy{spy}, Deleter: contentlabel_deleteSpy{spy}},
-		AdminLabels:   &admincli.LabelDependencies{Renderer: spy, ValueUpdater: admin_labelvalue_updateSpy{spy}, ValueDeleter: admin_labelvalue_deleteSpy{spy}, CategoryCreator: admin_labelcategory_createSpy{spy}, CategoryUpdater: admin_labelcategory_updateSpy{spy}, CategoryDeleter: admin_labelcategory_deleteSpy{spy}},
-		Catalog:       &catalogcli.Dependencies{Renderer: spy, DatabaseUpdater: spy, TableUpdater: spy, ColumnUpdater: spy},
+		Jobs:           &jobcli.Dependencies{Cancel: (jobCancelPreviewSpy{spy: spy}).Execute},
+		CatalogLabels:  &catalogcli.LabelDependencies{Renderer: spy, Updater: contentlabel_updateSpy{spy}, Deleter: contentlabel_deleteSpy{spy}},
+		CatalogLineage: spy,
+		AdminLabels:    &admincli.LabelDependencies{Renderer: spy, ValueUpdater: admin_labelvalue_updateSpy{spy}, ValueDeleter: admin_labelvalue_deleteSpy{spy}, CategoryCreator: admin_labelcategory_createSpy{spy}, CategoryUpdater: admin_labelcategory_updateSpy{spy}, CategoryDeleter: admin_labelcategory_deleteSpy{spy}},
+		Catalog:        &catalogcli.Dependencies{Renderer: spy, DatabaseUpdater: spy, TableUpdater: spy, ColumnUpdater: spy},
 		Content: &contentcli.Dependencies{Renderer: spy,
 			WorkbookLister:      spy,
 			WorkbookInspector:   spy,
@@ -356,7 +357,6 @@ func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 			FlowMover:           spy,
 			FlowDeleter:         spy,
 			FlowUpdater:         spy,
-			LineagePuller:       spy,
 		},
 		Admin: &admincli.Dependencies{Renderer: spy,
 			PermissionCreator:   spy,

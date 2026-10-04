@@ -80,7 +80,6 @@ type Dependencies struct {
 	FlowMover           FlowMover
 	FlowDeleter         FlowDeleter
 	FlowUpdater         FlowUpdater
-	LineagePuller       LineagePuller
 	Renderer            Renderer
 	MutationsEnabled    bool
 	PullUse             string

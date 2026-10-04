@@ -46,7 +46,6 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: datasources, DatasourceMover: datasources, DatasourceUpdater: datasources,
 		ProjectLister: projects, ProjectInspector: projects, ProjectCreator: projects, ProjectUpdater: projects, ProjectDeleter: projects, ProjectMover: projects,
 		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: flows, FlowDeleter: flows, FlowUpdater: flows,
-		LineagePuller: c,
 	}
 }
 
