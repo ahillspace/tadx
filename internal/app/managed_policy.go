@@ -106,30 +106,11 @@ func legacySearchPrerequisites(data json.RawMessage) []string {
 	return slices.Sorted(maps.Keys(ids))
 }
 
-func (s registrySource) applyManagedDiscovery(item *capability.Discovery) {
-	if s.runtime == nil || s.runtime.managedPolicy == nil || policyRecoveryOperation(item.ID) {
-		return
-	}
-	err := s.runtime.managedPolicy.CheckCapability(item.ID)
-	if err == nil && item.RemoteMutation {
-		err = s.runtime.managedPolicy.CheckRemoteMutation()
-	}
-	if err != nil {
-		item.PolicyDenied = true
-		item.PolicyReason = err.Error()
-		item.ExecutionEnabled = false
-	}
-}
-
-func policyRecoveryOperation(id string) bool {
-	return id == "policy.install" || id == "policy.samples" || id == "policy.validate" || id == "policy.status"
-}
-
 func (r *runtimeDependencies) checkManagedCapability(id string) error {
 	if r == nil {
 		return nil
 	}
-	if policyRecoveryOperation(id) || r.managedPolicy == nil {
+	if capability.IsPolicyRecoveryOperation(id) || r.managedPolicy == nil {
 		r.managedChecks.record(id)
 		return nil
 	}
@@ -264,7 +245,7 @@ func (r *runtimeDependencies) ReadPolicy(context.Context) (policyops.StatusOutpu
 	definitions := capability.All()
 	allowed := 0
 	for _, definition := range definitions {
-		if policyRecoveryOperation(definition.ID) || r.managedPolicy.CheckCapability(definition.ID) == nil {
+		if capability.IsPolicyRecoveryOperation(definition.ID) || r.managedPolicy.CheckCapability(definition.ID) == nil {
 			allowed++
 		}
 	}

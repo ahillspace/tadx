@@ -9,8 +9,7 @@ import (
 	"strings"
 
 	authops "github.com/ahillspace/tadx/actions/auth"
-	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -57,12 +56,12 @@ type MutationPolicy interface {
 
 // Lister executes capability list.
 type Lister interface {
-	Execute(context.Context, capabilitylist.Input) (capabilitylist.Output, error)
+	ListCapabilities(context.Context, capabilityops.ListInput) (capabilityops.ListOutput, error)
 }
 
 // Getter executes capability get.
 type Getter interface {
-	Execute(context.Context, capabilityget.Input) (capabilityget.Output, error)
+	GetCapability(context.Context, capabilityops.GetInput) (capabilityops.GetOutput, error)
 }
 
 type AuthChecker interface {
@@ -277,15 +276,13 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		root.AddCommand(mutationcli.New(deps.MutationStatus, deps.MutationSetter, deps.Renderer))
 	}
 	root.AddCommand(capabilitycli.New(capabilitycli.Dependencies{
-		Lister:                deps.Lister,
-		Getter:                deps.Getter,
-		Renderer:              deps.Renderer,
-		MutationsEnabled:      deps.MutationsEnabled,
-		ResolveMutationPolicy: deps.ResolveMutationPolicy,
-		ListUse:               deps.ListUse,
-		ListShort:             deps.ListShort,
-		GetUse:                deps.GetUse,
-		GetShort:              deps.GetShort,
+		Lister:    deps.Lister,
+		Getter:    deps.Getter,
+		Renderer:  deps.Renderer,
+		ListUse:   deps.ListUse,
+		ListShort: deps.ListShort,
+		GetUse:    deps.GetUse,
+		GetShort:  deps.GetShort,
 	}))
 	if deps.EnvironmentProfiles != nil {
 		environmentProfiles := *deps.EnvironmentProfiles

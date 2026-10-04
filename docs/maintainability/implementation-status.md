@@ -1,6 +1,6 @@
 # Architecture implementation status
 
-Status: project, catalog, auth, agent/version, and initial shared inventory changes are integrated; full migration and candidate gates remain incomplete.
+Status: project, catalog, auth, agent/version, content mutations, and initial shared inventory changes are integrated; full migration and candidate gates remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -291,12 +291,32 @@ Publication preparation, content reads, cache routing, pull, and publication rec
 
 ## Integrated verification update
 
+### Capability consolidation
+
+The capability Service combines named get and list operations with registry discovery and injected policy and site-readiness observations.
+The app discovery facade and both verb-only action packages are removed; the CLI retains parsing, rendering, and partial-result wrapping.
+The exact `049406f` integration candidate has source fingerprint `4dec0b70ca6e6a09aaf1ca2ef9cf6d7c27b4e16d458f520ee1c51e8500e45d96` across 1,383 files.
+Independent review verifies all 26 actual-base and candidate path hashes and the single overlapping app constructor merge.
+Both moved output goldens remain byte-identical.
+A new test catches a draft-only regression where a policy resolver returning both true and an error could enable remote rows; the corrected draft preserves baseline fail-closed behavior.
+Full compilation, focused action, registry, CLI, output, architecture, and app tests, and scoped vet pass on the isolated candidate.
+Mechanical integration preserves the previously integrated auth and content wiring.
+Integrated full gates remain pending.
+
+### Hosted and local checks
+
 Historical commit `f23b59560370f13009ff33e04ac4092d59fceee2` passes the full local race suite, vet, module and generated-file checks, tooling suites, and 12 controls plus 14 seeded-defect checks.
 Its formatting check fails on one catalog help fixture; commit `1a9ee346696d4e5f1da19fce23e1022f607d01dc` corrects that fixture.
 Exact `1a9ee3` passes formatting across 1,102 Go files and the controls and seeded-defect checks with unchanged source fingerprints.
 Those results do not transfer to later commits.
 Hosted Windows standard tests on `1a9ee3` fail `TestCachedGroupMembersRequireObservedCoverageThroughCLI`: three cached-member output modes return `cache.uninitialized` unexpectedly.
 The failure remains under investigation; later steps skipped by that job are not passes.
+Exact `1a9ee3` hosted Linux quality gates complete successfully, including standard and race tests, fuzz checks, module and generated-file checks, and installer and packaging checks.
+All four build jobs and three native managed-policy jobs also pass, but the overall run fails because of the Windows test failure.
+An isolated diagnostic omits best-effort cache publication and reproduces the hosted test symptom.
+This demonstrates the fixture's dependency, not the precise reason that hosted publication failed.
+A test-only correction explicitly seeds observed and unobserved member-coverage states while retaining live CLI calls and the existing assertions.
+That correction remains outside the integrated source pending independent review.
 No integrated checkpoint is accepted.
 
 ## Acceptance dependencies

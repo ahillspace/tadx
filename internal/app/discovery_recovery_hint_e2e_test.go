@@ -11,8 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/toon"
@@ -46,7 +45,7 @@ func TestCapabilityListHintsPreserveSelectedSiteConsentThroughCLI(t *testing.T) 
 	if code := Run(t.Context(), args, &out, options); code != 0 {
 		t.Fatalf("list code=%d output=%s", code, &out)
 	}
-	var first capabilitylist.Output
+	var first capabilityops.ListOutput
 	decodeRecoveryHintOutput(t, out.Bytes(), &first)
 	if len(first.Capabilities) != 1 || first.Capabilities[0].ID != "project.create" || !first.Capabilities[0].ExecutionEnabled || len(first.Help) == 0 || first.NextCommand == "" {
 		t.Fatalf("unexpected first page: %s", &out)
@@ -56,7 +55,7 @@ func TestCapabilityListHintsPreserveSelectedSiteConsentThroughCLI(t *testing.T) 
 		if code := Run(t.Context(), recoveryHintArguments(t, first.Help[0]), &out, options); code != 0 {
 			t.Fatalf("hint=%q code=%d output=%s", first.Help[0], code, &out)
 		}
-		var inspected capabilityget.Output
+		var inspected capabilityops.GetOutput
 		decodeRecoveryHintOutput(t, out.Bytes(), &inspected)
 		if inspected.Capability.ID != first.Capabilities[0].ID || !inspected.Capability.ExecutionEnabled {
 			t.Fatalf("inspection lost selected site consent: hint=%q output=%s", first.Help[0], &out)
@@ -67,7 +66,7 @@ func TestCapabilityListHintsPreserveSelectedSiteConsentThroughCLI(t *testing.T) 
 		if code := Run(t.Context(), recoveryHintArguments(t, first.NextCommand), &out, options); code != 0 {
 			t.Fatalf("hint=%q code=%d output=%s", first.NextCommand, code, &out)
 		}
-		var next capabilitylist.Output
+		var next capabilityops.ListOutput
 		if err := json.Unmarshal(out.Bytes(), &next); err != nil {
 			t.Fatalf("continuation lost JSON output: %v output=%s", err, &out)
 		}

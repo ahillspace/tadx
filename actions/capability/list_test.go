@@ -1,38 +1,48 @@
-package list_test
+package capability
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/output"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
-
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
-	"github.com/ahillspace/tadx/internal/commandhint"
-	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/output"
 )
 
-type source struct {
-	items []capabilitylist.Capability
+type listSource struct {
+	items []Capability
 	err   error
 }
 
-func (s source) List(context.Context) ([]capabilitylist.Capability, error) {
-	return append([]capabilitylist.Capability(nil), s.items...), s.err
+func (s listSource) List(context.Context) ([]Capability, error) {
+	return append([]Capability(nil), s.items...), s.err
+}
+
+type listTestAction struct{ source listSource }
+
+func newListAction(source listSource) listTestAction { return listTestAction{source: source} }
+
+func (a listTestAction) Execute(ctx context.Context, input ListInput) (ListOutput, error) {
+	items, err := a.source.List(ctx)
+	if err != nil {
+		return ListOutput{}, err
+	}
+	return listFromItems(input, items, false)
 }
 
 func TestExecuteReturnsBoundedDiscoveryInSourceOrder(t *testing.T) {
-	action := capabilitylist.New(source{items: []capabilitylist.Capability{
+	action := newListAction(listSource{items: []Capability{
 		{ID: "capability.get", Owner: "cli", ImplementationState: "implemented", Command: "capability get"},
 		{ID: "workbook.publish", Owner: "cli", ImplementationState: "planned"},
 	}})
 
-	got, err := action.Execute(context.Background(), capabilitylist.Input{})
+	got, err := action.Execute(context.Background(), ListInput{})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -51,7 +61,7 @@ func TestExecuteReturnsBoundedDiscoveryInSourceOrder(t *testing.T) {
 }
 
 func TestExecuteReturnsDefinitiveEmptyState(t *testing.T) {
-	got, err := capabilitylist.New(source{}).Execute(context.Background(), capabilitylist.Input{})
+	got, err := newListAction(listSource{}).Execute(context.Background(), ListInput{})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -68,13 +78,13 @@ func TestExecuteReturnsDefinitiveEmptyState(t *testing.T) {
 }
 
 func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
-	action := capabilitylist.New(source{items: []capabilitylist.Capability{
+	action := newListAction(listSource{items: []Capability{
 		{ID: "content.datasource.list", Owner: "cli", Domain: "content", Resource: "datasource", Availability: "cloud/server"},
 		{ID: "content.workbook.list", Owner: "cli", Domain: "content", Resource: "workbook", Availability: "cloud/server"},
 		{ID: "pulse.metric.list", Owner: "cli", Domain: "pulse", Resource: "metric", Availability: "pulse"},
 	}})
 
-	got, err := action.Execute(context.Background(), capabilitylist.Input{Domain: "content", Owner: "cli", Product: "cloud", Limit: 1})
+	got, err := action.Execute(context.Background(), ListInput{Domain: "content", Owner: "cli", Product: "cloud", Limit: 1})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -85,7 +95,7 @@ func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
 		t.Fatalf("first ID = %q", got.Capabilities[0].ID)
 	}
 
-	got, err = action.Execute(context.Background(), capabilitylist.Input{Domain: "content", Cursor: got.Page.NextCursor, Limit: 1})
+	got, err = action.Execute(context.Background(), ListInput{Domain: "content", Cursor: got.Page.NextCursor, Limit: 1})
 	if err != nil {
 		t.Fatalf("second Execute() error = %v", err)
 	}
@@ -95,17 +105,17 @@ func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
 }
 
 func TestExecuteAllReturnsCompleteMatchingInventory(t *testing.T) {
-	action := capabilitylist.New(source{items: []capabilitylist.Capability{
+	action := newListAction(listSource{items: []Capability{
 		{ID: "content.datasource.list", Domain: "content"},
 		{ID: "content.workbook.list", Domain: "content"},
 		{ID: "pulse.metric.list", Domain: "pulse"},
 	}})
 
-	got, err := action.Execute(context.Background(), capabilitylist.Input{All: true, Domain: "content"})
+	got, err := action.Execute(context.Background(), ListInput{All: true, Domain: "content"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Page.Returned != 2 || got.Page.Total != 2 || got.Page.Limit != capabilitylist.MaxLimit || got.Page.MoreAvailable || got.Page.NextCursor != "" {
+	if got.Page.Returned != 2 || got.Page.Total != 2 || got.Page.Limit != MaxLimit || got.Page.MoreAvailable || got.Page.NextCursor != "" {
 		t.Fatalf("all page = %#v", got.Page)
 	}
 	if got.NextCommand != "" {
@@ -117,19 +127,19 @@ func TestExecuteAllReturnsCompleteMatchingInventory(t *testing.T) {
 }
 
 func TestExecuteAllRejectsPaginationOverrides(t *testing.T) {
-	for _, input := range []capabilitylist.Input{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
-		if _, err := capabilitylist.New(source{}).Execute(context.Background(), input); err == nil {
+	for _, input := range []ListInput{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
+		if _, err := newListAction(listSource{}).Execute(context.Background(), input); err == nil {
 			t.Fatalf("Execute(%#v) error = nil", input)
 		}
 	}
 }
 
 func TestExecuteAllFailsWhenMatchingInventoryExceedsBound(t *testing.T) {
-	items := make([]capabilitylist.Capability, capabilitylist.MaxLimit+1)
+	items := make([]Capability, MaxLimit+1)
 	for index := range items {
 		items[index].ID = "capability." + strconv.Itoa(index)
 	}
-	_, err := capabilitylist.New(source{items: items}).Execute(context.Background(), capabilitylist.Input{All: true})
+	_, err := newListAction(listSource{items: items}).Execute(context.Background(), ListInput{All: true})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || !strings.Contains(structured.Summary, "10000-record bound") {
 		t.Fatalf("error = %#v, want bounded usage error", err)
@@ -138,10 +148,10 @@ func TestExecuteAllFailsWhenMatchingInventoryExceedsBound(t *testing.T) {
 
 func TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery(t *testing.T) {
 	mutation := true
-	got, err := capabilitylist.New(source{items: []capabilitylist.Capability{
+	got, err := newListAction(listSource{items: []Capability{
 		{ID: "workbook.publish", RemoteMutation: true},
 		{ID: "workbook.inspect"},
-	}}).Execute(context.Background(), capabilitylist.Input{Mutation: &mutation})
+	}}).Execute(context.Background(), ListInput{Mutation: &mutation})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -149,26 +159,26 @@ func TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery(t *testing.T) {
 		t.Fatalf("capabilities = %#v", got.Capabilities)
 	}
 
-	got, err = capabilitylist.New(source{items: []capabilitylist.Capability{{ID: "workbook.publish", ImplementationState: "implemented", RemoteMutation: true}}}).Execute(context.Background(), capabilitylist.Input{MutationsEnabled: true})
+	got, err = listFromItems(ListInput{}, []Capability{{ID: "workbook.publish", ImplementationState: "implemented", RemoteMutation: true}}, true)
 	if err != nil || len(got.Capabilities) != 1 || !got.Capabilities[0].ExecutionEnabled {
 		t.Fatalf("enabled capabilities = %#v, error = %v", got.Capabilities, err)
 	}
 }
 
 func TestExecuteRejectsInvalidPagination(t *testing.T) {
-	for _, input := range []capabilitylist.Input{{Limit: -1}, {Limit: 10001}, {Cursor: "nope"}} {
-		if _, err := capabilitylist.New(source{}).Execute(context.Background(), input); err == nil {
+	for _, input := range []ListInput{{Limit: -1}, {Limit: 10001}, {Cursor: "nope"}} {
+		if _, err := newListAction(listSource{}).Execute(context.Background(), input); err == nil {
 			t.Fatalf("Execute(%#v) error = nil", input)
 		}
 	}
 }
 
 func TestOutputGoldenIsBoundedAndUsesExactIdentity(t *testing.T) {
-	action := capabilitylist.New(source{items: []capabilitylist.Capability{
+	action := newListAction(listSource{items: []Capability{
 		{ID: "content.datasource.list", Owner: "cli", Disposition: "ship", ImplementationState: "planned", Domain: "content"},
 		{ID: "content.workbook.list", Owner: "cli", Disposition: "ship", ImplementationState: "planned", Domain: "content"},
 	}})
-	result, err := action.Execute(context.Background(), capabilitylist.Input{Domain: "content", Limit: 1})
+	result, err := action.Execute(context.Background(), ListInput{Domain: "content", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +186,7 @@ func TestOutputGoldenIsBoundedAndUsesExactIdentity(t *testing.T) {
 	if err := output.Render(&rendered, result); err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile("testdata/output.toon")
+	want, err := os.ReadFile("testdata/list-output.toon")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +203,7 @@ func TestOutputGoldenIsBoundedAndUsesExactIdentity(t *testing.T) {
 }
 
 func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
-	result, err := capabilitylist.New(source{items: []capabilitylist.Capability{
+	result, err := newListAction(listSource{items: []Capability{
 		{
 			ID: "content.workbook.publish", Domain: "content", Resource: "workbook", Verb: "publish",
 			Surface: "tadx content workbook publish", Outcome: "Publish a workbook.", OperationType: "deliver",
@@ -203,7 +213,7 @@ func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
 			UpstreamOperation: "POST /workbooks", Evidence: "local test", Validation: "identity checked",
 			RemoteMutation: true, SupportsPreview: true,
 		},
-	}}).Execute(context.Background(), capabilitylist.Input{Limit: 1})
+	}}).Execute(context.Background(), ListInput{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +229,7 @@ func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
 		t.Fatalf("full projection changed field order or values: %s != %s", full, direct)
 	}
 	var document struct {
-		Capabilities []capabilitylist.Capability `json:"capabilities"`
+		Capabilities []Capability `json:"capabilities"`
 	}
 	if err := json.Unmarshal(full, &document); err != nil {
 		t.Fatal(err)
@@ -238,11 +248,11 @@ func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
 
 func TestContinuationPreservesFiltersAndPresentation(t *testing.T) {
 	const environment = "qa team's $literal"
-	items := []capabilitylist.Capability{
+	items := []Capability{
 		{ID: "content.workbook.first", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
 		{ID: "content.workbook.second", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
 	}
-	result, err := capabilitylist.New(source{items: items}).Execute(t.Context(), capabilitylist.Input{
+	result, err := newListAction(listSource{items: items}).Execute(t.Context(), ListInput{
 		Environment: environment,
 		Domain:      "content", Resource: "workbook", Owner: "cli", Product: "cloud", Limit: 1, Full: true, JSON: true,
 	})
@@ -259,10 +269,10 @@ func TestContinuationPreservesFiltersAndPresentation(t *testing.T) {
 }
 
 func TestCountsKeepCombinedPageAndOutOfScopeRowsDistinct(t *testing.T) {
-	result, err := capabilitylist.New(source{items: []capabilitylist.Capability{
+	result, err := newListAction(listSource{items: []Capability{
 		{ID: "a.local", Disposition: "ship"},
 		{ID: "b.external", Disposition: "delegated"},
-	}}).Execute(context.Background(), capabilitylist.Input{Limit: 10})
+	}}).Execute(context.Background(), ListInput{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

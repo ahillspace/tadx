@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/lastcommand"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
@@ -277,9 +278,10 @@ func TestManagedPolicyWorkerRechecksRestriction(t *testing.T) {
 
 func TestManagedPolicyDiscoveryRetainsDeniedAvailability(t *testing.T) {
 	r := &runtimeDependencies{managedPolicy: fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{"capability.get": true}, remote: true}}
-	item, ok := (registrySource{runtime: r}).Get(t.Context(), "admin.user.list")
-	if !ok || !item.PolicyDenied || item.ExecutionEnabled || item.PolicyReason == "" {
-		t.Fatalf("denied discovery lost: %+v", item)
+	output, err := capabilityops.New(capabilityops.Ports{ManagedPolicy: r.managedPolicy}).GetCapability(t.Context(), capabilityops.GetInput{ID: "admin.user.list"})
+	item := output.Capability
+	if err != nil || !item.PolicyDenied || item.ExecutionEnabled || item.PolicyReason == "" {
+		t.Fatalf("denied discovery lost: %+v err=%v", item, err)
 	}
 	if !errors.Is(r.checkManagedCapability("admin.user.list"), managedpolicy.ErrCapabilityDenied) {
 		t.Fatal("structured cause lost")

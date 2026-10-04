@@ -1,29 +1,36 @@
-package get_test
+package capability
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/output"
 	"os"
 	"testing"
-
-	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	"github.com/ahillspace/tadx/internal/output"
 )
 
-type source struct {
-	item capabilityget.Capability
+type getSource struct {
+	item Capability
 	ok   bool
 }
 
-func (s source) Get(context.Context, string) (capabilityget.Capability, bool) {
+func (s getSource) Get(context.Context, string) (Capability, bool) {
 	return s.item, s.ok
 }
 
+type getTestAction struct{ source getSource }
+
+func newGetAction(source getSource) getTestAction { return getTestAction{source: source} }
+
+func (a getTestAction) Execute(ctx context.Context, input GetInput) (GetOutput, error) {
+	item, ok := a.source.Get(ctx, input.ID)
+	return getFromItem(input, item, ok, false)
+}
+
 func TestExecuteReturnsExactCapability(t *testing.T) {
-	want := capabilityget.Capability{ID: "capability.get", Command: "capability get", Owner: "cli"}
-	got, err := capabilityget.New(source{item: want, ok: true}).Execute(context.Background(), capabilityget.Input{ID: want.ID})
+	want := Capability{ID: "capability.get", Command: "capability get", Owner: "cli"}
+	got, err := newGetAction(getSource{item: want, ok: true}).Execute(context.Background(), GetInput{ID: want.ID})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -33,13 +40,12 @@ func TestExecuteReturnsExactCapability(t *testing.T) {
 }
 
 func TestExecuteReportsMutationExecutionState(t *testing.T) {
-	item := capabilityget.Capability{ID: "workbook.publish", RemoteMutation: true, ImplementationState: "implemented"}
-	action := capabilityget.New(source{item: item, ok: true})
+	item := Capability{ID: "workbook.publish", RemoteMutation: true, ImplementationState: "implemented"}
 	for _, test := range []struct {
 		enabled bool
 		want    bool
 	}{{false, false}, {true, true}} {
-		got, err := action.Execute(context.Background(), capabilityget.Input{ID: item.ID, MutationsEnabled: test.enabled})
+		got, err := getFromItem(GetInput{ID: item.ID}, item, true, test.enabled)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,21 +56,21 @@ func TestExecuteReportsMutationExecutionState(t *testing.T) {
 }
 
 func TestExecuteRejectsMissingID(t *testing.T) {
-	_, err := capabilityget.New(source{}).Execute(context.Background(), capabilityget.Input{})
-	if !errors.Is(err, capabilityget.ErrIDRequired) {
+	_, err := newGetAction(getSource{}).Execute(context.Background(), GetInput{})
+	if !errors.Is(err, ErrIDRequired) {
 		t.Fatalf("error = %v, want ErrIDRequired", err)
 	}
 }
 
 func TestExecuteRejectsUnknownID(t *testing.T) {
-	_, err := capabilityget.New(source{}).Execute(context.Background(), capabilityget.Input{ID: "missing"})
-	if !errors.Is(err, capabilityget.ErrNotFound) {
+	_, err := newGetAction(getSource{}).Execute(context.Background(), GetInput{ID: "missing"})
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("error = %v, want ErrNotFound", err)
 	}
 }
 
 func TestOutputGoldenIncludesExecutionGuidance(t *testing.T) {
-	item := capabilityget.Capability{
+	item := Capability{
 		ID: "workbook.publish", Domain: "workbook", Verb: "publish", Surface: "tadx content workbook publish",
 		Outcome: "Publish one workbook, or preview the operation.", OperationType: "deliver", Owner: "cli", Disposition: "ship",
 		EvidenceLevel: "docs-only", VerificationReadiness: "ready", ImplementationState: "planned",
@@ -73,7 +79,7 @@ func TestOutputGoldenIncludesExecutionGuidance(t *testing.T) {
 		UpstreamOperation: "POST /api/{version}/sites/{site-id}/workbooks", Evidence: "Official REST documentation",
 		Validation: "Captured contract test required", RemoteMutation: true, SupportsPreview: true,
 	}
-	result, err := capabilityget.New(source{item: item, ok: true}).Execute(context.Background(), capabilityget.Input{ID: item.ID})
+	result, err := newGetAction(getSource{item: item, ok: true}).Execute(context.Background(), GetInput{ID: item.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +87,7 @@ func TestOutputGoldenIncludesExecutionGuidance(t *testing.T) {
 	if err := output.Render(&rendered, result); err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile("testdata/output.toon")
+	want, err := os.ReadFile("testdata/get-output.toon")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,13 +98,13 @@ func TestOutputGoldenIncludesExecutionGuidance(t *testing.T) {
 }
 
 func TestFullOutputRetainsDelegatedContract(t *testing.T) {
-	item := capabilityget.Capability{
+	item := Capability{
 		ID: "pulse.metric.values", Domain: "pulse", Resource: "metric", Verb: "values",
 		Surface: "Tableau MCP", Outcome: "Read metric values.", OperationType: "inspect", Owner: "tableau-mcp",
 		Disposition: "delegated", ImplementationState: "external/delegated", Command: "",
 		Selectors: []string{"Metric LUID"}, Availability: "Tableau Cloud", SafetyGuard: "Use MCP", Evidence: "contract",
 	}
-	result, err := capabilityget.New(source{item: item, ok: true}).Execute(context.Background(), capabilityget.Input{ID: item.ID})
+	result, err := newGetAction(getSource{item: item, ok: true}).Execute(context.Background(), GetInput{ID: item.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

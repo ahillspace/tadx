@@ -10,8 +10,7 @@ import (
 
 	authcheck "github.com/ahillspace/tadx/actions/auth"
 	authstatus "github.com/ahillspace/tadx/actions/auth"
-	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	versionaction "github.com/ahillspace/tadx/actions/version"
 	"github.com/ahillspace/tadx/internal/cli"
@@ -24,20 +23,20 @@ import (
 
 type lister struct {
 	calls int
-	input capabilitylist.Input
+	input capabilityops.ListInput
 }
 
-func (a *lister) Execute(_ context.Context, input capabilitylist.Input) (capabilitylist.Output, error) {
+func (a *lister) ListCapabilities(_ context.Context, input capabilityops.ListInput) (capabilityops.ListOutput, error) {
 	a.calls++
 	a.input = input
-	return capabilitylist.Output{Capabilities: []capabilitylist.Capability{}}, nil
+	return capabilityops.ListOutput{Capabilities: []capabilityops.Capability{}}, nil
 }
 
 type getter struct{ id string }
 
-func (a *getter) Execute(_ context.Context, input capabilityget.Input) (capabilityget.Output, error) {
+func (a *getter) GetCapability(_ context.Context, input capabilityops.GetInput) (capabilityops.GetOutput, error) {
 	a.id = input.ID
-	return capabilityget.Output{Capability: capabilityget.Capability{ID: input.ID}}, nil
+	return capabilityops.GetOutput{Capability: capabilityops.Capability{ID: input.ID}}, nil
 }
 
 type renderer struct{ values []any }

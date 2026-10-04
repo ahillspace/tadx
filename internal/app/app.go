@@ -15,8 +15,7 @@ import (
 	"time"
 
 	authops "github.com/ahillspace/tadx/actions/auth"
-	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	lastaction "github.com/ahillspace/tadx/actions/last"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -82,7 +81,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return renderError(stdout, err, renderOptions)
 	}
 	defer runtime.Close()
-	source := registrySource{runtime: runtime}
+	discovery := capabilityops.New(capabilityops.Ports{ManagedPolicy: runtime.managedPolicy, ResolveMutationPolicy: runtime.mutationPolicy})
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
@@ -133,8 +132,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
 		ContentLabels:         contentLabelDependencies(runtime),
 		AdminLabels:           adminLabelDependencies(runtime),
-		Lister:                capabilitylist.New(source),
-		Getter:                capabilityget.New(source),
+		Lister:                discovery,
+		Getter:                discovery,
 		Renderer:              writerRenderer{writer: stdout, options: renderOptions, capture: capture},
 		RenderOptions:         renderOptions,
 		BatchSelectors:        capability.BatchSelectors(),
@@ -780,29 +779,11 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookops.Publish
 	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath, ValidationWarnings: warnings}, err
 }
 
-type registrySource struct{ runtime *runtimeDependencies }
-
-func (s registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {
-	items := capability.AllDiscoveries()
-	for index := range items {
-		s.applyManagedDiscovery(&items[index])
-	}
-	return items, nil
-}
-
 type registryMutationPolicy struct{}
 
 func (registryMutationPolicy) IsRemoteMutation(id string) bool {
 	definition, ok := capability.Lookup(id)
 	return ok && definition.RemoteMutation
-}
-
-func (s registrySource) Get(_ context.Context, id string) (capabilityget.Capability, bool) {
-	item, ok := capability.LookupDiscovery(id)
-	if ok {
-		s.applyManagedDiscovery(&item)
-	}
-	return item, ok
 }
 
 func registryUse(id string) string {

@@ -1,13 +1,11 @@
-// Package get implements exact capability discovery.
-package get
+package capability
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/ahillspace/tadx/internal/capability"
+	registry "github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -18,26 +16,11 @@ var (
 	ErrNotFound = errors.New("capability not found")
 )
 
-// Source resolves an exact registry ID.
-type Source interface {
-	Get(context.Context, string) (Capability, bool)
-}
-
-// Action gets one capability without depending on CLI plumbing.
-type Action struct {
-	source Source
-}
-
-// New constructs a capability get action.
-func New(source Source) *Action {
-	return &Action{source: source}
-}
-
-// Execute returns one exact capability definition.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+// getFromItem projects one exact capability without a second registry lookup.
+func getFromItem(input GetInput, item Capability, ok, mutationsEnabled bool) (GetOutput, error) {
 	id := strings.TrimSpace(input.ID)
 	if id == "" {
-		return Output{}, &errs.Error{
+		return GetOutput{}, &errs.Error{
 			ID:         "capability.get.usage",
 			Kind:       errs.KindUsage,
 			Operation:  "capability.get",
@@ -46,9 +29,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			Validation: []errs.ValidationDetail{{Field: "id", Code: "required", Message: ErrIDRequired.Error()}},
 		}
 	}
-	item, ok := a.source.Get(ctx, id)
 	if !ok {
-		return Output{}, &errs.Error{
+		return GetOutput{}, &errs.Error{
 			ID:               "capability.get.not_found",
 			Kind:             errs.KindOperation,
 			Operation:        "capability.get",
@@ -59,29 +41,29 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			CorrectiveAction: "Run tadx capability list and use an exact capability ID.",
 		}
 	}
-	item.ExecutionEnabled = !item.PolicyDenied && item.ImplementationState == "implemented" && (!item.RemoteMutation || input.MutationsEnabled)
-	return Output{Capability: item, Help: []string{"tadx capability list"}}, nil
+	item.ExecutionEnabled = !item.PolicyDenied && item.ImplementationState == "implemented" && (!item.RemoteMutation || mutationsEnabled)
+	return GetOutput{Capability: item, Help: []string{"tadx capability list"}}, nil
 }
 
 // Input selects one capability by its exact registry ID.
-type Input struct {
-	ID               string `json:"id"`
-	MutationsEnabled bool   `json:"-"`
+type GetInput struct {
+	ID          string `json:"id"`
+	Environment string `json:"-"`
 }
 
 // Capability is the detailed discovery view of one registry entry.
 //
 // The neutral representation is shared with capability.list full output so
 // that the two commands cannot drift in their contract fields.
-type Capability = capability.Discovery
+type Capability = registry.Discovery
 
 // Output is the stable capability detail result.
-type Output struct {
+type GetOutput struct {
 	Capability Capability `json:"capability"`
 	Help       []string   `json:"help"`
 }
 
-func (o Output) CompactOutput() any {
+func (o GetOutput) CompactOutput() any {
 	if o.Capability.Disposition == "delegated" {
 		o.Capability.Disposition = "Out of scope"
 		o.Capability.ImplementationState = "out_of_scope"
@@ -94,4 +76,4 @@ func (o Output) CompactOutput() any {
 
 // FullOutput retains the complete bounded contract, including delegated
 // capabilities, without applying the compact out-of-scope projection.
-func (o Output) FullOutput() any { return o }
+func (o GetOutput) FullOutput() any { return o }

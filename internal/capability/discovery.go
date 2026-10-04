@@ -2,6 +2,11 @@ package capability
 
 import "strings"
 
+// IsPolicyRecoveryOperation identifies commands that can inspect or repair policy.
+func IsPolicyRecoveryOperation(id string) bool {
+	return id == "policy.install" || id == "policy.samples" || id == "policy.validate" || id == "policy.status"
+}
+
 // Discovery is the neutral, bounded contract representation shared by
 // capability discovery actions.
 type Discovery struct {

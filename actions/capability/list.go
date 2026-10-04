@@ -1,12 +1,10 @@
-// Package list implements bounded capability discovery.
-package list
+package capability
 
 import (
-	"context"
 	"strconv"
 	"strings"
 
-	"github.com/ahillspace/tadx/internal/capability"
+	registry "github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
@@ -19,25 +17,10 @@ const (
 	MaxLimit = 10000
 )
 
-// Source supplies fresh registry discovery views in stable ID order.
-type Source interface {
-	List(context.Context) ([]Capability, error)
-}
-
-// Action lists capabilities without depending on CLI plumbing.
-type Action struct {
-	source Source
-}
-
-// New constructs a capability list action.
-func New(source Source) *Action {
-	return &Action{source: source}
-}
-
-// Execute returns a deterministic, bounded capability inventory.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+// listFromItems returns a deterministic, bounded capability inventory.
+func listFromItems(input ListInput, items []Capability, mutationsEnabled bool) (ListOutput, error) {
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
-		return Output{}, usageError("--all cannot be combined with --limit or --cursor")
+		return ListOutput{}, usageError("--all cannot be combined with --limit or --cursor")
 	}
 	limit := input.Limit
 	if input.All {
@@ -46,26 +29,22 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		limit = DefaultLimit
 	}
 	if limit < 1 || limit > MaxLimit {
-		return Output{}, usageError("limit must be between 1 and 10000")
+		return ListOutput{}, usageError("limit must be between 1 and 10000")
 	}
 	offset := 0
 	if input.Cursor != "" {
 		parsed, err := strconv.Atoi(input.Cursor)
 		if err != nil || parsed < 0 {
-			return Output{}, usageError("cursor must be a non-negative integer")
+			return ListOutput{}, usageError("cursor must be a non-negative integer")
 		}
 		offset = parsed
 	}
 
-	items, err := a.source.List(ctx)
-	if err != nil {
-		return Output{}, err
-	}
 	if items == nil {
 		items = []Capability{}
 	}
 	for index := range items {
-		items[index].ExecutionEnabled = !items[index].PolicyDenied && items[index].ImplementationState == "implemented" && (!items[index].RemoteMutation || input.MutationsEnabled)
+		items[index].ExecutionEnabled = !items[index].PolicyDenied && items[index].ImplementationState == "implemented" && (!items[index].RemoteMutation || mutationsEnabled)
 	}
 	filtered := items[:0]
 	for _, item := range items {
@@ -74,10 +53,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		}
 	}
 	if input.All && len(filtered) > MaxLimit {
-		return Output{}, usageError("--all exceeds the 10000-record bound; use narrower filters")
+		return ListOutput{}, usageError("--all exceeds the 10000-record bound; use narrower filters")
 	}
 	if offset > len(filtered) {
-		return Output{}, usageError("cursor is past the end of the filtered result")
+		return ListOutput{}, usageError("cursor is past the end of the filtered result")
 	}
 	end := min(offset+limit, len(filtered))
 	pageItems := filtered[offset:end]
@@ -92,7 +71,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		}
 	}
 	help, nextCommand := help(input, limit, nextCursor, end, pageItems)
-	return Output{
+	return ListOutput{
 		Page:         Pagination{Returned: len(pageItems), Total: len(filtered), Limit: limit, NextCursor: nextCursor},
 		Capabilities: pageItems,
 		Counts:       Counts{Returned: len(pageItems), Matched: len(filtered), OutOfScope: outOfScope},
@@ -101,7 +80,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}, nil
 }
 
-func matches(input Input, item Capability) bool {
+func matches(input ListInput, item Capability) bool {
 	if !equalFilter(input.Domain, item.Domain) || !equalFilter(input.Resource, item.Resource) || !equalFilter(input.Owner, item.Owner) {
 		return false
 	}
@@ -115,7 +94,7 @@ func equalFilter(filter, value string) bool {
 	return filter == "" || strings.EqualFold(filter, value)
 }
 
-func help(input Input, limit int, nextCursor string, nextOffset int, items []Capability) ([]string, string) {
+func help(input ListInput, limit int, nextCursor string, nextOffset int, items []Capability) ([]string, string) {
 	var result []string
 	if len(items) > 0 {
 		result = []string{commandhint.Environment(input.Environment, "capability", "get", items[0].ID)}
@@ -151,30 +130,25 @@ func usageError(summary string) error {
 }
 
 // Input controls capability discovery.
-type Input struct {
-	Environment      string `json:"environment,omitempty"`
-	Domain           string `json:"domain,omitempty"`
-	Resource         string `json:"resource,omitempty"`
-	Owner            string `json:"owner,omitempty"`
-	Product          string `json:"product,omitempty"`
-	Mutation         *bool  `json:"mutation,omitempty"`
-	All              bool   `json:"all,omitzero"`
-	Cursor           string `json:"cursor,omitempty"`
-	Limit            int    `json:"limit,omitempty"`
-	Full             bool   `json:"-"`
-	JSON             bool   `json:"-"`
-	MutationsEnabled bool   `json:"-"`
+type ListInput struct {
+	Environment string `json:"environment,omitempty"`
+	Domain      string `json:"domain,omitempty"`
+	Resource    string `json:"resource,omitempty"`
+	Owner       string `json:"owner,omitempty"`
+	Product     string `json:"product,omitempty"`
+	Mutation    *bool  `json:"mutation,omitempty"`
+	All         bool   `json:"all,omitzero"`
+	Cursor      string `json:"cursor,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
+	Full        bool   `json:"-"`
+	JSON        bool   `json:"-"`
 }
-
-// Capability is the detailed discovery view retained for full output and
-// saved results. Compact output projects it to capability.Summary.
-type Capability = capability.Discovery
 
 // Pagination describes a bounded result page and its continuation.
 type Pagination = output.Page
 
 // Output is the stable capability list result.
-type Output struct {
+type ListOutput struct {
 	Page           Pagination   `json:"page"`
 	Capabilities   []Capability `json:"capabilities"`
 	Counts         Counts       `json:"counts"`
@@ -196,18 +170,18 @@ type scopeBoundary struct {
 	Status string `json:"status"`
 }
 type visibleOutput struct {
-	Page           Pagination           `json:"page"`
-	Capabilities   []capability.Summary `json:"capabilities"`
-	Counts         Counts               `json:"counts"`
-	MutationPolicy string               `json:"mutation_policy,omitempty"`
-	NextCommand    string               `json:"next_command,omitempty"`
-	OutOfScope     []scopeBoundary      `json:"out_of_scope,omitempty"`
-	Help           []string             `json:"help"`
+	Page           Pagination         `json:"page"`
+	Capabilities   []registry.Summary `json:"capabilities"`
+	Counts         Counts             `json:"counts"`
+	MutationPolicy string             `json:"mutation_policy,omitempty"`
+	NextCommand    string             `json:"next_command,omitempty"`
+	OutOfScope     []scopeBoundary    `json:"out_of_scope,omitempty"`
+	Help           []string           `json:"help"`
 }
 
-func (o Output) CompactOutput() any {
+func (o ListOutput) CompactOutput() any {
 	result := visibleOutput{
-		Page: o.Page, Capabilities: []capability.Summary{}, Counts: o.Counts,
+		Page: o.Page, Capabilities: []registry.Summary{}, Counts: o.Counts,
 		MutationPolicy: o.MutationPolicy, NextCommand: o.NextCommand, Help: o.Help,
 	}
 	for _, item := range o.Capabilities {
@@ -222,6 +196,6 @@ func (o Output) CompactOutput() any {
 
 // FullOutput retains the same bounded page and expands each row to the
 // contract representation shared by capability get.
-func (o Output) FullOutput() any {
+func (o ListOutput) FullOutput() any {
 	return o
 }

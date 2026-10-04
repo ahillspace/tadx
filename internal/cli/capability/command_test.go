@@ -5,20 +5,20 @@ import (
 	"errors"
 	"testing"
 
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	cliCapability "github.com/ahillspace/tadx/internal/cli/capability"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
 
 type listAction struct {
-	input capabilitylist.Input
-	out   capabilitylist.Output
+	input capabilityops.ListInput
+	out   capabilityops.ListOutput
 	err   error
 	calls int
 }
 
-func (a *listAction) Execute(_ context.Context, input capabilitylist.Input) (capabilitylist.Output, error) {
+func (a *listAction) ListCapabilities(_ context.Context, input capabilityops.ListInput) (capabilityops.ListOutput, error) {
 	a.calls++
 	a.input = input
 	return a.out, a.err
@@ -87,26 +87,25 @@ func TestListAllRejectsLimitAndCursor(t *testing.T) {
 
 func TestListReturnsStaticRowsWhenMutationPolicyIsUnavailable(t *testing.T) {
 	policyErr := &errs.Error{ID: "configuration.load", Kind: errs.KindOperation, Operation: "configuration", Summary: "invalid profile"}
-	a := &listAction{out: capabilitylist.Output{Capabilities: []capabilitylist.Capability{{ID: "capability.list"}}}}
+	a := &listAction{out: capabilityops.ListOutput{Capabilities: []capabilityops.Capability{{ID: "capability.list"}}, MutationPolicy: "unavailable"}, err: policyErr}
 	r := &renderer{}
 	root := &cobra.Command{Use: "tadx"}
 	root.AddCommand(cliCapability.New(cliCapability.Dependencies{
 		Lister: a, Renderer: r, ListUse: "list", ListShort: "list",
-		ResolveMutationPolicy: func(string) (bool, string, error) { return false, "", policyErr },
 	}))
 	root.SetArgs([]string{"capability", "list"})
 	err := root.Execute()
 	if err == nil || !errors.Is(err, policyErr) {
 		t.Fatalf("error = %v, want policy error", err)
 	}
-	if a.input.MutationsEnabled {
-		t.Fatalf("partial input = %#v", a.input)
+	if a.calls != 1 {
+		t.Fatalf("list calls = %d", a.calls)
 	}
 	carrier, ok := err.(interface{ OperationOutput() any })
 	if !ok {
 		t.Fatalf("error does not carry output: %T", err)
 	}
-	partial, ok := carrier.OperationOutput().(capabilitylist.Output)
+	partial, ok := carrier.OperationOutput().(capabilityops.ListOutput)
 	if !ok || partial.MutationPolicy != "unavailable" {
 		t.Fatalf("partial output = %#v", carrier.OperationOutput())
 	}

@@ -4,20 +4,19 @@ package capability
 import (
 	"context"
 
-	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	capabilityops "github.com/ahillspace/tadx/actions/capability"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 // Lister executes capability list.
 type Lister interface {
-	Execute(context.Context, capabilitylist.Input) (capabilitylist.Output, error)
+	ListCapabilities(context.Context, capabilityops.ListInput) (capabilityops.ListOutput, error)
 }
 
 // Getter executes capability get.
 type Getter interface {
-	Execute(context.Context, capabilityget.Input) (capabilityget.Output, error)
+	GetCapability(context.Context, capabilityops.GetInput) (capabilityops.GetOutput, error)
 }
 
 // Renderer writes structured action output.
@@ -27,15 +26,13 @@ type Renderer interface {
 
 // Dependencies contains this domain's narrow wiring.
 type Dependencies struct {
-	Lister                Lister
-	Getter                Getter
-	Renderer              Renderer
-	MutationsEnabled      bool
-	ResolveMutationPolicy func(string) (bool, string, error)
-	ListUse               string
-	ListShort             string
-	GetUse                string
-	GetShort              string
+	Lister    Lister
+	Getter    Getter
+	Renderer  Renderer
+	ListUse   string
+	ListShort string
+	GetUse    string
+	GetShort  string
 }
 
 // New creates the capability command and registers its implemented operations.
@@ -77,32 +74,17 @@ func newList(deps Dependencies) *cobra.Command {
 			}
 			full, jsonOutput := presentation(command)
 			alias, _ := command.Flags().GetString("environment")
-			input := capabilitylist.Input{
+			input := capabilityops.ListInput{
 				Environment: alias,
 				Domain:      domain, Resource: resource, Owner: owner, Product: product,
 				Mutation: mutationFilter, All: all, Cursor: cursor, Limit: limit,
 				Full: full, JSON: jsonOutput,
 			}
-			enabled := deps.MutationsEnabled
-			if deps.ResolveMutationPolicy != nil {
-				var err error
-				enabled, _, err = deps.ResolveMutationPolicy(alias)
-				if err != nil {
-					// Capability metadata is local and remains useful even when
-					// the effective policy cannot be established. Keep the
-					// policy unavailable rather than treating false as disabled.
-					input.MutationsEnabled = false
-					partial, listErr := deps.Lister.Execute(command.Context(), input)
-					if listErr != nil {
-						return err
-					}
-					partial.MutationPolicy = "unavailable"
-					return clierr.WithOutput(partial, err)
-				}
-			}
-			input.MutationsEnabled = enabled
-			output, err := deps.Lister.Execute(command.Context(), input)
+			output, err := deps.Lister.ListCapabilities(command.Context(), input)
 			if err != nil {
+				if output.MutationPolicy == "unavailable" {
+					return clierr.WithOutput(output, err)
+				}
 				return err
 			}
 			return deps.Renderer.Render(output)
@@ -141,16 +123,8 @@ func newGet(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, args []string) error {
-			enabled := deps.MutationsEnabled
-			if deps.ResolveMutationPolicy != nil {
-				var err error
-				alias, _ := command.Flags().GetString("environment")
-				enabled, _, err = deps.ResolveMutationPolicy(alias)
-				if err != nil {
-					return err
-				}
-			}
-			output, err := deps.Getter.Execute(command.Context(), capabilityget.Input{ID: args[0], MutationsEnabled: enabled})
+			alias, _ := command.Flags().GetString("environment")
+			output, err := deps.Getter.GetCapability(command.Context(), capabilityops.GetInput{ID: args[0], Environment: alias})
 			if err != nil {
 				return err
 			}
