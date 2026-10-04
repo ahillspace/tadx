@@ -312,7 +312,8 @@ func localImportAllowed(file, imported string) bool {
 		// Job coordination persists observations and uses leaf locks; it has no
 		// knowledge of transport, credentials, executable actions, or the CLI.
 		if hasPathPrefix(file, "internal/jobmonitor") {
-			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/value")
+			return (path.Dir(file) == "internal/jobmonitor" && imported == "internal/errs") ||
+				matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/value")
 		}
 		// Detached operations persist bounded worker state and use the leaf lock
 		// package for cross-process coordination and the leaf replace package to

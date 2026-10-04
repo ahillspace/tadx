@@ -6,6 +6,24 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Accepted publication receipt ownership
+
+`internal/jobmonitor.Publication` owns durable result recording, accepted-receipt persistence, and bounded wait coordination.
+It never submits writes and receives explicit observation, session suspension, progress, deadline, and accepted-link callbacks.
+Identity storage precedes linking and observation; the five-second cancellation-independent persistence window remains unchanged.
+Bulk pooling, manual-only behavior, request identity, partial-error precedence, and wait-limit interpretation remain unchanged.
+Typed destination verification and resource completion remain separate pending moves from app.
+
+The first frozen draft failed compilation because two callers retained the old private wait name.
+The corrected draft passes independent focused tests, compilation, and scoped vet.
+The exact `e16b7f08423ea521b96dd8ec88d93002b9404d0d` merge independently preserves all current policy, session, and content-read changes.
+Its ten changed paths and 1,451 files have fingerprint `dc0a1283bd988e35efc2a8b1c55794f9b5bd2195e29c7974c119712fa50b618a`.
+Focused app, job-monitor, and architecture contracts pass on that merge.
+New tests cover persistence before linking/notice despite cancellation and retained request identity after link failure.
+The moved receipt-failure test follows its owner; end-to-end publication assertions remain in app.
+Evidence remains in `.tadx-refactor/publication-receipts-merge-e16/`.
+Final integrated and live acceptance remain outstanding.
+
 ## Content reads and session ownership
 
 Workbook, datasource, and flow Services own list/inspect sequencing, while their resource adapters own typed live/cache reads and inventory publication.

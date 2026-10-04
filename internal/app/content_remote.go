@@ -173,7 +173,7 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 	out, err := flowops.NewPublish(reader, adapter, adapter).Execute(ctx, input, preview)
 	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
 		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, "", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, "")
+		out.Result.ReceiptPath, saveErr = lifecycle.Record(ctx, "", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, "")
 		err = errors.Join(err, saveErr)
 	}
 	return out, err

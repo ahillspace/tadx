@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
 )
 
@@ -81,38 +78,6 @@ func TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity(t *t
 				}
 			})
 		}
-	}
-}
-
-func TestPublicationAcceptedReceiptPersistenceFailureBeforeObservation(t *testing.T) {
-	for _, noWait := range []bool{false, true} {
-		t.Run(fmt.Sprintf("no-wait=%t", noWait), func(t *testing.T) {
-			directory := filepath.Join(t.TempDir(), "blocked-receipts")
-			if err := os.WriteFile(directory, []byte("receipt storage is not a directory"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			publication := &publication{
-				runtime: &runtimeDependencies{publicationExecution: &publicationExecution{noWait: noWait}},
-				store:   jobmonitor.Store{Directory: directory},
-				base: jobmonitor.Receipt{
-					Version: 1, Operation: "workbook.publish", Environment: "production",
-					Server: "https://example.test", Site: "team-site", SiteID: "site-1",
-					CoordinationKey: "fixture-coordination",
-				},
-			}
-			receipt, _, err := publication.accepted(t.Context(), "accepted-job", "accepted-request", "PublishWorkbook")
-			failure, ok := errors.AsType[*errs.Error](err)
-			if !ok || failure.Phase != errs.PhasePersistence || failure.Outcome != errs.OutcomeUnknown || failure.TableauJobID != "accepted-job" || failure.TableauRequestID != "accepted-request" {
-				t.Fatalf("acceptance persistence error=%#v", err)
-			}
-			storageFailure, ok := errors.AsType[*os.PathError](failure.Cause)
-			if !ok || storageFailure.Op != "mkdir" || storageFailure.Path != directory {
-				t.Fatalf("underlying error=%#v, want blocked receipt directory failure", failure.Cause)
-			}
-			if receipt.Observation.ID != "accepted-job" || receipt.Observation.RequestID != "accepted-request" || receipt.Observation.Status != "pending" || receipt.ManualOnly != noWait {
-				t.Fatalf("acceptance receipt=%+v", receipt)
-			}
-		})
 	}
 }
 

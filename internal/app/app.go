@@ -700,7 +700,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 	out, err := action.Execute(ctx, input, preview)
 	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
 		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
+		out.Result.ReceiptPath, saveErr = lifecycle.Record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
 		err = errors.Join(err, saveErr)
 	}
 	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !s.runtime.publicationNoWait() {
