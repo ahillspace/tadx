@@ -29,6 +29,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `internal/jobmonitor` | Accepted Tableau job receipts, bounded observation, and shared monitoring coordination |
 | `internal/workspace`, `internal/artifact` | Named workspace registration, native packages, provenance, and dirty guards |
 | `internal/cache` | SQLite cache generations, scoped observations, and local queries |
+| `internal/inventory` | Neutral bounded collection, coverage facts, and scoped cache publication |
 | `internal/config` | Nonsecret configuration, environment aliases, and opaque credential references |
 | `internal/output`, `internal/toon` | Bounded output projections, redaction, and TOON encoding |
 | `internal/capability` | Typed capability facts, validation, and command bindings |
@@ -49,7 +50,8 @@ For project commands, `internal/cli/content` calls the named operation in `actio
 The project service validates input before `internal/app` opens a target-bound provider.
 `internal/resources/project` implements the live, cached, and inventory-read ports that the service consumes.
 Complete live search uses the composed project service; bounded live search uses its list action with a direct resource list port.
-Shared inventory collection, cache publication, and read-source policy currently remain in `internal/app`.
+Shared collection, scoped cache publication, and source/coverage facts live in `internal/inventory`.
+App still binds action-specific pages and outputs and owns cache-only reads, full-generation refresh, and search routing pending their remaining ownership moves.
 
 For catalog commands, `internal/cli/catalog` calls one service in `actions/catalog`.
 The service validates input before opening its target-bound provider and retains separate typed read and mutation sequences.

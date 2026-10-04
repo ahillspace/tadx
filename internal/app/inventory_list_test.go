@@ -6,7 +6,6 @@ import (
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/readsource"
-	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -144,40 +143,6 @@ func TestFullLiveWorkbookListRejectsInvalidProjectCoverageAndPreservesCache(t *t
 	}
 	if cached.GenerationID != seed.GenerationID {
 		t.Fatalf("cache generation changed from %q to %q", seed.GenerationID, cached.GenerationID)
-	}
-}
-
-func TestInventoryResourceEntriesSkipsInvalidProjectReferencesAcrossContentScopes(t *testing.T) {
-	projectDependency := tableaucache.InventoryTable{
-		Scope: tableaucache.ScopeProjects,
-		Rows:  [][]any{{"project-ops", "Ops", ""}},
-	}
-	tests := []struct {
-		name  string
-		scope tableaucache.Scope
-		rows  [][]any
-	}{
-		{name: "datasources", scope: tableaucache.ScopeDatasources, rows: [][]any{
-			{"datasource-valid", "Valid", "project-ops", "", "", `{"luid":"datasource-valid","name":"Valid"}`},
-			{"datasource-invalid", "Invalid", "project-missing", "", "", `{"luid":"datasource-invalid","name":"Invalid"}`},
-		}},
-		{name: "flows", scope: tableaucache.ScopeFlows, rows: [][]any{
-			{"flow-valid", "Valid", "project-ops", "", "tflx", "", `{"luid":"flow-valid","name":"Valid"}`},
-			{"flow-invalid", "Invalid", "", "", "tflx", "", `{"luid":"flow-invalid","name":"Invalid"}`},
-		}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entries, skipped, err := inventoryResourceEntries(tableaucache.InventorySnapshot{
-				Scope: test.scope, Rows: test.rows, Dependencies: []tableaucache.InventoryTable{projectDependency},
-			}, "production", "team-site", time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(entries) != 1 || skipped != 1 || !strings.HasSuffix(entries[0].LUID, "-valid") {
-				t.Fatalf("entries = %#v, skipped = %d", entries, skipped)
-			}
-		})
 	}
 }
 

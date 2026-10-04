@@ -2,10 +2,11 @@ package app
 
 import (
 	"context"
-	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	inventorycore "github.com/ahillspace/tadx/internal/inventory"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
@@ -43,7 +44,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = validateInventoryAll(input.All, result.Source)
+			resultErr = inventorycore.ValidateAll(input.All, result.Source)
 		}
 	}()
 	if input.Cache || legacyInventorySnapshot(input.Cursor) {
@@ -82,25 +83,22 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 	}
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
+		inventory, err := inventorycore.Collect(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeDatasources, input.Environment, input.Site, observedAt, inventorycore.Options{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
-			return datasourceops.ListOutput{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
+			return datasourceops.ListOutput{}, inventorycore.RefreshError("datasource.list", input.Environment, input.Site, err)
 		}
-		reader := inventory.memoryReader()
+		reader := inventoryMemoryReader{entries: inventory.Entries, requestID: inventory.FinalRequestID()}
 		reader.allowContinuation = true
 		output, err := datasourceops.List(ctx, reader, input)
 		if err != nil {
 			return output, err
 		}
-		if inventory.cacheErr != nil {
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-		} else if inventory.filtered {
-			output.Source = liveSource(c.runtime.now)
-		} else {
-			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		source, help := inventory.SourceAndHelp(observedAt, c.runtime.now)
+		output.Source = source
+		if help != "" {
+			output.Help = append(output.Help, help)
 		}
-		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.RequestID = inventory.FinalRequestID()
 		return output, nil
 	}
 	if discovery.projects == nil {

@@ -9,7 +9,6 @@ import (
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"github.com/ahillspace/tadx/internal/cache"
 	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
-	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 func TestCacheSearchReportsScopeGeneration(t *testing.T) {
@@ -83,12 +82,5 @@ func TestReadThroughCacheSearchContinuesAcrossObservationTimes(t *testing.T) {
 	second, err := lister.List(context.Background(), "workbook", first.NextCursor, 100)
 	if err != nil || len(second.Items) != 1 {
 		t.Fatalf("second page: %#v %v", second, err)
-	}
-}
-
-func TestInventoryPreservesSlashProjectDisplayName(t *testing.T) {
-	projects, err := inventoryProjects(tableaucache.InventorySnapshot{Scope: tableaucache.ScopeProjects, Rows: [][]any{{"p", "A/B", ""}}})
-	if err != nil || projects["p"].path != "A/B" {
-		t.Fatalf("slash project = %#v, error = %v", projects, err)
 	}
 }

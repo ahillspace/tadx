@@ -1,6 +1,6 @@
 # Architecture implementation status
 
-Status: project follow-up and catalog consolidation are integrated; other ownership moves and live acceptance remain incomplete.
+Status: project, catalog, auth, agent/version, and initial shared inventory changes are integrated; full migration and candidate gates remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -230,7 +230,7 @@ Their surviving assertions use the service boundary, and the action test count r
 Independent review and focused catalog, CLI, architecture, and native-client tests pass.
 Mechanical integration verifies the complete draft fingerprint and all 68 changed paths against their baseline, then copies 43 files and removes 25 obsolete tracked files.
 Those deletions remain recoverable from Git; the combined candidate still requires integrated gates.
-Shared inventory extraction is prepared separately and has no integrated implementation yet.
+The initial shared inventory extraction is integrated as described below; typed readers and full-generation refresh remain later ownership moves.
 
 ### Agent and version consolidation
 
@@ -260,6 +260,19 @@ Subsequent checks disable Python bytecode generation and use explicit ordinal fi
 The clean pre-overlap-correction auth gate run passes eight controls and detects nine seeded defects, but belongs to its earlier source fingerprint.
 The integrated candidate must rerun those gates; historical results are not attributed to the final merged source.
 The expanded initial manifest adds two portable restoration-reporting controls and two seeded defects without weakening existing assertions.
+
+### Shared inventory collection
+
+The independently reviewed 14-path inventory slice moves neutral collection, row projection, completeness, and scoped cache publication to `internal/inventory`.
+Six app callers use it directly; filtered upsert and unfiltered scope replacement retain their different semantics.
+Shared source and warning facts remain separate from each action's output binding.
+The reviewed source fingerprint is `dad18c267b0045f15707f69c43c909fc21bff6fca3566423020dc87d8de6544a` against base `2010844`.
+The architecture merge receives a separate independent check and retains the exact project, version, and auth exceptions.
+Its new inventory fixtures exercise five permitted and eleven rejected dependencies.
+Focused inventory, architecture, and app tests pass; existing CLI tests and moved pure assertions survive.
+Mechanical integration copies 13 unchanged reviewed paths and the checked architecture merge, with no deletions.
+Typed page readers, cache-only reads, full-generation refresh, and search routing remain explicitly pending; this slice is not full D4 completion.
+Complete integrated gates remain pending.
 
 ## Acceptance dependencies
 

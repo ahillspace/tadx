@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"errors"
-	flowops "github.com/ahillspace/tadx/actions/flow"
 	"path/filepath"
 	"strings"
 
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectops "github.com/ahillspace/tadx/actions/project"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/identity"
+	inventorycore "github.com/ahillspace/tadx/internal/inventory"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
@@ -101,7 +102,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowops.Lis
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = validateInventoryAll(input.All, result.Source)
+			resultErr = inventorycore.ValidateAll(input.All, result.Source)
 		}
 	}()
 	if input.Cache || legacyInventorySnapshot(input.Cursor) {
@@ -129,25 +130,22 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowops.Lis
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
+		inventory, err := inventorycore.Collect(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeFlows, input.Environment, input.Site, observedAt, inventorycore.Options{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
-			return flowops.ListOutput{}, inventoryRefreshError("flow.list", input.Environment, input.Site, err)
+			return flowops.ListOutput{}, inventorycore.RefreshError("flow.list", input.Environment, input.Site, err)
 		}
-		reader := inventory.memoryReader()
+		reader := inventoryMemoryReader{entries: inventory.Entries, requestID: inventory.FinalRequestID()}
 		reader.allowContinuation = true
 		output, err := flowops.List(ctx, reader, input)
 		if err != nil {
 			return output, err
 		}
-		if inventory.cacheErr != nil {
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-		} else if inventory.filtered {
-			output.Source = liveSource(c.runtime.now)
-		} else {
-			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		source, help := inventory.SourceAndHelp(observedAt, c.runtime.now)
+		output.Source = source
+		if help != "" {
+			output.Help = append(output.Help, help)
 		}
-		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.RequestID = inventory.FinalRequestID()
 		return output, nil
 	}
 	output, err := flowops.List(ctx, flowListReader{connection.flows}, input)

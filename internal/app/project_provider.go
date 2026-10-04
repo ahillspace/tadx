@@ -6,6 +6,7 @@ import (
 
 	projectops "github.com/ahillspace/tadx/actions/project"
 	"github.com/ahillspace/tadx/internal/cache"
+	inventorycore "github.com/ahillspace/tadx/internal/inventory"
 	"github.com/ahillspace/tadx/internal/readsource"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
@@ -42,7 +43,7 @@ func (p projectProvider) ListFilter(input projectops.ListInput) (string, error) 
 }
 
 func (p projectProvider) ValidateComplete(all bool, source *readsource.Metadata) error {
-	return validateInventoryAll(all, source)
+	return inventorycore.ValidateAll(all, source)
 }
 
 func (p projectProvider) Now() time.Time { return p.commands.runtime.now() }
@@ -74,12 +75,12 @@ type projectInventoryPort struct {
 
 func (p projectInventoryPort) CollectProjects(ctx context.Context, filter string, observedAt time.Time) (projectops.CollectedList, error) {
 	environment, site := p.connection.environment.Alias, p.connection.environment.SiteContentURL
-	inventory, err := collectResourceInventory(ctx, p.connection.inventory, p.commands.cacheStore(environment), tableaucache.ScopeProjects, environment, site, observedAt, inventoryCollectionOptions{MaxConcurrency: p.connection.environment.CacheMaxConcurrency, Filter: filter})
+	inventory, err := inventorycore.Collect(ctx, p.connection.inventory, p.commands.cacheStore(environment), tableaucache.ScopeProjects, environment, site, observedAt, inventorycore.Options{MaxConcurrency: p.connection.environment.CacheMaxConcurrency, Filter: filter})
 	if err != nil {
-		return projectops.CollectedList{}, inventoryRefreshError("project.list", environment, site, err)
+		return projectops.CollectedList{}, inventorycore.RefreshError("project.list", environment, site, err)
 	}
-	reader := resourceproject.InventoryListPort{Entries: inventory.entries, RequestID: finalRequestID(inventory.requestIDs), AllowContinuation: true}
-	source, help := inventory.sourceAndHelp(observedAt, p.commands.runtime.now)
+	reader := resourceproject.InventoryListPort{Entries: inventory.Entries, RequestID: inventory.FinalRequestID(), AllowContinuation: true}
+	source, help := inventory.SourceAndHelp(observedAt, p.commands.runtime.now)
 	return projectops.CollectedList{Reader: reader, RequestID: reader.RequestID, Source: source, Help: help}, nil
 }
 

@@ -3,20 +3,18 @@ package app
 import (
 	"context"
 	"fmt"
-	projectops "github.com/ahillspace/tadx/actions/project"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/readsource"
-	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 func TestIncompleteFullInventoryFailsWithoutReplacingCache(t *testing.T) {
@@ -110,22 +108,5 @@ func TestProjectInspectCacheRetainsCanonicalPathAfterFullRefresh(t *testing.T) {
 	got, err := newRemoteContentCommands(runtime).dependencies().ProjectInspector.InspectProject(ctx, projectops.InspectInput{Environment: "production", Cache: true, Selector: identity.Selector{LUID: "child"}})
 	if err != nil || got.Project.Path != "Department/Ops" || got.Project.Description != "Keep this detail" || got.Project.OwnerLUID != "owner" {
 		t.Fatalf("cache inspect = %#v %v", got, err)
-	}
-}
-
-func TestInventoryKeepsHealthyBranchesWhenProjectHierarchyIsMalformed(t *testing.T) {
-	entries, skipped, err := inventoryResourceEntries(tableaucache.InventorySnapshot{
-		Scope: tableaucache.ScopeWorkbooks,
-		Dependencies: []tableaucache.InventoryTable{{Scope: tableaucache.ScopeProjects, Rows: [][]any{
-			{"healthy", "Ops", ""}, {"slash", "Ops/Reports", ""}, {"orphan", "Orphan", "missing"},
-		}}},
-		Rows: [][]any{
-			{"good", "Good", "healthy", "", nil, "", `{}`},
-			{"good-slash", "Slash Project", "slash", "", nil, "", `{}`},
-			{"bad-orphan", "Bad Orphan", "orphan", "", nil, "", `{}`},
-		},
-	}, "dev", "site", time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC))
-	if err != nil || skipped != 1 || len(entries) != 2 || entries[0].LUID != "good" || entries[0].ProjectPath != "Ops" || entries[1].LUID != "good-slash" || entries[1].ProjectPath != "Ops/Reports" {
-		t.Fatalf("entries = %#v skipped = %d err = %v", entries, skipped, err)
 	}
 }

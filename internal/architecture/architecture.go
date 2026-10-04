@@ -227,6 +227,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/contentbatch",
 				"internal/errs",
 				"internal/identity",
+				"internal/inventory",
 				"internal/jobmonitor",
 				"internal/lastcommand",
 				"internal/managedpolicy",
@@ -258,6 +259,11 @@ func localImportAllowed(file, imported string) bool {
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
+		// Inventory coordinates only neutral cache collection and publication.
+		// Its native collector edge does not authorize other foundation packages.
+		if path.Dir(file) == "internal/inventory" {
+			return matchesExact(imported, "internal/cache", "internal/errs", "internal/readsource", "internal/tableau/cache")
+		}
 		// Metadata traversal consumes shared page records, never providers or actions.
 		if hasPathPrefix(file, "internal/paging") {
 			return imported == "internal/value"
@@ -497,6 +503,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/config") ||
 		hasPathPrefix(file, "internal/cache") ||
 		hasPathPrefix(file, "internal/identity") ||
+		hasPathPrefix(file, "internal/inventory") ||
 		hasPathPrefix(file, "internal/capability") ||
 		hasPathPrefix(file, "internal/managedpolicy") ||
 		hasPathPrefix(file, "internal/errs") ||

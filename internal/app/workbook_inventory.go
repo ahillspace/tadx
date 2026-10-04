@@ -3,9 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
-	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
+	inventorycore "github.com/ahillspace/tadx/internal/inventory"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
@@ -24,7 +25,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	}
 	defer func() {
 		if resultErr == nil {
-			resultErr = validateInventoryAll(input.All, result.Source)
+			resultErr = inventorycore.ValidateAll(input.All, result.Source)
 		}
 	}()
 	if input.Cache || legacyInventorySnapshot(input.Cursor) {
@@ -53,7 +54,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	if input.All && input.ProjectLUID != "" {
 		snapshot, err := connection.workbooks.CollectProjectWorkbooks(ctx, tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 		if err != nil {
-			return workbookops.ListOutput{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
+			return workbookops.ListOutput{}, inventorycore.RefreshError("workbook.list", input.Environment, input.Site, err)
 		}
 		output, err := workbookops.List(ctx, workbookListReader{snapshot: &snapshot}, input)
 		if err != nil {
@@ -64,25 +65,22 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	}
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
+		inventory, err := inventorycore.Collect(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventorycore.Options{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
-			return workbookops.ListOutput{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
+			return workbookops.ListOutput{}, inventorycore.RefreshError("workbook.list", input.Environment, input.Site, err)
 		}
-		reader := inventory.memoryReader()
+		reader := inventoryMemoryReader{entries: inventory.Entries, requestID: inventory.FinalRequestID()}
 		reader.allowContinuation = true
 		output, err := workbookops.List(ctx, reader, input)
 		if err != nil {
 			return output, err
 		}
-		if inventory.cacheErr != nil {
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-		} else if inventory.filtered {
-			output.Source = liveSource(c.runtime.now)
-		} else {
-			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		source, help := inventory.SourceAndHelp(observedAt, c.runtime.now)
+		output.Source = source
+		if help != "" {
+			output.Help = append(output.Help, help)
 		}
-		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.RequestID = inventory.FinalRequestID()
 		return output, nil
 	}
 	output, err := workbookops.List(ctx, workbookListReader{adapter: connection.workbooks}, input)
