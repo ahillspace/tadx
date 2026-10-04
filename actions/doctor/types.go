@@ -1,4 +1,4 @@
-package run
+package doctor
 
 // Status is one stable doctor check state.
 type Status string
@@ -21,13 +21,6 @@ type Input struct {
 type Scope struct {
 	Environment string `json:"environment,omitempty"`
 	Workspace   string `json:"workspace,omitempty"`
-}
-
-// ConfigurationState is the non-secret configuration observation.
-type ConfigurationState struct {
-	Present    bool
-	Cause      string
-	ConfigPath string
 }
 
 // PATState reports non-secret reference names and presence, never values.
@@ -53,12 +46,6 @@ type WorkspaceState struct {
 	Available      bool
 	ManifestValid  bool
 	DirtyArtifacts int
-}
-
-// LoggingState reports logging configuration without a log path.
-type LoggingState struct {
-	Enabled bool
-	Valid   bool
 }
 
 // Check is one bounded full doctor result.

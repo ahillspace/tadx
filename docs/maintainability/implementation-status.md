@@ -6,6 +6,20 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Doctor ownership
+
+The cohesive `actions/doctor` Service owns configuration, credential-readiness, logging interpretation, and ordered check aggregation.
+App binds native connectivity, cache, and workspace checks and supplies the selected configuration path lazily.
+Existing check ordering, projections, and compact/full goldens remain unchanged.
+The selected-configuration CLI regression covers path selection after argument parsing.
+
+Independent review verifies all 15 changed paths against the frozen `dfdbb59846676f966deeb18a40c7429507e15492` source.
+The 1,423-file fingerprint is `16a0c17b33342689599062736d2b35ea7d03d7f9b1d9514c2546775d95190936`.
+Focused action, CLI, and app tests, full compilation, architecture checks, and scoped vet pass.
+All changed-path preimages match the integration branch; unrelated saved-result changes remain intact.
+Ignored evidence remains in `.tadx-refactor/doctor-slice-dfdb/`.
+Final integrated and live acceptance remain outstanding.
+
 ## Protected saved-result ownership
 
 The `actions/last` Service now owns saved-operation authorization, recorded prerequisites, and legacy search-row prerequisites.

@@ -1,21 +1,16 @@
-package run
+package doctor
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
+	"os"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 )
-
-type ConfigurationChecker interface {
-	CheckConfiguration(context.Context, Scope) (ConfigurationState, error)
-}
-
-type PATChecker interface {
-	CheckPATReferences(context.Context, Scope) (PATState, error)
-}
 
 type ConnectivityChecker interface {
 	CheckConnectivity(context.Context, Scope) error
@@ -29,40 +24,35 @@ type WorkspaceChecker interface {
 	CheckWorkspace(context.Context, Scope) (WorkspaceState, error)
 }
 
-type LoggingChecker interface {
-	CheckLogging(context.Context, Scope) (LoggingState, error)
-}
-
 // Dependencies contains bounded doctor probes with explicit prerequisites.
 type Dependencies struct {
-	Configuration ConfigurationChecker
-	PAT           PATChecker
-	Connectivity  ConnectivityChecker
-	Cache         CacheChecker
-	Workspace     WorkspaceChecker
-	Logging       LoggingChecker
+	ConfigPath   func() string
+	LookupEnv    func(string) (string, bool)
+	Connectivity ConnectivityChecker
+	Cache        CacheChecker
+	Workspace    WorkspaceChecker
 }
 
-// Action runs every independent doctor probe.
-type Action struct{ dependencies Dependencies }
+// Service runs every independent doctor probe.
+type Service struct{ dependencies Dependencies }
 
-// New creates a doctor action.
-func New(dependencies Dependencies) *Action { return &Action{dependencies: dependencies} }
+// New creates a doctor service.
+func New(dependencies Dependencies) *Service { return &Service{dependencies: dependencies} }
 
 // Execute runs every bounded check without exposing dependency error text.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+func (a *Service) Execute(ctx context.Context, input Input) (Output, error) {
 	if pathLike(input.Environment) || pathLike(input.Workspace) {
 		return Output{}, &errs.Error{ID: "doctor.run.usage", Kind: errs.KindUsage, Operation: "doctor.run", Summary: "Doctor scopes must be logical names, not paths.", Retryable: errs.Bool(false), CorrectiveAction: "Provide an environment alias or workspace name.", Validation: []errs.ValidationDetail{{Field: "scope", Code: "invalid", Message: "scope contains a path separator"}}}
 	}
 	scope := Scope{Environment: input.Environment, Workspace: input.Workspace}
-	configuration := a.checkConfiguration(ctx, scope)
+	configuration := a.checkConfiguration(scope)
 	checks := []Check{configuration}
 	if configuration.Status != StatusPass {
 		for _, id := range []string{"auth.pat.references", "auth.tableau.connectivity", "cache.status", "workspace.status"} {
 			checks = append(checks, blocked(id, configuration.ID))
 		}
 	} else {
-		pat := a.checkPAT(ctx, scope)
+		pat := a.checkPAT(scope)
 		checks = append(checks, pat)
 		if pat.Status == StatusFail {
 			checks = append(checks, blocked("auth.tableau.connectivity", pat.ID))
@@ -71,7 +61,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		}
 		checks = append(checks, a.checkCache(ctx, scope), a.checkWorkspace(ctx, scope))
 	}
-	checks = append(checks, a.checkLogging(ctx, scope))
+	checks = append(checks, a.checkLogging())
 	counts := Counts{}
 	status := StatusPass
 	for _, check := range checks {
@@ -103,31 +93,61 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{commandhint.Target(scope.Environment, scope.Workspace, "doctor", "--full")}}, nil
 }
 
-func (a *Action) checkConfiguration(ctx context.Context, scope Scope) Check {
+func (a *Service) checkConfiguration(scope Scope) Check {
 	const id = "config.valid"
-	state, err := a.dependencies.Configuration.CheckConfiguration(ctx, scope)
+	path := a.dependencies.ConfigPath()
+	configuration, err := config.Load(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return fail(id, "Configuration is missing.", "Create a TADX configuration with an environment profile.")
+	}
 	if err != nil {
 		check := fail(id, "Configuration could not be validated.", "Review the selected CLI settings file, not the workspace manifest; correct the reported profile or field.")
-		check.Cause, check.ConfigPath = state.Cause, state.ConfigPath
+		check.Cause, check.ConfigPath = err.Error(), path
 		return check
 	}
-	if !state.Present {
-		return fail(id, "Configuration is missing.", "Create a TADX configuration with an environment profile.")
+	if _, err := configuration.ResolveEnvironment(scope.Environment); err != nil {
+		check := fail(id, "Configuration could not be validated.", "Review the selected CLI settings file, not the workspace manifest; correct the reported profile or field.")
+		check.Cause, check.ConfigPath = err.Error(), path
+		return check
 	}
 	return pass(id, "Configuration and environment resolution are valid.")
 }
 
-func (a *Action) checkPAT(ctx context.Context, scope Scope) (check Check) {
+func (a *Service) checkPAT(scope Scope) (check Check) {
 	const id = "auth.pat.references"
-	state, err := a.dependencies.PAT.CheckPATReferences(ctx, scope)
+	configuration, err := config.Load(a.dependencies.ConfigPath())
+	if err != nil {
+		return fail(id, "PAT references could not be checked.", "Review the selected environment PAT references.")
+	}
+	environment, err := configuration.ResolveEnvironment(scope.Environment)
+	if err != nil {
+		return fail(id, "PAT references could not be checked.", "Review the selected environment PAT references.")
+	}
+	name, namePresent := a.dependencies.LookupEnv(environment.Auth.PATNameEnv)
+	secret, secretPresent := a.dependencies.LookupEnv(environment.Auth.PATSecretEnv)
+	state := PATState{
+		ReferencesConfigured:    true,
+		NameVariablePresent:     namePresent && name != "",
+		SecretVariablePresent:   secretPresent && secret != "",
+		StoredCredentialPresent: environment.Auth.CredentialRef != "",
+		NameVariable:            environment.Auth.PATNameEnv,
+		SecretVariable:          environment.Auth.PATSecretEnv,
+	}
+	switch {
+	case state.NameVariablePresent && state.SecretVariablePresent:
+		state.Source = "environment"
+	case state.NameVariablePresent != state.SecretVariablePresent:
+		state.Source = "incomplete_environment"
+	case state.StoredCredentialPresent:
+		state.Source = "credential_store_reference"
+	default:
+		state.Source = "unavailable"
+	}
 	defer func() {
 		if state.NameVariable != "" || state.SecretVariable != "" || state.Source != "" {
 			check.PAT = &state
 		}
 	}()
-	if err != nil {
-		return fail(id, "PAT references could not be checked.", "Review the selected environment PAT references.")
-	}
 	if state.NameVariablePresent != state.SecretVariablePresent {
 		return fail(id, "One referenced PAT variable is absent.", "Set both referenced PAT variables or remove both so TADX can use the stored PAT.")
 	}
@@ -140,7 +160,7 @@ func (a *Action) checkPAT(ctx context.Context, scope Scope) (check Check) {
 	return fail(id, "No complete PAT source is configured.", "Run "+commandhint.Environment(scope.Environment, "auth", "login")+", or set both referenced PAT variables.")
 }
 
-func (a *Action) checkConnectivity(ctx context.Context, scope Scope) Check {
+func (a *Service) checkConnectivity(ctx context.Context, scope Scope) Check {
 	const id = "auth.tableau.connectivity"
 	if err := a.dependencies.Connectivity.CheckConnectivity(ctx, scope); err != nil {
 		return fail(id, "Tableau connectivity or PAT authentication failed.", "Verify the server, site, network, and PAT credentials.")
@@ -148,7 +168,7 @@ func (a *Action) checkConnectivity(ctx context.Context, scope Scope) Check {
 	return pass(id, "Tableau connectivity and PAT authentication succeeded.")
 }
 
-func (a *Action) checkCache(ctx context.Context, scope Scope) Check {
+func (a *Service) checkCache(ctx context.Context, scope Scope) Check {
 	const id = "cache.status"
 	state, err := a.dependencies.Cache.CheckCache(ctx, scope)
 	if err != nil {
@@ -166,7 +186,7 @@ func (a *Action) checkCache(ctx context.Context, scope Scope) Check {
 	return pass(id, "The current cache generation is complete and fresh.")
 }
 
-func (a *Action) checkWorkspace(ctx context.Context, scope Scope) Check {
+func (a *Service) checkWorkspace(ctx context.Context, scope Scope) Check {
 	const id = "workspace.status"
 	state, err := a.dependencies.Workspace.CheckWorkspace(ctx, scope)
 	if err != nil {
@@ -184,13 +204,13 @@ func (a *Action) checkWorkspace(ctx context.Context, scope Scope) Check {
 	return pass(id, "The selected workspace is available and valid.")
 }
 
-func (a *Action) checkLogging(ctx context.Context, scope Scope) Check {
+func (a *Service) checkLogging() Check {
 	const id = "logging.context"
-	state, err := a.dependencies.Logging.CheckLogging(ctx, scope)
-	if err != nil || !state.Valid {
+	value, enabled := a.dependencies.LookupEnv("TADX_LOG_LEVEL")
+	if enabled && strings.TrimSpace(value) == "" {
 		return warn(id, "Logging context is invalid or unavailable.", "Correct TADX_LOG_LEVEL or unset it to use nonpersistent default logging.")
 	}
-	if state.Enabled {
+	if enabled {
 		return pass(id, "Explicit logging context is configured.")
 	}
 	return pass(id, "Logging uses the nonpersistent default context.")

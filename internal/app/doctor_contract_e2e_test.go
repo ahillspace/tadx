@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	doctorrun "github.com/ahillspace/tadx/actions/doctor/run"
+	doctorrun "github.com/ahillspace/tadx/actions/doctor"
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/toon"
 )

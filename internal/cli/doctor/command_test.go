@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	doctorrun "github.com/ahillspace/tadx/actions/doctor/run"
+	doctorrun "github.com/ahillspace/tadx/actions/doctor"
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	"github.com/ahillspace/tadx/internal/errs"
 )

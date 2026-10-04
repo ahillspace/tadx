@@ -4,7 +4,7 @@ package doctor
 import (
 	"context"
 
-	doctorrun "github.com/ahillspace/tadx/actions/doctor/run"
+	doctorrun "github.com/ahillspace/tadx/actions/doctor"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"

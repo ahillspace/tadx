@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	doctor "github.com/ahillspace/tadx/actions/doctor"
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/toon"
@@ -87,5 +89,25 @@ func TestDoctorFailResultExitsOneWithoutRenderingASecondDocument(t *testing.T) {
 	}
 	if strings.Count(output, "counts:") != 1 || strings.Contains(output, "error:") {
 		t.Fatalf("doctor rendered more than one diagnostic document: %s", output)
+	}
+}
+
+func TestDoctorUsesSelectedConfigurationAfterFlagParsing(t *testing.T) {
+	root := t.TempDir()
+	selected := filepath.Join(root, "selected", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(selected), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(selected, []byte("invalid: ["), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	code := app.Run(t.Context(), []string{"doctor", "--config", selected, "--json"}, &stdout, app.Options{ConfigPath: filepath.Join(root, "default", "config.yaml")})
+	var output doctor.Output
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode doctor output: %v: %s", err, &stdout)
+	}
+	if code != 1 || len(output.Checks) != 6 || output.Checks[0].ConfigPath != selected || output.Checks[0].Status != doctor.StatusFail {
+		t.Fatalf("code=%d configuration check=%+v", code, output.Checks[0])
 	}
 }
