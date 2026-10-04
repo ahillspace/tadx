@@ -1,5 +1,5 @@
-// Package list lists the authenticated user's bounded Pulse subscriptions.
-package list
+// Package subscription owns the authenticated user's bounded Pulse subscription discovery.
+package subscription
 
 import (
 	"context"
@@ -137,18 +137,8 @@ func (o Output) CompactOutput() any {
 
 func (o Output) FullOutput() any { return o }
 
-func List(ctx context.Context, reader Reader, input Input) (Output, error) {
-	limit := input.Limit
-	if limit == 0 {
-		limit = defaultLimit
-	}
-	if input.All {
-		if input.Limit != 0 || input.Cursor != "" {
-			return Output{}, usage(input, "--all cannot be combined with --limit or --cursor.")
-		}
-		limit = maximumLimit
-	}
-	if limit < 1 || limit > maximumLimit || strings.TrimSpace(input.UserLUID) == "" {
+func listValidated(ctx context.Context, reader Reader, input Input, limit int) (Output, error) {
+	if strings.TrimSpace(input.UserLUID) == "" {
 		return Output{}, usage(input, "Pulse subscription list requires an authenticated user and a limit from 1 through 10000.")
 	}
 	token, err := decodeCursor(input.Cursor, input, limit)
@@ -291,6 +281,23 @@ func List(ctx context.Context, reader Reader, input Input) (Output, error) {
 
 func invalidResponse(input Input, summary string) error {
 	return &errs.Error{ID: "pulse.subscription.list.invalid_response", Kind: errs.KindOperation, Operation: "pulse.subscription.list", Environment: input.Environment, Site: input.Site, Summary: summary}
+}
+
+func validatedLimit(input Input) (int, error) {
+	limit := input.Limit
+	if limit == 0 {
+		limit = defaultLimit
+	}
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return 0, usage(input, "--all cannot be combined with --limit or --cursor.")
+		}
+		limit = maximumLimit
+	}
+	if limit < 1 || limit > maximumLimit {
+		return 0, usage(input, "Pulse subscription list requires an authenticated user and a limit from 1 through 10000.")
+	}
+	return limit, nil
 }
 
 func partialFailure(output Output, err error) (Output, error) {

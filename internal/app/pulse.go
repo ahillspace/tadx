@@ -11,7 +11,7 @@ import (
 
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
-	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
+	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cache"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
@@ -41,7 +41,7 @@ func (c *pulseCommands) dependencies() *pulsecli.Dependencies {
 	return &pulsecli.Dependencies{
 		DefinitionLister: c, DefinitionInspector: c, DefinitionPuller: c, DefinitionCreator: c, DefinitionDeleter: c, DefinitionPublisher: c,
 		MetricLister: c, MetricInspector: c, MetricForker: c, MetricFollowers: c, MetricFollower: c, MetricUnfollower: c, MetricDeleter: c,
-		SubscriptionLister: c,
+		SubscriptionLister: subscriptionlist.New(subscriptionProvider{commands: c}, c.runtime.now),
 	}
 }
 
@@ -72,56 +72,6 @@ func (c *pulseCommands) connect(ctx context.Context, alias string, explicit bool
 		adminClient: tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL),
 		schema:      resourcedatasource.NewSchemaAdapter(datasourceClient, fieldcatalog.NewClient(connection.transport, connection.session, connection.environment.URL)),
 	}, nil
-}
-
-func (c *pulseCommands) ListPulseSubscriptions(ctx context.Context, input subscriptionlist.Input) (subscriptionlist.Output, error) {
-	connection, err := c.connect(ctx, input.Environment, false)
-	if err != nil {
-		return subscriptionlist.Output{}, remoteSetupError("pulse.subscription.list", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.UserLUID = connection.userLUID
-	output, err := subscriptionlist.List(ctx, pulseSubscriptionListAdapter{client: connection.client}, input)
-	output.Source = liveSource(c.runtime.now)
-	return output, err
-}
-
-type pulseSubscriptionListAdapter struct{ client *tableaupulse.Client }
-
-func (a pulseSubscriptionListAdapter) ListUserSubscriptions(ctx context.Context, userLUID string, request subscriptionlist.PageRequest) (subscriptionlist.Page, error) {
-	page, err := a.client.ListUserSubscriptions(ctx, userLUID, tableaupulse.PageRequest{PageSize: request.PageSize, PageToken: request.PageToken})
-	if err != nil {
-		return subscriptionlist.Page{}, err
-	}
-	items := make([]subscriptionlist.Subscription, len(page.Subscriptions))
-	for i, item := range page.Subscriptions {
-		items[i] = subscriptionlist.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID}
-	}
-	return subscriptionlist.Page{Subscriptions: items, NextPageToken: page.NextPageToken, RequestID: page.TableauRequestID}, nil
-}
-
-func (a pulseSubscriptionListAdapter) GetMetrics(ctx context.Context, ids []string) ([]subscriptionlist.Metric, error) {
-	batch, err := a.client.BatchGetMetrics(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]subscriptionlist.Metric, len(batch))
-	for i, item := range batch {
-		items[i] = subscriptionlist.Metric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, Specification: item.Specification}
-	}
-	return items, nil
-}
-
-func (a pulseSubscriptionListAdapter) GetDefinitions(ctx context.Context, ids []string) ([]subscriptionlist.Definition, error) {
-	batch, err := a.client.BatchGetDefinitions(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]subscriptionlist.Definition, len(batch))
-	for i, item := range batch {
-		items[i] = subscriptionlist.Definition{LUID: item.LUID, Name: item.Name}
-	}
-	return items, nil
 }
 
 func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input pulsedefinition.ListInput) (pulsedefinition.ListOutput, error) {

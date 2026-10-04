@@ -6,6 +6,22 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Pulse subscription ownership
+
+Subscription discovery now uses one `actions/pulse/subscription` Service rather than a per-verb package and app operation facade.
+The Service validates local options once, binds the canonical target and authenticated user, and records live source metadata.
+The private runner retains bounded pagination, user-bound cursors, exact enrichment IDs, partial results, and native request IDs.
+`internal/resources/pulse` translates native subscription and enrichment responses; app constructs the authenticated reader.
+Definition, metric, and bundle ownership changes remain pending.
+
+Independent review held the original draft because its Service and exported runner repeated local validation.
+The corrected immutable revision removes that duplicate and exercises existing list assertions through the Service.
+Its 1,414-file ordinal fingerprint is `5b90b151e9db299bd42d9837f538dc87369b303ab65c2dfe6f42262ad49a69a4` across 11 changed paths relative to `39b470a6b371ed0bb98db01b47aa74a567e795d3`.
+All changed paths still match their baseline hashes after the intervening catalog-constructor integration.
+Focused action, resource, Pulse CLI, app E2E, architecture, full compilation, and scoped vet checks pass.
+The original and corrected source ZIPs remain separate in `.tadx-refactor/subscription-39b/` and `.tadx-refactor/subscription-revision-39b/`.
+No live subscription case has run, and final candidate acceptance remains outstanding.
+
 ## Catalog command ownership
 
 Catalog-mounted lineage and attached-label constructors now live in `internal/cli/catalog`, not `internal/cli/content`.

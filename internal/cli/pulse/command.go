@@ -10,7 +10,7 @@ import (
 
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
-	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
+	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )

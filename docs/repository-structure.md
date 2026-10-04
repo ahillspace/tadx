@@ -17,6 +17,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
 | `actions/admin` subpackages | Cohesive user, group/membership, permission, and label-definition services with explicit operation contracts |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
+| `actions/pulse/subscription` | Authenticated-user subscription discovery, bounded enrichment, and canonical continuation binding |
 | `actions/env` | Environment profile operations and configuration coordination through one service |
 | `actions/mutation` | Exact-site mutation consent status, changes, and policy observations |
 | `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |

@@ -1,4 +1,4 @@
-package list
+package subscription
 
 import (
 	"context"
@@ -41,7 +41,7 @@ func TestListContinuesOnlyReturnedIDs(t *testing.T) {
 		{Subscriptions: []Subscription{{LUID: "sub-2", MetricLUID: "metric-1", FollowerType: "GROUP", FollowerLUID: "group-1"}}},
 	}, metrics: []Metric{{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"measurement_period": "LAST_30_DAYS"}}}, definitions: []Definition{{LUID: "definition-1", Name: "Revenue"}}}
 	input := Input{Environment: "dev", Site: "site", UserLUID: "user-1"}
-	output, err := List(t.Context(), r, input)
+	output, err := listWithService(t.Context(), r, input)
 	if err != nil || output.Count != 2 || !output.Coverage.Complete || len(r.metricIDs) != 1 || len(r.metricIDs[0]) != 1 || len(r.defIDs) != 1 || output.Subscriptions[1].DefinitionName != "Revenue" || output.Subscriptions[1].FollowerType != "GROUP" {
 		t.Fatalf("output=%+v reader=%+v err=%v", output, r, err)
 	}
@@ -53,13 +53,13 @@ func TestListContinuesOnlyReturnedIDs(t *testing.T) {
 func TestListCursorBindsAuthenticatedUser(t *testing.T) {
 	r := &reader{pages: []Page{{Subscriptions: []Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "user-1"}}, NextPageToken: "next"}}, metrics: []Metric{{LUID: "metric-1", DefinitionLUID: "definition-1"}}, definitions: []Definition{{LUID: "definition-1", Name: "Revenue"}}}
 	input := Input{Environment: "dev", Site: "site", UserLUID: "user-1", Limit: 1}
-	output, err := List(t.Context(), r, input)
+	output, err := listWithService(t.Context(), r, input)
 	if err != nil || output.Coverage.NextCursor == "" || !output.Coverage.MoreAvailable || output.Count != 1 {
 		t.Fatalf("output=%+v err=%v", output, err)
 	}
 	input.Cursor = output.Coverage.NextCursor
 	input.UserLUID = "user-2"
-	if _, err := List(t.Context(), r, input); err == nil || len(r.queries) != 1 {
+	if _, err := listWithService(t.Context(), r, input); err == nil || len(r.queries) != 1 {
 		t.Fatalf("foreign cursor used: err=%v queries=%+v", err, r.queries)
 	}
 }
@@ -70,7 +70,7 @@ func TestListRejectsMismatchedDirectFollowerAndDuplicate(t *testing.T) {
 		{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "user-1"}, {LUID: "sub-1", MetricLUID: "metric-2", FollowerType: "USER", FollowerLUID: "user-1"}},
 	} {
 		r := &reader{pages: []Page{{Subscriptions: items}}}
-		if _, err := List(t.Context(), r, Input{UserLUID: "user-1"}); err == nil || len(r.metricIDs) != 0 {
+		if _, err := listWithService(t.Context(), r, Input{UserLUID: "user-1"}); err == nil || len(r.metricIDs) != 0 {
 			t.Fatalf("invalid records accepted: %v", items)
 		}
 	}
@@ -81,7 +81,7 @@ func TestListMalformedLaterRowRetainsPartialCoverage(t *testing.T) {
 		{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "user-1"},
 		{LUID: "sub-1", MetricLUID: "metric-2", FollowerType: "USER", FollowerLUID: "user-1"},
 	}}}}
-	output, err := List(t.Context(), r, Input{UserLUID: "user-1"})
+	output, err := listWithService(t.Context(), r, Input{UserLUID: "user-1"})
 	if err == nil || output.Status != "partial" || output.Count != 1 || len(output.Subscriptions) != 1 || output.Subscriptions[0].SubscriptionLUID != "sub-1" || output.Coverage.Complete || !output.Coverage.MoreAvailable {
 		t.Fatalf("output=%+v err=%v", output, err)
 	}
@@ -89,11 +89,11 @@ func TestListMalformedLaterRowRetainsPartialCoverage(t *testing.T) {
 
 func TestListDistinguishesConfirmedEmptyFromUnreadable(t *testing.T) {
 	input := Input{UserLUID: "user-1"}
-	empty, err := List(t.Context(), &reader{pages: []Page{{Subscriptions: []Subscription{}}}}, input)
+	empty, err := listWithService(t.Context(), &reader{pages: []Page{{Subscriptions: []Subscription{}}}}, input)
 	if err != nil || empty.Count != 0 || !empty.Coverage.Complete || empty.Status != "listed" {
 		t.Fatalf("empty=%+v err=%v", empty, err)
 	}
-	unreadable, err := List(t.Context(), &reader{pageErr: errors.New("unavailable")}, input)
+	unreadable, err := listWithService(t.Context(), &reader{pageErr: errors.New("unavailable")}, input)
 	if err == nil || unreadable.Status != "partial" || unreadable.Coverage.Complete || !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("unreadable=%+v err=%v", unreadable, err)
 	}
@@ -101,7 +101,16 @@ func TestListDistinguishesConfirmedEmptyFromUnreadable(t *testing.T) {
 
 func TestListEmptyUserNeverRequestsUnfilteredSubscriptions(t *testing.T) {
 	r := &reader{}
-	if _, err := List(t.Context(), r, Input{}); err == nil || len(r.queries) != 0 {
+	if _, err := listWithService(t.Context(), r, Input{}); err == nil || len(r.queries) != 0 {
 		t.Fatalf("empty user sent a request: err=%v queries=%+v", err, r.queries)
 	}
+}
+
+// listWithService exercises the public service while supplying the action
+// fixtures as an authenticated session, including empty-user rejection cases.
+func listWithService(ctx context.Context, reader Reader, input Input) (Output, error) {
+	provider := &serviceProvider{session: Session{
+		Environment: input.Environment, Site: input.Site, UserLUID: input.UserLUID, Reader: reader,
+	}}
+	return New(provider, nil).ListPulseSubscriptions(ctx, input)
 }
