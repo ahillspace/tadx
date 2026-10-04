@@ -156,6 +156,10 @@ def qualify(root, candidate_path, *, lock=None):
             and full.get("full_digest") == capture.get("complete_source_tree_digest")
             and full.get("full_ordinal_sha256") == capture.get("complete_source_ordinal_sha256"),
             "Copied complete source fingerprint differs")
+    installer = read(root / "candidate/capture/scripts/install.ps1")
+    require(sha(installer) == capture.get("installer_sha256")
+            == full.get("full_files", {}).get("scripts/install.ps1"),
+            "Copied installer source differs from complete accepted source")
     require(capture.get("registry_sha256") == sha(catalog)
             and read(root / "candidate/capture/registry.json") == catalog,
             "Captured registry differs")

@@ -116,9 +116,13 @@ class CaptureTests(unittest.TestCase):
                             manifest["source_tree_digest"])
         self.assertIn("scripts/install.ps1", full["full_files"])
         self.assertIn("scripts/install.sh", full["full_files"])
+        self.assertEqual(manifest["installer_sha256"], full["full_files"]["scripts/install.ps1"])
+        self.assertEqual((self.output / "scripts/install.ps1").read_bytes(),
+                         (self.source / "scripts/install.ps1").read_bytes())
         self.assertEqual(set(p.relative_to(self.output).as_posix() for p in self.output.rglob("*")
                              if p.is_file()), {
             "registry.json", "manifest.json", "complete-source-fingerprint.json",
+            "scripts/install.ps1",
             "windows/tadx.exe", "linux/tadx",
             "windows/build-metadata.txt", "linux/build-metadata.txt",
             "help/project.list.txt", "internal/agent/skills/tadx/SKILL.md",
@@ -234,6 +238,59 @@ class QualificationTests(unittest.TestCase):
         self.assertFalse(result["live_execution_enabled"])
         self.assertIn("g9_project_read_broker.cjs", result["worker_input_files"])
         self.assertTrue(result["blockers"])
+
+    def test_missing_or_changed_copied_installer_refuses_qualification(self):
+        installer = self.fixture.output / "candidate/capture/scripts/install.ps1"
+        original = installer.read_bytes()
+        installer.unlink()
+        with self.assertRaises((FileNotFoundError, ValueError)):
+            qualify.qualify(self.fixture.output, self.fixture.candidate,
+                            lock=self.fixture.lock)
+        installer.write_bytes(b"changed installer")
+        with self.assertRaisesRegex(ValueError, "file set or bytes|installer source"):
+            qualify.qualify(self.fixture.output, self.fixture.candidate,
+                            lock=self.fixture.lock)
+        installer.write_bytes(original)
+
+    def test_generated_windows_preflight_covers_seven_and_refuses_changed_installer(self):
+        script = """import json
+from pathlib import Path
+import sys
+import types
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / 'source'))
+from integration import g9_windows_gate as gate
+sys.modules['integration.scenario_common'] = types.ModuleType('integration.scenario_common')
+sys.modules['integration.g9_windows_host_relay'] = types.ModuleType('integration.g9_windows_host_relay')
+from integration import g9_windows_installer_profile as profile
+frozen = json.loads((root / 'candidate/capture/manifest.json').read_text())
+frozen['root'] = str(root / 'candidate/capture')
+version = gate.expected_version(frozen['source_commit'])
+for case in gate.CASES:
+    request = {'exercise': {'id': 'V-installer-windows-' + case},
+               'run_constraints': {'g9_accepted_gate_sha': frozen['source_commit'],
+                                   'g9_windows_installer_version': version}}
+    assert 'platform:windows' in profile.preflight(request, frozen)['qualified_requirements']
+installer = root / 'candidate/capture/scripts/install.ps1'
+installer.write_bytes(b'changed')
+try:
+    profile.preflight(request, frozen)
+except gate.Refused as error:
+    assert 'differs from accepted capture' in str(error)
+else:
+    raise AssertionError('changed installer passed preflight')
+installer.unlink()
+try:
+    profile.preflight(request, frozen)
+except gate.Refused as error:
+    assert 'source is missing' in str(error)
+else:
+    raise AssertionError('missing installer passed preflight')
+"""
+        result = subprocess.run([sys.executable, "-B", "-c", script,
+                                 str(self.fixture.output)], capture_output=True,
+                                text=True, encoding="utf-8", check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_generated_patch_cannot_claim_a_locked_original(self):
         record_path = self.fixture.output / "preparation.json"

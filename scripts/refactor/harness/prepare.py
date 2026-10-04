@@ -781,6 +781,11 @@ def capture_inputs(path, candidate, catalog, builds, output):
             "Complete accepted source ordinal fingerprint differs")
     result = {"candidate/capture/registry.json": read(capture_root / "registry.json")}
     result["candidate/capture/complete-source-fingerprint.json"] = full_blob
+    installer = read(capture_root / "scripts/install.ps1")
+    require(sha(installer) == source.get("installer_sha256")
+            == full["full_files"].get("scripts/install.ps1"),
+            "Captured installer source differs from complete accepted source")
+    result["candidate/capture/scripts/install.ps1"] = installer
     require(sha(result["candidate/capture/registry.json"]) == source.get("registry_sha256")
             and parse(result["candidate/capture/registry.json"]) == parse(catalog),
             "Captured registry differs from accepted catalog")
@@ -854,6 +859,7 @@ def capture_inputs(path, candidate, catalog, builds, output):
                "complete_source_tree_digest": source["complete_source_tree_digest"],
                "complete_source_ordinal_sha256": source["complete_source_ordinal_sha256"],
                "complete_source_fingerprint_sha256": source["complete_source_fingerprint_sha256"],
+               "installer_sha256": source["installer_sha256"],
                "capture_kind": source["capture_kind"], "binary": copied["windows"]["path"],
                "binary_sha256": copied["windows"]["sha256"], "binaries": copied,
                "registry_sha256": source["registry_sha256"], "skills": skills,

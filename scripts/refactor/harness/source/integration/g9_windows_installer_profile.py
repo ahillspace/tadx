@@ -56,6 +56,8 @@ def _identity(req, frozen):
     if not installer.is_file() or installer.is_symlink():
         raise gate.Refused("Exact candidate installer source is missing")
     installer_sha = hashlib.sha256(installer.read_bytes()).hexdigest()
+    if installer_sha != frozen.get("installer_sha256"):
+        raise gate.Refused("Exact candidate installer source differs from accepted capture")
     return case, source, version, binary, installer_sha
 
 

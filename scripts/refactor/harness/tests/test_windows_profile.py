@@ -58,7 +58,8 @@ class WindowsProfileTest(unittest.TestCase):
             (root / "scripts").mkdir()
             (root / "scripts/install.ps1").write_text("fixture", encoding="utf-8")
             frozen = {"source_commit": SHA40, "root": str(root),
-                      "binaries": {"windows": {"sha256": SHA64}}}
+                      "binaries": {"windows": {"sha256": SHA64}},
+                      "installer_sha256": profile.hashlib.sha256(b"fixture").hexdigest()}
             req = {"exercise": {"id": "V-installer-windows-fresh"},
                    "run_constraints": {"g9_windows_installer_version": VERSION}}
             with self.assertRaises(gate.Refused):
@@ -67,6 +68,12 @@ class WindowsProfileTest(unittest.TestCase):
             req["run_constraints"]["g9_accepted_gate_sha"] = SHA40
             self.assertIn("platform:windows", profile.preflight(req, frozen)[
                 "qualified_requirements"])
+            (root / "scripts/install.ps1").write_text("changed", encoding="utf-8")
+            with self.assertRaisesRegex(gate.Refused, "differs from accepted capture"):
+                profile.preflight(req, frozen)
+            (root / "scripts/install.ps1").unlink()
+            with self.assertRaisesRegex(gate.Refused, "source is missing"):
+                profile.preflight(req, frozen)
             req["run_constraints"]["g9_windows_installer_version"] = "1.0.0-g9.git" + "0" * 12
             with self.assertRaisesRegex(gate.Refused, "version differs"):
                 profile.preflight(req, frozen)
@@ -93,7 +100,8 @@ class WindowsProfileTest(unittest.TestCase):
                    "run_constraints": {"g9_accepted_gate_sha": SHA40,
                                        "g9_windows_installer_version": VERSION}}
             frozen = {"source_commit": SHA40, "root": str(source),
-                      "binaries": {"windows": {"sha256": SHA64}}}
+                      "binaries": {"windows": {"sha256": SHA64}},
+                      "installer_sha256": profile.hashlib.sha256(b"fixture").hexdigest()}
             prepared = profile.prepare(req, frozen, root)
             self.assertEqual(prepared["broker_guard"]["setup_commit"], "d" * 40)
             self.assertEqual(prepared["broker_guard"]["credential_input"], False)
@@ -145,7 +153,8 @@ class WindowsProfileTest(unittest.TestCase):
                    "run_constraints": {"g9_accepted_gate_sha": SHA40,
                                        "g9_windows_installer_version": VERSION}}
             frozen = {"source_commit": SHA40, "root": str(source),
-                      "binaries": {"windows": {"sha256": SHA64}}}
+                      "binaries": {"windows": {"sha256": SHA64}},
+                      "installer_sha256": profile.hashlib.sha256(b"fixture").hexdigest()}
             with self.assertRaisesRegex(RuntimeError, "synthetic fixture failure"):
                 profile.prepare(req, frozen, root)
             relay.abort_hosted.assert_called_once_with(session)

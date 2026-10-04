@@ -261,6 +261,7 @@ class PrepareTests(unittest.TestCase):
             metadata[system] = {"path": str(path), "sha256": prep.sha(path.read_bytes())}
         full_files = {"go.mod": prep.sha(b"synthetic module"),
                       "scripts/install.ps1": prep.sha(b"synthetic installer")}
+        self.put(self.capture_root / "scripts/install.ps1", b"synthetic installer")
         ordinal = "".join(f"{name} {digest}\n" for name, digest in sorted(full_files.items()))
         full = {"commit": "a" * 40, "files": {"go.mod": full_files["go.mod"]},
                 "digest": "b" * 64, "full_files": full_files,
@@ -274,6 +275,7 @@ class PrepareTests(unittest.TestCase):
             "complete_source_tree_digest": full["full_digest"],
             "complete_source_ordinal_sha256": full["full_ordinal_sha256"],
             "complete_source_fingerprint_sha256": prep.sha(full_blob),
+            "installer_sha256": full_files["scripts/install.ps1"],
             "capture_kind": "current-worktree-including-uncommitted-changes",
             "binary": str(self.windows_binary), "binary_sha256": prep.sha(self.windows_binary.read_bytes()),
             "binaries": {"windows": {"path": str(self.windows_binary),

@@ -209,7 +209,10 @@ def capture(source, output, candidate_path, catalog_path, builds, guidance_root,
     require(set(help_files) == executable and all(help_files.values()),
             "Help set differs from implemented CLI actions")
     skills = {}
-    files = {"registry.json": catalog}
+    installer = read(source / "scripts/install.ps1")
+    require(sha(installer) == before["full_files"]["scripts/install.ps1"],
+            "Installer source differs from complete accepted source")
+    files = {"registry.json": catalog, "scripts/install.ps1": installer}
     guidance_root = plain(guidance_root)
     require({p.name for p in guidance_root.iterdir()} == {"tadx", "tadx-pulse"},
             "Guidance root must contain exactly two packages")
@@ -251,6 +254,7 @@ def capture(source, output, candidate_path, catalog_path, builds, guidance_root,
         "complete_source_tree_digest": before["full_digest"],
         "complete_source_ordinal_sha256": before["full_ordinal_sha256"],
         "complete_source_fingerprint_sha256": sha(encode(before)),
+        "installer_sha256": sha(installer),
         "capture_kind": "current-worktree-including-uncommitted-changes",
         "binary": binary_entries["windows"]["path"],
         "binary_sha256": binary_entries["windows"]["sha256"],
