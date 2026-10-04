@@ -778,6 +778,22 @@ Mechanical integration checks every actual-base and candidate path hash, copies 
 Removed files remain recoverable from Git.
 Full integrated and live gates remain pending for this new source.
 
+## Windows CI fixture stabilization
+
+Hosted Windows quality run `37183298167` fails two app tests on `36ecdc1`; other platform results do not substitute for that failed job.
+Controlled diagnostic overlays reproduce the observed missing-cache-row and worker-timeout shapes without changing native operations.
+The cache fixture now establishes each exact row through bounded live read-through attempts before making its unchanged cache-only assertions.
+Permanent omission still fails the fixture precondition.
+The worker test uses a bounded 15-second completion wait instead of a five-second non-contract deadline, retaining every write, read, result, and persisted-state assertion.
+These are test fixture corrections, not evidence of a repaired production defect or proof of the original hosted timing cause.
+
+The reviewed source has exact base `b3b87b154435fb10e5323ddc17462be8d035de01`, two changed test files, and 1,584 source files.
+Its ordinal source fingerprint is `5af45b0cfc8a292802d154adb8e3241075c2287e9dd37595ad09bbcf76cc791b`.
+The retained ZIP SHA-256 is `9edd8503352055b4c78f93db0ca4c899671df7a2970e1f0222ccff6ad06148d6`.
+Independent Sol review verifies both path hashes, preserved assertions, the diagnostic evidence, focused E2E tests, and repository compilation.
+No production bytes change in this correction.
+The new source still requires a hosted Windows rerun and the remaining full candidate gates.
+
 ## Acceptance dependencies
 
 The current executable catalog contains 124 action IDs.

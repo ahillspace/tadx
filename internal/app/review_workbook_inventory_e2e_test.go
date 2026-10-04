@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/ahillspace/tadx/internal/cache"
 )
 
 func TestReviewProjectWorkbookAllScansOnceThroughCLI(t *testing.T) {
@@ -126,10 +130,30 @@ func TestReviewCachedWorkbookNameIsListFilterThroughCLI(t *testing.T) {
 					t.Fatalf("refresh: %#v", payload)
 				}
 			} else {
+				store := cache.NewTargetStore(filepath.Dir(options.ConfigPath), server.URL, "", time.Now)
+				if _, err := store.Status(t.Context(), cache.Selection{Environment: "test", SiteSelected: true}); err != nil {
+					t.Fatalf("prepare read-through cache: %v", err)
+				}
 				for index := 1; index <= 3; index++ {
-					code, payload := resultContractJSON(t, []string{"content", "workbook", "inspect", "--environment", "test", "--id", fmt.Sprintf("wb-%d", index)}, options)
-					if code != 0 {
-						t.Fatalf("read-through: %#v", payload)
+					id := fmt.Sprintf("wb-%d", index)
+					// Detail cache writes are optional. Qualify this fixture through
+					// observed live read-through, not a wall-clock assumption.
+					var observed bool
+					var lastCacheState string
+					for attempt := 0; attempt < 3; attempt++ {
+						code, payload := resultContractJSON(t, []string{"content", "workbook", "inspect", "--environment", "test", "--id", id}, options)
+						if code != 0 {
+							t.Fatalf("read-through %s: %#v", id, payload)
+						}
+						result, err := store.ReadResources(t.Context(), cache.ResourceQuery{Environment: "test", Kind: "workbook", LUID: id, Limit: 1})
+						lastCacheState = fmt.Sprintf("error=%v entries=%d", err, len(result.Entries))
+						if err == nil && len(result.Entries) == 1 && result.Entries[0].LUID == id {
+							observed = true
+							break
+						}
+					}
+					if !observed {
+						t.Fatalf("read-through fixture did not persist %s after three confirmed live reads: %s", id, lastCacheState)
 					}
 				}
 			}

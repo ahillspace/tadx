@@ -160,8 +160,9 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneO
 		if code == 0 {
 			t.Fatal("mixed failure batch unexpectedly succeeded")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("mixed failure batch worker did not finish")
+	case <-time.After(15 * time.Second):
+		record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(receipt.ID)
+		t.Fatalf("mixed failure batch worker did not finish: phase=%q record_error=%v writes=%d job_reads=%d", record.Phase, err, writes.Load(), reads.Load())
 	}
 	if writes.Load() != 2 || reads.Load() != 0 {
 		t.Fatalf("writes=%d job reads=%d, want two submissions and no no-wait polling", writes.Load(), reads.Load())
