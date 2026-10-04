@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import errno
 import json
 from pathlib import Path
 import re
@@ -13,6 +14,7 @@ import tarfile
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 import zipfile
 
 
@@ -23,6 +25,48 @@ SPEC.loader.exec_module(builder)
 
 
 class ReleaseBuildTest(unittest.TestCase):
+    def test_isolated_go_home_disables_local_telemetry(self):
+        helper = HERE.parents[0] / "run.py"
+        with builder._temporary_workspace(self.root) as scratch:
+            environment = builder._environment(
+                scratch / "home", {builder.ENVIRONMENT: builder.digest(helper)})
+            mode = subprocess.run(["go", "env", "GOTELEMETRY"], cwd=scratch,
+                                  env=environment, capture_output=True, text=True,
+                                  check=True, timeout=30)
+            self.assertEqual(mode.stdout.strip(), "off")
+
+    def test_transient_nonempty_scratch_preserves_original_refusal(self):
+        original = builder.shutil.rmtree
+        calls = []
+
+        def transient(path):
+            calls.append(path)
+            if len(calls) == 1:
+                raise OSError(errno.ENOTEMPTY, "Directory not empty", "telemetry")
+            return original(path)
+
+        with patch.object(builder.shutil, "rmtree", side_effect=transient):
+            with self.assertRaisesRegex(builder.BuildError, "toolchain differs"):
+                with builder._temporary_workspace(self.root):
+                    raise builder.BuildError("installed Go toolchain differs")
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(calls[0].exists())
+
+    def test_persistent_nonempty_scratch_refuses_and_retains_evidence(self):
+        calls = []
+
+        def persistent(path):
+            calls.append(path)
+            raise OSError(errno.ENOTEMPTY, "Directory not empty", "telemetry")
+
+        with patch.object(builder.shutil, "rmtree", side_effect=persistent):
+            with self.assertRaisesRegex(builder.BuildError,
+                                        "temporary build state could not be removed"):
+                with builder._temporary_workspace(self.root) as scratch:
+                    (scratch / "telemetry").mkdir()
+        self.assertEqual(len(calls), 30)
+        self.assertTrue(calls[0].is_dir())
+
     def test_transport_templates_match_prepared_owner_map(self):
         self.assertEqual(builder.TRANSPORT, (
             "scripts/refactor/harness/release_update/gh",

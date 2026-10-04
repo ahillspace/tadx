@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+import errno
 import gzip
 import hashlib
 import importlib.util
@@ -150,7 +151,12 @@ def _environment(home: Path, hashes: dict[str, str]) -> dict[str, str]:
     specification.loader.exec_module(helper)
     environment = helper.child_environment(home)
     environment.update({"GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "0",
-                        "GOTELEMETRY": "off", "SOURCE_DATE_EPOCH": "0", "TZ": "UTC"})
+                        "SOURCE_DATE_EPOCH": "0", "TZ": "UTC"})
+    try:
+        _run(["go", "telemetry", "off"], source=home, environment=environment,
+             timeout=30)
+    except BuildError as error:
+        raise BuildError("isolated Go telemetry could not be disabled") from error
     return environment
 
 
@@ -211,7 +217,9 @@ def _temporary_workspace(parent: Path):
             try:
                 shutil.rmtree(temporary)
                 break
-            except PermissionError as error:
+            except OSError as error:
+                if not isinstance(error, PermissionError) and error.errno != errno.ENOTEMPTY:
+                    raise
                 if attempt == 29:
                     raise BuildError("temporary build state could not be removed") from error
                 time.sleep(0.1)
