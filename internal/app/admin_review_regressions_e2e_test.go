@@ -147,6 +147,16 @@ func TestCachedGroupMembersRequireObservedCoverageThroughCLI(t *testing.T) {
 	if code, out := run(); code != 0 {
 		t.Fatalf("live inspect: code=%d output=%s", code, out)
 	}
+	store := cache.NewTargetStore(filepath.Dir(options.ConfigPath), server.URL, "", time.Now)
+	seedGroup := func(payload string) {
+		t.Helper()
+		entry := cache.ResourceEntry{Environment: "test", Site: "", Kind: "group", LUID: "group-1", Name: "Authors", Coverage: "detail", Payload: []byte(payload), ObservedAt: time.Now()}
+		if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{entry}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The cache write-through is best-effort; this test owns its coverage fixture.
+	seedGroup(`{"luid":"group-1","name":"Authors","members":[],"members_fetched":false}`)
 	for _, args := range [][]string{{"--cache", "--members"}, {"--cache", "--members", "--json"}, {"--cache", "--members", "--json", "--full"}} {
 		code, out := run(args...)
 		if code == 0 || !strings.Contains(out, "cache.detail_not_indexed") || memberReads != 0 {
@@ -156,13 +166,13 @@ func TestCachedGroupMembersRequireObservedCoverageThroughCLI(t *testing.T) {
 	if code, out := run("--members"); code != 0 || memberReads != 1 {
 		t.Fatalf("live members: code=%d reads=%d output=%s", code, memberReads, out)
 	}
+	seedGroup(`{"luid":"group-1","name":"Authors","members":[],"members_fetched":true}`)
 	for _, args := range [][]string{{"--cache", "--members"}, {"--cache", "--members", "--json"}, {"--cache", "--members", "--json", "--full"}} {
 		code, out := run(args...)
 		if code != 0 || !strings.Contains(out, "members") || !strings.Contains(out, "[]") || memberReads != 1 {
 			t.Errorf("cached observed empty members: args=%v code=%d reads=%d output=%s", args, code, memberReads, out)
 		}
 	}
-	store := cache.NewTargetStore(filepath.Dir(options.ConfigPath), server.URL, "", time.Now)
 	legacy := cache.ResourceEntry{Environment: "test", Site: "", Kind: "group", LUID: "group-1", Name: "Authors", Coverage: "detail", Payload: []byte(`{"luid":"group-1","name":"Authors","members":[]}`), ObservedAt: time.Now().Add(time.Minute)}
 	if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{legacy}); err != nil {
 		t.Fatal(err)
