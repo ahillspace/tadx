@@ -95,12 +95,16 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 				exitCode = 1
 			}
 		}
-		if err := capture.save(exitCode); err != nil {
+		var saveErr error
+		if capture.enabled {
+			capture.saved, saveErr = capture.recorder.Save(capture.operation, capture.value, exitCode)
+		}
+		if saveErr != nil {
 			warningWriter := options.Stderr
 			if warningWriter == nil {
 				warningWriter = os.Stderr
 			}
-			_ = output.RenderWithOptions(warningWriter, lastResultWarning(), output.Options{JSON: renderOptions.JSON})
+			_ = output.RenderWithOptions(warningWriter, output.LastResultWarning(), output.Options{JSON: renderOptions.JSON})
 		}
 		if capture.value != nil {
 			renderer := writerRenderer{writer: stdout, options: renderOptions, saved: capture.saved}

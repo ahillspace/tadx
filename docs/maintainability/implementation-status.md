@@ -6,6 +6,21 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Saved-result recording ownership
+
+`internal/lastcommand.Recorder` now owns snapshot, timestamp, prerequisite capture, unavailable tombstone, and bounded background persistence coordination.
+App retains process capture, selected-store construction, deferred dispatch, and renderer binding.
+`internal/output` owns the unchanged storage-warning projection.
+The recorder preserves snapshot-before-clock ordering, write-error precedence, independent two-second persistence timeout, and the saved-result flag.
+
+Independent review passes for the exact `2cf6ef1e86eb2960fe7b84a45f9f9c75d3c36e83` integration snapshot.
+Its five-path, 1,428-file fingerprint is `930b8ed62c4bf54e88b3b91c58e5d846cf1269fcc9a5710a4066a6bade812f5d`.
+Focused recorder, last, selected-config, managed-policy, and publication tests, compilation, architecture, formatting, and scoped vet pass.
+All five integration preimages match after the independent doctor change.
+Evidence remains in `.tadx-refactor/last-recorder-merge-2cf/`.
+The original recorder snapshot directory was polluted by a broad test selector; its sealed ZIP remains intact, but that directory is not acceptance evidence.
+The fresh integration snapshot has no source integrity leak.
+
 ## Doctor ownership
 
 The cohesive `actions/doctor` Service owns configuration, credential-readiness, logging interpretation, and ordered check aggregation.
@@ -33,7 +48,7 @@ Its ordinal fingerprint is `69be606efcc88c3e78374241820693e8f3956fbc524863551e20
 The intervening parser-fixture correction does not overlap any changed path.
 Independent owner, CLI, selected-config, last-result, managed-policy, architecture, full compilation, and scoped vet checks pass.
 Ignored evidence remains in `.tadx-refactor/last-reader-merge-1ba/`.
-Capture/save coordination remains a separate pending ownership slice; final integrated acceptance remains outstanding.
+Capture/save coordination is recorded separately above; final integrated acceptance remains outstanding.
 
 ## Parser fixture isolation correction
 
