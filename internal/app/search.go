@@ -76,7 +76,7 @@ func (p searchProvider) Complete(alias string) (searchaction.Session, error) {
 	lister.workbooks = workbookops.New(workbookops.Ports{Read: workbookReadProvider{commands: lister.content}})
 	lister.datasources = datasourceops.New(datasourceops.Ports{Read: &datasourceReadProvider{commands: lister.content}})
 	lister.flows = flowops.New(flowops.Ports{Read: flowReadProvider{commands: lister.content}})
-	session.Source = globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}
+	session.Source = searchaction.LiveSource{Lists: &completeLiveSearchAdapter{lister: lister}}
 	return session, nil
 }
 
@@ -95,204 +95,8 @@ func (p searchProvider) Live(ctx context.Context, alias string) (searchaction.Se
 		return session, err
 	}
 	datasourceResolver := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
-	session.Source = globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}
+	session.Source = searchaction.LiveSource{Native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), Dedicated: resourcesearch.NewAdapter(lister)}
 	return session, nil
-}
-
-type appSearchAdapter interface {
-	Search(context.Context, resourcesearch.Input) (resourcesearch.Page, error)
-}
-
-type appBoundedSearchAdapter interface {
-	SearchBounded(context.Context, resourcesearch.Input, int) (resourcesearch.Page, error)
-}
-
-type globalSearchSource struct {
-	native    appSearchAdapter
-	lists     appSearchAdapter
-	dedicated appSearchAdapter
-}
-
-func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
-	resourceInput := resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit}
-	if strings.TrimSpace(input.Terms) == "" {
-		if searchaction.CompleteListSelector(input.Type) {
-			return executeAppSearch(ctx, s.lists, resourceInput)
-		}
-		return executeAppSearch(ctx, s.dedicated, resourceInput)
-	}
-	if dedicatedSearchSelector(input.Type) {
-		return executeAppSearch(ctx, s.dedicated, resourceInput)
-	}
-	if contentSearchSelector(input.Type) {
-		return executeAppSearch(ctx, s.native, resourceInput)
-	}
-	return s.searchAll(ctx, input)
-}
-
-func executeAppSearch(ctx context.Context, adapter appSearchAdapter, input resourcesearch.Input) (searchaction.Result, error) {
-	if adapter == nil {
-		return searchaction.Result{}, errors.New("live search adapter is not configured")
-	}
-	page, err := adapter.Search(ctx, input)
-	if err != nil {
-		return searchaction.Result{}, err
-	}
-	return searchResult(page, nil), nil
-}
-
-func dedicatedSearchSelector(selector string) bool {
-	switch selector {
-	case "admin", "user", "group", "pulse", "definition", "metric":
-		return true
-	default:
-		return false
-	}
-}
-
-func contentSearchSelector(selector string) bool {
-	switch selector {
-	case "content", "workbook", "datasource", "flow", "project":
-		return true
-	default:
-		return false
-	}
-}
-
-const (
-	combinedSearchContent   = "content"
-	combinedSearchDedicated = "dedicated"
-	maxCombinedCursorBytes  = 8192
-	maxCombinedSourceBytes  = 4096
-)
-
-type combinedSearchCursor struct {
-	Version     int    `json:"v"`
-	Fingerprint string `json:"f"`
-	Phase       string `json:"p"`
-	Source      string `json:"c,omitempty"`
-	Checksum    string `json:"s"`
-}
-
-type invalidCombinedSearchCursor struct{}
-
-func (invalidCombinedSearchCursor) Error() string             { return "combined live search cursor is invalid" }
-func (invalidCombinedSearchCursor) InvalidSearchCursor() bool { return true }
-
-func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
-	if s.native == nil || s.dedicated == nil {
-		return searchaction.Result{}, errors.New("live search adapters are not configured")
-	}
-	state, err := decodeCombinedSearchCursor(input.Cursor, input)
-	if err != nil {
-		return searchaction.Result{}, err
-	}
-	if state.Phase == combinedSearchContent {
-		page, err := s.native.Search(ctx, resourcesearch.Input{
-			Types: []string{"datasource", "flow", "project", "workbook"}, Terms: input.Terms,
-			ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: state.Source, Limit: input.Limit,
-		})
-		if err != nil {
-			return searchaction.Result{}, err
-		}
-		if page.NextCursor != "" {
-			if len(page.NextCursor) > maxCombinedSourceBytes {
-				return searchaction.Result{}, errors.New("native search continuation exceeded the combined cursor bound")
-			}
-			page.Total = 0
-			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent, Source: page.NextCursor})
-			return searchResult(page, nil), nil
-		}
-		if len(page.Items) == input.Limit {
-			page.Total = 0
-			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated})
-			return searchResult(page, nil), nil
-		}
-		state.Phase = combinedSearchDedicated
-		state.Source = ""
-		remaining := input.Limit - len(page.Items)
-		dedicatedPage, err := executeBoundedAppSearch(ctx, s.dedicated, resourcesearch.Input{
-			Types: []string{"definition", "group", "metric", "user"}, Terms: input.Terms,
-			ProjectPath: input.ProjectPath, Owner: input.Owner, Limit: input.Limit,
-		}, remaining)
-		if err != nil {
-			return searchaction.Result{}, err
-		}
-		page.Items = append(page.Items, dedicatedPage.Items...)
-		page.Total = 0
-		page.Warnings = append(page.Warnings, dedicatedPage.Warnings...)
-		if dedicatedPage.TableauRequestID != "" {
-			page.TableauRequestID = dedicatedPage.TableauRequestID
-		}
-		if dedicatedPage.NextCursor != "" {
-			if len(dedicatedPage.NextCursor) > maxCombinedSourceBytes {
-				return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
-			}
-			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: dedicatedPage.NextCursor})
-		}
-		return searchResult(page, nil), nil
-	}
-	page, err := s.dedicated.Search(ctx, resourcesearch.Input{
-		Types: []string{"definition", "group", "metric", "user"}, Terms: input.Terms,
-		ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: state.Source, Limit: input.Limit,
-	})
-	if err != nil {
-		return searchaction.Result{}, err
-	}
-	page.Total = 0
-	if page.NextCursor != "" {
-		if len(page.NextCursor) > maxCombinedSourceBytes {
-			return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
-		}
-		page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: page.NextCursor})
-	}
-	return searchResult(page, nil), nil
-}
-
-func executeBoundedAppSearch(ctx context.Context, adapter appSearchAdapter, input resourcesearch.Input, budget int) (resourcesearch.Page, error) {
-	if budget == input.Limit {
-		return adapter.Search(ctx, input)
-	}
-	bounded, ok := adapter.(appBoundedSearchAdapter)
-	if !ok {
-		return resourcesearch.Page{}, errors.New("dedicated search adapter does not support a partial row budget")
-	}
-	return bounded.SearchBounded(ctx, input, budget)
-}
-
-func decodeCombinedSearchCursor(value string, input searchaction.Input) (combinedSearchCursor, error) {
-	if value == "" {
-		return combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent}, nil
-	}
-	if len(value) > maxCombinedCursorBytes {
-		return combinedSearchCursor{}, invalidCombinedSearchCursor{}
-	}
-	data, err := base64.RawURLEncoding.DecodeString(value)
-	var state combinedSearchCursor
-	if err != nil || json.Unmarshal(data, &state) != nil || state.Version != 1 || state.Fingerprint != combinedSearchFingerprint(input) || (state.Phase != combinedSearchContent && state.Phase != combinedSearchDedicated) || state.Checksum != combinedSearchChecksum(state) || (state.Phase == combinedSearchContent && state.Source == "") {
-		return combinedSearchCursor{}, invalidCombinedSearchCursor{}
-	}
-	return state, nil
-}
-
-func encodeCombinedSearchCursor(state combinedSearchCursor) string {
-	state.Checksum = combinedSearchChecksum(state)
-	data, _ := json.Marshal(state)
-	return base64.RawURLEncoding.EncodeToString(data)
-}
-
-func combinedSearchFingerprint(input searchaction.Input) string {
-	input.Cursor = ""
-	data, _ := json.Marshal(input)
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-func combinedSearchChecksum(state combinedSearchCursor) string {
-	state.Checksum = ""
-	data, _ := json.Marshal(state)
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 type cacheGlobalSearchSource struct {
@@ -332,10 +136,10 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 		}
 	}
 	if shared {
-		return searchResult(page, generation), nil
+		return searchaction.SourceResult(page, generation), nil
 	}
 	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
-	return searchResult(page, nil), nil
+	return searchaction.SourceResult(page, nil), nil
 }
 
 func (s cacheGlobalSearchSource) observeCacheRecovery(ctx context.Context, input searchaction.Input, required []string) (searchaction.CacheRecovery, error) {
@@ -466,14 +270,6 @@ func cacheResourceFingerprint(result cache.ResourceResult) string {
 	}{result.Total, result.Coverage, result.GenerationID, result.GeneratedAt.UTC().Format(time.RFC3339Nano), result.NewestObserved.UTC().Format(time.RFC3339Nano)})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-func searchResult(page resourcesearch.Page, generation *searchaction.Generation) searchaction.Result {
-	items := make([]searchaction.Item, len(page.Items))
-	for index, item := range page.Items {
-		items[index] = searchaction.Item{LUID: item.LUID, Type: item.Type, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner, ModifiedAt: item.ModifiedAt}
-	}
-	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor, Total: page.Total, MoreAvailable: page.MoreAvailable, UnresolvedMoreAvailable: page.UnresolvedMoreAvailable}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
 }
 
 // completeLiveSearchLister routes blank typed searches through the same

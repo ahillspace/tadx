@@ -6,6 +6,20 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Search routing ownership
+
+The search action owns native-versus-dedicated routing, combined continuations, and result normalization through explicit page-reader ports.
+The dedicated source declares bounded reads directly rather than probing optional runtime interfaces.
+Neutral search records preserve the exact JSON shapes used in cursor fingerprints.
+Pure routing tests follow their owner; command HTTP tests remain in app.
+
+Independent review rejects the initial migrated test's invalid generic error interface and passes a corrected immutable revision.
+The eight-path revision has 1,460 files and fingerprint `6d58e26ec57a0b09b2730d4f0ccb9367b2c5ba2726bad8095b6541839462712a`.
+Search action, resource, value, architecture, focused app tests, full compilation, and scoped vet pass.
+All preimages still match the current workspace-integrated checkout.
+Evidence remains in `.tadx-refactor/search-routing-revision-9e3/`.
+Cache translation, complete-list pagination, and native listers remain pending.
+
 ## Workspace ownership and integrated checkpoint
 
 The workspace Service owns operation sequencing through explicit native ports.

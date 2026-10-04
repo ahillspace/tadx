@@ -43,7 +43,7 @@ func TestCacheSearchReportsScopeGeneration(t *testing.T) {
 
 func TestSingleSourceListSearchPropagatesTotal(t *testing.T) {
 	adapter := &completeLiveSearchAdapter{lister: &completeListPagerFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "wb-1", Type: "workbook", Name: "One"}}, Total: 42, NextCursor: "more"}}}}
-	out, err := executeSearchAction(context.Background(), globalSearchSource{lists: adapter}, searchaction.Input{Environment: "dev", SiteResolved: true, Type: "workbook", Limit: 1})
+	out, err := executeSearchAction(context.Background(), searchaction.LiveSource{Lists: adapter}, searchaction.Input{Environment: "dev", SiteResolved: true, Type: "workbook", Limit: 1})
 	if err != nil || out.Page.Total != 42 {
 		t.Fatalf("list search = %#v, %v", out, err)
 	}
@@ -57,7 +57,7 @@ func TestGroupedSearchRetainsUnresolvedTruncationAcrossActionPages(t *testing.T)
 			{Items: []resourcesearch.Item{{LUID: "u2", Type: "user", Name: "User2"}}},
 		}
 		adapter := &completeLiveSearchAdapter{lister: &completeListPagerFake{pages: pages}}
-		out, err := executeSearchAction(context.Background(), globalSearchSource{lists: adapter}, searchaction.Input{Environment: "dev", SiteResolved: true, Type: "admin", Limit: 200})
+		out, err := executeSearchAction(context.Background(), searchaction.LiveSource{Lists: adapter}, searchaction.Input{Environment: "dev", SiteResolved: true, Type: "admin", Limit: 200})
 		if err != nil || out.Page.MoreAvailable != unresolved || len(out.Items) != 3 {
 			t.Fatalf("unresolved=%t out=%+v err=%v", unresolved, out, err)
 		}

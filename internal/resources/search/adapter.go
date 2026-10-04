@@ -10,27 +10,16 @@ import (
 	"errors"
 	"sort"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const pageSize = 100
 const maxPages = 100
 
-type Item struct{ LUID, Type, Name, ProjectPath, Owner, ModifiedAt string }
-type Page struct {
-	UnresolvedMoreAvailable bool
-	Total                   int
-	Items                   []Item
-	NextCursor              string
-	Warnings                []string
-	TableauRequestID        string
-	Source                  string
-	MoreAvailable           bool
-}
-type Input struct {
-	Types                             []string
-	Terms, ProjectPath, Owner, Cursor string
-	Limit                             int
-}
+type Item = value.SearchItem
+type Page = value.SearchPage
+type Input = value.SearchRequest
 
 // Source supplies one bounded resource page with stable upstream continuation.
 type Source interface {
