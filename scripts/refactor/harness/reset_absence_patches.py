@@ -10,7 +10,7 @@ def patch_reset_site(source, replace_once):
         "        self.confirm_absence = confirm_absence\n"
         "        self.path = Path(manifest_path).resolve()\n",
     )
-    return replace_once(
+    source = replace_once(
         source,
         "            if exc.result.get(\"error\", {}).get(\"upstream_status\") == 404:\n"
         "                return None\n",
@@ -19,6 +19,41 @@ def patch_reset_site(source, replace_once):
         "                    raise ResetError(\"Independent exact GET 404 is required before confirming absence.\") from exc\n"
         "                return None\n",
     )
+    return replace_once(source, """        retry_count = holder.get("unknown_retry_count", 0)
+        last_uncertain = next((event for event in reversed(self.manifest.get("journal", []))
+                               if event.get("event") == "publish_uncertain"
+                               and event.get("generation") == self.manifest.get("generation")
+                               and event.get("kind") == kind), None)
+        not_attempted = ((last_uncertain or {}).get("evidence") or {}).get("id") == "mutation.disabled" \\
+            and ((last_uncertain or {}).get("evidence") or {}).get("outcome") == "not_attempted"
+        if len(candidates) == 0 and (retry_count < 1 or not_attempted):
+            # A transport or container failure can leave a publish outcome
+            # unknown even though a complete remote inventory proves that no
+            # resource with the exact baseline name exists.  Permit one
+            # durable retry only after the deletion boundary is confirmed and
+            # the absence is independently observed twice.  A later unknown
+            # outcome remains quarantined, and an acknowledged identity is
+            # never replayed.
+            import time
+            time.sleep(2)
+            second = self.matching(kind, resource["state"]["name"], resource["state"]["project_luid"])
+            second = [item for item in second if item.get("luid") not in old_ids]
+            deleted = any(event.get("event") == "delete_confirmed"
+                          and event.get("kind") == kind
+                          and event.get("id") == holder.get("old_id")
+                          and event.get("generation") == self.manifest.get("generation")
+                          for event in self.manifest.get("journal", []))
+            if len(second) == 1 and second[0].get("luid"):
+                self.confirm_publish(kind, second[0]["luid"], holder, reconciled=True)
+                return
+            if not second and deleted:
+                holder["unknown_retry_count"] = 1
+                holder["phase"] = "deleted"
+                self.event("publish_retry_authorized", kind=kind,
+                           reason="complete exact-name inventory absent after uncertain publish")
+                self.publish(kind, holder)
+                return
+""", "")
 
 
 def patch_operator_reset(source, replace_once):
@@ -91,7 +126,7 @@ def patch_content_profiles(source, replace_once):
 
 
 def patch_reset_site_tests(source, replace_once):
-    return replace_once(
+    source = replace_once(
         source,
         "    def manager(self):\n"
         "        return reset_site.ResetSite(self.manifest_path, self.cli)\n",
@@ -100,6 +135,28 @@ def patch_reset_site_tests(source, replace_once):
         "        return reset_site.ResetSite(\n"
         "            self.manifest_path, self.cli,\n"
         "            confirm_absence=lambda kind, luid: (kind, luid) not in self.cli.remote)\n",
+    )
+    return replace_once(
+        source,
+        "    def test_publish_partial_error_preserves_confirmed_identity(self):\n",
+        "    def test_policy_refusal_after_publish_intent_does_not_recurse_or_retry(self):\n"
+        "        original = self.cli.run\n"
+        "        attempts = []\n"
+        "        def denied(command):\n"
+        "            if command[:3] == ['content', 'datasource', 'publish']:\n"
+        "                attempts.append(list(command))\n"
+        "                if len(attempts) == 1:\n"
+        "                    self.cli.calls.append(list(command))\n"
+        "                    raise reset_site.CLIError(command,\n"
+        "                        {'error': {'id': 'mutation.disabled', 'outcome': 'not_attempted'}})\n"
+        "            return original(command)\n"
+        "        self.cli.run = denied\n"
+        "        with self.assertRaisesRegex(reset_site.ResetError, 'uniquely reconciled'):\n"
+        "            self.manager().reset()\n"
+        "        self.assertEqual(len(attempts), 1)\n"
+        "        self.assertFalse(any(event['event'] == 'publish_retry_authorized'\n"
+        "                             for event in self.manager().manifest['journal']))\n\n"
+        "    def test_publish_partial_error_preserves_confirmed_identity(self):\n",
     )
 
 
