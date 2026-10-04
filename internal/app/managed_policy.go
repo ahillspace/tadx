@@ -16,9 +16,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli"
 	policycli "github.com/ahillspace/tadx/internal/cli/policy"
 	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/lastcommand"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
-	"github.com/ahillspace/tadx/internal/value"
 	"github.com/spf13/cobra"
 )
 
@@ -48,62 +46,6 @@ func (c *managedCapabilityChecks) snapshot() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return slices.Sorted(maps.Keys(c.ids))
-}
-
-type managedLastReader struct {
-	store   func() lastcommand.Store
-	runtime *runtimeDependencies
-}
-
-func (r managedLastReader) Read(ctx context.Context) (value.SavedExecution, error) {
-	record, err := r.store().Read(ctx)
-	if err != nil {
-		return record, err
-	}
-	if err := r.runtime.checkManagedCapability(record.Operation); err != nil {
-		return value.SavedExecution{}, err
-	}
-	for _, id := range record.RequiredCapabilities {
-		if err := r.runtime.checkManagedCapability(id); err != nil {
-			return value.SavedExecution{}, err
-		}
-	}
-	if record.Operation == "search.run" {
-		for _, id := range legacySearchPrerequisites(record.Result) {
-			if err := r.runtime.checkManagedCapability(id); err != nil {
-				return value.SavedExecution{}, err
-			}
-		}
-	}
-	return record, nil
-}
-
-// Old search snapshots have no prerequisite ledger. Inspect only the known
-// search row shape, including the partial-result envelope, never owner fields.
-func legacySearchPrerequisites(data json.RawMessage) []string {
-	type row struct {
-		Type string `json:"type"`
-	}
-	type searchSnapshot struct {
-		Items []row `json:"items"`
-	}
-	var snapshot struct {
-		Items  []row          `json:"items"`
-		Output searchSnapshot `json:"output"`
-	}
-	if json.Unmarshal(data, &snapshot) != nil {
-		return nil
-	}
-	ids := map[string]struct{}{}
-	for _, item := range append(snapshot.Items, snapshot.Output.Items...) {
-		switch item.Type {
-		case "user":
-			ids["admin.user.list"] = struct{}{}
-		case "group":
-			ids["admin.group.list"] = struct{}{}
-		}
-	}
-	return slices.Sorted(maps.Keys(ids))
 }
 
 func (r *runtimeDependencies) checkManagedCapability(id string) error {

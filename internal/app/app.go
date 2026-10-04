@@ -154,8 +154,10 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		ResolveMutationPolicy: mutationService.Policy,
 		MutationStatus:        mutationService,
 		MutationSetter:        mutationService,
-		LastReader:            lastaction.New(managedLastReader{store: capture.store, runtime: runtime}),
-		Jobs:                  (&jobCommands{runtime: runtime}).dependencies(),
+		LastReader: lastaction.New(func(ctx context.Context) (value.SavedExecution, error) {
+			return capture.store().Read(ctx)
+		}, runtime.checkManagedCapability),
+		Jobs: (&jobCommands{runtime: runtime}).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {
 			_, environment, err := runtime.environment(alias, true)
 			var pathError *os.PathError

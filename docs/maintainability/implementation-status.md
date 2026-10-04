@@ -6,6 +6,21 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Protected saved-result ownership
+
+The `actions/last` Service now owns saved-operation authorization, recorded prerequisites, and legacy search-row prerequisites.
+App supplies a selected-store read function and the existing capability-check callback rather than a protected-read facade.
+Replay still resolves the store after argument parsing, preserving the separate selected-config fix.
+The legacy parser and policy ordering remain unchanged.
+Storage errors retain their prior partial record; authorization errors discard the payload and retain the existing `last.unavailable` wrapper.
+
+The reviewed six-path merge is based on `1ba1e6185ad8dee8532962e1a7beb77da0d8941e` and has 1,425 files.
+Its ordinal fingerprint is `69be606efcc88c3e78374241820693e8f3956fbc524863551e20470027176a00`.
+The intervening parser-fixture correction does not overlap any changed path.
+Independent owner, CLI, selected-config, last-result, managed-policy, architecture, full compilation, and scoped vet checks pass.
+Ignored evidence remains in `.tadx-refactor/last-reader-merge-1ba/`.
+Capture/save coordination remains a separate pending ownership slice; final integrated acceptance remains outstanding.
+
 ## Parser fixture isolation correction
 
 The exact `1ba1e61` default gate passed eight controls and nine seeded rejections but failed source-integrity verification.
