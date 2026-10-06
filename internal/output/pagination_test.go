@@ -11,7 +11,7 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	envlist "github.com/ahillspace/tadx/actions/env/profile"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	workspaceaction "github.com/ahillspace/tadx/actions/workspace"
 	"github.com/ahillspace/tadx/internal/output"
@@ -22,7 +22,7 @@ func TestAllInventoryProjectionsHideCursors(t *testing.T) {
 		"workbooks":        workbookops.ListOutput{Page: workbookops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"datasources":      datasourceops.ListOutput{Page: datasourceops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"flows":            flowops.ListOutput{Page: flowops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"projects":         projectlist.Output{Page: projectlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"projects":         projectops.ListOutput{Page: projectops.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"users":            userops.ListOutput{Page: userops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"groups":           groupops.ListOutput{Page: groupops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"capabilities":     capabilitylist.Output{Page: capabilitylist.Pagination{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},

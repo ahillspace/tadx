@@ -5,18 +5,18 @@ import (
 	"reflect"
 	"testing"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/cli"
 )
 
-type checker struct{ input authcheck.Input }
+type checker struct{ input authops.CheckInput }
 
-func (c *checker) Execute(_ context.Context, input authcheck.Input) (authcheck.Output, error) {
+func (c *checker) Execute(_ context.Context, input authops.CheckInput) (authops.CheckOutput, error) {
 	c.input = input
-	return authcheck.Output{Status: "authenticated"}, nil
+	return authops.CheckOutput{Status: "authenticated"}, nil
 }
 
 type searcher struct{ input searchaction.Input }

@@ -4,7 +4,7 @@ import (
 	"context"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"strings"
 
@@ -119,18 +119,18 @@ func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowops.Up
 	return flowops.Update(ctx, adapter, adapter, input, preview)
 }
 
-func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectmove.Input, preview bool) (projectmove.Output, error) {
-	if err := projectmove.ValidateInput(input); err != nil {
-		return projectmove.Output{}, err
+func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectops.MoveInput, preview bool) (projectops.MoveOutput, error) {
+	if err := projectops.ValidateMoveInput(input); err != nil {
+		return projectops.MoveOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return projectmove.Output{}, remoteSetupError("project.move", input.Environment, input.Site, connection.environment, err)
+		return projectops.MoveOutput{}, remoteSetupError("project.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := projectMoveAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
-	out, err := projectmove.New(adapter, adapter).Execute(ctx, input, preview)
+	out, err := projectops.NewMove(adapter, adapter).Execute(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
 		out.Help = append(out.Help, projectMutationPathWarning)
 	}
@@ -200,7 +200,7 @@ type projectMoveAdapter struct {
 	resolved map[string]resourceproject.Project
 }
 
-func (a projectMoveAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectmove.Project, error) {
+func (a projectMoveAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectops.MoveProject, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
 	if err == nil && a.resolved != nil {
 		a.resolved[item.LUID] = item
@@ -208,24 +208,24 @@ func (a projectMoveAdapter) ResolveProject(ctx context.Context, selector identit
 	return toProjectMove(item), err
 }
 
-func (a projectMoveAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectmove.Project, error) {
+func (a projectMoveAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectops.MoveProject, error) {
 	items, err := a.projects.FindProjectCollisions(ctx, name, parentLUID)
-	result := make([]projectmove.Project, len(items))
+	result := make([]projectops.MoveProject, len(items))
 	for index, item := range items {
 		result[index] = toProjectMove(item)
 	}
 	return result, err
 }
 
-func (a projectMoveAdapter) MoveProject(ctx context.Context, luid string, parentLUID *string) (projectmove.Result, error) {
+func (a projectMoveAdapter) MoveProject(ctx context.Context, luid string, parentLUID *string) (projectops.MoveResult, error) {
 	result, err := a.changes.Update(ctx, tableauproject.UpdateRequest{LUID: luid, ParentLUID: parentLUID})
 	if err != nil {
-		return projectmove.Result{}, err
+		return projectops.MoveResult{}, err
 	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectmove.Result{Status: result.Status, Project: toProjectMove(item), TableauRequestID: result.TableauRequestID}, nil
+	return projectops.MoveResult{Status: result.Status, Project: toProjectMove(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
-func toProjectMove(item resourceproject.Project) projectmove.Project {
-	return projectmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, PathUnavailableReason: item.PathUnavailableReason, ParentLUID: item.ParentLUID, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
+func toProjectMove(item resourceproject.Project) projectops.MoveProject {
+	return projectops.MoveProject{LUID: item.LUID, Name: item.Name, Path: item.Path, PathUnavailableReason: item.PathUnavailableReason, ParentLUID: item.ParentLUID, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }

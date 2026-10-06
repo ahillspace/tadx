@@ -16,7 +16,7 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -627,7 +627,7 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "project":
-		out, err := s.content.ListProjects(ctx, projectlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
+		out, err := s.content.ListProjects(ctx, projectops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
@@ -673,7 +673,7 @@ type liveSearchLister struct {
 	workbooks         workbookops.ListReader
 	datasources       datasourceops.ListReader
 	flows             flowops.ListReader
-	projects          projectlist.Reader
+	projects          projectops.Reader
 	users             userops.ListReader
 	groups            groupops.ListReader
 	pulse             *tableaupulse.Client
@@ -728,7 +728,7 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "project":
-		out, err := projectlist.New(s.projects).Execute(ctx, projectlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		out, err := projectops.NewList(s.projects).Execute(ctx, projectops.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}

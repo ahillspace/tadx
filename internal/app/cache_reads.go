@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/cache"
@@ -316,23 +315,23 @@ type cacheProjectListReader struct {
 	source      *readsource.Metadata
 }
 
-func (r *cacheProjectListReader) ListProjects(ctx context.Context, input projectlist.PageRequest) (projectlist.Page, error) {
+func (r *cacheProjectListReader) ListProjects(ctx context.Context, input projectops.PageRequest) (projectops.Page, error) {
 	if input.ParentLUID != "" || input.OwnerName != "" || input.TopLevel != nil {
-		return projectlist.Page{}, unsupportedCacheFilters("project.list", r.environment, r.site)
+		return projectops.Page{}, unsupportedCacheFilters("project.list", r.environment, r.site)
 	}
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
-		return projectlist.Page{}, cacheReadError("project.list", r.environment, r.site, err)
+		return projectops.Page{}, cacheReadError("project.list", r.environment, r.site, err)
 	}
 	r.source = cacheReadSource(result)
-	items := make([]projectlist.Project, len(result.Entries))
+	items := make([]projectops.ListProject, len(result.Entries))
 	for index, entry := range result.Entries {
 		if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &items[index]) == nil {
 			continue
 		}
-		items[index] = projectlist.Project{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
+		items[index] = projectops.ListProject{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
 	}
-	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Projects: items, SnapshotCursor: result.NextCursor}, nil
+	return projectops.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Projects: items, SnapshotCursor: result.NextCursor}, nil
 }
 
 func snapshotOffset(pageNumber, pageSize int, cursor string) int {
@@ -349,18 +348,18 @@ type cacheProjectGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *cacheProjectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectinspect.Project, error) {
+func (r *cacheProjectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectops.InspectProject, error) {
 	path := selector.ProjectPath
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", LUID: string(selector.LUID), ProjectPath: path, Limit: 2, ExactlyOne: true})
 	if err != nil {
-		return projectinspect.Project{}, cacheReadError("project.inspect", r.environment, r.site, err)
+		return projectops.InspectProject{}, cacheReadError("project.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	r.source = cacheRecordSource(result, entry)
-	var item projectinspect.Project
+	var item projectops.InspectProject
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		item.LUID, item.Name, item.Path, item.OwnerLUID = entry.LUID, entry.Name, entry.ProjectPath, entry.Owner
 		return item, nil
 	}
-	return projectinspect.Project{LUID: entry.LUID, Name: entry.Name, Path: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
+	return projectops.InspectProject{LUID: entry.LUID, Name: entry.Name, Path: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
 }

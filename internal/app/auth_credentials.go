@@ -7,8 +7,7 @@ import (
 	"os"
 	"strings"
 
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -17,15 +16,15 @@ import (
 
 type authCredentialResolver struct{ runtime *runtimeDependencies }
 
-func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authlogin.Target, error) {
+func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authops.LoginTarget, error) {
 	_, environment, err := r.runtime.environment(alias, true)
 	if err != nil {
-		return authlogin.Target{}, err
+		return authops.LoginTarget{}, err
 	}
 	if strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" || strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != "" {
-		return authlogin.Target{}, &errs.Error{ID: "auth.login.environment_override", Kind: errs.KindOperation, Operation: "auth.login", Environment: environment.Alias, Summary: "Configured PAT environment variables override stored-credential login.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: fmt.Sprintf("Clear %s and %s from the calling process before stored-credential login. No PAT was requested, validated, or saved.", environment.Auth.PATNameEnv, environment.Auth.PATSecretEnv)}
+		return authops.LoginTarget{}, &errs.Error{ID: "auth.login.environment_override", Kind: errs.KindOperation, Operation: "auth.login", Environment: environment.Alias, Summary: "Configured PAT environment variables override stored-credential login.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: fmt.Sprintf("Clear %s and %s from the calling process before stored-credential login. No PAT was requested, validated, or saved.", environment.Auth.PATNameEnv, environment.Auth.PATSecretEnv)}
 	}
-	return authlogin.Target{
+	return authops.LoginTarget{
 		Environment:    environment.Alias,
 		ServerURL:      environment.URL,
 		SiteContentURL: environment.SiteContentURL,
@@ -35,22 +34,22 @@ func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authlo
 
 type authLogoutResolver struct{ runtime *runtimeDependencies }
 
-func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authlogout.Target, error) {
+func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authops.LogoutTarget, error) {
 	// Resolve the credential reference from the current persisted configuration.
 	configuration, err := config.Load(r.runtime.configPath)
 	if err != nil {
-		return authlogout.Target{}, err
+		return authops.LogoutTarget{}, err
 	}
 	environment, err := configuration.ResolveWriteEnvironment(alias)
 	if err != nil {
-		return authlogout.Target{}, err
+		return authops.LogoutTarget{}, err
 	}
-	return authlogout.Target{Environment: environment.Alias, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
+	return authops.LogoutTarget{Environment: environment.Alias, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
 }
 
 type loginAuthenticator struct{ runtime *runtimeDependencies }
 
-func (a loginAuthenticator) Authenticate(ctx context.Context, target authlogin.Target, credential authlogin.Credential) (authlogin.Authentication, error) {
+func (a loginAuthenticator) Authenticate(ctx context.Context, target authops.LoginTarget, credential authops.LoginCredential) (authops.LoginAuthentication, error) {
 	transport := a.runtime.transport(target.APIVersion)
 	session, err := a.runtime.commandSessions().AuthenticateCredentials(ctx, coreauth.Target{
 		Environment:    target.Environment,
@@ -59,16 +58,16 @@ func (a loginAuthenticator) Authenticate(ctx context.Context, target authlogin.T
 		Operation:      "auth.login",
 	}, coreauth.PATCredentials{Name: credential.PATName, Secret: credential.PATSecret}, tableauauth.NewClient(transport))
 	if err != nil {
-		return authlogin.Authentication{}, err
+		return authops.LoginAuthentication{}, err
 	}
-	return authlogin.Authentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID()}, nil
+	return authops.LoginAuthentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID()}, nil
 }
 
 type authCredentialStore struct{ runtime *runtimeDependencies }
 
-func (s authCredentialStore) Store(ctx context.Context, target authlogin.Target, credential authlogin.Credential) (authlogin.StoreResult, error) {
+func (s authCredentialStore) Store(ctx context.Context, target authops.LoginTarget, credential authops.LoginCredential) (authops.LoginStoreResult, error) {
 	if s.runtime == nil || s.runtime.patStore == nil {
-		return authlogin.StoreResult{}, errors.New("native credential storage is not configured")
+		return authops.LoginStoreResult{}, errors.New("native credential storage is not configured")
 	}
 	var environmentVariablesOverride bool
 	_, err := config.UpdateWithRollback(s.runtime.configPath, false, func(configuration config.Config) (config.Config, func() error, error) {
@@ -103,14 +102,14 @@ func (s authCredentialStore) Store(ctx context.Context, target authlogin.Target,
 		return configuration, func() error { return s.runtime.patStore.DeletePAT(context.WithoutCancel(ctx), stored) }, nil
 	})
 	if err != nil {
-		return authlogin.StoreResult{}, err
+		return authops.LoginStoreResult{}, err
 	}
-	return authlogin.StoreResult{EnvironmentVariablesOverride: environmentVariablesOverride}, nil
+	return authops.LoginStoreResult{EnvironmentVariablesOverride: environmentVariablesOverride}, nil
 }
 
-func (s authCredentialStore) Remove(ctx context.Context, target authlogout.Target) (authlogout.RemoveResult, error) {
+func (s authCredentialStore) Remove(ctx context.Context, target authops.LogoutTarget) (authops.LogoutRemoveResult, error) {
 	if s.runtime == nil || s.runtime.patStore == nil {
-		return authlogout.RemoveResult{}, errors.New("native credential storage is not configured")
+		return authops.LogoutRemoveResult{}, errors.New("native credential storage is not configured")
 	}
 	removed := false
 	var reference coreauth.CredentialReference
@@ -135,9 +134,9 @@ func (s authCredentialStore) Remove(ctx context.Context, target authlogout.Targe
 		}, nil
 	})
 	if err != nil {
-		return authlogout.RemoveResult{}, orphanedCredentialError(err, reference)
+		return authops.LogoutRemoveResult{}, orphanedCredentialError(err, reference)
 	}
-	return authlogout.RemoveResult{Removed: removed}, nil
+	return authops.LogoutRemoveResult{Removed: removed}, nil
 }
 
 // orphanedCredentialError names the stored entry that remains when the cleared

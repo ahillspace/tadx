@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
+	cacheops "github.com/ahillspace/tadx/actions/cache"
 	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
@@ -57,7 +57,7 @@ func TestCacheHydratorStreamsSQLiteAndReturnsOnlyReceipt(t *testing.T) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: 2})
 		},
 	}
-	output, err := cacherefresh.Refresh(t.Context(), hydrator, cacherefresh.Input{
+	output, err := cacheops.Refresh(t.Context(), hydrator, cacheops.RefreshInput{
 		Environment: "production", Site: "marketing", Scopes: []string{"workbooks"},
 	})
 	if err != nil {
@@ -119,7 +119,7 @@ func TestCacheHydratorReportsPersistedSearchableRecordCount(t *testing.T) {
 		newRunner: func(tableaucache.Executor) (cacheRunner, error) { return runner, nil },
 	}
 
-	result, err := hydrator.Hydrate(context.Background(), cacherefresh.HydrationRequest{
+	result, err := hydrator.Hydrate(context.Background(), cacheops.RefreshHydrationRequest{
 		Environment: "production", Site: "marketing", RequestedScopes: []string{"permissions"}, ImplicitScopes: []string{"projects", "workbooks"},
 	})
 	if err != nil {
@@ -161,7 +161,7 @@ func TestCacheHydratorRollsBackPartialCollection(t *testing.T) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: 2})
 		},
 	}
-	_, err := hydrator.Hydrate(context.Background(), cacherefresh.HydrationRequest{
+	_, err := hydrator.Hydrate(context.Background(), cacheops.RefreshHydrationRequest{
 		Environment: "production", Site: "marketing", RequestedScopes: []string{"workbooks"}, ImplicitScopes: []string{"projects"},
 	})
 	if err == nil {

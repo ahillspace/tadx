@@ -5,28 +5,27 @@ import (
 	"reflect"
 	"testing"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
-	cachestatus "github.com/ahillspace/tadx/actions/cache/status"
+	cacheops "github.com/ahillspace/tadx/actions/cache"
 	cachecli "github.com/ahillspace/tadx/internal/cli/cache"
 )
 
 type actions struct {
-	refreshInputs []cacherefresh.Input
-	statusInputs  []cachestatus.Input
+	refreshInputs []cacheops.RefreshInput
+	statusInputs  []cacheops.StatusInput
 }
 
 type refresher struct{ actions *actions }
 
-func (r refresher) RefreshCache(_ context.Context, input cacherefresh.Input) (cacherefresh.Output, error) {
+func (r refresher) RefreshCache(_ context.Context, input cacheops.RefreshInput) (cacheops.RefreshOutput, error) {
 	r.actions.refreshInputs = append(r.actions.refreshInputs, input)
-	return cacherefresh.Output{}, nil
+	return cacheops.RefreshOutput{}, nil
 }
 
 type statuser struct{ actions *actions }
 
-func (s statuser) ReadCacheStatus(_ context.Context, input cachestatus.Input) (cachestatus.Output, error) {
+func (s statuser) ReadCacheStatus(_ context.Context, input cacheops.StatusInput) (cacheops.StatusOutput, error) {
 	s.actions.statusInputs = append(s.actions.statusInputs, input)
-	return cachestatus.Output{}, nil
+	return cacheops.StatusOutput{}, nil
 }
 
 type renderer struct{}

@@ -6,7 +6,7 @@ import (
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"path"
 	"strings"
@@ -44,7 +44,7 @@ type FlowUpdater interface {
 	UpdateFlow(context.Context, flowops.UpdateInput, bool) (flowops.UpdateOutput, error)
 }
 type ProjectMover interface {
-	MoveProject(context.Context, projectmove.Input, bool) (projectmove.Output, error)
+	MoveProject(context.Context, projectops.MoveInput, bool) (projectops.MoveOutput, error)
 }
 
 // Renderer writes one structured result.

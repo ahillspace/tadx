@@ -4,33 +4,29 @@ import (
 	"context"
 	"errors"
 
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectdelete "github.com/ahillspace/tadx/actions/project/delete"
-	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	projectupdate "github.com/ahillspace/tadx/actions/project/update"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 type ProjectLister interface {
-	ListProjects(context.Context, projectlist.Input) (projectlist.Output, error)
+	ListProjects(context.Context, projectops.ListInput) (projectops.ListOutput, error)
 }
 
 type ProjectInspector interface {
-	InspectProject(context.Context, projectinspect.Input) (projectinspect.Output, error)
+	InspectProject(context.Context, projectops.InspectInput) (projectops.InspectOutput, error)
 }
 
 type ProjectCreator interface {
-	CreateProject(context.Context, projectcreate.Input, bool) (projectcreate.Output, error)
+	CreateProject(context.Context, projectops.CreateInput, bool) (projectops.CreateOutput, error)
 }
 
 type ProjectUpdater interface {
-	UpdateProject(context.Context, projectupdate.Input, bool) (projectupdate.Output, error)
+	UpdateProject(context.Context, projectops.UpdateInput, bool) (projectops.UpdateOutput, error)
 }
 
 type ProjectDeleter interface {
-	DeleteProject(context.Context, projectdelete.Input, bool) (projectdelete.Output, error)
+	DeleteProject(context.Context, projectops.DeleteInput, bool) (projectops.DeleteOutput, error)
 }
 
 func newProject(deps Dependencies) *cobra.Command {
@@ -52,7 +48,7 @@ func newProject(deps Dependencies) *cobra.Command {
 }
 
 func newProjectCreate(deps Dependencies) *cobra.Command {
-	var input projectcreate.Input
+	var input projectops.CreateInput
 	var parentLUID, parentPath string
 	var preview bool
 	command := &cobra.Command{
@@ -90,7 +86,7 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 }
 
 func newProjectUpdate(deps Dependencies) *cobra.Command {
-	var input projectupdate.Input
+	var input projectops.UpdateInput
 	var projectLUID, projectPath, name, description, contentPermissions string
 	var preview bool
 	command := &cobra.Command{
@@ -141,7 +137,7 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 }
 
 func newProjectDelete(deps Dependencies) *cobra.Command {
-	var input projectdelete.Input
+	var input projectops.DeleteInput
 	var preview bool
 	command := &cobra.Command{
 		Use: "delete", Short: "Delete one exact project.",
@@ -172,7 +168,7 @@ func newProjectDelete(deps Dependencies) *cobra.Command {
 }
 
 func newProjectList(deps Dependencies) *cobra.Command {
-	var input projectlist.Input
+	var input projectops.ListInput
 	var topLevel bool
 	command := &cobra.Command{
 		Use: "list", Short: "List projects with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
@@ -202,7 +198,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 }
 
 func newProjectInspect(deps Dependencies) *cobra.Command {
-	var input projectinspect.Input
+	var input projectops.InspectInput
 	var projectLUID, projectPath string
 	command := &cobra.Command{
 		Use: "inspect", Short: "Inspect one exact project.", Annotations: map[string]string{"tadx.capability": "project.inspect"},

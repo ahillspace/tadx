@@ -67,7 +67,7 @@ The list and inspect tests in `actions/datasource` cover compact and full TOON p
 `internal/app/inventory_snapshot_compatibility_test.go` covers legacy partial snapshots without Tableau requests or public cursor output.
 `internal/cache/sqlite_test.go` locks the versioned strict schema, environment and site isolation, transactional rollback, atomic publication, generation pruning, exact lookup, bounded search, staleness, corruption handling, and concurrent readers.
 `internal/app/cache_group2_test.go` proves that the engine streams through the app boundary into SQLite and that a failed collector cannot publish a partial generation.
-`actions/cache/refresh` proves that compact and full refresh receipts never contain hydrated cache rows.
+`actions/cache/refresh_test.go` proves that compact and full refresh receipts never contain hydrated cache rows.
 
 ## Historical live verification
 

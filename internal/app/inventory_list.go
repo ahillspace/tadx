@@ -14,7 +14,7 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -155,9 +155,9 @@ func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowops.ListPa
 	return flowops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
-func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectlist.PageRequest) (projectlist.Page, error) {
-	items, err := decodeInventoryPage[projectlist.Project](r.page(input.PageNumber, input.PageSize))
-	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
+func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectops.PageRequest) (projectops.Page, error) {
+	items, err := decodeInventoryPage[projectops.ListProject](r.page(input.PageNumber, input.PageSize))
+	return projectops.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListUsers(_ context.Context, input userops.ListPageRequest) (userops.ListPage, error) {

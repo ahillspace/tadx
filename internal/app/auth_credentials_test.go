@@ -7,8 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -68,7 +67,7 @@ func TestAuthCredentialStoreLogoutRestoresReferenceWhenDeletionFails(t *testing.
 	}
 	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
 
-	if _, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"}); err == nil {
+	if _, err := service.Remove(context.Background(), authops.LogoutTarget{Environment: "dev"}); err == nil {
 		t.Fatal("Remove() error = nil")
 	}
 	loaded, err := config.Load(path)
@@ -90,7 +89,7 @@ func TestAuthCredentialStorePersistsOpaqueReferenceAndReplacesOldPAT(t *testing.
 	}
 	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
 
-	_, err := service.Store(context.Background(), authlogin.Target{Environment: "dev", ServerURL: "https://tableau.example.test", SiteContentURL: "test-site"}, authlogin.Credential{PATName: "new", PATSecret: "new-secret"})
+	_, err := service.Store(context.Background(), authops.LoginTarget{Environment: "dev", ServerURL: "https://tableau.example.test", SiteContentURL: "test-site"}, authops.LoginCredential{PATName: "new", PATSecret: "new-secret"})
 	if err != nil {
 		t.Fatalf("Store() error = %v", err)
 	}
@@ -117,7 +116,7 @@ func TestAuthCredentialStoreLogoutDeletesPATAndReference(t *testing.T) {
 	}
 	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
 
-	result, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"})
+	result, err := service.Remove(context.Background(), authops.LogoutTarget{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}
@@ -142,7 +141,7 @@ func TestAuthCredentialStoreLogoutClearsStaleReference(t *testing.T) {
 	store := &fakePATStore{records: make(map[coreauth.CredentialReference]coreauth.PATCredentials)}
 	service := authCredentialStore{runtime: &runtimeDependencies{configPath: path, patStore: store}}
 
-	result, err := service.Remove(context.Background(), authlogout.Target{Environment: "dev"})
+	result, err := service.Remove(context.Background(), authops.LogoutTarget{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}

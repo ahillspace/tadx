@@ -8,11 +8,7 @@ import (
 	"strings"
 
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectdelete "github.com/ahillspace/tadx/actions/project/delete"
-	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	projectupdate "github.com/ahillspace/tadx/actions/project/update"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cache"
@@ -97,16 +93,16 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	}, nil
 }
 
-func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectlist.Input) (result projectlist.Output, resultErr error) {
+func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectops.ListInput) (result projectops.ListOutput, resultErr error) {
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
-			return projectlist.Output{}, err
+			return projectops.ListOutput{}, err
 		}
 		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
 	}
-	if err := projectlist.ValidateInput(input); err != nil {
-		return projectlist.Output{}, err
+	if err := projectops.ValidateListInput(input); err != nil {
+		return projectops.ListOutput{}, err
 	}
 	defer func() {
 		if resultErr == nil {
@@ -116,11 +112,11 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	if input.Cache || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
-			return projectlist.Output{}, err
+			return projectops.ListOutput{}, err
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cacheProjectListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := projectlist.New(reader).Execute(ctx, input)
+		output, err := projectops.NewList(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
 		}
@@ -128,23 +124,23 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	}
 	filter, err := tableauproject.ListFilter(tableauproject.ListRequest{Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel})
 	if err != nil {
-		return projectlist.Output{}, err
+		return projectops.ListOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return projectlist.Output{}, remoteSetupError("project.list", input.Environment, input.Site, connection.environment, err)
+		return projectops.ListOutput{}, remoteSetupError("project.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
-	if input.All && !projectlist.MayBeOwnerLUID(input.OwnerName) {
+	if input.All && !projectops.MayBeOwnerLUID(input.OwnerName) {
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
-			return projectlist.Output{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
+			return projectops.ListOutput{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
 		}
 		reader := inventory.memoryReader()
 		reader.allowContinuation = true
-		output, err := projectlist.New(reader).Execute(ctx, input)
+		output, err := projectops.NewList(reader).Execute(ctx, input)
 		if err != nil {
 			return output, err
 		}
@@ -159,7 +155,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 		output.RequestID = finalRequestID(inventory.requestIDs)
 		return output, nil
 	}
-	output, err := projectlist.New(projectListReader{connection.projects}).Execute(ctx, input)
+	output, err := projectops.NewList(projectListReader{connection.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -167,18 +163,18 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	return output, nil
 }
 
-func (c *remoteContentCommands) InspectProject(ctx context.Context, input projectinspect.Input) (projectinspect.Output, error) {
-	if err := projectinspect.ValidateInput(input); err != nil {
-		return projectinspect.Output{}, err
+func (c *remoteContentCommands) InspectProject(ctx context.Context, input projectops.InspectInput) (projectops.InspectOutput, error) {
+	if err := projectops.ValidateInspectInput(input); err != nil {
+		return projectops.InspectOutput{}, err
 	}
 	if input.Cache {
 		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
-			return projectinspect.Output{}, err
+			return projectops.InspectOutput{}, err
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &cacheProjectGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := projectinspect.New(resolver).Execute(ctx, input)
+		output, err := projectops.NewInspect(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
 		}
@@ -186,10 +182,10 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return projectinspect.Output{}, remoteSetupError("project.inspect", input.Environment, input.Site, connection.environment, err)
+		return projectops.InspectOutput{}, remoteSetupError("project.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := projectinspect.New(projectGetResolver{connection.projects}).Execute(ctx, input)
+	output, err := projectops.NewInspect(projectGetResolver{connection.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -202,54 +198,54 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 	return output, nil
 }
 
-func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectcreate.Input, preview bool) (projectcreate.Output, error) {
-	if err := projectcreate.ValidateInput(input); err != nil {
-		return projectcreate.Output{}, err
+func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectops.CreateInput, preview bool) (projectops.CreateOutput, error) {
+	if err := projectops.ValidateCreateInput(input); err != nil {
+		return projectops.CreateOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return projectcreate.Output{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
+		return projectops.CreateOutput{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := projectCreateAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
-	out, err := projectcreate.New(adapter, adapter).Execute(ctx, input, preview)
+	out, err := projectops.NewCreate(adapter, adapter).Execute(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
 		out.Help = append(out.Help, projectMutationPathWarning)
 	}
 	return out, err
 }
 
-func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectupdate.Input, preview bool) (projectupdate.Output, error) {
-	if err := projectupdate.ValidateInput(input); err != nil {
-		return projectupdate.Output{}, err
+func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectops.UpdateInput, preview bool) (projectops.UpdateOutput, error) {
+	if err := projectops.ValidateUpdateInput(input); err != nil {
+		return projectops.UpdateOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return projectupdate.Output{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
+		return projectops.UpdateOutput{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
-	out, err := projectupdate.New(adapter, adapter).Execute(ctx, input, preview)
+	out, err := projectops.NewUpdate(adapter, adapter).Execute(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
 		out.Help = append(out.Help, projectMutationPathWarning)
 	}
 	return out, err
 }
 
-func (c *remoteContentCommands) DeleteProject(ctx context.Context, input projectdelete.Input, preview bool) (projectdelete.Output, error) {
-	if err := projectdelete.ValidateInput(input); err != nil {
-		return projectdelete.Output{}, err
+func (c *remoteContentCommands) DeleteProject(ctx context.Context, input projectops.DeleteInput, preview bool) (projectops.DeleteOutput, error) {
+	if err := projectops.ValidateDeleteInput(input); err != nil {
+		return projectops.DeleteOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return projectdelete.Output{}, remoteSetupError("project.delete", input.Environment, input.Site, connection.environment, err)
+		return projectops.DeleteOutput{}, remoteSetupError("project.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := projectDeleteAdapter{projects: connection.projects, changes: connection.projectChanges}
-	return projectdelete.New(adapter, adapter).Execute(ctx, input, preview)
+	return projectops.NewDelete(adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowops.ListInput) (result flowops.ListOutput, resultErr error) {
@@ -513,24 +509,24 @@ func remoteSetupError(operation, environment, site string, resolved config.Envir
 
 type projectListReader struct{ adapter *resourceproject.Adapter }
 
-func (r projectListReader) ListProjects(ctx context.Context, input projectlist.PageRequest) (projectlist.Page, error) {
+func (r projectListReader) ListProjects(ctx context.Context, input projectops.PageRequest) (projectops.Page, error) {
 	page, err := r.adapter.ListProjects(ctx, resourceproject.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel})
-	items := make([]projectlist.Project, len(page.Items))
+	items := make([]projectops.ListProject, len(page.Items))
 	for index, item := range page.Items {
 		items[index] = projectListItem(item)
 	}
-	return projectlist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Projects: items, RequestID: page.RequestID}, err
+	return projectops.Page{Number: page.Number, Size: page.Size, Total: page.Total, Projects: items, RequestID: page.RequestID}, err
 }
 
-func projectListItem(item resourceproject.Project) projectlist.Project {
-	return projectlist.Project{LUID: item.LUID, Name: item.Name, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount}
+func projectListItem(item resourceproject.Project) projectops.ListProject {
+	return projectops.ListProject{LUID: item.LUID, Name: item.Name, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount}
 }
 
 type projectGetResolver struct{ adapter *resourceproject.Adapter }
 
-func (r projectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectinspect.Project, error) {
+func (r projectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectops.InspectProject, error) {
 	item, err := r.adapter.ResolveProject(ctx, selector)
-	return projectinspect.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount, RequestID: item.RequestID}, err
+	return projectops.InspectProject{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount, RequestID: item.RequestID}, err
 }
 
 type projectCreateAdapter struct {
@@ -539,7 +535,7 @@ type projectCreateAdapter struct {
 	resolved map[string]resourceproject.Project
 }
 
-func (a projectCreateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectcreate.Project, error) {
+func (a projectCreateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectops.CreateProject, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
 	if err == nil && a.resolved != nil {
 		a.resolved[item.LUID] = item
@@ -547,26 +543,26 @@ func (a projectCreateAdapter) ResolveProject(ctx context.Context, selector ident
 	return toProjectCreate(item), err
 }
 
-func (a projectCreateAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectcreate.Project, error) {
+func (a projectCreateAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectops.CreateProject, error) {
 	items, err := a.projects.FindProjectCollisions(ctx, name, parentLUID)
-	result := make([]projectcreate.Project, len(items))
+	result := make([]projectops.CreateProject, len(items))
 	for index, item := range items {
 		result[index] = toProjectCreate(item)
 	}
 	return result, err
 }
 
-func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectcreate.CreateRequest) (projectcreate.Result, error) {
+func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectops.CreateRequest) (projectops.CreateResult, error) {
 	result, err := a.changes.Create(ctx, tableauproject.CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: input.ParentLUID, ContentPermissions: input.ContentPermissions})
 	if err != nil {
-		return projectcreate.Result{}, err
+		return projectops.CreateResult{}, err
 	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectcreate.Result{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, nil
+	return projectops.CreateResult{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
-func toProjectCreate(item resourceproject.Project) projectcreate.Project {
-	return projectcreate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
+func toProjectCreate(item resourceproject.Project) projectops.CreateProject {
+	return projectops.CreateProject{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }
 
 type projectUpdateAdapter struct {
@@ -575,7 +571,7 @@ type projectUpdateAdapter struct {
 	resolved map[string]resourceproject.Project
 }
 
-func (a projectUpdateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectupdate.Project, error) {
+func (a projectUpdateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectops.UpdateProject, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
 	if err == nil && a.resolved != nil {
 		a.resolved[item.LUID] = item
@@ -583,17 +579,17 @@ func (a projectUpdateAdapter) ResolveProject(ctx context.Context, selector ident
 	return toProjectUpdate(item), err
 }
 
-func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectupdate.UpdateRequest) (projectupdate.Result, error) {
+func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectops.UpdateRequest) (projectops.UpdateResult, error) {
 	result, err := a.changes.Update(ctx, tableauproject.UpdateRequest{LUID: input.LUID, Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions})
 	if err != nil {
-		return projectupdate.Result{}, err
+		return projectops.UpdateResult{}, err
 	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectupdate.Result{Status: result.Status, Project: toProjectUpdate(item), TableauRequestID: result.TableauRequestID}, nil
+	return projectops.UpdateResult{Status: result.Status, Project: toProjectUpdate(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
-func toProjectUpdate(item resourceproject.Project) projectupdate.Project {
-	return projectupdate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
+func toProjectUpdate(item resourceproject.Project) projectops.UpdateProject {
+	return projectops.UpdateProject{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }
 
 type projectDeleteAdapter struct {
@@ -601,14 +597,14 @@ type projectDeleteAdapter struct {
 	changes  projectMutationClient
 }
 
-func (a projectDeleteAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectdelete.Project, error) {
+func (a projectDeleteAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectops.DeleteProject, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
-	return projectdelete.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
+	return projectops.DeleteProject{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
 }
 
-func (a projectDeleteAdapter) DeleteProject(ctx context.Context, luid string) (projectdelete.Result, error) {
+func (a projectDeleteAdapter) DeleteProject(ctx context.Context, luid string) (projectops.DeleteResult, error) {
 	result, err := a.changes.Delete(ctx, luid)
-	return projectdelete.Result{Status: result.Status, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
+	return projectops.DeleteResult{Status: result.Status, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
 type flowListReader struct{ adapter *resourceflow.Adapter }

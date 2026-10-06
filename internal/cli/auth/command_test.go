@@ -6,40 +6,37 @@ import (
 	"strings"
 	"testing"
 
-	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	authlogin "github.com/ahillspace/tadx/actions/auth/login"
-	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
-	authstatus "github.com/ahillspace/tadx/actions/auth/status"
+	authops "github.com/ahillspace/tadx/actions/auth"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type checker struct{ inputs []authcheck.Input }
+type checker struct{ inputs []authops.CheckInput }
 
-func (c *checker) Execute(_ context.Context, input authcheck.Input) (authcheck.Output, error) {
+func (c *checker) Execute(_ context.Context, input authops.CheckInput) (authops.CheckOutput, error) {
 	c.inputs = append(c.inputs, input)
-	return authcheck.Output{}, nil
+	return authops.CheckOutput{}, nil
 }
 
-type statuser struct{ inputs []authstatus.Input }
+type statuser struct{ inputs []authops.StatusInput }
 
-func (s *statuser) Execute(_ context.Context, input authstatus.Input) (authstatus.Output, error) {
+func (s *statuser) Execute(_ context.Context, input authops.StatusInput) (authops.StatusOutput, error) {
 	s.inputs = append(s.inputs, input)
-	return authstatus.Output{}, nil
+	return authops.StatusOutput{}, nil
 }
 
-type login struct{ inputs []authlogin.Input }
+type login struct{ inputs []authops.LoginInput }
 
-func (l *login) Execute(_ context.Context, input authlogin.Input) (authlogin.Output, error) {
+func (l *login) Execute(_ context.Context, input authops.LoginInput) (authops.LoginOutput, error) {
 	l.inputs = append(l.inputs, input)
-	return authlogin.Output{}, nil
+	return authops.LoginOutput{}, nil
 }
 
-type logout struct{ inputs []authlogout.Input }
+type logout struct{ inputs []authops.LogoutInput }
 
-func (l *logout) Execute(_ context.Context, input authlogout.Input) (authlogout.Output, error) {
+func (l *logout) Execute(_ context.Context, input authops.LogoutInput) (authops.LogoutOutput, error) {
 	l.inputs = append(l.inputs, input)
-	return authlogout.Output{}, nil
+	return authops.LogoutOutput{}, nil
 }
 
 type prompter struct {

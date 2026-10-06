@@ -12,7 +12,8 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `cmd/tadx` | Process entry point |
 | `internal/app` | Composition root, target and workspace selection, command runtime, and concrete dependency wiring |
 | `internal/cli` | Cobra command tree, argument parsing, and action invocation |
-| `actions/workbook`, `actions/datasource`, `actions/flow` | Cohesive resource packages for related lifecycle operations |
+| `actions/workbook`, `actions/datasource`, `actions/flow`, `actions/project` | Cohesive resource packages for related lifecycle operations |
+| `actions/auth`, `actions/cache` | Related service operations with distinct inputs, dependencies, and output contracts |
 | `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
 | `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
@@ -34,6 +35,8 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 ## Dependency boundaries
 
 Action packages keep operation rules near related operations, sharing a package when their responsibilities match.
+Project, auth, and cache operations use operation-named files within their resource or service package.
+Their operation-specific contracts stay beside the implementation; grouping does not combine mutation sequences or add a shared runner.
 Some actions use focused interfaces; others use direct function or service calls.
 Choose the dependency shape that preserves clear ownership without adding forwarding layers for each command.
 `internal/app` composes command dependencies, including resource adapters where remote identity resolution or provider normalization needs a distinct owner.

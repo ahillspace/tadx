@@ -4,7 +4,7 @@ import (
 	"context"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
@@ -30,8 +30,8 @@ var (
 	_ datasourceops.Updater        = datasourceMutationAdapter{}
 	_ flowops.Resolver             = (*flowUpdateAdapter)(nil)
 	_ flowops.Updater              = (*flowUpdateAdapter)(nil)
-	_ projectmove.Resolver         = projectMoveAdapter{}
-	_ projectmove.Mover            = projectMoveAdapter{}
+	_ projectops.MoveResolver      = projectMoveAdapter{}
+	_ projectops.Mover             = projectMoveAdapter{}
 )
 
 type contentMutationWorkbookClient struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
+	cacheops "github.com/ahillspace/tadx/actions/cache"
 	corecache "github.com/ahillspace/tadx/internal/cache"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
@@ -28,7 +28,7 @@ func TestCacheCollectionDoesNotLockUnrelatedEnvironmentWrites(t *testing.T) {
 	hydrator := cacheHydrator{store: store, now: time.Now, executorFor: func(context.Context, string, string) (tableaucache.Executor, error) { return nil, nil }, newRunner: func(tableaucache.Executor) (cacheRunner, error) { return runner, nil }}
 	hydrated := make(chan error, 1)
 	go func() {
-		_, err := hydrator.Hydrate(ctx, cacherefresh.HydrationRequest{Environment: "refresh", Site: "site", RequestedScopes: []string{"projects"}})
+		_, err := hydrator.Hydrate(ctx, cacheops.RefreshHydrationRequest{Environment: "refresh", Site: "site", RequestedScopes: []string{"projects"}})
 		hydrated <- err
 	}()
 	select {

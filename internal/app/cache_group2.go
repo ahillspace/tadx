@@ -11,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
-	cachestatus "github.com/ahillspace/tadx/actions/cache/status"
+	cacheops "github.com/ahillspace/tadx/actions/cache"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/config"
@@ -38,25 +37,25 @@ type cacheHydrator struct {
 	newRunner       cacheRunnerFactory
 }
 
-func (h cacheHydrator) Hydrate(ctx context.Context, input cacherefresh.HydrationRequest) (cacherefresh.HydrationResult, error) {
+func (h cacheHydrator) Hydrate(ctx context.Context, input cacheops.RefreshHydrationRequest) (cacheops.RefreshHydrationResult, error) {
 	requested := cacheScopes(input.RequestedScopes)
 	plan, err := tableaucache.PlanScopes(requested)
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	if err := checkCacheScopeCapabilities(h.checkCapability, plan.Collected); err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	if !slices.Equal(scopeStrings(plan.Requested), input.RequestedScopes) || !slices.Equal(scopeStrings(plan.Implicit), input.ImplicitScopes) {
-		return cacherefresh.HydrationResult{}, errors.New("cache action and collector scope plans differ")
+		return cacheops.RefreshHydrationResult{}, errors.New("cache action and collector scope plans differ")
 	}
 	executor, err := h.executorFor(ctx, input.Environment, input.Site)
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	runner, err := h.newRunner(executor)
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	now := h.now
 	if now == nil {
@@ -68,47 +67,47 @@ func (h cacheHydrator) Hydrate(ctx context.Context, input cacherefresh.Hydration
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
 	})
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	defer writer.Rollback()
 	started := time.Now()
 	result, err := runner.Run(ctx, tableaucache.RunRequest{RequestedScopes: requested}, cacheBatchWriter{writer: writer})
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	if !slices.Equal(scopeStrings(result.RequestedScopes), input.RequestedScopes) || !slices.Equal(scopeStrings(result.ImplicitScopes), input.ImplicitScopes) {
-		return cacherefresh.HydrationResult{}, errors.New("cache collector returned a different scope plan")
+		return cacheops.RefreshHydrationResult{}, errors.New("cache collector returned a different scope plan")
 	}
 	collected := append(append([]tableaucache.Scope(nil), result.RequestedScopes...), result.ImplicitScopes...)
 	var warnings []string
 	if result.DeniedPermissions > 0 {
 		collected = slices.DeleteFunc(collected, func(scope tableaucache.Scope) bool { return scope == tableaucache.ScopePermissions })
 		if err := writer.MarkPermissionsIncomplete(ctx); err != nil {
-			return cacherefresh.HydrationResult{}, err
+			return cacheops.RefreshHydrationResult{}, err
 		}
 		warnings = append(warnings, fmt.Sprintf("Cache permission coverage is incomplete: %d workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions; readable inventory was retained.", result.DeniedPermissions))
 	}
 	if err := writer.CompleteScopes(ctx, scopeStrings(collected)); err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	counts, total, err := cacheScopeCounts(plan.Collected, result.Counts)
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
 	if result.Requests > math.MaxInt {
-		return cacherefresh.HydrationResult{}, errors.New("cache request count exceeds the receipt bound")
+		return cacheops.RefreshHydrationResult{}, errors.New("cache request count exceeds the receipt bound")
 	}
 	published, err := writer.Publish(ctx)
 	if err != nil {
-		return cacherefresh.HydrationResult{}, err
+		return cacheops.RefreshHydrationResult{}, err
 	}
-	return cacherefresh.HydrationResult{
+	return cacheops.RefreshHydrationResult{
 		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: result.DeniedPermissions == 0, Source: cacheSourceName,
 		Path: published.Path, RecordCount: published.RecordCount, HydratedRecordCount: total,
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
 		ScopeCounts:       counts,
 		DeniedPermissions: result.DeniedPermissions, Warnings: warnings,
-		Diagnostics: cacherefresh.Diagnostics{Requests: int(result.Requests), FailedRequests: result.DeniedPermissions, Duration: time.Since(started).Round(time.Millisecond).String()},
+		Diagnostics: cacheops.RefreshDiagnostics{Requests: int(result.Requests), FailedRequests: result.DeniedPermissions, Duration: time.Since(started).Round(time.Millisecond).String()},
 	}, nil
 }
 
@@ -128,8 +127,8 @@ func scopeStrings(values []tableaucache.Scope) []string {
 	return result
 }
 
-func cacheScopeCounts(scopes []tableaucache.Scope, counts map[tableaucache.Scope]int64) ([]cacherefresh.ScopeCount, int, error) {
-	result := make([]cacherefresh.ScopeCount, 0, len(scopes))
+func cacheScopeCounts(scopes []tableaucache.Scope, counts map[tableaucache.Scope]int64) ([]cacheops.RefreshScopeCount, int, error) {
+	result := make([]cacheops.RefreshScopeCount, 0, len(scopes))
 	total := 0
 	for _, scope := range scopes {
 		count := counts[scope]
@@ -137,7 +136,7 @@ func cacheScopeCounts(scopes []tableaucache.Scope, counts map[tableaucache.Scope
 			return nil, 0, errors.New("cache record count exceeds the receipt bound")
 		}
 		total += int(count)
-		result = append(result, cacherefresh.ScopeCount{Scope: string(scope), Records: int(count)})
+		result = append(result, cacheops.RefreshScopeCount{Scope: string(scope), Records: int(count)})
 	}
 	return result, total, nil
 }
@@ -180,23 +179,23 @@ func (e cacheTableauExecutor) Do(ctx context.Context, input tableaucache.Request
 
 type cacheStoreStatuser struct{ store *corecache.Store }
 
-func (s cacheStoreStatuser) Status(ctx context.Context, input cachestatus.Input) (cachestatus.Result, error) {
+func (s cacheStoreStatuser) Status(ctx context.Context, input cacheops.StatusInput) (cacheops.StatusResult, error) {
 	result, err := s.store.Status(ctx, corecache.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: true})
 	if err != nil {
-		return cachestatus.Result{}, err
+		return cacheops.StatusResult{}, err
 	}
 	retained := make([]value.CachedObservation, len(result.Retained))
 	for i, item := range result.Retained {
 		retained[i] = value.CachedObservation{Kind: item.Kind, Records: item.Records, Complete: item.Complete, Stale: item.Stale, Oldest: item.Oldest.UTC().Format(time.RFC3339Nano), Newest: item.Newest.UTC().Format(time.RFC3339Nano)}
 	}
 	if result.GenerationID == "" {
-		return cachestatus.Result{Retained: retained, Environment: result.Environment, Site: result.Site, Path: result.Path}, nil
+		return cacheops.StatusResult{Retained: retained, Environment: result.Environment, Site: result.Site, Path: result.Path}, nil
 	}
 	coverage := make([]value.CacheCoverage, len(result.Coverage))
 	for i, scope := range result.Coverage {
 		coverage[i] = value.CacheCoverage{Scope: scope.Scope, Requested: scope.Requested, Complete: scope.Complete, Records: scope.Records}
 	}
-	return cachestatus.Result{Retained: retained, Coverage: coverage, ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
+	return cacheops.StatusResult{Retained: retained, Coverage: coverage, ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
 func (r *runtimeDependencies) resolveCacheEnvironment(inputEnvironment, inputSite, operation string) (config.Environment, error) {
@@ -210,23 +209,23 @@ func (r *runtimeDependencies) resolveCacheEnvironment(inputEnvironment, inputSit
 	return environment, nil
 }
 
-func (r *runtimeDependencies) RefreshCache(ctx context.Context, input cacherefresh.Input) (cacherefresh.Output, error) {
+func (r *runtimeDependencies) RefreshCache(ctx context.Context, input cacheops.RefreshInput) (cacheops.RefreshOutput, error) {
 	if !input.Preview {
 		plan, err := tableaucache.PlanScopes(cacheScopes(input.Scopes))
 		if err != nil {
-			return cacherefresh.Output{}, err
+			return cacheops.RefreshOutput{}, err
 		}
 		if err := checkCacheScopeCapabilities(r.checkManagedCapability, plan.Collected); err != nil {
-			return cacherefresh.Output{}, err
+			return cacheops.RefreshOutput{}, err
 		}
 	}
 	environment, err := r.resolveCacheEnvironment(input.Environment, input.Site, "cache.refresh")
 	if err != nil {
-		return cacherefresh.Output{}, err
+		return cacheops.RefreshOutput{}, err
 	}
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
 	if input.Preview {
-		return cacherefresh.Refresh(ctx, nil, input)
+		return cacheops.Refresh(ctx, nil, input)
 	}
 	hydrator := cacheHydrator{
 		store: r.cacheStore(environment), now: r.now,
@@ -250,7 +249,7 @@ func (r *runtimeDependencies) RefreshCache(ctx context.Context, input cacherefre
 		// and record the permission prerequisite before any collection request.
 		hydrator.checkCapability = r.checkManagedCapability
 	}
-	return cacherefresh.Refresh(ctx, hydrator, input)
+	return cacheops.Refresh(ctx, hydrator, input)
 }
 
 func checkCacheScopeCapabilities(check func(string) error, scopes []tableaucache.Scope) error {
@@ -277,11 +276,11 @@ func checkCacheScopeCapabilities(check func(string) error, scopes []tableaucache
 	return nil
 }
 
-func (r *runtimeDependencies) ReadCacheStatus(ctx context.Context, input cachestatus.Input) (cachestatus.Output, error) {
+func (r *runtimeDependencies) ReadCacheStatus(ctx context.Context, input cacheops.StatusInput) (cacheops.StatusOutput, error) {
 	environment, err := r.resolveCacheEnvironment(input.Environment, input.Site, "cache.status")
 	if err != nil {
-		return cachestatus.Output{}, err
+		return cacheops.StatusOutput{}, err
 	}
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
-	return cachestatus.Read(ctx, cacheStoreStatuser{store: r.cacheStore(environment)}, input)
+	return cacheops.ReadStatus(ctx, cacheStoreStatuser{store: r.cacheStore(environment)}, input)
 }

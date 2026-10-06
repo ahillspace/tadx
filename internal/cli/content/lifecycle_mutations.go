@@ -4,7 +4,7 @@ import (
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/cli/clierr"
@@ -161,7 +161,7 @@ func newFlowUpdate(deps Dependencies) *cobra.Command {
 }
 
 func newProjectMove(deps Dependencies) *cobra.Command {
-	var input projectmove.Input
+	var input projectops.MoveInput
 	var projectLUID, projectPath, parentLUID, parentPath string
 	var preview bool
 	command := mutationCommand("project.move", "move", "Move one exact project in the hierarchy.", func(command *cobra.Command) error {
