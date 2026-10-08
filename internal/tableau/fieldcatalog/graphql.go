@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	sharedvalue "github.com/ahillspace/tadx/internal/value"
+
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
@@ -165,6 +167,10 @@ type analyzedField struct {
 }
 
 func classifyGraphQLFields(nodes []graphQLNode) []rawField {
+	return classifyFields(nodes, false)
+}
+
+func classifyFields(nodes []graphQLNode, includeHidden bool) []rawField {
 	analysis := make([]*analyzedField, 0, len(nodes))
 	byName := make(map[string][]*analyzedField)
 	for _, node := range nodes {
@@ -242,12 +248,44 @@ func classifyGraphQLFields(nodes []graphQLNode) []rawField {
 	fields := make([]rawField, 0, len(analysis))
 	for _, entry := range analysis {
 		// Hidden fields participate in dependency analysis but are not selectable.
-		if entry.node.Hidden {
+		if entry.node.Hidden && !includeHidden {
 			continue
 		}
-		fields = append(fields, rawField{Name: entry.name, Caption: entry.node.Name, DataType: entry.node.DataType, PhysicalType: entry.node.DataType, ColumnClass: map[bool]string{true: "CALCULATION", false: "COLUMN"}[value(entry.node.Formula) != ""], DefaultAggregation: value(entry.node.Aggregation), Formula: value(entry.node.Formula), Role: entry.node.Role, ExclusionHint: entry.exclusion, RequiresUserAggregation: entry.requiresUser, Provenance: "metadata_graphql"})
+		fields = append(fields, rawField{Name: entry.name, Caption: entry.node.Name, DataType: entry.node.DataType, PhysicalType: entry.node.DataType, ColumnClass: map[bool]string{true: "CALCULATION", false: "COLUMN"}[value(entry.node.Formula) != ""], DefaultAggregation: value(entry.node.Aggregation), Formula: value(entry.node.Formula), Role: entry.node.Role, Hidden: entry.node.Hidden, ExclusionHint: entry.exclusion, RequiresUserAggregation: entry.requiresUser, Provenance: "metadata_graphql"})
 	}
 	return fields
+}
+
+// NormalizeMetadataFields shares published field classification while retaining hidden workbook fields.
+func NormalizeMetadataFields(fields []sharedvalue.FieldDescription) []Field {
+	nodes := make([]graphQLNode, len(fields))
+	byID := make(map[string][]int, len(fields))
+	for i, f := range fields {
+		nodes[i] = graphQLNode{Type: f.Type, ID: f.MetadataID, Name: f.Name, FullyQualifiedName: f.FullyQualifiedName, Role: f.Role, DataType: f.DataType, Aggregation: new(f.Aggregation), Formula: new(f.Formula), Description: f.Description, Hidden: f.Hidden != nil && *f.Hidden}
+		byID[canonicalFieldID(nodes[i])] = append(byID[canonicalFieldID(nodes[i])], i)
+	}
+	result := normalizeSchema("", "", map[string]string{}, classifyFields(nodes, true), "metadata_graphql").Fields
+	for i := range result {
+		matches := byID[result[i].ID]
+		if len(matches) == 1 {
+			observed := fields[matches[0]]
+			result[i].Metadata = new(observed)
+			result[i].MetadataMatch = "exact"
+			if strings.TrimSpace(observed.Role) == "" && !result[i].Excluded {
+				result[i].Role = ""
+			}
+			if strings.TrimSpace(observed.DataType) == "" {
+				result[i].DataType = ""
+			}
+		} else {
+			result[i].MetadataMatch = "ambiguous"
+			if !result[i].Excluded {
+				result[i].Role = ""
+			}
+			result[i].DataType = ""
+		}
+	}
+	return result
 }
 
 func canonicalFieldID(node graphQLNode) string {

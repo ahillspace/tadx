@@ -102,6 +102,9 @@ func TestExplorationF03CatalogInspectFailureStatusThroughCLI(t *testing.T) {
 
 func TestExplorationF04ExactTrailingWorkbookNameThroughCLI(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if diagnosticEmptyWorkbookMetadata(w, r) {
+			return
+		}
 		if diagnosticSignIn(w, r) {
 			return
 		}

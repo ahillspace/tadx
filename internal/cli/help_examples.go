@@ -26,6 +26,7 @@ var categoryHelpExamples = []helpExampleSet{
 	}},
 	{"catalog", "Catalog inspects upstream asset metadata, captures lineage, and manages attached labels. REST LUIDs and Metadata API IDs are distinct selectors.", []string{
 		"tadx catalog search <query> --env dev --type database --type table", "tadx catalog audit --env dev --type datasource --id <datasource-luid>",
+		"tadx catalog audit --env dev --type workbook --id <workbook-luid>",
 	}},
 	{"catalog database", "Inspect accepts exactly one of --id or --metadata-id. Updates require the REST LUID in --id.", []string{
 		"tadx catalog database list --env dev", "tadx catalog database inspect --env dev --id <database-luid> --full",
@@ -41,7 +42,6 @@ var categoryHelpExamples = []helpExampleSet{
 	}},
 	{"content workbook", "Inspect requires --id, or --name with --project or --project-id. Pull accepts --id or --name, with --project to scope names.\nPublish requires an artifact selector and a destination project.", []string{
 		"tadx content workbook list --env dev --limit 10",
-		"tadx content workbook pull --env dev --workspace dev --id <workbook-luid> --id <second-workbook-luid>",
 		"tadx content workbook publish --env dev --workspace dev --id <workbook-luid> --project-id <project-luid> --preview",
 	}},
 	{"content datasource", "Inspect requires --id, or --name with --project or --project-id. Pull requires --id, or --name with --project. Schema requires --id.\nPublish requires exactly one of --create, --overwrite, --append, or --replace.", []string{
@@ -51,6 +51,10 @@ var categoryHelpExamples = []helpExampleSet{
 	{"content datasource schema", "Repeat --field-id for exact fields. Use --all or --limit, but not both.", []string{
 		"tadx content datasource schema --env dev --id <datasource-luid> --query <field-term>",
 		"tadx content datasource schema --env dev --id <datasource-luid> --field-id <field-id> --field-id <second-field-id> --descriptions",
+	}},
+	{"content workbook schema", "Inspect embedded and published fields together; --datasource narrows to one exact datasource name.", []string{
+		"tadx content workbook schema --env dev --id <workbook-luid> --descriptions --tags",
+		"tadx content workbook schema --env dev --id <workbook-luid> --datasource <datasource-name> --all",
 	}},
 	{"content flow", "Inspect requires --id, or --name with --project or --project-id. Pull requires --id, or --name with --project. Publish requires an artifact selector and a destination project.", []string{
 		"tadx content flow list --env dev", "tadx content flow pull --env dev --workspace dev --id <flow-luid>",

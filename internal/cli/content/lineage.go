@@ -50,7 +50,8 @@ downstream databases and tables where Tableau reports them.
 Physical nodes use Metadata API IDs, not REST LUIDs.
 The graph is saved as lineage.json; --full shows bounded nodes and edges.
 Direction, depth, permissions, and graph limits constrain coverage; inspect complete and warnings.
-This does not provide field-level lineage or infer relationships absent from Tableau.`
+Use --fields with workbook or datasource roots to include bounded field relationships.
+The graph includes only relationships reported by Tableau.`
 	pull.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	pull.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	pull.Flags().StringVar(&input.Kind, "kind", "", "lineage root kind: workbook, datasource, or flow")
@@ -59,6 +60,7 @@ This does not provide field-level lineage or infer relationships absent from Tab
 	pull.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	pull.Flags().StringVar(&input.Direction, "direction", "both", "lineage direction: upstream, downstream, or both")
 	pull.Flags().IntVar(&input.Depth, "depth", 1, "bounded lineage depth from 1 to 3")
+	pull.Flags().BoolVar(&input.Fields, "fields", false, "include bounded field lineage for workbooks and datasources")
 	pull.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty metadata-only lineage artifact")
 	pull.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
 	command.AddCommand(pull)

@@ -30,6 +30,7 @@ type LineageMetadata struct {
 	PulledAt           string `json:"pulled_at"`
 	Direction          string `json:"direction"`
 	Depth              int    `json:"depth"`
+	Fields             bool   `json:"fields,omitzero"`
 	Complete           bool   `json:"complete"`
 	NodeCount          *int   `json:"node_count,omitempty"`
 	EdgeCount          *int   `json:"edge_count,omitempty"`
@@ -122,6 +123,7 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (_ Lineage
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.Direction = input.Lineage.Direction
 	metadata.Depth = input.Lineage.Depth
+	metadata.Fields = input.Lineage.Fields
 	metadata.Complete = input.Lineage.Complete
 	if input.CountsKnown || input.Lineage.Complete {
 		nodeCount, edgeCount := len(input.Lineage.Nodes), len(input.Lineage.Edges)

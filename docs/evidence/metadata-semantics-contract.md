@@ -77,6 +77,20 @@ HTTP and CLI integration tests verify explicit-empty encoding, omission preserva
 
 ## Reproduction
 
+### Workbook coverage
+
+Workbook metadata follows the official [Workbook](https://help.tableau.com/current/api/metadata_api/en-us/reference/workbook.doc.html), [EmbeddedDatasource](https://help.tableau.com/current/api/metadata_api/en-us/reference/embeddeddatasource.doc.html), and [DatasourceField](https://help.tableau.com/current/api/metadata_api/en-us/reference/datasourcefield.doc.html) schemas.
+REST workbook LUIDs select the root; embedded datasources and fields retain distinct Metadata IDs.
+Embedded datasource objects have no direct description or tag attributes in this schema; field descriptions remain supported.
+Workbook-local field descriptions and renames remain separate from published source fields, connected through `remoteField`.
+Audit applies the existing direct/inherited description rules and object-tag checks, with per-group summaries and one assessment bound.
+Unknown observations do not become missing metadata, and field tags are not inferred from upstream column tags.
+Schema normalization retains hidden workbook fields and does not invent a role or data type when neither local nor published-source evidence provides one.
+Nested datasource, field, and upstream-column connections validate their own pagination independently.
+Hermetic provider and HTTP-backed CLI tests verify these contracts; this addition does not claim live deployment verification.
+
+### Existing catalog checks
+
 Run `go test ./actions/catalog/update`, `go test ./internal/cli/catalog`, and `go test ./internal/tableau/metadataassets` for isolated fixtures.
 Run the same three packages with `-race` for race coverage.
 Relevant tests cover request XML, omitted properties, read-only label POST, exact attachment and vocabulary addressing, GraphQL parent filtering, malformed coverage, Metadata-only identities and independent upstream-column pagination.

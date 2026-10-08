@@ -85,6 +85,32 @@ func (r reader) CaptureLineage(context.Context, lineagepull.CaptureRequest) (lin
 	return r.graph, r.err
 }
 
+type recordingReader struct{ input lineagepull.CaptureRequest }
+
+func (r *recordingReader) CaptureLineage(_ context.Context, input lineagepull.CaptureRequest) (lineagepull.Graph, error) {
+	r.input = input
+	return lineagepull.Graph{Complete: true}, nil
+}
+
+func TestFieldsScopeValidationAndOutput(t *testing.T) {
+	if _, err := lineagepull.NormalizeInput(lineagepull.Input{Kind: "flow", Selector: identity.Selector{LUID: "flow-1"}, Fields: true}); err == nil {
+		t.Fatal("flow field scope must fail before remote setup")
+	}
+	input, err := lineagepull.NormalizeInput(lineagepull.Input{Workspace: "workspace", Kind: "workbook", Selector: identity.Selector{LUID: "wb-1"}, Fields: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &writer{}
+	r := &recordingReader{}
+	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, r, w, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.input.Fields || !w.input.Fields || !output.FullOutput().(lineagepull.FullResult).Artifact.Fields {
+		t.Fatalf("field scope was lost: artifact=%#v output=%#v", w.input, output)
+	}
+}
+
 type writer struct{ input lineagepull.Artifact }
 
 func (w *writer) WriteLineage(_ context.Context, input lineagepull.Artifact) (lineagepull.ArtifactResult, error) {

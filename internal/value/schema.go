@@ -1,5 +1,24 @@
 package value
 
+import "strings"
+
+// WorkbookSchema keeps each normalized field group with its original metadata identity.
+type WorkbookSchema struct {
+	Metadata MetadataWorkbookDatasources
+	Fields   [][]SchemaField
+}
+
+// Matches applies the common schema text, role, and logical-table filters.
+func (f SchemaField) Matches(query, role, table string) bool {
+	if role != "" && !strings.EqualFold(strings.TrimSpace(f.Role), role) {
+		return false
+	}
+	if table != "" && !strings.EqualFold(f.Table, table) {
+		return false
+	}
+	return query == "" || strings.Contains(strings.ToLower(strings.Join([]string{f.ID, f.Name, f.Caption, f.Label, f.Formula}, "\x00")), strings.ToLower(query))
+}
+
 // SchemaTable is one normalized logical datasource table.
 type SchemaTable struct {
 	ID         string `json:"id"`

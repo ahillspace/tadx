@@ -23,6 +23,7 @@ func TestLineageInvalidInputPrecedesWorkspaceSetup(t *testing.T) {
 		{"kind", []string{"--kind", "sheet", "--id", "item-1"}},
 		{"direction", []string{"--kind", "flow", "--id", "item-1", "--direction", "sideways"}},
 		{"depth", []string{"--kind", "flow", "--id", "item-1", "--depth", "4"}},
+		{"flow fields", []string{"--kind", "flow", "--id", "item-1", "--fields"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out strings.Builder
@@ -36,6 +37,100 @@ func TestLineageInvalidInputPrecedesWorkspaceSetup(t *testing.T) {
 	var out strings.Builder
 	if code := app.Run(t.Context(), []string{"catalog", "lineage", "pull", "--kind", "flow", "--id", "item-1", "--json"}, &out, app.Options{ConfigPath: missing}); code == 0 || !strings.Contains(out.String(), "lineage.pull.workspace") {
 		t.Fatalf("valid input setup: code=%d output=%s", code, out.String())
+	}
+}
+
+func TestDatasourceFieldLineageRoundTripsThroughCLIAndArtifact(t *testing.T) {
+	base, mutations := newGroupOneTableauServer(t)
+	defer base.Close()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/datasources/ds-1" {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, `<tsResponse><datasource id="ds-1" name="Sales"><project id="project-ops" name="Operations"/></datasource></tsResponse>`)
+			return
+		}
+		if r.URL.Path != "/api/metadata/graphql" {
+			base.Config.Handler.ServeHTTP(w, r)
+			return
+		}
+		var body struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode lineage query: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		root := map[string]any{"id": "ds-meta", "luid": "ds-1", "name": "Sales"}
+		for _, field := range []string{"upstreamDatasourcesConnection", "upstreamFlowsConnection", "upstreamDatabasesConnection", "upstreamTablesConnection"} {
+			if strings.Contains(body.Query, field) {
+				root[field] = map[string]any{"totalCount": 0, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}
+				break
+			}
+		}
+		if strings.Contains(body.Query, "fieldsConnection") {
+			root["fieldsConnection"] = map[string]any{"totalCount": 2, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{
+				map[string]any{"__typename": "CalculatedField", "id": "calc-meta", "name": "Margin", "datasource": map[string]any{"id": "ds-meta"}, "fieldsConnection": map[string]any{"totalCount": 1, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{map[string]any{"id": "amount-meta", "name": "Amount", "datasource": map[string]any{"id": "ds-meta"}}}}, "upstreamColumnsConnection": map[string]any{"totalCount": 0, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}},
+				map[string]any{"__typename": "ColumnField", "id": "amount-meta", "name": "Amount", "datasource": map[string]any{"id": "ds-meta"}, "upstreamColumnsConnection": map[string]any{"totalCount": 0, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}},
+			}}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"publishedDatasourcesConnection": map[string]any{"totalCount": 1, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{root}}}}); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	config := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	workspace := createNamedWorkspace(t, config, "fields-lineage")
+	t.Setenv("PROD_PAT_NAME", "fixture-name")
+	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
+	options := app.Options{ConfigPath: config, HTTPClient: server.Client(), JobDirectory: t.TempDir()}
+	var out strings.Builder
+	if code := app.Run(t.Context(), []string{"catalog", "lineage", "pull", "--workspace", "fields-lineage", "--kind", "datasource", "--id", "ds-1", "--direction", "upstream", "--fields", "--full", "--json"}, &out, options); code != 0 {
+		t.Fatalf("field lineage pull: code=%d output=%s", code, out.String())
+	}
+	var receipt struct {
+		Artifact struct {
+			Fields      bool   `json:"fields"`
+			Complete    bool   `json:"complete"`
+			LineagePath string `json:"lineage_path"`
+		} `json:"artifact"`
+		Nodes []artifact.LineageNode `json:"nodes"`
+		Edges []artifact.LineageEdge `json:"edges"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Artifact.Fields || !receipt.Artifact.Complete || len(receipt.Nodes) != 3 || len(receipt.Edges) != 3 {
+		t.Fatalf("field receipt = %s", out.String())
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(receipt.Artifact.LineagePath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var graph artifact.LineageDocument
+	if err := json.Unmarshal(data, &graph); err != nil {
+		t.Fatal(err)
+	}
+	if !graph.Fields || !graph.Complete || len(graph.Nodes) != 3 || len(graph.Edges) != 3 {
+		t.Fatalf("persisted field lineage = %#v", graph)
+	}
+	var last strings.Builder
+	if code := app.Run(t.Context(), []string{"last", "--full", "--json"}, &last, options); code != 0 {
+		t.Fatalf("saved field result: code=%d output=%s", code, last.String())
+	}
+	var saved struct {
+		Result struct {
+			Artifact struct {
+				Fields bool `json:"fields"`
+			} `json:"artifact"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(last.String()), &saved); err != nil || !saved.Result.Artifact.Fields {
+		t.Fatalf("saved field result = %s, error = %v", last.String(), err)
+	}
+	if mutations.Load() != 0 {
+		t.Fatalf("lineage made %d remote mutations", mutations.Load())
 	}
 }
 

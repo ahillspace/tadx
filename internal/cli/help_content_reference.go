@@ -26,7 +26,7 @@ func contentReferenceFlagSyntax(resource, action *cobra.Command, flag *pflag.Fla
 	switch flag.Name {
 	case "id", "project-id", "owner-id", "parent-id", "destination-project-id":
 		value = "luid"
-	case "name", "new-name", "artifact-name", "workspace", "environment":
+	case "name", "new-name", "artifact-name", "workspace", "environment", "datasource":
 		value = "name"
 	case "project-name":
 		value = "leaf"
@@ -99,7 +99,7 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.")
 		}
 		if resource == "workbook" {
-			notes = append(notes, "Publish missing referenced datasources first, then the workbook. Workbook publish does not publish dependencies or rebind their references.")
+			notes = append(notes, "Publish missing referenced datasources first. Workbook publish does not publish dependencies or rebind references.")
 		}
 		return append(notes, "Creates by default; --overwrite replaces an exact collision.")
 	case "update":
@@ -107,6 +107,9 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 			return []string{"Empty --description clears it."}
 		}
 	case "schema":
+		if resource == "workbook" {
+			return []string{"Live fields; total limit. Scope duplicate IDs with --datasource."}
+		}
 		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata; cache needs observations."}
 	case "create":
 		return []string{"Omit parent for top level; omit content-permissions for the server default."}
@@ -129,13 +132,13 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 	}
 	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Project paths use /.")
 	if has("list") {
-		fmt.Fprintln(out, "  list --all: <=10000; incomplete/overflow fails. Live --all caches best-effort: unfiltered replaces scope; filtered merges.")
-		fmt.Fprintln(out, "  Bounded reads never cache; cache failures retain live results.")
+		fmt.Fprintln(out, "  list --all: <=10000; incomplete/overflow fails. Cache: unfiltered replaces scope; filtered merges; cache failures retain live results.")
+		fmt.Fprintln(out, "  Bounded reads never cache.")
 	}
 	if has("publish") || has("pull") {
-		fmt.Fprintln(out, "  --no-wait: one single/batch status command, no polling. Wait stops at 20m; work continues.")
+		fmt.Fprintln(out, "  --no-wait: one single/batch status command, no polling. Wait ends at 20m; work continues.")
 		if has("publish") {
-			fmt.Fprintln(out, "  Save accepted IDs before waiting; use the returned status command to recover. Do not republish.")
+			fmt.Fprintln(out, "  Save accepted IDs; recover with the returned status command. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")
 			if resource.Name() == "flow" {
 				fmt.Fprintln(out, "  Flow publication can complete synchronously.")

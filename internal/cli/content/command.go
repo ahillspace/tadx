@@ -56,6 +56,7 @@ type Dependencies struct {
 	Publisher           Publisher
 	WorkbookLister      WorkbookLister
 	WorkbookInspector   WorkbookInspector
+	WorkbookSchema      WorkbookSchemaGetter
 	WorkbookDeleter     WorkbookDeleter
 	WorkbookMover       WorkbookMover
 	WorkbookUpdater     WorkbookUpdater
@@ -99,6 +100,9 @@ func New(deps Dependencies) *cobra.Command {
 	}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
 	workbook.AddCommand(newPull(deps), newPublish(deps))
+	if deps.WorkbookSchema != nil {
+		workbook.AddCommand(newWorkbookSchema(deps.WorkbookSchema, deps.Renderer))
+	}
 	if deps.WorkbookLister != nil && deps.WorkbookInspector != nil {
 		workbook.AddCommand(newWorkbookList(deps.WorkbookLister, deps.Renderer), newWorkbookInspect(deps.WorkbookInspector, deps.Renderer))
 	}

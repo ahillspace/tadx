@@ -29,34 +29,46 @@ type Reader interface {
 var errAssessmentBound = errors.New("audit assessment bound reached")
 
 type Finding struct {
-	Type            string `json:"type"`
-	LUID            string `json:"luid"`
-	MetadataID      string `json:"metadata_id"`
-	Name            string `json:"name"`
-	ParentTableLUID string `json:"parent_table_luid,omitempty"`
-	Check           string `json:"check"`
-	State           string `json:"state"`
-	Source          string `json:"source"`
+	DatasourceMetadataID string `json:"datasource_metadata_id,omitempty"`
+	Type                 string `json:"type"`
+	LUID                 string `json:"luid"`
+	MetadataID           string `json:"metadata_id"`
+	Name                 string `json:"name"`
+	ParentTableLUID      string `json:"parent_table_luid,omitempty"`
+	Check                string `json:"check"`
+	State                string `json:"state"`
+	Source               string `json:"source"`
 }
 type Summary struct {
 	Present int `json:"present"`
 	Missing int `json:"missing"`
 	Unknown int `json:"unknown"`
 }
+
+// GroupSummary distinguishes workbook-local assessments from published-source assessments.
+type GroupSummary struct {
+	Identity value.MetadataIdentity `json:"identity"`
+	Kind     string                 `json:"kind"`
+	Scanned  int                    `json:"scanned"`
+	Summary  Summary                `json:"summary"`
+	Complete bool                   `json:"complete"`
+}
 type Output struct {
-	Status      string    `json:"status"`
-	Environment string    `json:"environment,omitempty"`
-	Site        string    `json:"site,omitempty"`
-	Type        string    `json:"type"`
-	ID          string    `json:"id"`
-	Checks      []string  `json:"checks"`
-	DirectOnly  bool      `json:"direct_only"`
-	Scanned     int       `json:"scanned"`
-	Complete    bool      `json:"complete"`
-	Summary     Summary   `json:"summary"`
-	Findings    []Finding `json:"findings"`
-	ObservedAt  string    `json:"observed_at,omitempty"`
-	RequestID   string    `json:"tableau_request_id,omitempty"`
+	Groups      []GroupSummary `json:"groups,omitempty"`
+	Limitations []string       `json:"limitations,omitempty"`
+	Status      string         `json:"status"`
+	Environment string         `json:"environment,omitempty"`
+	Site        string         `json:"site,omitempty"`
+	Type        string         `json:"type"`
+	ID          string         `json:"id"`
+	Checks      []string       `json:"checks"`
+	DirectOnly  bool           `json:"direct_only"`
+	Scanned     int            `json:"scanned"`
+	Complete    bool           `json:"complete"`
+	Summary     Summary        `json:"summary"`
+	Findings    []Finding      `json:"findings"`
+	ObservedAt  string         `json:"observed_at,omitempty"`
+	RequestID   string         `json:"tableau_request_id,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
@@ -77,8 +89,8 @@ func ValidateInput(in Input) error {
 	if in.ID != strings.TrimSpace(in.ID) || strings.ContainsAny(in.ID, "\x00\r\n") {
 		return usage("audit identity must be exact and contain no whitespace or control characters")
 	}
-	if strings.TrimSpace(in.ID) == "" || !slices.Contains([]string{"database", "table", "datasource"}, in.Type) {
-		return usage("audit requires one exact --id and --type database, table, or datasource")
+	if strings.TrimSpace(in.ID) == "" || !slices.Contains([]string{"database", "table", "datasource", "workbook"}, in.Type) {
+		return usage("audit requires one exact --id and --type database, table, datasource, or workbook")
 	}
 	if in.Limit < 0 || in.Limit > 10000 {
 		return usage("audit limit must be between 1 and 10000")
@@ -173,6 +185,75 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 	}
 	var err error
 	switch in.Type {
+	case "workbook":
+		workbooks, ok := reader.(interface {
+			WorkbookDatasources(context.Context, string) (value.MetadataWorkbookDatasources, error)
+		})
+		if !ok {
+			out.Status, out.Complete = "partial", false
+			return out, failure(in, errors.New("workbook metadata reader is not configured"))
+		}
+		var v value.MetadataWorkbookDatasources
+		v, err = workbooks.WorkbookDatasources(ctx, in.ID)
+		if v.Identity.LUID != in.ID || v.Identity.MetadataID == "" {
+			if err == nil {
+				err = errors.New("audited workbook identity mismatch")
+			}
+			break
+		}
+		out.ObservedAt, out.RequestID, out.Complete = v.ObservedAt, v.TableauRequestID, v.Complete
+		out.Limitations = append(out.Limitations, v.Warnings...)
+		out.Limitations = append(out.Limitations, "Embedded datasource objects and fields have no direct tag check; upstream column tags are provenance, not field-owned tags.")
+		startGroup := func(id value.MetadataIdentity, kind string, start, scanned int, complete bool) {
+			g := GroupSummary{Identity: id, Kind: kind, Scanned: out.Scanned - scanned, Complete: complete}
+			for i := start; i < len(out.Findings); i++ {
+				if kind != "workbook" {
+					out.Findings[i].DatasourceMetadataID = id.MetadataID
+				}
+				switch out.Findings[i].State {
+				case "present":
+					g.Summary.Present++
+				case "missing":
+					g.Summary.Missing++
+				default:
+					g.Summary.Unknown++
+					g.Complete = false
+				}
+			}
+			out.Groups = append(out.Groups, g)
+		}
+		record(v.Identity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
+		startGroup(v.Identity, "workbook", 0, 0, true)
+		seen := make(map[string]bool)
+		for _, ds := range v.Datasources {
+			key := ds.Kind + "\x00" + ds.Identity.MetadataID
+			if ds.Identity.MetadataID == "" || (ds.Kind != "embedded" && ds.Kind != "published") || seen[key] {
+				err = errors.Join(err, errors.New("workbook datasource identity is missing, invalid, or repeated"))
+				out.Complete = false
+				continue
+			}
+			seen[key] = true
+			start, scanned := len(out.Findings), out.Scanned
+			needed := 0
+			if ds.Kind == "published" {
+				needed++
+				record(ds.Identity, "", ds.Description, ds.Tags, ds.TagsObserved, nil, false, false)
+			}
+			if slices.Contains(checks, "descriptions") {
+				for _, field := range ds.Fields {
+					needed++
+					if field.MetadataID == "" {
+						out.Complete = false
+						continue
+					}
+					record(value.MetadataIdentity{MetadataID: field.MetadataID, Name: field.Name, Type: "field"}, "", field.Description, nil, false, field.Inherited, field.InheritedObserved, true)
+				}
+			}
+			complete := ds.Complete && out.Scanned-scanned == needed
+			out.Complete = out.Complete && complete
+			out.Limitations = append(out.Limitations, ds.Warnings...)
+			startGroup(ds.Identity, ds.Kind, start, scanned, complete)
+		}
 	case "database":
 		var v value.MetadataDatabase
 		v, err = reader.GetDatabase(ctx, in.ID)

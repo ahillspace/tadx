@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,6 +34,29 @@ func diagnosticSignIn(w http.ResponseWriter, r *http.Request) bool {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = io.WriteString(w, `{"credentials":{"token":"diagnostic-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+	return true
+}
+
+// diagnosticEmptyWorkbookMetadata supplies the empty datasource inventory for identity-only fixtures.
+func diagnosticEmptyWorkbookMetadata(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost || r.URL.Path != "/api/metadata/graphql" {
+		return false
+	}
+	var request struct {
+		Query     string
+		Variables map[string]any
+	}
+	if json.NewDecoder(r.Body).Decode(&request) != nil || !strings.Contains(request.Query, "query WorkbookDatasources(") {
+		http.Error(w, "unexpected metadata query", 400)
+		return true
+	}
+	luid, ok := request.Variables["luid"].(string)
+	if !ok || luid == "" {
+		http.Error(w, "missing workbook identity", 400)
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"workbooks": map[string]any{"totalCount": 1, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{map[string]any{"id": "metadata-" + luid, "luid": luid, "name": "Workbook", "description": "", "tagsConnection": map[string]any{"totalCount": 0, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}, "items": map[string]any{"totalCount": 0, "pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{}}}}}}})
 	return true
 }
 

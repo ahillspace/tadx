@@ -19,6 +19,9 @@ func TestLiveWorkbookReadThroughKeepsExactNameIndexThroughCLI(t *testing.T) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
+		if diagnosticEmptyWorkbookMetadata(w, r) {
+			return
+		}
 		switch r.URL.Path {
 		case "/api/3.29/sites/site-1/projects":
 			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Ops"/></projects></tsResponse>`, r.URL.Query().Get("pageSize"))

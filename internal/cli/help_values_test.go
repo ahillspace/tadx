@@ -213,7 +213,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 		{"catalog search", "type", 3, func(v string) error {
 			return catalogsearch.ValidateInput(catalogsearch.Input{Query: "sales", Types: []string{v}, TableID: "table-id"})
 		}},
-		{"catalog audit", "type", 3, func(v string) error { return catalogaudit.ValidateInput(catalogaudit.Input{Type: v, ID: "scope-id"}) }},
+		{"catalog audit", "type", 4, func(v string) error { return catalogaudit.ValidateInput(catalogaudit.Input{Type: v, ID: "scope-id"}) }},
 		{"catalog audit", "check", 2, func(v string) error {
 			return catalogaudit.ValidateInput(catalogaudit.Input{Type: "table", ID: "scope-id", Checks: []string{v}})
 		}},
@@ -314,7 +314,10 @@ func TestHelpValuesAreScopedAndPreserveFlagBehavior(t *testing.T) {
 			t.Errorf("--%s behavior changed: %v -> %v", f.Name, want, got)
 		}
 	}
-	for _, path := range []string{"catalog search", "catalog audit", "catalog label list"} {
+	if !slices.Contains(helpValueFlag(t, root, "catalog audit", "type").Annotations["tadx.help.choices"], "workbook") {
+		t.Fatal("workbook audit scope is not discoverable")
+	}
+	for _, path := range []string{"catalog search", "catalog label list"} {
 		if slices.Contains(helpValueFlag(t, root, path, "type").Annotations["tadx.help.choices"], "workbook") {
 			t.Errorf("search family leaked into %s", path)
 		}

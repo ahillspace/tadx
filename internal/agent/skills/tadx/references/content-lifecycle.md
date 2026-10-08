@@ -54,10 +54,17 @@ See Tableau's [publishing append contract](https://help.tableau.com/current/api/
 
 Published datasource schema describes fields and logical tables, not data values or verified cardinalities.
 Embedded workbook sources are not independently published datasources.
+Use `content workbook schema --id <workbook-luid> --descriptions --tags` to inspect embedded and connected published fields together.
+Use `--datasource <exact-name>` to narrow ambiguous field identifiers; local overrides retain links to published source fields.
+Workbook schema is live-only; cached workbook inspection explicitly identifies datasource details not captured by the cache.
+Use `catalog audit --type workbook --id <workbook-luid>` for description and supported tag checks, separated into local and published-source groups.
+Field tags are not independently authored metadata; reported upstream column tags retain their source identity.
 Field IDs, upstream REST LUIDs, and GraphQL metadata IDs identify different things; use the identity returned for the intended surface.
 Literal slashes in project names can resemble nested paths; select a LUID when paths are ambiguous.
 
 Native pulls retain available bounded lineage in metadata; a lineage-only pull avoids downloading the native package.
+Use `catalog lineage pull --kind workbook --id <workbook-luid> --fields` for bounded field ownership, source-field, calculation-reference, and upstream-column relationships.
+Field detail uses the same graph and bounds; it does not change the selected asset traversal depth.
 Lineage describes only the observed direction, depth, permission scope, and bounds.
 `complete` means the selected visible bounded capture, not every real-world dependency or a current metadata index.
 Claim a dependency only from a retrieved relationship between the exact identities; otherwise call it unconfirmed.

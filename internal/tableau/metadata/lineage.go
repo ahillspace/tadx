@@ -33,6 +33,7 @@ type ResourceKind string
 const (
 	KindWorkbook            ResourceKind = "workbook"
 	KindPublishedDatasource ResourceKind = "published_datasource"
+	KindEmbeddedDatasource  ResourceKind = "embedded_datasource"
 	KindFlow                ResourceKind = "flow"
 	KindDatabase            ResourceKind = "database"
 	KindTable               ResourceKind = "table"
@@ -53,6 +54,7 @@ type CaptureRequest struct {
 	RESTLUID  string
 	Direction Direction
 	Depth     int
+	Fields    bool
 	PageSize  int
 }
 
@@ -115,6 +117,7 @@ type lineageRelation struct {
 	targetKind ResourceKind
 	direction  Direction
 	linked     bool
+	contained  bool
 }
 
 var lineageRelations = map[ResourceKind]map[Direction][]lineageRelation{
@@ -123,7 +126,9 @@ var lineageRelations = map[ResourceKind]map[Direction][]lineageRelation{
 			{field: "upstreamDatasourcesConnection", targetKind: KindPublishedDatasource, direction: DirectionUpstream},
 			{field: "upstreamDatabasesConnection", targetKind: KindDatabase, direction: DirectionUpstream},
 			{field: "upstreamTablesConnection", targetKind: KindTable, direction: DirectionUpstream},
+			{field: "embeddedDatasourcesConnection", targetKind: KindEmbeddedDatasource, contained: true},
 		},
+		DirectionDownstream: {{field: "embeddedDatasourcesConnection", targetKind: KindEmbeddedDatasource, contained: true}},
 	},
 	KindPublishedDatasource: {
 		DirectionUpstream: {
@@ -244,6 +249,9 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 					break
 				}
 				edge := lineageEdge(current.node, neighbor, relation.direction)
+				if relation.contained {
+					edge = Edge{FromMetadataID: current.node.MetadataID, ToMetadataID: neighbor.MetadataID, Relationship: "contains"}
+				}
 				if edge.FromMetadataID == edge.ToMetadataID {
 					capture.Complete = false
 					capture.Warnings = append(capture.Warnings, "Lineage omitted a self-referential edge; the capture is incomplete.")
@@ -257,7 +265,7 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 					bounded = true
 					break
 				}
-				if current.depth+1 < request.Depth {
+				if current.depth+1 < request.Depth && !relation.contained {
 					frontier = append(frontier, lineageFrontier{node: neighbor, depth: current.depth + 1})
 				}
 			}
@@ -269,6 +277,12 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 			if bounded {
 				break
 			}
+		}
+	}
+	if request.Fields && !bounded {
+		if err := c.enrichLineageFields(ctx, request, &capture, nodes, restIdentities, edges); err != nil {
+			capture.Complete = false
+			return finalizeCapture(capture, nodes, edges), err
 		}
 	}
 	return finalizeCapture(capture, nodes, edges), nil
@@ -565,7 +579,13 @@ func relationsFor(kind string, direction Direction) []lineageRelation {
 		return append([]lineageRelation(nil), byDirection[DirectionDownstream]...)
 	default:
 		result := append([]lineageRelation(nil), byDirection[DirectionUpstream]...)
-		return append(result, byDirection[DirectionDownstream]...)
+		for _, relation := range byDirection[DirectionDownstream] {
+			if relation.contained && direction == DirectionBoth {
+				continue
+			}
+			result = append(result, relation)
+		}
+		return result
 	}
 }
 
@@ -657,6 +677,9 @@ func ValidateLineageRequest(request CaptureRequest) (CaptureRequest, error) {
 	if request.Kind != KindWorkbook && request.Kind != KindPublishedDatasource && request.Kind != KindFlow {
 		return CaptureRequest{}, fmt.Errorf("unsupported lineage root kind %q", request.Kind)
 	}
+	if request.Fields && request.Kind == KindFlow {
+		return CaptureRequest{}, errors.New("field lineage is supported only for workbook and published datasource roots")
+	}
 	if request.RESTLUID == "" {
 		return CaptureRequest{}, errors.New("lineage root REST LUID is required")
 	}
@@ -739,7 +762,7 @@ func lineageRelationQuery(kind ResourceKind, relation lineageRelation) (string, 
 		return "", err
 	}
 	nodes := "nodes { id luid name }"
-	if relation.targetKind == KindDatabase || relation.targetKind == KindTable {
+	if relation.targetKind == KindDatabase || relation.targetKind == KindTable || relation.targetKind == KindEmbeddedDatasource {
 		nodes = "nodes { id name }"
 	}
 	if relation.linked {
@@ -793,6 +816,7 @@ type lineageEnvelope struct {
 type lineageData struct {
 	WorkbooksConnection            *lineageConnection `json:"workbooksConnection"`
 	PublishedDatasourcesConnection *lineageConnection `json:"publishedDatasourcesConnection"`
+	EmbeddedDatasourcesConnection  *lineageConnection `json:"embeddedDatasourcesConnection"`
 	FlowsConnection                *lineageConnection `json:"flowsConnection"`
 	DatabaseTablesConnection       *lineageConnection `json:"databaseTablesConnection"`
 }
@@ -803,6 +827,8 @@ func (d lineageData) connection(kind ResourceKind) *lineageConnection {
 		return d.WorkbooksConnection
 	case KindPublishedDatasource:
 		return d.PublishedDatasourcesConnection
+	case KindEmbeddedDatasource:
+		return d.EmbeddedDatasourcesConnection
 	case KindFlow:
 		return d.FlowsConnection
 	case KindTable:
@@ -835,6 +861,13 @@ type lineageNode struct {
 	DownstreamWorkbooksConnection   *lineageConnection `json:"downstreamWorkbooksConnection"`
 	DownstreamDatabasesConnection   *lineageConnection `json:"downstreamDatabasesConnection"`
 	DownstreamTablesConnection      *lineageConnection `json:"downstreamTablesConnection"`
+	EmbeddedDatasourcesConnection   *lineageConnection `json:"embeddedDatasourcesConnection"`
+	FieldsConnection                *lineageConnection `json:"fieldsConnection"`
+	UpstreamColumnsConnection       *lineageConnection `json:"upstreamColumnsConnection"`
+	RemoteField                     *lineageNode       `json:"remoteField"`
+	Datasource                      *lineageNode       `json:"datasource"`
+	Table                           *lineageNode       `json:"table"`
+	Typename                        string             `json:"__typename"`
 }
 
 func (n lineageNode) relation(relation lineageRelation) *lineageConnection {
@@ -861,6 +894,8 @@ func (n lineageNode) relation(relation lineageRelation) *lineageConnection {
 		return n.DownstreamDatabasesConnection
 	case "downstreamTablesConnection":
 		return n.DownstreamTablesConnection
+	case "embeddedDatasourcesConnection":
+		return n.EmbeddedDatasourcesConnection
 	default:
 		return nil
 	}

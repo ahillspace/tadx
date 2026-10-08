@@ -35,6 +35,7 @@ var flagShorthands = map[string]string{
 }
 
 var flagLongAliases = map[string]string{
+	"fields": "fds", "datasource": "ds",
 	"output":   "out",
 	"template": "tpl",
 	"no-wait":  "nwt", "operation-id": "opi",

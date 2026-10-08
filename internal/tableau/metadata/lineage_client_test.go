@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,6 +22,7 @@ func TestCaptureLineageMapsWorkbookRESTIdentityAndPagesDirectUpstreamDatasources
 		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"metadata-workbook","luid":"workbook-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":"datasource-page-2"},"nodes":[{"id":"metadata-datasource-a","luid":"datasource-rest-a","name":"Alpha"}]}}]}}}`,
 		emptyLineageRelationResponse(t, "workbooksConnection", "metadata-workbook", "workbook-rest", "Book", "upstreamDatabasesConnection"),
 		emptyLineageRelationResponse(t, "workbooksConnection", "metadata-workbook", "workbook-rest", "Book", "upstreamTablesConnection"),
+		emptyLineageRelationResponse(t, "workbooksConnection", "metadata-workbook", "workbook-rest", "Book", "embeddedDatasourcesConnection"),
 	}
 	server, requests := lineageTestServer(t, responses)
 	defer server.Close()
@@ -48,15 +50,164 @@ func TestCaptureLineageMapsWorkbookRESTIdentityAndPagesDirectUpstreamDatasources
 	if fmt.Sprint(capture.Edges) != fmt.Sprint(wantEdges) {
 		t.Fatalf("edges = %#v, want %#v", capture.Edges, wantEdges)
 	}
-	if fmt.Sprint(capture.RequestIDs) != "[request-1 request-2 request-3 request-4 request-5]" {
+	if fmt.Sprint(capture.RequestIDs) != "[request-1 request-2 request-3 request-4 request-5 request-6]" {
 		t.Fatalf("request IDs = %#v", capture.RequestIDs)
 	}
 	gotRequests := *requests
-	if len(gotRequests) != 5 || !strings.Contains(gotRequests[1].Query, "upstreamDatasourcesConnection") || !strings.Contains(gotRequests[3].Query, "upstreamDatabasesConnection") || !strings.Contains(gotRequests[4].Query, "upstreamTablesConnection") {
+	if len(gotRequests) != 6 || !strings.Contains(gotRequests[1].Query, "upstreamDatasourcesConnection") || !strings.Contains(gotRequests[3].Query, "upstreamDatabasesConnection") || !strings.Contains(gotRequests[4].Query, "upstreamTablesConnection") || !strings.Contains(gotRequests[5].Query, "embeddedDatasourcesConnection") {
 		t.Fatalf("requests = %#v", gotRequests)
 	}
 	if gotRequests[1].Variables["after"] != nil || gotRequests[2].Variables["after"] != "datasource-page-1" || gotRequests[1].Variables["pageSize"] != float64(1) {
 		t.Fatalf("pagination variables = %#v then %#v", gotRequests[1].Variables, gotRequests[2].Variables)
+	}
+}
+
+func TestCaptureLineageIncludesEmbeddedDatasourceByMetadataIdentity(t *testing.T) {
+	responses := []string{
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book"}]}}}`,
+		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamDatasourcesConnection"),
+		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamDatabasesConnection"),
+		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamTablesConnection"),
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book","embeddedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local"}]}}]}}}`,
+	}
+	server, requests := lineageTestServer(t, responses)
+	defer server.Close()
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(t.Context(), CaptureRequest{Kind: KindWorkbook, RESTLUID: "workbook-rest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capture.Complete || len(capture.Nodes) != 2 || len(capture.Edges) != 1 || capture.Nodes[0] != (Node{MetadataID: "embedded-meta", Kind: "embedded_datasource", Name: "Local"}) || capture.Edges[0] != (Edge{FromMetadataID: "workbook-meta", ToMetadataID: "embedded-meta", Relationship: "contains"}) {
+		t.Fatalf("capture = %#v", capture)
+	}
+	if len(*requests) != 5 || !strings.Contains((*requests)[4].Query, "embeddedDatasourcesConnection") || strings.Contains((*requests)[4].Query, "nodes { id luid name }") {
+		t.Fatalf("embedded query = %#v", *requests)
+	}
+}
+
+func TestCaptureLineageFieldsEnrichesScopedDatasourceAfterAssets(t *testing.T) {
+	responses := []string{
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales"}]}}}`,
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamDatasourcesConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamFlowsConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamDatabasesConnection"),
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales","upstreamTablesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"table-meta","name":"Orders"}]}}]}}}`,
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales","fieldsConnection":{"totalCount":2,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"CalculatedField","id":"calc-meta","name":"Margin","datasource":{"id":"ds-meta"},"fieldsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"column-field-meta","name":"Amount","datasource":{"id":"ds-meta"}}]},"upstreamColumnsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"column-meta","name":"Amount","table":{"id":"table-meta"}}]}},{"__typename":"ColumnField","id":"column-field-meta","name":"Amount","datasource":{"id":"ds-meta"},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}]}}}`,
+	}
+	server, requests := lineageTestServer(t, responses)
+	defer server.Close()
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(t.Context(), CaptureRequest{Kind: KindPublishedDatasource, RESTLUID: "ds-rest", Direction: DirectionUpstream, Fields: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capture.Complete || len(capture.Nodes) != 5 || len(capture.Edges) != 6 {
+		t.Fatalf("capture = %#v", capture)
+	}
+	for _, edge := range []Edge{
+		{FromMetadataID: "ds-meta", ToMetadataID: "calc-meta", Relationship: "contains"},
+		{FromMetadataID: "column-field-meta", ToMetadataID: "calc-meta", Relationship: "references"},
+		{FromMetadataID: "column-meta", ToMetadataID: "calc-meta", Relationship: "upstream"},
+		{FromMetadataID: "table-meta", ToMetadataID: "column-meta", Relationship: "contains"},
+	} {
+		if !slices.Contains(capture.Edges, edge) {
+			t.Fatalf("missing edge %#v in %#v", edge, capture.Edges)
+		}
+	}
+	if len(*requests) != len(responses) || !strings.Contains((*requests)[5].Query, "fieldsConnection") {
+		t.Fatalf("field request = %#v", *requests)
+	}
+}
+
+func TestCaptureLineagePagesCalculatedReferencesAndColumnsWithinGraphBounds(t *testing.T) {
+	encode := func(value any) string {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	connection := func(nodes []any, total int, next bool, cursor string) map[string]any {
+		return map[string]any{"totalCount": total, "pageInfo": map[string]any{"hasNextPage": next, "endCursor": cursor}, "nodes": nodes}
+	}
+	references := make([]any, 100)
+	columns := make([]any, 100)
+	for i := range 100 {
+		references[i] = map[string]any{"id": fmt.Sprintf("ref-%03d", i), "name": fmt.Sprintf("Reference %d", i), "datasource": map[string]any{"id": "ds-meta"}}
+		columns[i] = map[string]any{"id": fmt.Sprintf("col-%03d", i), "name": fmt.Sprintf("Column %d", i), "table": map[string]any{"id": "table-meta"}}
+	}
+	ownerResponse := func(field map[string]any) string {
+		return encode(map[string]any{"data": map[string]any{"publishedDatasourcesConnection": connection([]any{map[string]any{"id": "ds-meta", "luid": "ds-rest", "name": "Sales", "fieldsConnection": connection([]any{field}, 1, false, "")}}, 1, false, "")}})
+	}
+	initial := map[string]any{"__typename": "CalculatedField", "id": "calc-meta", "name": "Margin", "datasource": map[string]any{"id": "ds-meta"}, "fieldsConnection": connection(references, 101, true, "ref-next"), "upstreamColumnsConnection": connection(columns, 101, true, "col-next")}
+	nextReferences := map[string]any{"id": "calc-meta", "name": "Margin", "datasource": map[string]any{"id": "ds-meta"}, "fieldsConnection": connection([]any{map[string]any{"id": "ref-100", "name": "Reference 100", "datasource": map[string]any{"id": "ds-meta"}}}, 101, false, "")}
+	nextColumns := map[string]any{"id": "calc-meta", "name": "Margin", "datasource": map[string]any{"id": "ds-meta"}, "upstreamColumnsConnection": connection([]any{map[string]any{"id": "col-100", "name": "Column 100", "table": map[string]any{"id": "table-meta"}}}, 101, false, "")}
+	responses := []string{
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales"}]}}}`,
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamDatasourcesConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamFlowsConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamDatabasesConnection"),
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales","upstreamTablesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"table-meta","name":"Orders"}]}}]}}}`,
+		ownerResponse(initial), ownerResponse(nextReferences), ownerResponse(nextColumns),
+	}
+	server, requests := lineageTestServer(t, responses)
+	defer server.Close()
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(t.Context(), CaptureRequest{Kind: KindPublishedDatasource, RESTLUID: "ds-rest", Direction: DirectionUpstream, Fields: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capture.Complete || len(capture.Nodes) != 205 || len(capture.Edges) != 406 || len(*requests) != len(responses) {
+		t.Fatalf("paged field capture: nodes=%d edges=%d complete=%t warnings=%v requests=%d, error=%v", len(capture.Nodes), len(capture.Edges), capture.Complete, capture.Warnings, len(*requests), err)
+	}
+	if (*requests)[6].Variables["after"] != "ref-next" || (*requests)[7].Variables["after"] != "col-next" || (*requests)[6].Variables["fieldID"] != "calc-meta" || (*requests)[7].Variables["fieldID"] != "calc-meta" {
+		t.Fatalf("nested paging variables = %#v / %#v", (*requests)[6].Variables, (*requests)[7].Variables)
+	}
+}
+
+func TestCaptureLineageRetainsConfirmedNestedFieldEdgesAfterNextPageFailure(t *testing.T) {
+	responses := []string{
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales"}]}}}`,
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamDatasourcesConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamFlowsConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamDatabasesConnection"),
+		emptyLineageRelationResponse(t, "publishedDatasourcesConnection", "ds-meta", "ds-rest", "Sales", "upstreamTablesConnection"),
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales","fieldsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"CalculatedField","id":"calc-meta","name":"Margin","datasource":{"id":"ds-meta"},"fieldsConnection":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"more"},"nodes":[{"id":"base-meta","name":"Base","datasource":{"id":"ds-meta"}}]},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}]}}}`,
+		`{"errors":[{"message":"nested page denied","extensions":{"code":"ACCESS_DENIED"}}]}`,
+	}
+	server, _ := lineageTestServer(t, responses)
+	defer server.Close()
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(t.Context(), CaptureRequest{Kind: KindPublishedDatasource, RESTLUID: "ds-rest", Direction: DirectionUpstream, Fields: true})
+	if err == nil || capture.Complete || len(capture.Nodes) != 3 || len(capture.Edges) != 3 || len(capture.Warnings) == 0 || !strings.Contains(capture.Warnings[0], "fieldsConnection") {
+		t.Fatalf("partial field capture = %#v", capture)
+	}
+}
+
+func TestCaptureLineageLinksEmbeddedRemoteFieldToScopedPublishedField(t *testing.T) {
+	responses := []string{
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"wb-meta","luid":"wb-rest","name":"Book"}]}}}`,
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"wb-meta","luid":"wb-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"published-meta","luid":"published-rest","name":"Shared"}]}}]}}}`,
+		emptyLineageRelationResponse(t, "workbooksConnection", "wb-meta", "wb-rest", "Book", "upstreamDatabasesConnection"),
+		emptyLineageRelationResponse(t, "workbooksConnection", "wb-meta", "wb-rest", "Book", "upstreamTablesConnection"),
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"wb-meta","luid":"wb-rest","name":"Book","embeddedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local"}]}}]}}}`,
+		`{"data":{"embeddedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local","fieldsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"DatasourceField","id":"local-field-meta","name":"Local Amount","datasource":{"id":"embedded-meta"},"remoteField":{"id":"published-field-meta","name":"Amount","datasource":{"id":"published-meta"}},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}]}}}`,
+		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"published-meta","luid":"published-rest","name":"Shared","fieldsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"ColumnField","id":"published-field-meta","name":"Amount","datasource":{"id":"published-meta"},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}]}}}`,
+	}
+	server, requests := lineageTestServer(t, responses)
+	defer server.Close()
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(t.Context(), CaptureRequest{Kind: KindWorkbook, RESTLUID: "wb-rest", Direction: DirectionUpstream, Fields: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Edge{FromMetadataID: "published-field-meta", ToMetadataID: "local-field-meta", Relationship: "remote_field"}
+	if !capture.Complete || len(capture.Nodes) != 5 || len(capture.Edges) != 5 || !slices.Contains(capture.Edges, want) {
+		t.Fatalf("remote field capture = %#v", capture)
+	}
+	if len(*requests) != len(responses) || !strings.Contains((*requests)[5].Query, "remoteField") || strings.Contains((*requests)[5].Query, "rootLuid") {
+		t.Fatalf("embedded field query = %#v", (*requests)[5])
 	}
 }
 
@@ -308,6 +459,7 @@ func TestCaptureLineageRetainsPartialRelationshipDataWithoutClaimingCompleteness
 		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":2,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"datasource-meta","luid":"datasource-rest","name":"Sales"}]}}]}},"errors":[{"message":"partial nodes","extensions":{"code":"NODE_LIMIT_EXCEEDED","severity":"WARNING"}}]}`,
 		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamDatabasesConnection"),
 		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamTablesConnection"),
+		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "embeddedDatasourcesConnection"),
 	}
 	server, _ := lineageTestServer(t, responses)
 	defer server.Close()
@@ -380,6 +532,7 @@ func TestCaptureLineageCarriesEarlierPageWarningThroughConnectionCompletion(t *t
 		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":3,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"datasource-b","luid":"rest-b","name":"B"}]}}]}}}`,
 		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamDatabasesConnection"),
 		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "upstreamTablesConnection"),
+		emptyLineageRelationResponse(t, "workbooksConnection", "workbook-meta", "workbook-rest", "Book", "embeddedDatasourcesConnection"),
 	}
 	server, _ := lineageTestServer(t, responses)
 	defer server.Close()

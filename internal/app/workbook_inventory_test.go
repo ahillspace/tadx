@@ -9,6 +9,7 @@ import (
 	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type workbookInventoryAdapterStub struct {
@@ -26,6 +27,10 @@ func (a *workbookInventoryAdapterStub) ListWorkbooks(_ context.Context, request 
 func (a *workbookInventoryAdapterStub) ResolveWorkbook(_ context.Context, selector identity.Selector) (resourceworkbook.Workbook, error) {
 	a.selector = selector
 	return a.workbook, nil
+}
+
+func (a *workbookInventoryAdapterStub) WorkbookDatasources(context.Context, string) (value.MetadataWorkbookDatasources, error) {
+	return value.MetadataWorkbookDatasources{Identity: value.MetadataIdentity{LUID: a.workbook.LUID, MetadataID: "metadata-workbook", Name: a.workbook.Name}, Complete: true}, nil
 }
 
 func TestWorkbookListReaderMapsActionAndResourceTypes(t *testing.T) {
@@ -48,7 +53,7 @@ func TestWorkbookListReaderMapsActionAndResourceTypes(t *testing.T) {
 func TestWorkbookInspectUsesResourceRecordDirectly(t *testing.T) {
 	adapter := &workbookInventoryAdapterStub{workbook: resourceworkbook.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", UpdatedAt: "2026-09-01T00:00:00Z", Tags: []string{"finance"}, RequestID: "request-1"}}
 	selector := identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"}
-	output, err := workbookops.Inspect(t.Context(), adapter, workbookops.InspectInput{Selector: selector})
+	output, err := workbookops.Inspect(t.Context(), adapter, adapter, workbookops.InspectInput{Selector: selector})
 	item := output.Workbook
 	if err != nil {
 		t.Fatal(err)

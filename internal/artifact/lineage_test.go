@@ -48,6 +48,33 @@ func TestLineageManagerWritesMetadataOnlyRelativeArtifact(t *testing.T) {
 	if metadata.Kind != "lineage" || metadata.LineagePath != "lineage.json" || metadata.Fingerprint == "" || metadata.NodeCount == nil || *metadata.NodeCount != 1 || !metadata.Complete {
 		t.Fatalf("metadata = %#v", metadata)
 	}
+	if strings.Contains(string(data), `"fields"`) {
+		t.Fatalf("asset-only metadata changed shape: %s", data)
+	}
+}
+
+func TestLineageManagerPersistsRequestedFieldsInExistingArtifactFiles(t *testing.T) {
+	workspace := newLineageWorkspace(t)
+	result, err := NewLineageManager(nil).Pull(t.Context(), LineagePull{
+		Workspace: workspace,
+		Metadata:  LineageMetadata{ResourceKind: "workbook", Name: "Book", TableauID: "wb-1", MetadataID: "wb-meta", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "dev"},
+		Lineage: LineageDocument{Complete: true, Direction: "both", Depth: 1, Fields: true,
+			Nodes: []LineageNode{{MetadataID: "wb-meta", Kind: "workbook", RESTLUID: "wb-1"}, {MetadataID: "ds-meta", Kind: "embedded_datasource"}, {MetadataID: "field-meta", Kind: "field"}},
+			Edges: []LineageEdge{{FromMetadataID: "wb-meta", ToMetadataID: "ds-meta", Relationship: "contains"}, {FromMetadataID: "ds-meta", ToMetadataID: "field-meta", Relationship: "contains"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, filename := range []string{"metadata.json", "lineage.json"} {
+		data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(result.Path), filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), `"fields": true`) {
+			t.Fatalf("%s omitted requested field scope: %s", filename, data)
+		}
+	}
 }
 
 func newLineageWorkspace(t *testing.T) string {

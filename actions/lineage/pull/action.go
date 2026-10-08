@@ -59,7 +59,7 @@ func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Write
 		}
 		return Output{Status: "preview", Resource: resource, Preview: &plan}, nil
 	}
-	request := CaptureRequest{Kind: resource.Kind, RESTLUID: resource.LUID, Direction: input.Direction, Depth: input.Depth}
+	request := CaptureRequest{Kind: resource.Kind, RESTLUID: resource.LUID, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields}
 	graph, captureErr := reader.CaptureLineage(ctx, request)
 	countsKnown := captureErr == nil
 	if captureErr != nil {
@@ -83,7 +83,7 @@ func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Write
 	requestIDs, requestIDsOmitted := boundedStrings(graph.RequestIDs, maxWarnings)
 	artifact := Artifact{
 		Workspace: input.Workspace, Resource: resource, Environment: input.Environment, Site: input.Site,
-		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Direction: input.Direction, Depth: input.Depth,
+		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields,
 		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges,
 		Failure:  graph.Failure,
 		Warnings: warnings, WarningsOmitted: warningsOmitted, RequestIDs: requestIDs, Overwrite: input.Overwrite,
@@ -93,13 +93,17 @@ func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Write
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the workspace and artifact target, then pull again.")
 		return Output{}, &errs.Error{ID: "lineage.pull.write", Kind: errs.KindOperation, Operation: "lineage.pull", Resource: resource.LUID, Environment: input.Environment, Site: input.Site, Summary: "Lineage artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
+	helpArgs := []string{"catalog", "lineage", "pull", "--kind", publicKind(resource.Kind), "--id", resource.LUID, "--direction", input.Direction, "--depth", fmt.Sprint(input.Depth)}
+	if input.Fields {
+		helpArgs = append(helpArgs, "--fields")
+	}
 	return Output{
-		Status: "pulled", Resource: resource, Artifact: result, Direction: input.Direction, Depth: input.Depth,
+		Status: "pulled", Resource: resource, Artifact: result, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields,
 		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges, Failure: graph.Failure,
 		Warnings: warnings, WarningsOmitted: warningsOmitted,
 		Provenance: Provenance{Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID},
 		RequestIDs: requestIDs, RequestIDsOmitted: requestIDsOmitted,
-		Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "catalog", "lineage", "pull", "--kind", publicKind(resource.Kind), "--id", resource.LUID, "--direction", input.Direction, "--depth", fmt.Sprint(input.Depth))},
+		Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, helpArgs...)},
 	}, nil
 }
 

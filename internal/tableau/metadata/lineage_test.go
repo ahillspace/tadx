@@ -43,6 +43,7 @@ func TestValidateLineageRequestAppliesDefaultsAndBounds(t *testing.T) {
 		{Kind: KindWorkbook, RESTLUID: "x", Direction: "sideways"},
 		{Kind: KindWorkbook, RESTLUID: "x", Depth: MaxLineageDepth + 1},
 		{Kind: KindWorkbook, RESTLUID: "x", PageSize: LineagePageSize + 1},
+		{Kind: KindFlow, RESTLUID: "x", Fields: true},
 	} {
 		if _, err := ValidateLineageRequest(request); err == nil {
 			t.Fatalf("expected validation error for %#v", request)

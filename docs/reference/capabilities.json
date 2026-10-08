@@ -978,7 +978,7 @@
   {
     "id": "catalog.audit",
     "surface": "tadx catalog audit",
-    "outcome": "Audit descriptions and tags in an explicit database, table, or datasource scope; inherited descriptions count unless --direct-only.",
+    "outcome": "Audit descriptions and tags in an explicit database, table, datasource, or workbook scope; inherited descriptions count unless --direct-only.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
@@ -2296,7 +2296,7 @@
   {
     "id": "lineage.pull",
     "surface": "tadx catalog lineage pull",
-    "outcome": "Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.",
+    "outcome": "Capture bounded content and physical lineage, including embedded datasource structure; optional --fields adds field dependencies for workbook or datasource roots.",
     "type": "deliver",
     "disposition": "ship",
     "owner": "cli",
@@ -3378,7 +3378,7 @@
   {
     "id": "workbook.inspect",
     "surface": "tadx content workbook inspect",
-    "outcome": "Inspect one authoritative workbook and lifecycle metadata.",
+    "outcome": "Inspect one authoritative workbook, its embedded and published datasources, and upstream metadata; cached reads identify metadata not captured.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
@@ -3391,8 +3391,8 @@
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails",
     "artifact_effect": "None",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}",
-    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic cache source-selection tests",
+    "upstream_operation": "REST workbook identity and Metadata API workbook datasource connections",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/metadata-semantics-contract.md; hermetic cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -3517,6 +3517,35 @@
       "content",
       "workbook",
       "pull"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.schema",
+    "surface": "tadx content workbook schema",
+    "outcome": "Inspect embedded and connected published datasource fields, local overrides, descriptions, and upstream column tags inside one workbook.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workbook REST LUID; exact datasource name; field text, role, and repeated field IDs; --limit or --all; optional descriptions and tags",
+    "availability": "Cloud / Server with Metadata API access",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Exact REST identity; independent Metadata identities; global bounded field paging; no cache or metadata source fallback; incomplete coverage remains explicit",
+    "artifact_effect": "None",
+    "upstream_operation": "REST workbook identity and Metadata API workbook, embedded datasource, and published parent connections",
+    "evidence": "docs/evidence/metadata-semantics-contract.md; provider, action, and HTTP-backed command tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Hermetic metadata contracts; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "workbook",
+      "schema"
     ],
     "raw_capable": false
   },

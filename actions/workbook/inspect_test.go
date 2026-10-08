@@ -9,6 +9,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +35,7 @@ func TestInspectActionClassifiesResolutionFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cause := &identity.ResolutionError{Kind: tc.kind, Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
 			input := workbookops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
-			_, err := workbookops.Inspect(context.Background(), inspectErroringResolver{err: cause}, input)
+			_, err := workbookops.Inspect(t.Context(), inspectErroringResolver{err: cause}, nil, input)
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != tc.wantID {
 				t.Fatalf("error = %#v", structured)
@@ -45,7 +46,7 @@ func TestInspectActionClassifiesResolutionFailures(t *testing.T) {
 
 func TestInspectActionClassifiesOpaqueResolverErrorAsOperation(t *testing.T) {
 	input := workbookops.InspectInput{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
-	_, err := workbookops.Inspect(context.Background(), inspectErroringResolver{err: errors.New("upstream unavailable")}, input)
+	_, err := workbookops.Inspect(t.Context(), inspectErroringResolver{err: errors.New("upstream unavailable")}, nil, input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "workbook.inspect.resolve" {
 		t.Fatalf("error = %#v", structured)
@@ -60,6 +61,10 @@ type inspectResolver struct {
 func (r *inspectResolver) ResolveWorkbook(_ context.Context, selector identity.Selector) (workbookops.Record, error) {
 	r.selector = selector
 	return r.workbook, nil
+}
+
+func (r *inspectResolver) WorkbookDatasources(context.Context, string) (value.MetadataWorkbookDatasources, error) {
+	return value.MetadataWorkbookDatasources{Identity: value.MetadataIdentity{LUID: r.workbook.LUID, MetadataID: "metadata-workbook", Name: r.workbook.Name}, Complete: true}, nil
 }
 
 func TestInspectOutputGolden(t *testing.T) {
@@ -78,7 +83,7 @@ func TestInspectActionGetsExactWorkbookAndBoundsTags(t *testing.T) {
 		tags[index] = fmt.Sprintf("tag-%02d", index)
 	}
 	r := &inspectResolver{workbook: workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectPath: "Department/Ops", Tags: tags, RequestID: "request-1"}}
-	output, err := workbookops.Inspect(context.Background(), r, workbookops.InspectInput{Environment: "dev", Selector: identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"}})
+	output, err := workbookops.Inspect(t.Context(), r, r, workbookops.InspectInput{Environment: "dev", Selector: identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +112,7 @@ func (r *inspectSpyResolver) ResolveWorkbook(_ context.Context, _ identity.Selec
 func TestInspectActionRejectsConflictingSelector(t *testing.T) {
 	r := &inspectSpyResolver{}
 	input := workbookops.InspectInput{Selector: identity.Selector{LUID: "wb-1", Name: "Finance"}}
-	_, err := workbookops.Inspect(context.Background(), r, input)
+	_, err := workbookops.Inspect(t.Context(), r, nil, input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.inspect.usage" {
 		t.Fatalf("error = %#v", structured)
@@ -120,7 +125,7 @@ func TestInspectActionRejectsConflictingSelector(t *testing.T) {
 func TestInspectActionRejectsWhitespaceOnlySelector(t *testing.T) {
 	r := &inspectSpyResolver{}
 	input := workbookops.InspectInput{Selector: identity.Selector{LUID: "   ", Name: " ", ProjectPath: "\t"}}
-	_, err := workbookops.Inspect(context.Background(), r, input)
+	_, err := workbookops.Inspect(t.Context(), r, nil, input)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.inspect.usage" {
 		t.Fatalf("error = %#v", structured)
@@ -143,7 +148,7 @@ func TestInspectActionRejectsMismatchedIdentity(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &inspectSpyResolver{workbook: tc.workbook}
-			_, err := workbookops.Inspect(context.Background(), r, workbookops.InspectInput{Selector: tc.selector})
+			_, err := workbookops.Inspect(t.Context(), r, nil, workbookops.InspectInput{Selector: tc.selector})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "workbook.inspect.identity_mismatch" {
 				t.Fatalf("error = %#v", structured)

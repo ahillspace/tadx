@@ -121,6 +121,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `workbook.move` | cli | ship | ready | implemented | `tadx content workbook move` |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
+| `workbook.schema` | cli | ship | ready | implemented | `tadx content workbook schema` |
 | `workbook.update` | cli | ship | ready | implemented | `tadx content workbook update` |
 | `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
 | `workspace.clean` | cli | ship | ready | implemented | `tadx workspace clean` |
@@ -1074,7 +1075,7 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 
 ### `catalog.audit`
 
-Audit descriptions and tags in an explicit database, table, or datasource scope; inherited descriptions count unless --direct-only.
+Audit descriptions and tags in an explicit database, table, datasource, or workbook scope; inherited descriptions count unless --direct-only.
 
 - Surface: tadx catalog audit
 - Operation type: inspect
@@ -2181,7 +2182,7 @@ Display one globally saved full result and timestamp without re-execution.
 
 ### `lineage.pull`
 
-Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.
+Capture bounded content and physical lineage, including embedded datasource structure; optional --fields adds field dependencies for workbook or datasource roots.
 
 - Surface: tadx catalog lineage pull
 - Operation type: deliver
@@ -3045,7 +3046,7 @@ Delete one exact remote workbook, or preview the operation.
 
 ### `workbook.inspect`
 
-Inspect one authoritative workbook and lifecycle metadata.
+Inspect one authoritative workbook, its embedded and published datasources, and upstream metadata; cached reads identify metadata not captured.
 
 - Surface: tadx content workbook inspect
 - Operation type: inspect
@@ -3064,8 +3065,8 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Raw capable: No
 - Safety and guard: Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails
 - Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic cache source-selection tests
+- Upstream operation: REST workbook identity and Metadata API workbook datasource connections
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/metadata-semantics-contract.md; hermetic cache source-selection tests
 - Validation or blocker: Contract-verified exact REST read, canonical project selection, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx content workbook inspect`
@@ -3177,6 +3178,33 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 - Validation or blocker: Contract-verified; published-datasource traversal captured live; lineage schema and hermetic tests recorded in docs/evidence/lineage-metadata-contract.md; remaining exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
 - Command binding: `tadx content workbook pull`
+
+### `workbook.schema`
+
+Inspect embedded and connected published datasource fields, local overrides, descriptions, and upstream column tags inside one workbook.
+
+- Surface: tadx content workbook schema
+- Operation type: inspect
+- Owner: cli
+- Selectors: Workbook REST LUID; exact datasource name; field text, role, and repeated field IDs; --limit or --all; optional descriptions and tags
+- Products and availability: Cloud / Server with Metadata API access
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact REST identity; independent Metadata identities; global bounded field paging; no cache or metadata source fallback; incomplete coverage remains explicit
+- Artifact effect: None
+- Upstream operation: REST workbook identity and Metadata API workbook, embedded datasource, and published parent connections
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider, action, and HTTP-backed command tests
+- Validation or blocker: Hermetic metadata contracts; live deployment verification is not claimed
+- Blocker ID: None
+- Command binding: `tadx content workbook schema`
 
 ### `workbook.update`
 

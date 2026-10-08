@@ -67,6 +67,21 @@ type graphNode struct {
 	FullyQualifiedName string           `json:"fullyQualifiedName"`
 	Inherited          []graphInherited `json:"descriptionInherited"`
 	Columns            *graphPage       `json:"upstreamColumnsConnection"`
+	References         *graphPage       `json:"referencedFields"`
+	Sheets             *graphPage       `json:"relatedSheets"`
+	Hidden             *bool            `json:"isHidden"`
+	FolderName         string           `json:"folderName"`
+	Role               string           `json:"role"`
+	DataType           string           `json:"dataType"`
+	Aggregation        string           `json:"aggregation"`
+	Formula            string           `json:"formula"`
+	RemoteField        *graphIdentity   `json:"remoteField"`
+	HasExtracts        *bool            `json:"hasExtracts"`
+	HasUserReference   *bool            `json:"hasUserReference"`
+	UnsupportedSQL     *bool            `json:"containsUnsupportedCustomSql"`
+	ExtractUpdated     string           `json:"extractLastUpdateTime"`
+	ExtractRefreshed   string           `json:"extractLastRefreshTime"`
+	ExtractIncremental string           `json:"extractLastIncrementalUpdateTime"`
 }
 type graphIdentity struct {
 	ID   string `json:"id"`
@@ -94,6 +109,8 @@ type graphEnvelope struct {
 		Parents *struct {
 			Nodes []graphNode `json:"nodes"`
 		} `json:"parents"`
+		Workbooks *graphPage `json:"workbooks"`
+		Embedded  *graphPage `json:"embedded"`
 	} `json:"data"`
 	Errors   json.RawMessage `json:"errors"`
 	Warnings json.RawMessage `json:"warnings"`
@@ -103,6 +120,8 @@ const graphTagFields = `tagsConnection(first:100,orderBy:{field:NAME,direction:A
 const databaseFields = `__typename id luid name description connectionType isEmbedded ... on File {filePath}`
 const tableFields = `__typename id luid name description fullName schema database{__typename id luid name}`
 const columnFields = `__typename id luid name description remoteType isNullable table{__typename id name ... on DatabaseTable {luid}}`
+const fieldProvenanceFields = `id name fullyQualifiedName description descriptionInherited(inheritanceType:FIRST,permissionMode:OBFUSCATE_RESULTS){value assetId attribute distance edges} upstreamColumnsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}`
+const fieldDescriptionFields = `__typename id name fullyQualifiedName description isHidden folderName descriptionInherited(inheritanceType:FIRST,permissionMode:OBFUSCATE_RESULTS){value assetId attribute distance edges} ... on DataField {role dataType} ... on AnalyticsField {aggregation} ... on CalculatedField {formula referencedFields:fieldsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id name}}} ... on DatasourceField {remoteField{__typename id name fullyQualifiedName}} relatedSheets:downstreamSheetsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id luid name}} upstreamColumnsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}`
 
 func (c *Client) graph(ctx context.Context, query string, variables map[string]any) (graphEnvelope, tableau.Response, error) {
 	if e := c.configured(); e != nil {
@@ -335,7 +354,13 @@ func (c *Client) DiscoverColumns(ctx context.Context, q Query) (Page[value.Metad
 	return mapped(p, r, graphColumn)
 }
 
-func (c *Client) datasourcePage(ctx context.Context, luid, connection, fields, cursor string) (*graphPage, graphNode, tableau.Response, error) {
+func (c *Client) datasourcePage(ctx context.Context, luid, connection, fields, cursor string, budget *int) (*graphPage, graphNode, tableau.Response, error) {
+	if budget != nil {
+		if *budget >= 400 {
+			return nil, graphNode{}, tableau.Response{}, &ConstraintError{"workbook metadata exceeds 400 request bound"}
+		}
+		*budget++
+	}
 	parentFields := "luid"
 	if connection == "fieldsConnection" {
 		parentFields = "id luid name description " + graphTagFields
@@ -359,6 +384,10 @@ func (c *Client) datasourcePage(ctx context.Context, luid, connection, fields, c
 	return p, env.Data.Parents.Nodes[0], r, nil
 }
 func (c *Client) DatasourceUpstream(ctx context.Context, luid string) (DatasourceUpstream, error) {
+	return c.datasourceUpstream(ctx, luid, nil)
+}
+
+func (c *Client) datasourceUpstream(ctx context.Context, luid string, budget *int) (DatasourceUpstream, error) {
 	out := DatasourceUpstream{LUID: luid, Databases: []value.MetadataDatabase{}, Tables: []value.MetadataTable{}, ObservedAt: time.Now().UTC().Format(time.RFC3339)}
 	if e := exact(luid); e != nil {
 		return out, e
@@ -373,7 +402,7 @@ func (c *Client) DatasourceUpstream(ctx context.Context, luid string) (Datasourc
 		seen := map[string]graphNode{}
 		var coverage graphCoverage
 		for page := 0; page < 100; page++ {
-			p, _, r, e := c.datasourcePage(ctx, luid, connection, fields, cursor)
+			p, _, r, e := c.datasourcePage(ctx, luid, connection, fields, cursor, budget)
 			out.TableauRequestID = r.TableauRequestID
 			if e != nil {
 				return out, e
@@ -419,11 +448,18 @@ func (c *Client) DatasourceUpstream(ctx context.Context, luid string) (Datasourc
 }
 
 func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (DatasourceDescriptions, error) {
+	return c.datasourceFieldDescriptions(ctx, luid, nil, false)
+}
+
+func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, budget *int, extended bool) (DatasourceDescriptions, error) {
 	out := DatasourceDescriptions{LUID: luid, Fields: []value.FieldDescription{}, ObservedAt: time.Now().UTC().Format(time.RFC3339)}
 	if e := exact(luid); e != nil {
 		return out, e
 	}
-	const fields = `id name fullyQualifiedName description descriptionInherited(inheritanceType:FIRST,permissionMode:OBFUSCATE_RESULTS){value assetId attribute distance edges} upstreamColumnsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}`
+	fields := fieldProvenanceFields
+	if extended {
+		fields = fieldDescriptionFields
+	}
 	cursor := ""
 	seenCursor := map[string]bool{}
 	seen := map[string]graphNode{}
@@ -434,7 +470,7 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 		if requests >= 200 {
 			return out, &ConstraintError{"datasource provenance exceeds 200 request bound"}
 		}
-		p, parent, r, e := c.datasourcePage(ctx, luid, "fieldsConnection", fields, cursor)
+		p, parent, r, e := c.datasourcePage(ctx, luid, "fieldsConnection", fields, cursor, budget)
 		requests++
 		out.TableauRequestID = r.TableauRequestID
 		if e != nil {
@@ -459,20 +495,14 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 				continue
 			}
 			seen[n.ID] = n
-			v := value.FieldDescription{MetadataID: n.ID, Name: n.Name, FullyQualifiedName: n.FullyQualifiedName, Description: n.Description, Inherited: []value.DescriptionObservation{}, InheritedObserved: n.Inherited != nil, UpstreamColumns: []value.MetadataColumn{}}
-			if len(n.Inherited) > 100 {
-				return out, &ConstraintError{"inherited descriptions exceed bound"}
-			}
-			for _, a := range n.Inherited {
-				if a.ID == "" || a.Attribute == "" {
-					return out, protocol("catalog.metadata.read", r, errors.New("inherited description lacks provenance"))
-				}
-				v.Inherited = append(v.Inherited, value.DescriptionObservation{Value: a.Value, SourceMetadataID: a.ID, Attribute: a.Attribute, Distance: a.Distance, Edges: a.Edges})
+			v, e := fieldDescription(n)
+			if e != nil {
+				return out, protocol("catalog.metadata.read", r, e)
 			}
 			if e = validatePage(n.Columns, 100, ""); e != nil {
 				return out, protocol("catalog.metadata.read", r, e)
 			}
-			columns, e := c.fieldColumns(ctx, luid, n.ID, n.Columns, &requests)
+			columns, e := c.fieldColumns(ctx, luid, n.ID, n.Columns, &requests, false, budget)
 			for _, col := range columns {
 				if col.ID == "" || col.Name == "" {
 					return out, protocol("catalog.metadata.read", r, errors.New("upstream column identity incomplete"))
@@ -486,6 +516,12 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 			out.Fields = append(out.Fields, v)
 			if e != nil {
 				return out, e
+			}
+			if extended {
+				field := &out.Fields[len(out.Fields)-1]
+				if e = c.fieldRelations(ctx, luid, n, field, &requests, false, budget); e != nil {
+					return out, e
+				}
 			}
 			if len(out.Fields) > maxItems {
 				return out, &ConstraintError{"datasource fields exceed bound"}
@@ -507,8 +543,155 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 	return out, &ConstraintError{fmt.Sprintf("datasource fields exceed %d pages", 100)}
 }
 
+func fieldDescription(n graphNode) (value.FieldDescription, error) {
+	v := value.FieldDescription{MetadataID: n.ID, Name: n.Name, FullyQualifiedName: n.FullyQualifiedName, Type: n.Type, Role: n.Role, DataType: n.DataType, Aggregation: n.Aggregation, Formula: n.Formula, FolderName: n.FolderName, Hidden: n.Hidden, Description: n.Description, Inherited: []value.DescriptionObservation{}, InheritedObserved: n.Inherited != nil, UpstreamColumns: []value.MetadataColumn{}}
+	if n.RemoteField != nil {
+		if n.RemoteField.ID == "" || n.RemoteField.Name == "" {
+			return v, errors.New("remote field identity incomplete")
+		}
+		remote := related(n.RemoteField, "field")
+		v.RemoteField = &remote
+	}
+	if len(n.Inherited) > 100 {
+		return v, &ConstraintError{"inherited descriptions exceed bound"}
+	}
+	for _, a := range n.Inherited {
+		if a.ID == "" || a.Attribute == "" {
+			return v, errors.New("inherited description lacks provenance")
+		}
+		v.Inherited = append(v.Inherited, value.DescriptionObservation{Value: a.Value, SourceMetadataID: a.ID, Attribute: a.Attribute, Distance: a.Distance, Edges: a.Edges})
+	}
+	return v, nil
+}
+
+// fieldRelations completes the two field-owned graph connections independently.
+func (c *Client) fieldRelations(ctx context.Context, datasource string, n graphNode, field *value.FieldDescription, requests *int, embedded bool, budget *int) error {
+	for _, relation := range []struct {
+		name  string
+		first *graphPage
+		out   *[]value.MetadataIdentity
+	}{
+		{"relatedSheets", n.Sheets, &field.Sheets},
+		{"referencedFields", n.References, &field.ReferencedFields},
+	} {
+		if relation.name == "referencedFields" && n.Type != "CalculatedField" {
+			continue
+		}
+		if err := validatePage(relation.first, 100, ""); err != nil {
+			return err
+		}
+		rows, err := c.fieldRelation(ctx, datasource, n.ID, relation.name, relation.first, requests, embedded, budget)
+		for _, row := range rows {
+			if row.ID == "" || row.Name == "" {
+				return errors.New("field relation identity incomplete")
+			}
+			kind := "field"
+			if relation.name == "relatedSheets" {
+				kind = "sheet"
+			}
+			*relation.out = append(*relation.out, identity(row, kind))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Client) fieldRelation(ctx context.Context, datasource, field, relation string, first *graphPage, requests *int, embedded bool, budget *int) ([]graphNode, error) {
+	rows := []graphNode{}
+	seen := map[string]graphNode{}
+	cursors := map[string]bool{}
+	p := first
+	var coverage graphCoverage
+	for page := range 100 {
+		for _, n := range p.Nodes {
+			if n.ID == "" || n.Name == "" {
+				return rows, errors.New("field relation identity incomplete")
+			}
+			if old, ok := seen[n.ID]; ok {
+				if !reflect.DeepEqual(old, n) {
+					return rows, errors.New("conflicting field relation identity")
+				}
+				continue
+			}
+			seen[n.ID] = n
+			rows = append(rows, n)
+			if len(rows) > maxItems {
+				return rows, &ConstraintError{"field relation exceeds item bound"}
+			}
+		}
+		if err := coverage.Page(*p.Total, len(seen), !*p.Info.More); err != nil {
+			return rows, err
+		}
+		if !*p.Info.More {
+			return rows, nil
+		}
+		cursor := *p.Info.Cursor
+		if cursors[cursor] {
+			return rows, errors.New("field relation cursor cycle")
+		}
+		cursors[cursor] = true
+		limit := 200
+		if embedded {
+			limit = 400
+		}
+		if *requests >= limit {
+			return rows, &ConstraintError{"field relation exceeds request bound"}
+		}
+		if budget != nil {
+			if *budget >= 400 {
+				return rows, &ConstraintError{"workbook metadata exceeds 400 request bound"}
+			}
+			*budget++
+		}
+		*requests++
+		root, selector, parentType := "parents:publishedDatasourcesConnection", "luid", "String!"
+		if embedded {
+			root, selector, parentType = "embedded:embeddedDatasourcesConnection", "id", "ID!"
+		}
+		selection := `items:downstreamSheetsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id luid name}}`
+		if relation == "referencedFields" {
+			selection = `... on CalculatedField {items:fieldsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id name}}}`
+		}
+		query := `query FieldRelation($parent:` + parentType + `,$field:ID!,$after:String){` + root + `(filter:{` + selector + `:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + selector + ` items:fieldsConnection(filter:{id:$field},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id ` + selection + `}}}}}`
+		env, r, err := c.graph(ctx, query, map[string]any{"parent": datasource, "field": field, "after": cursor})
+		if err != nil {
+			return rows, err
+		}
+		var parents *graphPage
+		if embedded {
+			parents = env.Data.Embedded
+		} else if env.Data.Parents != nil {
+			parents = &graphPage{Nodes: env.Data.Parents.Nodes, Total: new(1), Info: &graphInfo{More: new(false)}}
+		}
+		if parents == nil || len(parents.Nodes) != 1 {
+			return rows, protocol("catalog.metadata.read", r, errors.New("field relation parent identity changed"))
+		}
+		parent := parents.Nodes[0]
+		if (embedded && parent.ID != datasource) || (!embedded && parent.LUID != datasource) {
+			return rows, protocol("catalog.metadata.read", r, errors.New("field relation parent identity changed"))
+		}
+		fields := parent.Items
+		if err = validatePage(fields, 2, ""); err != nil {
+			return rows, protocol("catalog.metadata.read", r, err)
+		}
+		if len(fields.Nodes) != 1 || fields.Nodes[0].ID != field || *fields.Total != 1 || *fields.Info.More {
+			return rows, protocol("catalog.metadata.read", r, errors.New("field identity changed while paging relation"))
+		}
+		p = fields.Nodes[0].Items
+		if err = validatePage(p, 100, cursor); err != nil {
+			return rows, protocol("catalog.metadata.read", r, err)
+		}
+		if page == 99 {
+			return rows, &ConstraintError{"field relation exceeds page bound"}
+		}
+	}
+	return rows, &ConstraintError{"field relation exceeds page bound"}
+}
+
 // fieldColumns pages one field relationship independently from the outer field page.
-func (c *Client) fieldColumns(ctx context.Context, datasource, field string, first *graphPage, requests *int) ([]graphNode, error) {
+func (c *Client) fieldColumns(ctx context.Context, datasource, field string, first *graphPage, requests *int, embedded bool, budget *int) ([]graphNode, error) {
 	out := []graphNode{}
 	seen := map[string]graphNode{}
 	cursors := map[string]bool{}
@@ -539,16 +722,40 @@ func (c *Client) fieldColumns(ctx context.Context, datasource, field string, fir
 			return out, errors.New("field column cursor cycle")
 		}
 		cursors[cursor] = true
-		if *requests >= 200 {
+		limit := 200
+		if embedded {
+			limit = 400
+		}
+		if *requests >= limit {
 			return out, &ConstraintError{"datasource provenance exceeds 200 request bound"}
 		}
+		if budget != nil {
+			if *budget >= 400 {
+				return out, &ConstraintError{"workbook metadata exceeds 400 request bound"}
+			}
+			*budget++
+		}
 		*requests++
-		query := `query FieldColumns($parent:String!,$field:ID!,$after:String){parents:publishedDatasourcesConnection(filter:{luid:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{luid items:fieldsConnection(filter:{id:$field},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{id upstreamColumnsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}}}}}}`
+		root, selector := "parents:publishedDatasourcesConnection", "luid"
+		parentType := "String!"
+		if embedded {
+			root, selector = "embedded:embeddedDatasourcesConnection", "id"
+			parentType = "ID!"
+		}
+		query := `query FieldColumns($parent:` + parentType + `,$field:ID!,$after:String){` + root + `(filter:{` + selector + `:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + selector + ` items:fieldsConnection(filter:{id:$field},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{id upstreamColumnsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}}}}}}`
 		env, r, e := c.graph(ctx, query, map[string]any{"parent": datasource, "field": field, "after": cursor})
 		if e != nil {
 			return out, e
 		}
-		fields, e := selectPage(env, datasource)
+		var fields *graphPage
+		if embedded {
+			if env.Data.Embedded == nil || len(env.Data.Embedded.Nodes) != 1 || env.Data.Embedded.Nodes[0].ID != datasource {
+				return out, protocol("catalog.metadata.read", r, errors.New("embedded datasource identity changed while paging columns"))
+			}
+			fields = env.Data.Embedded.Nodes[0].Items
+		} else {
+			fields, e = selectPage(env, datasource)
+		}
 		if e == nil {
 			e = validatePage(fields, 2, "")
 		}
