@@ -286,6 +286,9 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 			if strings.EqualFold(otherName, name) {
 				continue
 			}
+			if strings.TrimSpace(other.Path) == "" {
+				return config.Config{}, nil, fmt.Errorf("cannot safely delete workspace %q while registration %q has no unambiguous path; repair or unregister it first", name, otherName)
+			}
 			otherRoot, resolveErr := canonicalRoot(other.Path)
 			if containsPath(root, other.Path) || (resolveErr == nil && containsPath(root, otherRoot)) {
 				return config.Config{}, nil, fmt.Errorf("workspace %q contains registered workspace %q", name, otherName)

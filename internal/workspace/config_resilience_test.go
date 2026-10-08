@@ -99,6 +99,31 @@ func TestWorkspaceResilienceInvalidChildProtectsParentDeletion(t *testing.T) {
 	}
 }
 
+func TestWorkspaceResilienceKnownOutsidePathDoesNotBlockDeletion(t *testing.T) {
+	manager, path, parent, outside := workspaceResilienceFixture(t, false)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.DefaultWorkspace = ""
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Delete(t.Context(), parent); err != nil {
+		t.Fatalf("invalid outside registration blocked safe deletion: %v", err)
+	}
+	if _, err := os.Stat(parent.Root); !os.IsNotExist(err) {
+		t.Fatal("safe deletion retained its selected root", err)
+	}
+	if contents, err := os.ReadFile(filepath.Join(outside, "keep.txt")); err != nil || string(contents) != "preserve" {
+		t.Fatal("safe deletion changed outside registration files", err)
+	}
+	cfg, err = config.Load(path)
+	if err != nil || len(cfg.WorkspaceNames()) != 1 || len(cfg.InvalidWorkspaces) != 1 || cfg.WorkspaceRegistrations()["broken"].Path != filepath.ToSlash(outside) {
+		t.Fatalf("safe deletion discarded the invalid outside registration: config=%+v err=%v", cfg, err)
+	}
+}
+
 func TestWorkspaceResilienceRegistrationRejectsInvalidOccupiedRoot(t *testing.T) {
 	manager, _, _, child := workspaceResilienceFixture(t, false)
 	if _, err := manager.PreviewCreate(t.Context(), "broken", filepath.Join(t.TempDir(), "new")); err == nil {

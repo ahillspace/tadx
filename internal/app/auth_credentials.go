@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -60,7 +61,19 @@ func (r authLogoutResolver) Resolve(_ context.Context, alias string, explicit bo
 			}
 		}
 	}
-	return authops.LogoutTarget{Environment: environment.Alias, StoredCredentialReferencePresent: reference != "", StoredCredentialReferenceInvalid: invalidReference || reference == "" && environment.Auth.CredentialRef != "", EnvironmentCredentialsAvailable: config.ValidVariableReference(environment.Auth.PATNameEnv) && config.ValidVariableReference(environment.Auth.PATSecretEnv) && strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
+	defaultName, defaultSecret := config.DefaultPATVariableNames(environment.Alias)
+	nameVariable := cmp.Or(environment.Auth.PATNameEnv, defaultName)
+	secretVariable := cmp.Or(environment.Auth.PATSecretEnv, defaultSecret)
+	available := config.ValidVariableReference(nameVariable) &&
+		config.ValidVariableReference(secretVariable) &&
+		strings.TrimSpace(os.Getenv(nameVariable)) != "" &&
+		strings.TrimSpace(os.Getenv(secretVariable)) != ""
+	return authops.LogoutTarget{
+		Environment:                      environment.Alias,
+		StoredCredentialReferencePresent: reference != "",
+		StoredCredentialReferenceInvalid: invalidReference || reference == "" && environment.Auth.CredentialRef != "",
+		EnvironmentCredentialsAvailable:  available,
+	}, nil
 }
 
 type loginAuthenticator struct{ runtime *runtimeDependencies }
