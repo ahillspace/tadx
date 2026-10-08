@@ -5,13 +5,12 @@ import (
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("legacy snapshot contacted Tableau: %s", r.URL.Path)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))

@@ -57,8 +57,8 @@ func TestEnvCommandsMapInputsAndRender(t *testing.T) {
 	commands := [][]string{
 		{"list", "--limit", "5", "--cursor", "10"},
 		{"get", "dev"},
-		{"add", "dev", "--url", "https://tableau.example.com", "--site", "test-site", "--api-version", "3.29", "--pat-name-env", "DEV_PAT_NAME", "--pat-secret-env", "DEV_PAT_SECRET", "--default-workspace", "development"},
-		{"update", "dev", "--url", "https://new.example.com", "--clear-site", "--api-version", "3.30", "--pat-name-env", "NEW_PAT_NAME", "--clear-pat-secret-env", "--default-workspace", "development"},
+		{"add", "dev", "--url", "https://tableau.example.com", "--site", "test-site", "--pat-name-env", "DEV_PAT_NAME", "--pat-secret-env", "DEV_PAT_SECRET", "--default-workspace", "development"},
+		{"update", "dev", "--url", "https://new.example.com", "--clear-site", "--pat-name-env", "NEW_PAT_NAME", "--clear-pat-secret-env", "--default-workspace", "development"},
 		{"remove", "old"},
 		{"default", "dev"},
 	}
@@ -72,16 +72,15 @@ func TestEnvCommandsMapInputsAndRender(t *testing.T) {
 	if !reflect.DeepEqual(a.list, []profile.ListInput{{Limit: 5, Cursor: "10"}}) {
 		t.Fatalf("list inputs = %#v", a.list)
 	}
-	if !reflect.DeepEqual(a.get, []profile.GetInput{{Alias: "dev"}}) {
+	if !reflect.DeepEqual(a.get, []profile.GetInput{{Alias: "dev", AliasSet: true}}) {
 		t.Fatalf("get inputs = %#v", a.get)
 	}
-	if !reflect.DeepEqual(a.add, []profile.AddInput{{Alias: "dev", ServerURL: "https://tableau.example.com", SiteContentURL: "test-site", APIVersion: "3.29", PATNameEnv: "DEV_PAT_NAME", PATSecretEnv: "DEV_PAT_SECRET", DefaultWorkspace: "development"}}) {
+	if !reflect.DeepEqual(a.add, []profile.AddInput{{Alias: "dev", ServerURL: "https://tableau.example.com", SiteContentURL: "test-site", PATNameEnv: "DEV_PAT_NAME", PATSecretEnv: "DEV_PAT_SECRET", DefaultWorkspace: "development"}}) {
 		t.Fatalf("add inputs = %#v", a.add)
 	}
-	wantUpdate := profile.UpdateInput{Alias: "dev", Patch: profile.Patch{
+	wantUpdate := profile.UpdateInput{Alias: "dev", AliasSet: true, Patch: profile.Patch{
 		ServerURL:        profile.StringField{Set: true, Value: "https://new.example.com"},
 		SiteContentURL:   profile.StringField{Set: true},
-		APIVersion:       profile.StringField{Set: true, Value: "3.30"},
 		PATNameEnv:       profile.StringField{Set: true, Value: "NEW_PAT_NAME"},
 		PATSecretEnv:     profile.StringField{Set: true},
 		DefaultWorkspace: profile.StringField{Set: true, Value: "development"},
@@ -89,11 +88,26 @@ func TestEnvCommandsMapInputsAndRender(t *testing.T) {
 	if !reflect.DeepEqual(a.update, []profile.UpdateInput{wantUpdate}) {
 		t.Fatalf("update inputs = %#v", a.update)
 	}
-	if !reflect.DeepEqual(a.remove, []profile.RemoveInput{{Alias: "old"}}) || !reflect.DeepEqual(a.setDefault, []profile.SetDefaultInput{{Alias: "dev"}}) {
+	if !reflect.DeepEqual(a.remove, []profile.RemoveInput{{Alias: "old", AliasSet: true}}) || !reflect.DeepEqual(a.setDefault, []profile.SetDefaultInput{{Alias: "dev"}}) {
 		t.Fatalf("remove = %#v, default = %#v", a.remove, a.setDefault)
 	}
 	if r.calls != len(commands) {
 		t.Fatalf("render calls = %d, want %d", r.calls, len(commands))
+	}
+}
+
+func TestEnvironmentCommandsRejectRetiredAPIVersionFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"add", "dev", "--url", "https://tableau.example.test", "--api-version", "3.29"},
+		{"update", "dev", "--api-version", "3.29"},
+		{"update", "dev", "--clear-api-version"},
+	} {
+		a := &actions{}
+		command := envcli.New(envcli.Dependencies{Adder: a.Add, Updater: a.Update, Renderer: &renderer{}})
+		command.SetArgs(args)
+		if err := command.Execute(); err == nil || len(a.add)+len(a.update) != 0 {
+			t.Fatalf("retired flag reached environment action: args=%v error=%v", args, err)
+		}
 	}
 }
 
@@ -106,6 +120,27 @@ func TestEnvListAllCarriesCompleteInventoryMode(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a.list, []profile.ListInput{{All: true}}) {
 		t.Fatalf("list inputs = %#v", a.list)
+	}
+}
+
+func TestEnvironmentSetDefaultAliasPreservesCanonicalAction(t *testing.T) {
+	for _, route := range []string{"default", "set-default"} {
+		t.Run(route, func(t *testing.T) {
+			a := &actions{}
+			r := &renderer{}
+			command := envcli.New(envcli.Dependencies{DefaultSetter: a.SetDefault, Renderer: r})
+			command.SetArgs([]string{route, "good", "--preview"})
+			if err := command.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(a.setDefault, []profile.SetDefaultInput{{Alias: "good", Preview: true}}) || r.calls != 1 {
+				t.Fatalf("route=%s action=%#v renders=%d", route, a.setDefault, r.calls)
+			}
+			found, _, err := command.Find([]string{route})
+			if err != nil || found.Name() != "default" || found.Annotations["tadx.capability"] != "env.profile.set-default" {
+				t.Fatalf("route=%s canonical=%v error=%v", route, found, err)
+			}
+		})
 	}
 }
 

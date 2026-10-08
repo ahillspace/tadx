@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +19,7 @@ func TestProjectIDWorkbookListThroughCLI(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
 	var mu sync.Mutex
 	var filters []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case strings.HasSuffix(request.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -86,7 +85,7 @@ func TestProjectIDDatasourceListThroughCLI(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
 	var mu sync.Mutex
 	var filters []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case strings.HasSuffix(request.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

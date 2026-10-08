@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +20,7 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 			var signins, writes int
 			var bodies []string
 			savedRules := make(map[string]struct{ capability, mode string })
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin" {
 					signins++
 					w.Header().Set("Content-Type", "application/json")
@@ -67,7 +66,7 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 			}))
 			defer server.Close()
 			config := filepath.Join(t.TempDir(), "tadx.yaml")
-			if err := os.WriteFile(config, []byte(fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: marketing\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: BATCH_PAT_NAME\n      pat_secret_env: BATCH_PAT_SECRET\n", server.URL)), 0600); err != nil {
+			if err := os.WriteFile(config, []byte(fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: marketing\n    auth:\n      type: pat\n      pat_name_env: BATCH_PAT_NAME\n      pat_secret_env: BATCH_PAT_SECRET\n", server.URL)), 0600); err != nil {
 				t.Fatal(err)
 			}
 			batch := filepath.Join(t.TempDir(), "rules.json")

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestMembershipExactUsernameResolutionAndReceiptThroughCLI(t *testing.T) {
 		for _, scenario := range []string{"exact", "display", "email", "missing", "other-site", "ambiguous", "conflicting"} {
 			t.Run(operation+"/"+scenario, func(t *testing.T) {
 				userReads, memberReads, writes, foreignReads := 0, 0, 0, 0
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if diagnosticSignIn(w, r) {
 						return
 					}

@@ -85,7 +85,6 @@ Word-like aliases use two dashes, even when the alias is short.
 | --- | --- | --- |
 | `--aggregation` | `--agg` | Aggregation. |
 | `--all` | `-a` | All matching records within the documented bound. |
-| `--api-version` | `--api` | API version. |
 | `--append` | `--apd` | Append mode. |
 | `--artifact` | `--art` | Workspace-relative artifact. |
 | `--artifact-name` | `--arn` | Artifact name. |
@@ -95,7 +94,6 @@ Word-like aliases use two dashes, even when the alias is short.
 | `--cache-max-concurrency` | `--cmc` | Cache concurrency ceiling. |
 | `--check` | `--chk` | Check selector. |
 | `--class` | `--cls` | Class selector. |
-| `--clear-api-version` | `--cav` | Clear API version. |
 | `--clear-cache-max-concurrency` | `--ccm` | Clear cache concurrency. |
 | `--clear-default-workspace` | `--cdw` | Clear default workspace. |
 | `--clear-pat-name-env` | `--cpn` | Clear PAT name variable. |

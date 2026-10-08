@@ -9,7 +9,6 @@ import (
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -19,7 +18,7 @@ import (
 func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
 	for _, kind := range []string{"datasource", "flow"} {
 		t.Run(kind, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 					_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -53,7 +52,7 @@ func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
 }
 
 func TestNativeSearchReportsTotalAndResultWindowWarning(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -81,7 +80,7 @@ func TestProjectMutationsSucceedWhenPostMutationHierarchyIsUnavailable(t *testin
 		t.Run(operation, func(t *testing.T) {
 			var mutated atomic.Bool
 			var postReads atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 					_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

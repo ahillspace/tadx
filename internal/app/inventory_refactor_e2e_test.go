@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,7 +21,7 @@ func TestLimitedLiveInventoryDoesNotCollectOrDependOnCacheThroughCLI(t *testing.
 	for _, kind := range []string{"workbook", "datasource", "flow", "project", "user", "group"} {
 		t.Run(kind, func(t *testing.T) {
 			reads := 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 					_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 					return
@@ -68,7 +67,7 @@ func TestLimitedLiveInventoryDoesNotCollectOrDependOnCacheThroughCLI(t *testing.
 func TestAdminAllRejectsPartialCacheThroughCLI(t *testing.T) {
 	for _, kind := range []string{"user", "group"} {
 		t.Run(kind, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				t.Errorf("cache contacted remote %s", r.URL)
 				w.WriteHeader(500)
 			}))

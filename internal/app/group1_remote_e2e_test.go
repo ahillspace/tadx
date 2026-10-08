@@ -235,7 +235,7 @@ func runGroupOneCLI(t *testing.T, options app.Options, args ...string) string {
 func newGroupOneTableauServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	mutations := &atomic.Int32{}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
 			writer.Header().Set("Content-Type", "application/json")

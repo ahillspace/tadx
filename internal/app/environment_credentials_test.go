@@ -1,9 +1,11 @@
 package app
 
 import (
-	"context"
+	"bytes"
+	"errors"
+	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 
 	profileupdate "github.com/ahillspace/tadx/actions/env/profile"
@@ -14,6 +16,10 @@ func TestEnvironmentUpdateRejectsCredentialTargetChange(t *testing.T) {
 	t.Parallel()
 	path := credentialEnvironmentConfig(t)
 	store := configProfileStore{path: &path}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for _, test := range []struct {
 		name  string
@@ -23,9 +29,16 @@ func TestEnvironmentUpdateRejectsCredentialTargetChange(t *testing.T) {
 		{name: "site", patch: profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "other-site"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := store.Update(context.Background(), "dev", test.patch)
-			if err == nil || !strings.Contains(err.Error(), "auth logout") {
-				t.Fatalf("Update() error = %v, want auth logout guidance", err)
+			_, err := store.Update(t.Context(), "dev", test.patch)
+			repair, ok := errors.AsType[interface {
+				error
+				CorrectiveCommands() [][]string
+			}](err)
+			if !ok || len(repair.CorrectiveCommands()) != 1 || !slices.Equal(repair.CorrectiveCommands()[0], []string{"auth", "logout", "--environment", "dev"}) {
+				t.Fatalf("Update() error = %v, want exact structured auth logout recovery", err)
+			}
+			if after, err := os.ReadFile(path); err != nil || !bytes.Equal(before, after) {
+				t.Fatal("stored-credential guard changed configuration", err)
 			}
 		})
 	}
@@ -35,10 +48,21 @@ func TestEnvironmentRemoveRejectsStoredCredential(t *testing.T) {
 	t.Parallel()
 	path := credentialEnvironmentConfig(t)
 	store := configProfileStore{path: &path}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err := store.Remove(context.Background(), "dev")
-	if err == nil || !strings.Contains(err.Error(), "auth logout") {
-		t.Fatalf("Remove() error = %v, want auth logout guidance", err)
+	err = store.Remove(t.Context(), "dev")
+	repair, ok := errors.AsType[interface {
+		error
+		CorrectiveCommands() [][]string
+	}](err)
+	if !ok || len(repair.CorrectiveCommands()) != 1 || !slices.Equal(repair.CorrectiveCommands()[0], []string{"auth", "logout", "--environment", "dev"}) {
+		t.Fatalf("Remove() error = %v, want exact structured auth logout recovery", err)
+	}
+	if after, err := os.ReadFile(path); err != nil || !bytes.Equal(before, after) {
+		t.Fatal("stored-credential guard changed configuration", err)
 	}
 }
 

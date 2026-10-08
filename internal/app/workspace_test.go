@@ -151,13 +151,16 @@ func TestWorkspaceEmptyPositionalsRetainActionUsageErrors(t *testing.T) {
 		{[]string{"create", ""}, "name is required"},
 		{[]string{"clone", "", "--name", "copy"}, "source and name are required"},
 		{[]string{"set-default", ""}, "workspace name is required"},
-		{[]string{"unregister", ""}, "workspace name is required"},
+		{[]string{"unregister", ""}, "id: workspace.unregister.failed"},
 		{[]string{"delete", ""}, "workspace name is required"},
 	} {
 		opts := overviewOptions(t, t.TempDir())
 		code, output := runPreviewCommand(t, append([]string{"workspace"}, test.args...), opts)
 		if code == 0 || !strings.Contains(output, test.want) {
 			t.Fatalf("%v: code=%d output=%s", test.args, code, output)
+		}
+		if test.args[0] == "unregister" && (code != 1 || !strings.Contains(output, "kind: operation") || !strings.Contains(output, "read configuration:")) {
+			t.Fatalf("explicit empty unregister did not attempt exact registry lookup: code=%d output=%s", code, output)
 		}
 		if _, err := os.Stat(opts.ConfigPath); !os.IsNotExist(err) {
 			t.Fatalf("invalid input created configuration: %v", err)

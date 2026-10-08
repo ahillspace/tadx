@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ import (
 func TestWorkbookBatchReusesCommandSignInAndPreservesFailures(t *testing.T) {
 	var signins atomic.Int32
 	var requested []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 			signins.Add(1)
 			_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -61,7 +60,7 @@ func TestWorkbookBatchReusesCommandSignInAndPreservesFailures(t *testing.T) {
 func TestWorkbookBatchDownloadsArtifactsWithOneSetupSnapshot(t *testing.T) {
 	var signins, projects, downloads atomic.Int32
 	var configPath string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			signins.Add(1)
@@ -122,7 +121,7 @@ func TestProjectMoveUsesOneHierarchyPerValidationPhase(t *testing.T) {
 	for _, drift := range []bool{false, true} {
 		t.Run(fmt.Sprint(drift), func(t *testing.T) {
 			var projects, writes atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 					_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -165,7 +164,7 @@ func TestContentMovesShareSourceAndDestinationHierarchyWithinPhase(t *testing.T)
 		for _, preview := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/preview=%v", kind, preview), func(t *testing.T) {
 				var projects, writes atomic.Int32
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
 					case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 						_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

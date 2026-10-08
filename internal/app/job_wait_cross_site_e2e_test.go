@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -59,7 +58,7 @@ func (f *crossSiteJobFixture) snapshot() (signIns, jobReads, publicationPosts in
 
 func TestJobWaitSurvivesIndependentCrossSiteAuthCheckWithoutResubmission(t *testing.T) {
 	fixture := newCrossSiteJobFixture()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/auth/signin"):
 			var payload struct {

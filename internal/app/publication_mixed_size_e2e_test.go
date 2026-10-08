@@ -10,7 +10,6 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,7 +59,7 @@ func TestDatasourcePublicationMixedSizeBatchUsesExactUploadsAndIndependentOutcom
 		chunkedUpload []byte
 		sequenceIDs   []string
 	)
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		paths = append(paths, request.Method+" "+request.URL.RequestURI())
 		counts[request.Method+" "+request.URL.Path]++

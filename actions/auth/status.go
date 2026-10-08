@@ -67,7 +67,7 @@ func InspectStatus(target StatusTarget, lookup StatusLookupEnv) StatusOutput {
 			help = append(help, commandhint.Environment(target.Environment, "auth", "login"))
 		}
 	}
-	return StatusOutput{Status: state, Verification: "local_readiness_only", MissingVariables: missing, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: help}
+	return StatusOutput{Status: state, Verification: "local_readiness_only", MissingVariables: missing, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: help}
 }
 
 type StatusInput struct {
@@ -78,7 +78,6 @@ type StatusTarget struct {
 	Default                          bool
 	ServerURL                        string
 	SiteContentURL                   string
-	APIVersion                       string
 	AuthType                         string
 	PATNameVariable                  string
 	PATSecretVariable                string
@@ -94,7 +93,6 @@ type StatusOutput struct {
 	Default                          bool     `json:"default"`
 	ServerURL                        string   `json:"server_url"`
 	SiteContentURL                   string   `json:"site_content_url,omitempty"`
-	APIVersion                       string   `json:"api_version,omitempty"`
 	AuthType                         string   `json:"auth_type"`
 	PATNameVariable                  string   `json:"pat_name_env"`
 	PATSecretVariable                string   `json:"pat_secret_env"`

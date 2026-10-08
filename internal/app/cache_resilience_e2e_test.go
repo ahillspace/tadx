@@ -117,7 +117,7 @@ func cacheResilienceOptions(t *testing.T, server *httptest.Server) app.Options {
 
 func cacheResilienceServer(t *testing.T, requests *atomic.Int32, deniedStatus int, denyAll bool) *httptest.Server {
 	t.Helper()
-	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):

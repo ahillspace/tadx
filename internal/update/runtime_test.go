@@ -5,10 +5,14 @@ import (
 	"errors"
 	"fmt"
 	action "github.com/ahillspace/tadx/actions/update"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -29,39 +33,81 @@ func TestInstallationTargetAcceptsArbitraryExecutableBasename(t *testing.T) {
 }
 
 func TestUpdaterCancellationStopsDescendants(t *testing.T) {
-	dir := t.TempDir()
-	ready := filepath.Join(dir, "ready")
-	marker := filepath.Join(dir, "late-write")
+	for _, startupDelay := range []time.Duration{0, 4 * time.Second} {
+		t.Run(startupDelay.String(), func(t *testing.T) {
+			testUpdaterCancellationStopsDescendants(t, startupDelay)
+		})
+	}
+}
+
+func testUpdaterCancellationStopsDescendants(t *testing.T, startupDelay time.Duration) {
+	t.Helper()
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	startupDeadline := time.Now().Add(15 * time.Second)
+	if err := listener.SetDeadline(startupDeadline); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	observed := make(chan bool, 1)
+	type processResult struct {
+		output []byte
+		err    error
+	}
+	completed := make(chan processResult, 1)
 	go func() {
-		deadline := time.Now().Add(3 * time.Second)
-		for time.Now().Before(deadline) {
-			if _, err := os.Stat(ready); err == nil {
-				observed <- true
-				cancel()
-				return
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
-		observed <- false
-		cancel()
+		output, err := runProcess(ctx, 30*time.Second, nil, executable, "-test.run=^TestUpdaterProcessTreeHelper$", "--", "--update-process-fixture", "parent", listener.Addr().String(), startupDelay.String())
+		completed <- processResult{output: output, err: err}
+		close(completed)
 	}()
-	_, err = runProcess(ctx, 5*time.Second, nil, executable, "-test.run=^TestUpdaterProcessTreeHelper$", "--", "--update-process-fixture", "parent", ready, marker)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected cancellation, got %v", err)
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-completed:
+		case <-time.After(5 * time.Second):
+			t.Error("installer fixture did not stop during cleanup")
+		}
+	})
+	connection, err := listener.AcceptTCP()
+	if err != nil {
+		t.Fatalf("fixture child did not connect before the startup deadline: %v", err)
 	}
-	if !<-observed {
-		t.Fatal("fixture child never started")
+	defer connection.Close()
+	if err := connection.SetReadDeadline(startupDeadline); err != nil {
+		t.Fatal(err)
 	}
-	time.Sleep(700 * time.Millisecond)
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatalf("installer descendant survived cancellation: %v", err)
+	var ready [1]byte
+	if _, err := io.ReadFull(connection, ready[:]); err != nil || ready[0] != 'r' {
+		t.Fatalf("fixture child did not acknowledge readiness: ready=%q err=%v", ready, err)
+	}
+	cancel()
+	select {
+	case result := <-completed:
+		if !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("expected cancellation, got %v: %s", result.err, result.output)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("installer parent did not stop after cancellation")
+	}
+	if err := connection.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = connection.Read(ready[:])
+	closed := errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET)
+	if runtime.GOOS == "windows" {
+		// Windows reports WSAECONNRESET when the job's descendant is terminated.
+		const winsockConnectionReset = syscall.Errno(10054)
+		closed = closed || errors.Is(err, winsockConnectionReset)
+	}
+	if !closed {
+		t.Fatalf("installer descendant kept its connection after cancellation: %v", err)
 	}
 }
 
@@ -151,22 +197,36 @@ func TestUpdaterProcessTreeHelper(t *testing.T) {
 	if offset < 0 {
 		return
 	}
-	mode, ready, marker := os.Args[offset+1], os.Args[offset+2], os.Args[offset+3]
+	if len(os.Args) != offset+4 {
+		t.Fatal("invalid installer fixture arguments")
+	}
+	mode, address := os.Args[offset+1], os.Args[offset+2]
+	startupDelay, err := time.ParseDuration(os.Args[offset+3])
+	if err != nil {
+		t.Fatal(err)
+	}
 	if mode == "child" {
-		if err := os.WriteFile(ready, []byte("ready"), 0600); err != nil {
-			os.Exit(2)
+		time.Sleep(startupDelay)
+		connection, err := net.DialTimeout("tcp", address, 5*time.Second)
+		if err != nil {
+			t.Fatal(err)
 		}
-		time.Sleep(500 * time.Millisecond)
-		if err := os.WriteFile(marker, []byte("late"), 0600); err != nil {
-			os.Exit(3)
+		defer connection.Close()
+		if _, err := connection.Write([]byte{'r'}); err != nil {
+			t.Fatal(err)
 		}
+		// The observer never sends data, so this holds the connection until the
+		// process is stopped or a failing test closes its connection during cleanup.
+		var release [1]byte
+		_, _ = io.ReadFull(connection, release[:])
 		os.Exit(0)
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		os.Exit(4)
 	}
-	child := exec.Command(executable, "-test.run=^TestUpdaterProcessTreeHelper$", "--", "--update-process-fixture", "child", ready, marker)
+	child := exec.Command(executable, "-test.run=^TestUpdaterProcessTreeHelper$", "--", "--update-process-fixture", "child", address, startupDelay.String())
+	child.Stdout, child.Stderr = os.Stdout, os.Stderr
 	if err := child.Run(); err != nil {
 		os.Exit(5)
 	}

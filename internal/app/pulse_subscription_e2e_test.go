@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ import (
 
 func TestPulseSubscriptionListUsesAuthenticatedUserAndExactEnrichment(t *testing.T) {
 	var paths []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.Method+" "+r.URL.RequestURI())
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
@@ -65,7 +64,7 @@ func TestPulseSubscriptionListUsesAuthenticatedUserAndExactEnrichment(t *testing
 	defer server.Close()
 	var output bytes.Buffer
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	config := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: SUBSCRIPTION_PAT_NAME\n      pat_secret_env: SUBSCRIPTION_PAT_SECRET\n", server.URL)
+	config := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    auth:\n      type: pat\n      pat_name_env: SUBSCRIPTION_PAT_NAME\n      pat_secret_env: SUBSCRIPTION_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}

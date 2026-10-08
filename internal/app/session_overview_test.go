@@ -136,6 +136,33 @@ func TestBareOverviewShowsConfiguredNotVerifiedAndEffectiveSources(t *testing.T)
 	}
 }
 
+func TestBareOverviewCountsQuarantinedEntriesForSelection(t *testing.T) {
+	for _, valid := range []bool{true, false} {
+		t.Run(fmt.Sprintf("healthy_%t", valid), func(t *testing.T) {
+			root := t.TempDir()
+			options := overviewOptions(t, root)
+			name := "good"
+			entry := "      type: pat\n"
+			if !valid {
+				name = "another-broken"
+				entry += "      pat_secret_env: pasted-private-value==\n"
+			}
+			contents := "version: 1\nenvironments:\n  broken:\n    url: https://tableau.example.test\n    auth:\n      type: pat\n      pat_secret_env: pasted-private-value==\n  " + name + ":\n    url: https://other.example.test\n    auth:\n" + entry
+			if err := os.WriteFile(options.ConfigPath, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			code, text := runOverview(t, root, []string{"--json"}, options)
+			var result sessionoverview.Result[sessionoverview.CompactEnvironment, sessionoverview.CompactWorkspace]
+			if err := json.Unmarshal([]byte(text), &result); err != nil {
+				t.Fatal(err)
+			}
+			if code != 0 || result.WriteTarget != "explicit_environment_required" || result.ReadSelection != "explicit_environment_required" || strings.Contains(text, "pasted-private-value") {
+				t.Fatalf("overview reports selection against only the usable subset: code=%d %s", code, text)
+			}
+		})
+	}
+}
+
 func TestBareOverviewWorkspaceResolutionReasons(t *testing.T) {
 	root := t.TempDir()
 	options := overviewOptions(t, root)

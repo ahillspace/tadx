@@ -56,7 +56,7 @@ func (s *loginStore) Store(_ context.Context, target authops.LoginTarget, creden
 }
 
 func TestExecuteValidatesThenStoresCredential(t *testing.T) {
-	target := authops.LoginTarget{Environment: "dev", ServerURL: "https://example.test", SiteContentURL: "site", APIVersion: "3.29"}
+	target := authops.LoginTarget{Environment: "dev", ServerURL: "https://example.test", SiteContentURL: "site"}
 	resolver := &loginResolver{target: target}
 	authenticator := &loginAuthenticator{result: authops.LoginAuthentication{SiteLUID: "site-1", UserLUID: "user-1"}}
 	store := &loginStore{}

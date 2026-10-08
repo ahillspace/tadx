@@ -11,7 +11,6 @@ import (
 
 type lastCapture struct {
 	runtime     *runtimeDependencies
-	store       lastcommand.Store
 	now         func() time.Time
 	operation   string
 	value       any
@@ -19,6 +18,7 @@ type lastCapture struct {
 	saved       bool
 	renderError bool
 	hintConfig  func() string
+	metadata    map[string]any
 }
 
 type savedResultWarning struct {
@@ -39,7 +39,11 @@ func lastResultWarning() any {
 }
 
 func newLastCapture(r *runtimeDependencies) *lastCapture {
-	return &lastCapture{runtime: r, store: lastcommand.Store{Path: filepath.Join(filepath.Dir(r.configPath), "last-result.json")}, now: r.now, enabled: true}
+	return &lastCapture{runtime: r, now: r.now, enabled: true}
+}
+
+func (r *runtimeDependencies) lastResultStore() lastcommand.Store {
+	return lastcommand.Store{Path: filepath.Join(filepath.Dir(r.configPath), "last-result.json")}
 }
 func (c *lastCapture) save(code int) error {
 	if !c.enabled || c.value == nil {
@@ -49,7 +53,7 @@ func (c *lastCapture) save(code int) error {
 	if c.hintConfig != nil {
 		configPath = c.hintConfig()
 	}
-	data, err := output.SnapshotWithConfig(c.value, lastcommand.MaxBytes/2, configPath)
+	data, err := output.SnapshotWithOptions(c.value, lastcommand.MaxBytes/2, output.Options{ConfigPath: configPath, Metadata: c.metadata})
 	record := value.SavedExecution{RecordedAt: c.now().UTC(), Operation: c.operation, ExitCode: code, Result: data}
 	if c.runtime != nil {
 		record.RequiredCapabilities = c.runtime.managedChecks.snapshot()
@@ -63,7 +67,7 @@ func (c *lastCapture) save(code int) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if saveErr := c.store.Save(ctx, record); saveErr != nil {
+	if saveErr := c.runtime.lastResultStore().Save(ctx, record); saveErr != nil {
 		return saveErr
 	}
 	c.saved = err == nil

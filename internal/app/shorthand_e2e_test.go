@@ -18,7 +18,7 @@ import (
 
 func TestShorthandReadPathsKeepCanonicalOperationsAndFlagValues(t *testing.T) {
 	var workbookNameFilter atomic.Bool
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
@@ -79,7 +79,7 @@ func TestShorthandReadPathsKeepCanonicalOperationsAndFlagValues(t *testing.T) {
 
 func TestShorthandDatasourcePublishPreviewHonorsBooleanAndMutationGate(t *testing.T) {
 	var reads, writes atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/3.29/auth/signin":
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -120,7 +120,7 @@ func TestShorthandDatasourcePublishPreviewHonorsBooleanAndMutationGate(t *testin
 func TestDocumentedDatasourceShorthandExamplesUseCanonicalPaths(t *testing.T) {
 	var requests, deletes atomic.Int32
 	var documentedListRequest atomic.Bool
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/auth/signin"):
@@ -241,7 +241,7 @@ func TestShorthandConfigAliasBeforeCommandSelectsCanonicalOperation(t *testing.T
 func shorthandOptions(t *testing.T, server *httptest.Server) app.Options {
 	t.Helper()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	contents := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: SHORTHAND_PAT_NAME\n      pat_secret_env: SHORTHAND_PAT_SECRET\n", server.URL)
+	contents := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    auth:\n      type: pat\n      pat_name_env: SHORTHAND_PAT_NAME\n      pat_secret_env: SHORTHAND_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +14,7 @@ import (
 
 func TestPulseFollowValidatesExactMetricAndTypedFollowerBeforePreviewOrWrite(t *testing.T) {
 	var authCalls, metricGets, userGets, writes int
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin":
@@ -50,7 +49,6 @@ environments:
   production:
     url: %s
     site_content_url: marketing
-    api_version: "3.29"
     auth:
       type: pat
       pat_name_env: PULSE_FOLLOW_PAT_NAME

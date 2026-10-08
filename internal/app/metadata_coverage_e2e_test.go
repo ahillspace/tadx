@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -23,7 +22,7 @@ func TestMetadataTerminalCoverageCLI(t *testing.T) {
 			for _, limited := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/limited=%v", kind, command, limited), func(t *testing.T) {
 					calls := 0
-					server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						if catalogMetadataSignIn(w, r) {
 							return
 						}
@@ -99,7 +98,7 @@ func TestMetadataAuditInheritedCoverageCLI(t *testing.T) {
 		{"direct-only", "null", "missing", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if catalogMetadataSignIn(w, r) {
 					return
 				}

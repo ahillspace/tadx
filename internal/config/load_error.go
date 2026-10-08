@@ -14,7 +14,7 @@ type LoadError struct {
 	Cause error
 }
 
-var yamlScalarExcerpt = regexp.MustCompile("`[^`]*`")
+var yamlScalarExcerpt = regexp.MustCompile("`[^`]*`|\"[^\"]*\"|'[^']*'")
 
 func (e *LoadError) Error() string {
 	cause := e.Cause.Error()

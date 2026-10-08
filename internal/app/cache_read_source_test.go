@@ -29,7 +29,6 @@ environments:
   production:
     url: https://tableau.invalid
     site_content_url: marketing
-    api_version: "3.29"
     auth:
       type: pat
       pat_name_env: MISSING_PAT_NAME

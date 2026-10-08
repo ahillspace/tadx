@@ -20,10 +20,26 @@ import (
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
+// tableauFixtureServer supplies the documented discovery response before business requests.
+func tableauFixtureServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/2.4/serverinfo" {
+			if r.Header.Get("Accept") != "application/xml" || r.Header.Get("X-Tableau-Auth") != "" || r.Header.Get("Authorization") != "" || r.ContentLength != 0 {
+				t.Error("Server Info discovery must request XML without authorization or a body")
+			}
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<tsResponse xmlns="http://tableau.com/api"><serverInfo><productVersion build="example-build">2026.2</productVersion><restApiVersion>3.29</restApiVersion></serverInfo></tsResponse>`)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+}
+
 func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	var publishCalls atomic.Int32
 	var validationCalls atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/api/3.29/auth/signin":
 			writer.Header().Set("Content-Type", "application/json")
@@ -116,7 +132,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 }
 
 func TestPhaseOneAuthCheckHappyPathThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin" {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -146,7 +162,7 @@ func TestPhaseOneAuthCheckHappyPathThroughCLI(t *testing.T) {
 func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *testing.T) {
 	var datasourceGets atomic.Int32
 	var datasourceDownloads atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/api/3.29/auth/signin":
 			writer.Header().Set("Content-Type", "application/json")
@@ -305,7 +321,7 @@ func writePhaseOneConfig(t *testing.T, serverURL string) string {
 func writePhaseOneConfigWithSite(t *testing.T, serverURL, site string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: %q\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", serverURL, site)
+	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: %q\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", serverURL, site)
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

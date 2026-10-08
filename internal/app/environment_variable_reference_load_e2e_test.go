@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +9,7 @@ import (
 	"github.com/ahillspace/tadx/internal/app"
 )
 
-func TestConfigurationWithSecretShapedPATReferenceFailsWithoutEchoing(t *testing.T) {
+func TestConfigurationWithSecretShapedPATReferenceIsIsolatedAndRepairable(t *testing.T) {
 	const secret = "abc123DEF==:ghiJKL456"
 	root := t.TempDir()
 	path := filepath.Join(root, "config.yaml")
@@ -18,14 +17,30 @@ func TestConfigurationWithSecretShapedPATReferenceFailsWithoutEchoing(t *testing
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"env", "get", "main"}, {"env", "list", "--full"}, {"auth", "status", "--json"}, {"env", "update", "main", "--clear-pat-secret-env"}} {
+	for _, scenario := range []struct {
+		args    []string
+		success bool
+		invalid bool
+	}{
+		{[]string{"env", "get", "main"}, true, true},
+		{[]string{"env", "list", "--full"}, true, true},
+		{[]string{"auth", "status", "--json"}, false, true},
+		{[]string{"env", "update", "main", "--clear-pat-secret-env"}, true, false},
+	} {
 		var out strings.Builder
-		code := app.Run(context.Background(), args, &out, app.Options{ConfigPath: path})
-		if code == 0 {
-			t.Fatalf("%v accepted a configuration whose PAT reference is not a variable name:\n%s", args, out.String())
+		code := app.Run(t.Context(), scenario.args, &out, app.Options{ConfigPath: path})
+		if (code == 0) != scenario.success {
+			t.Fatalf("%v exit=%d expected success=%t:\n%s", scenario.args, code, scenario.success, out.String())
+		}
+		if scenario.invalid && (!strings.Contains(out.String(), "invalid") || !strings.Contains(out.String(), "pat_secret_env")) {
+			t.Fatalf("%v omitted the invalid reference finding: %s", scenario.args, out.String())
 		}
 		if strings.Contains(out.String(), secret) {
-			t.Fatalf("%v echoed the stored reference: %s", args, out.String())
+			t.Fatalf("%v echoed the stored reference: %s", scenario.args, out.String())
 		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || strings.Contains(string(after), secret) {
+		t.Fatalf("repair retained the rejected reference: %v", err)
 	}
 }

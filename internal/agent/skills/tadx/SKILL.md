@@ -62,7 +62,7 @@ Syntax belongs in help, not these references.
 | Site roles, membership replacement, project locks, effective permissions | [Administration](references/administration.md) |
 | Local identity, dirty artifacts, registration, moving or deleting files | [Workspaces](references/workspace.md) |
 | Cache freshness, coverage, refresh effects, server load | [Cache](references/cache.md) |
-| Managed policy | [Managed policy](references/managed-policy.md) |
+| Config or policy | [Managed policy](references/managed-policy.md) |
 | Partial batch results and dependent scripted steps | [Batching](references/batching.md) |
 | Meaningful Pulse authoring, variants, and subscriptions | Separate `tadx-pulse` skill |
 

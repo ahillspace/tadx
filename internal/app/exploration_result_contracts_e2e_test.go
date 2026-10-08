@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -35,7 +34,7 @@ func contractObject(t *testing.T, value any) map[string]any {
 
 func TestExplorationF02GroupUpdatePreviewShowsValuesThroughCLI(t *testing.T) {
 	reads := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -75,7 +74,7 @@ func TestExplorationF02GroupUpdatePreviewShowsValuesThroughCLI(t *testing.T) {
 }
 
 func TestExplorationF03CatalogInspectFailureStatusThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			return
 		}
@@ -101,7 +100,7 @@ func TestExplorationF03CatalogInspectFailureStatusThroughCLI(t *testing.T) {
 }
 
 func TestExplorationF04ExactTrailingWorkbookNameThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -131,7 +130,7 @@ func TestExplorationF04ExactTrailingWorkbookNameThroughCLI(t *testing.T) {
 }
 
 func TestExplorationF04CachedWorkbookNamePreservesTrailingSpaceThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -163,7 +162,7 @@ func TestExplorationF04CachedWorkbookNamePreservesTrailingSpaceThroughCLI(t *tes
 
 func TestExplorationF05ProjectOwnerLUIDThroughCLI(t *testing.T) {
 	const owner = "1f876ad6-d65f-4b4e-9c67-3fbbe38fdd37"
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -198,7 +197,7 @@ func TestExplorationF05ProjectOwnerLUIDThroughCLI(t *testing.T) {
 }
 
 func TestExplorationF07KnownEmptyPulseDefinitionsThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}

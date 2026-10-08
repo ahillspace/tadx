@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,7 +16,7 @@ import (
 func TestProjectIDInspectSelectorsAreConsistentAcrossContentFamilies(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "test-pat-name")
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
-	server := httptest.NewTLSServer(http.HandlerFunc(projectSelectorFixture(t)))
+	server := tableauFixtureServer(t, http.HandlerFunc(projectSelectorFixture(t)))
 	defer server.Close()
 	configPath := writePhaseOneConfig(t, server.URL)
 
@@ -59,7 +58,7 @@ func TestProjectIDInspectSelectorsAreConsistentAcrossContentFamilies(t *testing.
 func TestFlowInspectRejectsIncompleteBoundedPagination(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "test-pat-name")
 	t.Setenv("PROD_PAT_SECRET", "test-pat-secret")
-	server := httptest.NewTLSServer(http.HandlerFunc(projectSelectorFixture(t)))
+	server := tableauFixtureServer(t, http.HandlerFunc(projectSelectorFixture(t)))
 	defer server.Close()
 	configPath := writePhaseOneConfig(t, server.URL)
 

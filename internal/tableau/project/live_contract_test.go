@@ -64,7 +64,10 @@ func liveProjectConnection(t *testing.T) (config.Environment, coreauth.Session, 
 	if _, ok := os.LookupEnv(environment.Auth.PATSecretEnv); !ok {
 		t.Skip("configured dev PAT variables are not available in this process")
 	}
-	transport := tableau.NewTransport(http.DefaultClient, environment.APIVersion, func() string { return "project-live-contract" })
+	transport := tableau.NewTransport(http.DefaultClient, "", func() string { return "project-live-contract" })
+	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
+		t.Fatal(err)
+	}
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(context.Background(), coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ import (
 
 func TestAdminLabelBatchRejectsInvalidLaterRowBeforeAuthentication(t *testing.T) {
 	calls := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -36,7 +35,7 @@ func TestAdminLabelBatchRejectsInvalidLaterRowBeforeAuthentication(t *testing.T)
 }
 
 func TestAdminDetailCachePayloadsPreserveInspectionContract(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -82,7 +81,7 @@ func TestAdminDefaultSiteAndFailedAuthenticationBoundary(t *testing.T) {
 	for _, reject := range []bool{false, true} {
 		t.Run(fmt.Sprint(reject), func(t *testing.T) {
 			auth, reads, writes := 0, 0, 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/3.29/auth/signin" {
 					auth++
 					if reject {
@@ -114,7 +113,7 @@ func TestAdminVocabularyDuplicateNormalizationThroughCLI(t *testing.T) {
 		for _, conflict := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/conflict=%t", kind, conflict), func(t *testing.T) {
 				reads := 0
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if catalogMetadataSignIn(w, r) {
 						return
 					}
@@ -144,7 +143,7 @@ func TestAdminVocabularyDuplicateNormalizationThroughCLI(t *testing.T) {
 
 func TestAdminLabelValueInspectionRejectsWrongReturnedName(t *testing.T) {
 	reads := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			return
 		}
@@ -163,7 +162,7 @@ func TestAdminVocabularyMalformedAcknowledgementRetainsReceipt(t *testing.T) {
 	for _, kind := range []string{"category", "value"} {
 		t.Run(kind, func(t *testing.T) {
 			reads, writes := 0, 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if catalogMetadataSignIn(w, r) {
 					return
 				}

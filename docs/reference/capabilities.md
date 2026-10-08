@@ -858,7 +858,7 @@ Remove TADX Guidance packages from one selected agent target.
 
 ### `auth.check`
 
-Resolve a complete PAT pair, sign in, and verify the selected Tableau site.
+Discover the supported REST version, resolve a complete PAT pair, sign in, and verify the selected Tableau site.
 
 - Surface: tadx auth check
 - Operation type: inspect
@@ -877,8 +877,8 @@ Resolve a complete PAT pair, sign in, and verify the selected Tableau site.
 - Raw capable: No
 - Safety and guard: Never echo PAT/token; complete environment-variable pair overrides native storage
 - Artifact effect: None
-- Upstream operation: POST /api/{version}/auth/signin; optional signout
-- Evidence: A1 §§5.4, 7.3-7.4; C1 §§2.1, 5.1; local official REST capture
+- Upstream operation: GET /api/2.4/serverinfo; POST /api/{negotiated-version}/auth/signin
+- Evidence: docs/evidence/phase1-rest-contract.md; docs/evidence/rest-version-negotiation-contract.md; HTTP fixture tests
 - Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md
 - Blocker ID: None
 - Command binding: `tadx auth check`
@@ -904,7 +904,7 @@ Interactively validate a PAT and store it in the native OS credential store for 
 - Raw capable: No
 - Safety and guard: No credential flags or non-TTY input; validate before storage; no plaintext fallback; target-bound opaque reference only in config
 - Artifact effect: None
-- Upstream operation: POST /api/{version}/auth/signin; native OS credential store
+- Upstream operation: GET /api/2.4/serverinfo; POST /api/{negotiated-version}/auth/signin; native OS credential store
 - Evidence: Tableau PAT sign-in contract plus platform credential-store behavior
 - Validation or blocker: Architecture-locked and hermetically verified; native-store smoke test is opt-in
 - Blocker ID: None
@@ -929,7 +929,7 @@ Remove TADX's stored PAT for one environment without revoking the PAT in Tableau
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Exact alias; idempotent local removal; remote PAT remains valid
+- Safety and guard: Exact alias; idempotent local removal; supports invalid profiles with well-formed credential references; remote PAT remains valid
 - Artifact effect: None
 - Upstream operation: Native OS credential store and local config
 - Evidence: Platform credential-store behavior
@@ -1716,7 +1716,7 @@ Diagnose config, PAT presence and validity, Tableau connectivity, cache, workspa
 - Artifact effect: None
 - Upstream operation: Local validators plus read-only Tableau auth and connectivity probes
 - Evidence: A1 §§5.12, 7.7, 9.1; maintainer-defined CLI diagnostic scope
-- Validation or blocker: Architecture-locked; diagnostics cover TADX configuration, local state, and Tableau connectivity
+- Validation or blocker: Configuration findings include isolated invalid entries and recovery commands; file-level failures block settings use; live probes verify selected targets
 - Blocker ID: None
 - Command binding: `tadx doctor`
 
@@ -1739,7 +1739,7 @@ Add one named environment profile containing secret references, not secret value
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Schema validation; collision guard; atomic file replacement; omitted cache concurrency uses 32
+- Safety and guard: New profile and related collisions validated; unrelated invalid entries preserved; atomic file replacement; omitted cache concurrency uses 32
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4, ADR-010; C1 §2.1
@@ -1749,7 +1749,7 @@ Add one named environment profile containing secret references, not secret value
 
 ### `env.profile.get`
 
-Inspect one resolved non-secret environment profile, including its cache concurrency setting.
+Inspect one environment profile or its invalid status and violated fields without showing rejected values.
 
 - Surface: tadx env get
 - Operation type: inspect
@@ -1776,7 +1776,7 @@ Inspect one resolved non-secret environment profile, including its cache concurr
 
 ### `env.profile.list`
 
-List named non-secret environment profiles.
+List valid and invalid environment profiles with redacted status and violated fields.
 
 - Surface: tadx env list
 - Operation type: find
@@ -1820,7 +1820,7 @@ Remove one named environment profile.
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Exact alias; default-reference guard
+- Safety and guard: Exact alias; stored-PAT guard; valid defaults require reselection; removing an invalid default clears its obsolete reference
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4; C1 §2.1
@@ -1847,7 +1847,7 @@ Set the default read environment.
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Alias must exist; no secret output
+- Safety and guard: Valid alias required; can replace an invalid default; no secret output
 - Artifact effect: None
 - Upstream operation: Write default_environment in local config.yaml
 - Evidence: A1 §§1.5, 7.2–7.3, 9.2; S1 “one capability row per public operation”
@@ -1857,7 +1857,7 @@ Set the default read environment.
 
 ### `env.profile.update`
 
-Update explicit fields of one environment profile.
+Update or repair explicit fields of one environment profile.
 
 - Surface: tadx env update
 - Operation type: change
@@ -1874,7 +1874,7 @@ Update explicit fields of one environment profile.
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Exact alias; secret redaction; atomic file replacement; setting and clearing cache concurrency conflict; clearing restores default 32
+- Safety and guard: Changed profile must fully validate; unrelated invalid entries preserved; secret redaction; atomic file replacement; clearing cache concurrency restores default 32
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4; C1 §2.1

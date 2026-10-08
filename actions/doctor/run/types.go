@@ -25,9 +25,12 @@ type Scope struct {
 
 // ConfigurationState is the non-secret configuration observation.
 type ConfigurationState struct {
-	Present    bool
-	Cause      string
-	ConfigPath string
+	Present               bool
+	Cause                 string
+	ConfigPath            string
+	Findings              []Check
+	SelectionInvalid      bool
+	SelectionPrerequisite string
 }
 
 // PATState reports non-secret reference names and presence, never values.
@@ -73,7 +76,7 @@ type Check struct {
 	PAT              *PATState `json:"pat,omitempty"`
 }
 
-// Counts summarizes the fixed check set.
+// Counts summarizes all configuration findings and dependency checks.
 type Counts struct {
 	Pass    int `json:"pass"`
 	Warn    int `json:"warn"`
@@ -125,5 +128,5 @@ func (o Output) CompactOutput() any {
 	return CompactResult{Status: o.Status, Scope: o.Scope, Counts: o.Counts, Summary: o.Summary, Checks: checks, Details: "--full", Help: o.Help}
 }
 
-// FullOutput returns all six checks with corrective actions.
+// FullOutput returns all findings and checks with corrective actions.
 func (o Output) FullOutput() any { return FullResult(o) }

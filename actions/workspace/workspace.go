@@ -19,9 +19,11 @@ type Service struct {
 
 // Workspace is the stable identity shared by workspace operations.
 type Workspace struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-	Root string `json:"root"`
+	Name       string   `json:"name"`
+	ID         string   `json:"id,omitempty"`
+	Root       string   `json:"root,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	Violations []string `json:"violations,omitempty"`
 }
 
 // Registration is the manifest and registration result for create, register and clone.

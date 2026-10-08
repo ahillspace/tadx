@@ -21,7 +21,7 @@ import (
 func TestPulseFollowerSnapshotReplacesAndSurvivesFailedReadThroughCLI(t *testing.T) {
 	response := `{"subscriptions":[{"id":"old-subscription","follower":{"user_id":"old-user"}}]}`
 	requests := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
@@ -94,7 +94,7 @@ func TestPulseFollowerSnapshotIgnoresLegacyIndividualRowsThroughCLI(t *testing.T
 }
 
 func TestPulseFollowerSnapshotCacheWriteFailureWarnsThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

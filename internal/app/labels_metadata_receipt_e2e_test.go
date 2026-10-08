@@ -6,14 +6,13 @@ import (
 	"github.com/ahillspace/tadx/internal/app"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestLabelsMetadataAcknowledgedMalformedWriteDoesNotInventAttachmentIdentity(t *testing.T) {
 	writes := 0
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			return
 		}

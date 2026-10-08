@@ -3,6 +3,8 @@ package workspace
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -10,6 +12,7 @@ import (
 
 type UnregisterInput struct {
 	Name    string
+	NameSet bool `json:"-"`
 	Preview bool
 }
 
@@ -36,7 +39,7 @@ type Registry interface {
 }
 
 func (a *Service) Unregister(ctx context.Context, input UnregisterInput) (UnregisterOutput, error) {
-	if input.Name == "" {
+	if input.Name == "" && !input.NameSet {
 		return UnregisterOutput{}, unregisterUsage("workspace name is required")
 	}
 	item, err := a.Registry.Unregister(ctx, input)
@@ -44,14 +47,27 @@ func (a *Service) Unregister(ctx context.Context, input UnregisterInput) (Unregi
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact registered workspace name, then retry.")
 		return UnregisterOutput{}, &errs.Error{ID: "workspace.unregister.failed", Kind: errs.KindOperation, Operation: "workspace.unregister", Resource: input.Name, Summary: "Workspace unregister failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
-	if item.Name == "" || item.ID == "" || item.Root == "" {
+	invalid := item.Status == "invalid" && len(item.Violations) > 0
+	if !invalid && (item.Name == "" || item.ID == "" || item.Root == "") {
 		return UnregisterOutput{}, unregisterRuntimeError("workspace unregister returned an incomplete identity")
 	}
 	status := "unregistered"
 	if input.Preview {
 		status = "preview"
 	}
-	return UnregisterOutput{Status: status, Workspace: item, FilesPreserved: true, Help: []string{commandhint.Command("workspace", "register", "--path", item.Root)}}, nil
+	help := commandhint.Command("workspace", "register", "--path", item.Root)
+	if invalid {
+		name := item.Name
+		if strings.TrimSpace(name) == "" || slices.Contains(item.Violations, "name") {
+			name = "<name>"
+		}
+		args := []string{"workspace", "register", "--path", "<path>"}
+		if strings.HasPrefix(name, "-") {
+			args = append(args, "--")
+		}
+		help = commandhint.Command(append(args, name)...)
+	}
+	return UnregisterOutput{Status: status, Workspace: item, FilesPreserved: true, Help: []string{help}}, nil
 }
 func unregisterUsage(message string) error {
 	return &errs.Error{ID: "workspace.unregister.usage", Kind: errs.KindUsage, Operation: "workspace.unregister", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one registered workspace name."}

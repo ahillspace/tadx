@@ -58,13 +58,13 @@ func (s configProfileStore) List(_ context.Context) ([]profile.Profile, error) {
 	if err != nil {
 		return nil, err
 	}
-	aliases := make([]string, 0, len(configuration.Environments))
-	for alias := range configuration.Environments {
-		aliases = append(aliases, alias)
-	}
-	slices.Sort(aliases)
+	aliases := configuration.EnvironmentAliases()
 	profiles := make([]profile.Profile, 0, len(aliases))
 	for _, alias := range aliases {
+		if invalid, ok := configuration.InvalidEnvironments[alias]; ok {
+			profiles = append(profiles, invalidProfile(configuration, alias, invalid))
+			continue
+		}
 		environment, resolveErr := configuration.ResolveEnvironment(alias)
 		if resolveErr != nil {
 			return nil, resolveErr
@@ -75,7 +75,17 @@ func (s configProfileStore) List(_ context.Context) ([]profile.Profile, error) {
 }
 
 func (s configProfileStore) Get(_ context.Context, alias string) (profile.Profile, error) {
-	configuration, environment, err := s.resolve(alias)
+	configuration, err := config.Load(*s.path)
+	if err != nil {
+		return profile.Profile{}, err
+	}
+	if invalid, ok := configuration.InvalidEnvironments[alias]; ok {
+		return invalidProfile(configuration, alias, invalid), nil
+	}
+	if _, ok := configuration.Environments[alias]; !ok {
+		return profile.Profile{}, fmt.Errorf("environment %q does not exist", alias)
+	}
+	environment, err := configuration.ResolveEnvironment(alias)
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -87,13 +97,13 @@ func (s configProfileStore) Get(_ context.Context, alias string) (profile.Profil
 
 func (s configProfileStore) Add(_ context.Context, input profile.AddProfile) (profile.AddProfile, error) {
 	updated, err := s.updateConfig(true, func(configuration config.Config) (config.Config, error) {
-		if _, exists := configuration.Environments[input.Alias]; exists {
+		if slices.Contains(configuration.EnvironmentAliases(), input.Alias) {
 			return config.Config{}, fmt.Errorf("environment %q already exists", input.Alias)
 		}
 		if configuration.Environments == nil {
 			configuration.Environments = make(map[string]config.Environment)
 		}
-		configuration.Environments[input.Alias] = config.Environment{URL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv}, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency}
+		configuration.Environments[input.Alias] = config.Environment{URL: input.ServerURL, SiteContentURL: input.SiteContentURL, Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv}, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency}
 		return configuration, nil
 	})
 	if err != nil {
@@ -104,43 +114,50 @@ func (s configProfileStore) Add(_ context.Context, input profile.AddProfile) (pr
 		return profile.AddProfile{}, err
 	}
 	profile := addProfile(environment)
-	profile.MultipleEnvironments = len(updated.Environments) == 2
+	profile.MultipleEnvironments = len(updated.EnvironmentAliases()) == 2
 	return profile, nil
 }
 
 func (s configProfileStore) Update(_ context.Context, alias string, patch profile.Patch) (profile.UpdateResult, error) {
 	var changed []string
 	updated, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
-		environment, exists := configuration.Environments[alias]
-		if !exists {
-			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		environment, err := configuration.EnvironmentForRepair(alias)
+		if err != nil {
+			return config.Config{}, err
 		}
-		if environment.Auth.CredentialRef != "" &&
+		invalid, quarantined := configuration.InvalidEnvironments[alias]
+		credentialRef := environment.Auth.CredentialRef
+		if quarantined {
+			credentialRef = invalid.CredentialRef
+		}
+		if credentialRef != "" &&
 			((patch.ServerURL.Set && environment.URL != patch.ServerURL.Value) ||
 				(patch.SiteContentURL.Set && environment.SiteContentURL != patch.SiteContentURL.Value)) {
-			return config.Config{}, fmt.Errorf("environment %q has a stored PAT; run tadx auth logout --environment %s before changing its Tableau target", alias, alias)
+			return config.Config{}, &storedPATProfileError{alias: alias, action: "changing its Tableau target"}
 		}
 		changed = make([]string, 0, 6)
-		apply := func(field profile.StringField, name string, target *string) {
-			if field.Set && *target != field.Value {
-				*target = field.Value
+		fields := make(map[string]any)
+		apply := func(field profile.StringField, name, path, current string) {
+			if field.Set && (quarantined || current != field.Value) {
+				fields[path] = field.Value
 				changed = append(changed, name)
 			}
 		}
-		apply(patch.ServerURL, "server_url", &environment.URL)
-		apply(patch.SiteContentURL, "site_content_url", &environment.SiteContentURL)
-		apply(patch.APIVersion, "api_version", &environment.APIVersion)
-		apply(patch.PATNameEnv, "pat_name_env", &environment.Auth.PATNameEnv)
-		apply(patch.PATSecretEnv, "pat_secret_env", &environment.Auth.PATSecretEnv)
-		apply(patch.DefaultWorkspace, "default_workspace", &environment.DefaultWorkspace)
-		if field := patch.CacheMaxConcurrency; field.Set && environment.CacheMaxConcurrency != field.Value {
-			environment.CacheMaxConcurrency = field.Value
+		apply(patch.ServerURL, "server_url", "url", environment.URL)
+		apply(patch.SiteContentURL, "site_content_url", "site_content_url", environment.SiteContentURL)
+		apply(patch.PATNameEnv, "pat_name_env", "auth.pat_name_env", environment.Auth.PATNameEnv)
+		apply(patch.PATSecretEnv, "pat_secret_env", "auth.pat_secret_env", environment.Auth.PATSecretEnv)
+		apply(patch.DefaultWorkspace, "default_workspace", "default_workspace", environment.DefaultWorkspace)
+		if field := patch.CacheMaxConcurrency; field.Set && (quarantined || environment.CacheMaxConcurrency != field.Value) {
+			fields["cache_max_concurrency"] = field.Value
 			changed = append(changed, "cache_max_concurrency")
 		}
 		if len(changed) == 0 {
 			return config.Config{}, config.ErrNoChange
 		}
-		configuration.Environments[alias] = environment
+		if err := configuration.PatchEnvironment(alias, fields); err != nil {
+			return config.Config{}, err
+		}
 		return configuration, nil
 	})
 	if err != nil {
@@ -150,32 +167,58 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 	if err != nil {
 		return profile.UpdateResult{}, err
 	}
-	return profile.UpdateResult{Profile: profile.UpdateProfile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace, CacheMaxConcurrency: effective.CacheMaxConcurrency}, ChangedFields: changed}, nil
+	return profile.UpdateResult{Profile: profile.UpdateProfile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace, CacheMaxConcurrency: effective.CacheMaxConcurrency}, ChangedFields: changed}, nil
 }
 
 func (s configProfileStore) Remove(_ context.Context, alias string) error {
 	_, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
-		environment, exists := configuration.Environments[alias]
-		if !exists {
-			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		environment, err := configuration.EnvironmentForRepair(alias)
+		if err != nil {
+			return config.Config{}, err
 		}
-		if environment.Auth.CredentialRef != "" {
-			return config.Config{}, fmt.Errorf("environment %q has a stored PAT; run tadx auth logout --environment %s before removing it", alias, alias)
+		invalid, quarantined := configuration.InvalidEnvironments[alias]
+		credentialRef := environment.Auth.CredentialRef
+		if quarantined {
+			credentialRef = invalid.CredentialRef
+		}
+		if credentialRef != "" {
+			return config.Config{}, &storedPATProfileError{alias: alias, action: "removing it"}
 		}
 		if configuration.DefaultEnvironment == alias {
-			return config.Config{}, fmt.Errorf("environment %q is the default and cannot be removed", alias)
+			if !quarantined {
+				return config.Config{}, fmt.Errorf("environment %q is the default and cannot be removed", alias)
+			}
+			configuration.DefaultEnvironment = ""
 		}
-		delete(configuration.Environments, alias)
+		if err := configuration.RemoveEnvironment(alias); err != nil {
+			return config.Config{}, err
+		}
 		return configuration, nil
 	})
 	return err
 }
 
+type storedPATProfileError struct{ alias, action string }
+
+func (e *storedPATProfileError) Error() string {
+	return fmt.Sprintf("environment %q has a stored PAT; log out before %s", e.alias, e.action)
+}
+func (*storedPATProfileError) Retryable() bool { return false }
+func (e *storedPATProfileError) CorrectiveAction() string {
+	return "Log out of the selected environment before " + e.action + "."
+}
+func (e *storedPATProfileError) CorrectiveCommands() [][]string {
+	return [][]string{{"auth", "logout", "--environment", e.alias}}
+}
+func (e *storedPATProfileError) CorrectiveExplanation() string {
+	return "Log out before " + e.action + "."
+}
+
 func (s configProfileStore) SetDefault(_ context.Context, alias string) (bool, error) {
 	changed := false
 	_, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
-		if _, exists := configuration.Environments[alias]; !exists {
-			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		if _, err := configuration.ResolveEnvironment(alias); err != nil {
+			return config.Config{}, err
 		}
 		if configuration.DefaultEnvironment == alias {
 			return config.Config{}, config.ErrNoChange
@@ -190,20 +233,20 @@ func (s configProfileStore) SetDefault(_ context.Context, alias string) (bool, e
 	return changed, nil
 }
 
-func (s configProfileStore) resolve(alias string) (config.Config, config.Environment, error) {
-	configuration, err := config.Load(*s.path)
-	if err != nil {
-		return config.Config{}, config.Environment{}, err
+func invalidProfile(configuration config.Config, alias string, invalid config.InvalidEntry) profile.Profile {
+	fields := make([]string, 0, len(invalid.Violations))
+	for _, violation := range invalid.Violations {
+		fields = append(fields, violation.Field)
 	}
-	environment, err := configuration.ResolveEnvironment(alias)
-	return configuration, environment, err
+	slices.Sort(fields)
+	return profile.Profile{Alias: alias, Default: alias == configuration.DefaultEnvironment, Status: "invalid", Violations: slices.Compact(fields)}
 }
 
 func profileFromConfig(configuration config.Config, environment config.Environment) profile.Profile {
-	return profile.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
+	return profile.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
 }
 func addProfile(environment config.Environment) profile.AddProfile {
-	return profile.AddProfile{Alias: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
+	return profile.AddProfile{Alias: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
 }
 
 type authStatusResolver struct{ runtime *runtimeDependencies }
@@ -217,7 +260,7 @@ func (r authStatusResolver) Resolve(_ context.Context, alias string) (authops.St
 }
 
 func authStatusTarget(configuration config.Config, environment config.Environment) authops.StatusTarget {
-	return authops.StatusTarget{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", DefaultWorkspace: environment.DefaultWorkspace}
+	return authops.StatusTarget{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", DefaultWorkspace: environment.DefaultWorkspace}
 }
 
 type processEnvironment struct{}

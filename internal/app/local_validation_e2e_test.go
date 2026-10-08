@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +19,7 @@ func TestSchemaInvalidLocalArgumentsFailBeforeAuthentication(t *testing.T) {
 		for _, flags := range [][]string{{"--role", "invalid"}, {"--limit", "-1"}, {"--all", "--limit", "1"}, {"--field-id", " "}, {"--cursor", "invalid"}, {"--cursor", base64.RawURLEncoding.EncodeToString([]byte(`{"offset":0,"fingerprint":"wrong-query"}`))}} {
 			t.Run(fmt.Sprintf("credentials=%v/%v", credentials, flags), func(t *testing.T) {
 				var requests atomic.Int32
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requests.Add(1)
 					http.Error(w, "must not authenticate", http.StatusUnauthorized)
 				}))
@@ -60,7 +59,7 @@ func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var requests atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
 				http.Error(w, "must not authenticate", http.StatusUnauthorized)
 			}))
@@ -78,7 +77,7 @@ func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 
 func TestLocalPrerequisiteDoesNotMigrateLegacyWorkspaceManifest(t *testing.T) {
 	var requests atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		http.Error(w, "must not authenticate", http.StatusUnauthorized)
 	}))
@@ -103,7 +102,7 @@ func TestMissingLocalPrerequisitesFailBeforeAuthenticationWithoutWrites(t *testi
 		for _, operation := range []string{"pull", "publish"} {
 			t.Run(kind+"/"+operation, func(t *testing.T) {
 				var requests atomic.Int32
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requests.Add(1)
 					http.Error(w, "must not authenticate", http.StatusUnauthorized)
 				}))

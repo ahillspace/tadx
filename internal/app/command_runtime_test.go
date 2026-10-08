@@ -12,9 +12,25 @@ import (
 	"github.com/ahillspace/tadx/internal/identity"
 )
 
+// tableauFixtureServer supplies the documented discovery response before business requests.
+func tableauFixtureServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/2.4/serverinfo" {
+			if r.Header.Get("Accept") != "application/xml" || r.Header.Get("X-Tableau-Auth") != "" || r.Header.Get("Authorization") != "" || r.ContentLength != 0 {
+				t.Error("Server Info discovery must request XML without authorization or a body")
+			}
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<tsResponse xmlns="http://tableau.com/api"><serverInfo><productVersion build="example-build">2026.2</productVersion><restApiVersion>3.29</restApiVersion></serverInfo></tsResponse>`)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+}
+
 func TestCommandReadPhaseReusesProjectIndexButWriteChecksAreFresh(t *testing.T) {
 	var signins, projects atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
 			signins.Add(1)

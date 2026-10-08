@@ -19,7 +19,7 @@ import (
 func TestElidedEmptyStringCannotConsumeMutationPreview(t *testing.T) {
 	var requests atomic.Int32
 	var writes atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if diagnosticSignIn(w, r) {
 			return

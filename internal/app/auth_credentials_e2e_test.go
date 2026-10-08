@@ -3,9 +3,9 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -46,17 +46,31 @@ func TestAuthSetupRejectsInvalidTargetBeforePromptOrSignIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	prompter := &rejectCredentialPrompter{}
+	network := &warningTestNoNetwork{}
 	for _, args := range [][]string{
 		{"auth", "check", "--environment", "dev", "--json"},
 		{"auth", "status", "--environment", "dev", "--json"},
 		{"auth", "login", "--environment", "dev", "--json"},
-		{"auth", "logout", "--environment", "dev", "--preview", "--json"},
 	} {
 		var out bytes.Buffer
-		code := Run(t.Context(), args, &out, Options{ConfigPath: path, AuthPrompter: prompter})
-		if code == 0 || !strings.Contains(out.String(), "scheme must be https") || prompter.calls != 0 {
+		code := Run(t.Context(), args, &out, Options{ConfigPath: path, AuthPrompter: prompter, HTTPClient: &http.Client{Transport: network}})
+		var result struct {
+			Error struct {
+				Phase, Outcome   string
+				CorrectiveAction string `json:"corrective_action"`
+				Prerequisite     struct{ Kind, Resource, Summary string }
+			}
+		}
+		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if code == 0 || prompter.calls != 0 || network.calls != 0 || result.Error.Phase != "setup" || result.Error.Outcome != "not_attempted" || result.Error.Prerequisite.Kind != "environment" || result.Error.Prerequisite.Resource != "dev" || !strings.Contains(result.Error.Prerequisite.Summary, "url") || !strings.Contains(result.Error.CorrectiveAction, "env update dev") || !strings.Contains(result.Error.CorrectiveAction, "env remove dev") || strings.Contains(out.String(), "http://tableau.example.test") {
 			t.Fatalf("args=%v code=%d prompts=%d output=%s", args, code, prompter.calls, out.String())
 		}
+	}
+	var out bytes.Buffer
+	if code := Run(t.Context(), []string{"auth", "logout", "--environment", "dev", "--preview", "--json"}, &out, Options{ConfigPath: path, AuthPrompter: prompter, HTTPClient: &http.Client{Transport: network}}); code != 0 || prompter.calls != 0 || network.calls != 0 {
+		t.Fatalf("repair logout exit=%d prompts=%d output=%s", code, prompter.calls, out.String())
 	}
 }
 
@@ -78,7 +92,7 @@ func TestAuthCheckFailureRetainsChosenSource(t *testing.T) {
 	t.Setenv("TADX_DEV_PAT_NAME", "fixture-name")
 	t.Setenv("TADX_DEV_PAT_SECRET", "fixture-secret")
 	calls := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -111,7 +125,7 @@ func TestAuthLoginCheckAndLogoutThroughCLI(t *testing.T) {
 	t.Setenv("TADX_DEV_PAT_SECRET", "")
 	const patName = "interactive-name"
 	const patSecret = "interactive-secret"
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/3.29/auth/signin" {
 			http.NotFound(writer, request)
 			return

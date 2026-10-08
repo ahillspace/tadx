@@ -11,7 +11,6 @@ import (
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
-	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 )
 
 type authCredentialResolver struct{ runtime *runtimeDependencies }
@@ -28,35 +27,51 @@ func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authop
 		Environment:    environment.Alias,
 		ServerURL:      environment.URL,
 		SiteContentURL: environment.SiteContentURL,
-		APIVersion:     environment.APIVersion,
 	}, nil
 }
 
 type authLogoutResolver struct{ runtime *runtimeDependencies }
 
-func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authops.LogoutTarget, error) {
+func (r authLogoutResolver) Resolve(_ context.Context, alias string, explicit bool) (authops.LogoutTarget, error) {
 	// Resolve the credential reference from the current persisted configuration.
 	configuration, err := config.Load(r.runtime.configPath)
 	if err != nil {
 		return authops.LogoutTarget{}, err
 	}
-	environment, err := configuration.ResolveWriteEnvironment(alias)
+	if alias == "" && !explicit {
+		aliases := configuration.EnvironmentAliases()
+		if len(aliases) != 1 {
+			_, err := configuration.ResolveWriteEnvironment(alias)
+			return authops.LogoutTarget{}, err
+		}
+		alias = aliases[0]
+	}
+	environment, err := configuration.EnvironmentForRepair(alias)
 	if err != nil {
 		return authops.LogoutTarget{}, err
 	}
-	return authops.LogoutTarget{Environment: environment.Alias, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
+	reference := environment.Auth.CredentialRef
+	invalidReference := false
+	if invalid, ok := configuration.InvalidEnvironments[alias]; ok {
+		reference = invalid.CredentialRef
+		for _, violation := range invalid.Violations {
+			if strings.HasSuffix(violation.Field, "credential_ref") || violation.Field == "auth" {
+				invalidReference = reference == ""
+			}
+		}
+	}
+	return authops.LogoutTarget{Environment: environment.Alias, StoredCredentialReferencePresent: reference != "", StoredCredentialReferenceInvalid: invalidReference || reference == "" && environment.Auth.CredentialRef != "", EnvironmentCredentialsAvailable: config.ValidVariableReference(environment.Auth.PATNameEnv) && config.ValidVariableReference(environment.Auth.PATSecretEnv) && strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
 }
 
 type loginAuthenticator struct{ runtime *runtimeDependencies }
 
 func (a loginAuthenticator) Authenticate(ctx context.Context, target authops.LoginTarget, credential authops.LoginCredential) (authops.LoginAuthentication, error) {
-	transport := a.runtime.transport(target.APIVersion)
 	session, err := a.runtime.commandSessions().AuthenticateCredentials(ctx, coreauth.Target{
 		Environment:    target.Environment,
 		ServerURL:      target.ServerURL,
 		SiteContentURL: target.SiteContentURL,
 		Operation:      "auth.login",
-	}, coreauth.PATCredentials{Name: credential.PATName, Secret: credential.PATSecret}, tableauauth.NewClient(transport))
+	}, coreauth.PATCredentials{Name: credential.PATName, Secret: credential.PATSecret}, commandSigner{runtime: a.runtime})
 	if err != nil {
 		return authops.LoginAuthentication{}, err
 	}
@@ -71,9 +86,9 @@ func (s authCredentialStore) Store(ctx context.Context, target authops.LoginTarg
 	}
 	var environmentVariablesOverride bool
 	_, err := config.UpdateWithRollback(s.runtime.configPath, false, func(configuration config.Config) (config.Config, func() error, error) {
-		environment, exists := configuration.Environments[target.Environment]
-		if !exists {
-			return config.Config{}, nil, fmt.Errorf("environment %q does not exist", target.Environment)
+		environment, resolveErr := configuration.EnvironmentForRepair(target.Environment)
+		if resolveErr != nil {
+			return config.Config{}, nil, resolveErr
 		}
 		if environment.URL != target.ServerURL || environment.SiteContentURL != target.SiteContentURL {
 			return config.Config{}, nil, errors.New("environment target changed after PAT validation")
@@ -114,16 +129,21 @@ func (s authCredentialStore) Remove(ctx context.Context, target authops.LogoutTa
 	removed := false
 	var reference coreauth.CredentialReference
 	_, err := config.UpdateWithPostSave(s.runtime.configPath, false, func(configuration config.Config) (config.Config, func() error, error) {
-		environment, exists := configuration.Environments[target.Environment]
-		if !exists {
-			return config.Config{}, nil, fmt.Errorf("environment %q does not exist", target.Environment)
+		environment, resolveErr := configuration.EnvironmentForRepair(target.Environment)
+		if resolveErr != nil {
+			return config.Config{}, nil, resolveErr
 		}
-		if environment.Auth.CredentialRef == "" {
+		referenceValue := environment.Auth.CredentialRef
+		if invalid, ok := configuration.InvalidEnvironments[target.Environment]; ok {
+			referenceValue = invalid.CredentialRef
+		}
+		if referenceValue == "" {
 			return config.Config{}, nil, config.ErrNoChange
 		}
-		reference = coreauth.CredentialReference(environment.Auth.CredentialRef)
-		environment.Auth.CredentialRef = ""
-		configuration.Environments[target.Environment] = environment
+		reference = coreauth.CredentialReference(referenceValue)
+		if err := configuration.ClearCredentialReference(target.Environment); err != nil {
+			return config.Config{}, nil, err
+		}
 		removed = true
 		return configuration, func() error {
 			deleteErr := s.runtime.patStore.DeletePAT(ctx, reference)

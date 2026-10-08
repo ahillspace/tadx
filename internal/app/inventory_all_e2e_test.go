@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,7 +15,7 @@ import (
 func TestInventoryAllThroughCLI(t *testing.T) {
 	for _, kind := range []string{"workbook", "datasource", "flow", "project", "user", "group"} {
 		t.Run(kind, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 					_, _ = io.WriteString(w, `{"credentials":{"token":"test-session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 					return

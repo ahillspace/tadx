@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,7 +22,7 @@ func TestNativeAcquisitionPreviewResolvesWithoutDownloadingOrWriting(t *testing.
 				remoteKind = "flow"
 			}
 			var unexpected []string
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -63,7 +62,7 @@ func TestNativeAcquisitionPreviewResolvesWithoutDownloadingOrWriting(t *testing.
 
 func TestLineageDatasourcePublicKindPreviewUsesNormalizedRoot(t *testing.T) {
 	var unexpected []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -99,7 +98,7 @@ func TestLineageDatasourcePublicKindPreviewUsesNormalizedRoot(t *testing.T) {
 func TestPulseAcquisitionPreviewChecksCompleteBundleWithoutWriting(t *testing.T) {
 	incomplete := false
 	var unexpected []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}

@@ -9,19 +9,30 @@ import (
 	"testing"
 
 	authops "github.com/ahillspace/tadx/actions/auth"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type logoutResolver struct {
-	target authops.LogoutTarget
-	err    error
-	alias  string
+	target   authops.LogoutTarget
+	err      error
+	alias    string
+	explicit bool
 }
 
-func (r *logoutResolver) Resolve(_ context.Context, alias string) (authops.LogoutTarget, error) {
+func (r *logoutResolver) Resolve(_ context.Context, alias string, explicit bool) (authops.LogoutTarget, error) {
 	r.alias = alias
+	r.explicit = explicit
 	return r.target, r.err
+}
+
+func TestLogoutPreservesExplicitEmptySelection(t *testing.T) {
+	resolver := &logoutResolver{target: authops.LogoutTarget{Environment: ""}}
+	_, err := authops.NewLogout(resolver, &logoutStore{}).Execute(t.Context(), authops.LogoutInput{Environment: "", EnvironmentSet: true})
+	if err != nil || resolver.alias != "" || !resolver.explicit {
+		t.Fatalf("logout lost explicit empty entry selection: resolver=%+v err=%v", resolver, err)
+	}
 }
 
 type logoutStore struct {
@@ -63,6 +74,30 @@ func TestExecuteMissingStoredCredentialIsNoOp(t *testing.T) {
 	got, err := authops.NewLogout(&logoutResolver{target: authops.LogoutTarget{Environment: "dev"}}, &logoutStore{}).Execute(context.Background(), authops.LogoutInput{Environment: "dev"})
 	if err != nil || got.Status != "unchanged" {
 		t.Fatalf("output = %#v, error = %v", got, err)
+	}
+}
+
+func TestLogoutReportsUnlocatableMalformedReference(t *testing.T) {
+	for _, preview := range []bool{false, true} {
+		store := &logoutStore{}
+		got, err := authops.NewLogout(&logoutResolver{target: authops.LogoutTarget{Environment: "broken", StoredCredentialReferenceInvalid: true}}, store).Execute(t.Context(), authops.LogoutInput{Environment: "broken", Preview: preview})
+		if err != nil || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "No stored credential can be located") || !strings.Contains(strings.Join(got.Help, " "), "tadx env remove -- broken") {
+			t.Fatalf("malformed reference lacked safe recovery: output=%+v err=%v", got, err)
+		}
+		if preview && store.calls != 0 {
+			t.Fatal("logout preview touched credential storage")
+		}
+	}
+}
+
+func TestLogoutMalformedReferenceUsesStructuredRecovery(t *testing.T) {
+	alias := "-broken $(not-a-command)"
+	got, err := authops.NewLogout(&logoutResolver{target: authops.LogoutTarget{Environment: alias, StoredCredentialReferenceInvalid: true}}, &logoutStore{}).Execute(t.Context(), authops.LogoutInput{Environment: alias})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(got.Warnings, " "), "tadx env remove") || !strings.Contains(strings.Join(got.Help, " "), commandhint.Command("env", "remove", "--", alias)) {
+		t.Fatalf("malformed reference recovery is not shell-safe structured help: %+v", got)
 	}
 }
 

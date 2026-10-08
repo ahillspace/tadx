@@ -419,7 +419,7 @@ func applyWriteTargetResolution(root *cobra.Command, deps Dependencies) {
 			original := command.Args
 			command.Args = func(cmd *cobra.Command, args []string) error {
 				alias, _ := cmd.Flags().GetString("environment")
-				if alias == "" {
+				if alias == "" && !(id == "auth.logout" && cmd.Flags().Changed("environment")) {
 					resolved, err := deps.ResolveWriteTarget(alias)
 					if err != nil {
 						var structured *errs.Error

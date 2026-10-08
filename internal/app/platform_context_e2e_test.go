@@ -14,7 +14,7 @@ import (
 
 func TestEnvironmentGetRetainsRequestedProfileFacts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.yaml")
-	data := "version: 1\nenvironments:\n  dev:\n    url: https://example.test\n    api_version: '3.29'\n    auth:\n      type: pat\n      pat_name_env: DEV_NAME\n      pat_secret_env: DEV_SECRET\n"
+	data := "version: 1\nenvironments:\n  dev:\n    url: https://example.test\n    auth:\n      type: pat\n      pat_name_env: DEV_NAME\n      pat_secret_env: DEV_SECRET\n"
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestEnvironmentGetRetainsRequestedProfileFacts(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if code != 0 || result.Environment["api_version"] != "3.29" || result.Environment["auth_type"] != "pat" || result.Environment["pat_name_env"] != "DEV_NAME" || result.Environment["cache_max_concurrency"] != float64(tableaucache.DefaultMaxConcurrency) {
+	if code != 0 || result.Environment["auth_type"] != "pat" || result.Environment["pat_name_env"] != "DEV_NAME" || result.Environment["cache_max_concurrency"] != float64(tableaucache.DefaultMaxConcurrency) {
 		t.Fatalf("code=%d output=%s", code, out.Bytes())
 	}
 	if !strings.Contains(out.String(), "last --full --json") {

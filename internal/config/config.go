@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -37,13 +38,21 @@ const (
 // Config is the user-global, non-secret TADX configuration model.
 type Config struct {
 	// MutationsEnabled is a legacy field accepted during decoding; it never grants consent.
-	MutationsEnabled   *bool                            `yaml:"mutations_enabled,omitempty" json:"mutations_enabled,omitempty"`
-	SiteMutations      []SiteMutation                   `yaml:"site_mutations,omitempty" json:"site_mutations,omitempty"`
-	Version            int                              `yaml:"version" json:"version"`
-	DefaultEnvironment string                           `yaml:"default_environment,omitempty" json:"default_environment,omitempty"`
-	DefaultWorkspace   string                           `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
-	Environments       map[string]Environment           `yaml:"environments,omitempty" json:"environments,omitempty"`
-	Workspaces         map[string]WorkspaceRegistration `yaml:"workspaces,omitempty" json:"workspaces,omitempty"`
+	MutationsEnabled          *bool                            `yaml:"mutations_enabled,omitempty" json:"mutations_enabled,omitempty"`
+	SiteMutations             []SiteMutation                   `yaml:"site_mutations,omitempty" json:"site_mutations,omitempty"`
+	Version                   int                              `yaml:"version" json:"version"`
+	DefaultEnvironment        string                           `yaml:"default_environment,omitempty" json:"default_environment,omitempty"`
+	DefaultWorkspace          string                           `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
+	Environments              map[string]Environment           `yaml:"environments,omitempty" json:"environments,omitempty"`
+	Workspaces                map[string]WorkspaceRegistration `yaml:"workspaces,omitempty" json:"workspaces,omitempty"`
+	InvalidEnvironments       map[string]InvalidEntry          `yaml:"-" json:"-"`
+	InvalidWorkspaces         map[string]InvalidEntry          `yaml:"-" json:"-"`
+	unknownFields             map[string]*yaml.Node
+	sourceInvalidEnvironments map[string]InvalidEntry
+	sourceInvalidWorkspaces   map[string]InvalidEntry
+	sourceDefaultEnvironment  string
+	sourceDefaultWorkspace    string
+	clearedCredentials        map[string]bool
 }
 
 // WorkspaceRegistration maps one logical workspace name to a stable identity
@@ -58,7 +67,6 @@ type Environment struct {
 	Alias               string `yaml:"-" json:"alias,omitempty"`
 	URL                 string `yaml:"url" json:"url"`
 	SiteContentURL      string `yaml:"site_content_url,omitempty" json:"site_content_url,omitempty"`
-	APIVersion          string `yaml:"api_version,omitempty" json:"api_version,omitempty"`
 	Auth                Auth   `yaml:"auth" json:"auth"`
 	DefaultWorkspace    string `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
 	CacheMaxConcurrency int    `yaml:"cache_max_concurrency,omitempty" json:"cache_max_concurrency,omitempty"`
@@ -86,149 +94,10 @@ func (e *ValidationError) Error() string {
 	return "invalid configuration: " + strings.Join(e.Violations, "; ")
 }
 
-// Validate checks the complete configuration model without reading secrets.
+// Validate checks file controls and all supplied entries for writes.
 func (c Config) Validate() error {
-	var violations []string
-	if err := validateSiteMutations(c.SiteMutations); err != nil {
-		violations = append(violations, err.Error())
-	}
-	type variableReference struct {
-		alias     string
-		defaulted bool
-	}
-	variableReferences := make(map[string]variableReference)
-	credentialReferences := make(map[string]string)
-	if c.Version != CurrentVersion {
-		violations = append(violations, fmt.Sprintf("version must be %d", CurrentVersion))
-	}
-	if c.DefaultEnvironment != "" {
-		if _, ok := c.Environments[c.DefaultEnvironment]; !ok {
-			violations = append(violations, fmt.Sprintf("default environment %q does not exist", c.DefaultEnvironment))
-		}
-	}
-	workspaceNames := make(map[string]string, len(c.Workspaces))
-	workspaceIDs := make(map[string]string, len(c.Workspaces))
-	workspaceRoots := make(map[string]string, len(c.Workspaces))
-	if len(c.Workspaces) > maxWorkspaces {
-		violations = append(violations, fmt.Sprintf("workspace registry must not exceed %d entries", maxWorkspaces))
-	}
-	for name, registration := range c.Workspaces {
-		if err := ValidateWorkspaceName(name); err != nil {
-			violations = append(violations, fmt.Sprintf("workspace %q name: %v", name, err))
-		}
-		foldedName := strings.ToLower(name)
-		for _, previous := range workspaceNames {
-			if strings.EqualFold(previous, name) {
-				violations = append(violations, fmt.Sprintf("workspace names %q and %q collide under case-insensitive matching", previous, name))
-				break
-			}
-		}
-		workspaceNames[foldedName] = name
-		if !workspaceIDPattern.MatchString(registration.ID) {
-			violations = append(violations, fmt.Sprintf("workspace %q ID must match ws_<32 lowercase hex>", name))
-		} else if previous, exists := workspaceIDs[registration.ID]; exists {
-			violations = append(violations, fmt.Sprintf("workspace ID %q is shared by %q and %q", registration.ID, previous, name))
-		} else {
-			workspaceIDs[registration.ID] = name
-		}
-		root, err := canonicalWorkspaceRoot(registration.Path)
-		if err != nil {
-			violations = append(violations, fmt.Sprintf("workspace %q path: %v", name, err))
-		} else {
-			key := workspaceRootKey(root)
-			if previous, exists := workspaceRoots[key]; exists {
-				violations = append(violations, fmt.Sprintf("workspace canonical root %q is shared by %q and %q", root, previous, name))
-			} else {
-				workspaceRoots[key] = name
-			}
-		}
-	}
-	if c.DefaultWorkspace != "" {
-		if looksLikePath(c.DefaultWorkspace) {
-			violations = append(violations, "default workspace must be a logical name, not a path")
-		} else if _, _, ok := resolveWorkspaceRegistration(c.Workspaces, c.DefaultWorkspace); !ok {
-			violations = append(violations, fmt.Sprintf("default workspace %q does not exist", c.DefaultWorkspace))
-		}
-	}
-
-	aliases := make([]string, 0, len(c.Environments))
-	for alias := range c.Environments {
-		aliases = append(aliases, alias)
-	}
-	sort.Strings(aliases)
-	for _, alias := range aliases {
-		environment := c.Environments[alias]
-		if strings.TrimSpace(alias) == "" {
-			violations = append(violations, "environment alias must not be empty")
-		}
-		if err := validateServerURL(environment.URL); err != nil {
-			violations = append(violations, fmt.Sprintf("environment %q URL: %v", alias, err))
-		}
-		if environment.APIVersion != "" && !isAPIVersion(environment.APIVersion) {
-			violations = append(violations, fmt.Sprintf("environment %q API version must use major.minor numeric format", alias))
-		}
-		if environment.CacheMaxConcurrency < 0 || environment.CacheMaxConcurrency > 256 {
-			violations = append(violations, fmt.Sprintf("environment %q cache maximum concurrency must be between 1 and 256, or omitted for the default", alias))
-		}
-		if environment.Auth.Type != AuthTypePAT {
-			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))
-		}
-		violations = append(violations, variableReferenceViolations(alias, environment.Auth)...)
-		if reference := environment.Auth.CredentialRef; reference != "" {
-			if !credentialRefPattern.MatchString(reference) {
-				violations = append(violations, fmt.Sprintf("environment %q credential reference must match cred_<32 lowercase hex>", alias))
-			} else if previous, exists := credentialReferences[reference]; exists {
-				violations = append(violations, fmt.Sprintf("credential reference %q is shared by environments %q and %q", reference, previous, alias))
-			} else {
-				credentialReferences[reference] = alias
-			}
-		}
-		if environment.DefaultWorkspace != "" {
-			if looksLikePath(environment.DefaultWorkspace) {
-				violations = append(violations, fmt.Sprintf("environment %q default workspace must be a logical name, not a path", alias))
-			} else if _, _, ok := resolveWorkspaceRegistration(c.Workspaces, environment.DefaultWorkspace); !ok {
-				violations = append(violations, fmt.Sprintf("environment %q default workspace %q does not exist", alias, environment.DefaultWorkspace))
-			}
-		}
-		defaultName, defaultSecret := DefaultPATVariableNames(alias)
-		nameVariable := environment.Auth.PATNameEnv
-		nameDefaulted := nameVariable == ""
-		if nameVariable == "" {
-			nameVariable = defaultName
-		}
-		secretVariable := environment.Auth.PATSecretEnv
-		secretDefaulted := secretVariable == ""
-		if secretVariable == "" {
-			secretVariable = defaultSecret
-		}
-		if strings.EqualFold(nameVariable, secretVariable) {
-			violations = append(violations, fmt.Sprintf("environment %q PAT name and secret must use different variables", alias))
-		}
-		for _, reference := range []struct {
-			variable  string
-			defaulted bool
-		}{
-			{variable: nameVariable, defaulted: nameDefaulted},
-			{variable: secretVariable, defaulted: secretDefaulted},
-		} {
-			identity := strings.ToUpper(reference.variable)
-			previous, exists := variableReferences[identity]
-			if exists && previous.alias != alias && (previous.defaulted || reference.defaulted) {
-				violations = append(violations, fmt.Sprintf(
-					"environment %q PAT variable %q conflicts with environment %q because at least one reference uses the default",
-					alias, reference.variable, previous.alias,
-				))
-				continue
-			}
-			if !exists {
-				variableReferences[identity] = variableReference{alias: alias, defaulted: reference.defaulted}
-			}
-		}
-	}
-	if len(violations) > 0 {
-		return &ValidationError{Violations: violations}
-	}
-	return nil
+	_, _, err := prepareWrite(c)
+	return err
 }
 
 // ValidateWorkspaceName validates one user-facing logical workspace name.
@@ -272,7 +141,7 @@ func isReservedWorkspaceStem(stem string) bool {
 	return false
 }
 
-// ResolveWorkspace returns an exact case-insensitive logical workspace match.
+// ResolveWorkspace prefers an exact name and otherwise requires one case-insensitive match.
 // An empty selector uses DefaultWorkspace.
 func (c Config) ResolveWorkspace(selector string) (string, WorkspaceRegistration, error) {
 	if selector == "" {
@@ -281,9 +150,12 @@ func (c Config) ResolveWorkspace(selector string) (string, WorkspaceRegistration
 	if selector == "" {
 		return "", WorkspaceRegistration{}, errors.New("no workspace selected and no default workspace is configured")
 	}
-	name, registration, ok := resolveWorkspaceRegistration(c.Workspaces, selector)
-	if !ok {
-		return "", WorkspaceRegistration{}, fmt.Errorf("workspace %q does not exist", selector)
+	name, registration, err := c.WorkspaceForRepair(selector)
+	if err != nil {
+		return "", WorkspaceRegistration{}, err
+	}
+	if invalid, exists := c.InvalidWorkspaces[name]; exists {
+		return "", WorkspaceRegistration{}, &InvalidWorkspaceError{Name: name, Violations: invalid.Violations}
 	}
 	return name, registration, nil
 }
@@ -317,14 +189,15 @@ func canonicalWorkspaceRoot(value string) (string, error) {
 func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 	if alias == "" {
 		alias = c.DefaultEnvironment
-		if alias == "" && len(c.Environments) == 1 {
-			for name := range c.Environments {
-				alias = name
-			}
+		if aliases := c.EnvironmentAliases(); alias == "" && len(aliases) == 1 {
+			alias = aliases[0]
 		}
 	}
 	if alias == "" {
 		return Environment{}, c.selectionError(alias)
+	}
+	if invalid, exists := c.InvalidEnvironments[alias]; exists {
+		return Environment{}, &InvalidEnvironmentError{Alias: alias, Violations: invalid.Violations}
 	}
 	environment, ok := c.Environments[alias]
 	if !ok {
@@ -333,9 +206,6 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 	environment.Alias = alias
 	if environment.Auth.Type == "" {
 		environment.Auth.Type = AuthTypePAT
-	}
-	if environment.APIVersion == "" {
-		environment.APIVersion = "3.29"
 	}
 	defaultName, defaultSecret := DefaultPATVariableNames(alias)
 	if environment.Auth.PATNameEnv == "" {
@@ -389,30 +259,8 @@ func load(path string) (Config, []byte, bool, error) {
 	if len(data) > maxConfigBytes {
 		return Config{}, nil, false, fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
 	}
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	var configuration Config
-	if err := decoder.Decode(&configuration); err != nil {
-		var document struct {
-			Workspace *struct{ ID, Name string } `yaml:"workspace"`
-		}
-		if yaml.Unmarshal(data, &document) == nil && document.Workspace != nil {
-			return Config{}, nil, false, fmt.Errorf("workspace manifest supplied as CLI settings; use --config for CLI settings and --workspace for a registered workspace: %w", err)
-		}
-		return Config{}, nil, false, fmt.Errorf("decode configuration: %w", err)
-	}
-	var trailing yaml.Node
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err != nil {
-			return Config{}, nil, false, fmt.Errorf("decode configuration: %w", err)
-		}
-		return Config{}, nil, false, errors.New("decode configuration: multiple YAML documents are not supported")
-	}
-	configuration, migrated, err := migrateLegacyWorkspaceDefaults(configuration)
+	configuration, migrated, err := decodeConfiguration(data)
 	if err != nil {
-		return Config{}, nil, false, err
-	}
-	if err := configuration.Validate(); err != nil {
 		return Config{}, nil, false, err
 	}
 	return configuration, data, migrated, nil
@@ -618,19 +466,17 @@ func workspaceRootKey(root string) string {
 
 // Save validates and atomically replaces the non-secret user configuration.
 func Save(path string, configuration Config) error {
-	if err := configuration.Validate(); err != nil {
+	_, data, err := prepareWrite(configuration)
+	if err != nil {
 		return err
 	}
+	return saveBytes(path, data)
+}
+
+func saveBytes(path string, data []byte) error {
 	directory := filepath.Dir(path)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("create configuration directory: %w", err)
-	}
-	data, err := yaml.Marshal(configuration)
-	if err != nil {
-		return fmt.Errorf("encode configuration: %w", err)
-	}
-	if len(data) > maxConfigBytes {
-		return fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
 	}
 	temporary, err := os.CreateTemp(directory, ".tadx-config-*.yaml")
 	if err != nil {
@@ -832,7 +678,11 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 			return Config{}, err
 		}
 	}
-	if err := Save(path, next); err != nil {
+	next, encoded, err := prepareWrite(next)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := saveBytes(path, encoded); err != nil {
 		if !isDurabilityError(err) {
 			return Config{}, err
 		}
@@ -870,18 +720,14 @@ func isDurabilityError(err error) bool {
 func cloneConfig(configuration Config) Config {
 	clone := configuration
 	clone.SiteMutations = slices.Clone(configuration.SiteMutations)
-	if configuration.Environments != nil {
-		clone.Environments = make(map[string]Environment, len(configuration.Environments))
-		for alias, environment := range configuration.Environments {
-			clone.Environments[alias] = environment
-		}
-	}
-	if configuration.Workspaces != nil {
-		clone.Workspaces = make(map[string]WorkspaceRegistration, len(configuration.Workspaces))
-		for name, registration := range configuration.Workspaces {
-			clone.Workspaces[name] = registration
-		}
-	}
+	clone.Environments = maps.Clone(configuration.Environments)
+	clone.Workspaces = maps.Clone(configuration.Workspaces)
+	clone.InvalidEnvironments = cloneInvalidEntries(configuration.InvalidEnvironments)
+	clone.InvalidWorkspaces = cloneInvalidEntries(configuration.InvalidWorkspaces)
+	clone.sourceInvalidEnvironments = cloneInvalidEntries(configuration.sourceInvalidEnvironments)
+	clone.sourceInvalidWorkspaces = cloneInvalidEntries(configuration.sourceInvalidWorkspaces)
+	clone.unknownFields = cloneNodes(configuration.unknownFields)
+	clone.clearedCredentials = maps.Clone(configuration.clearedCredentials)
 	return clone
 }
 
@@ -922,21 +768,6 @@ func validateServerURL(value string) error {
 		return errors.New("must not contain a query or fragment")
 	}
 	return nil
-}
-
-func isAPIVersion(value string) bool {
-	major, minor, found := strings.Cut(value, ".")
-	if !found || major == "" || minor == "" || strings.Contains(minor, ".") {
-		return false
-	}
-	for _, part := range []string{major, minor} {
-		for index := 0; index < len(part); index++ {
-			if part[index] < '0' || part[index] > '9' {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // UserConfigPath returns the standard user-global TADX configuration path.

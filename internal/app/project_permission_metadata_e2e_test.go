@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,7 +11,7 @@ import (
 
 func TestProjectPermissionMetadataRemainsVisibleLiveAndCache(t *testing.T) {
 	var reads atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -58,7 +57,7 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCache(t *testing.T) {
 }
 
 func TestProjectUpdateReceiptShowsReturnedPermissionMode(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}

@@ -27,6 +27,10 @@ Unreadable definitions remain `unknown`, which preserves the authoritative downl
 
 ## Publish contract
 
+Version gates use the command's negotiated REST version under the [REST version negotiation contract](rest-version-negotiation-contract.md).
+TADX selects the lower of the server's reported version and its build maximum before PAT sign-in.
+Users do not configure or persist a REST API version.
+
 The REST reference section `Publish Data Source` begins at line 33245 of the captured REST file.
 The base publish method is available in REST API 2.0 and later on Tableau Cloud and Tableau Server.
 The method accepts direct multipart publication and upload-session publication for TDS, TDSX, Hyper, and TDE payloads.

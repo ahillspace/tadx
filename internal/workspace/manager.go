@@ -3,6 +3,7 @@ package workspace
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -11,7 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
@@ -35,6 +36,8 @@ type Record struct {
 	Available       bool
 	ManifestValid   bool
 	SelectionReason string
+	Status          string
+	Violations      []string
 }
 
 // Page is one bounded registered-workspace page.
@@ -233,14 +236,14 @@ func (m *Manager) Unregister(ctx context.Context, name string) (Record, error) {
 	}
 	var removed Record
 	_, err := m.updateConfig(false, func(configuration config.Config) (config.Config, error) {
-		registeredName, registration, ok := exactRegistration(configuration, name)
-		if !ok {
-			return config.Config{}, fmt.Errorf("workspace %q is not registered", name)
+		registeredName, registration, err := configuration.WorkspaceForRepair(name)
+		if err != nil {
+			return config.Config{}, err
 		}
 		if err := validateDefaultReferences(configuration, registeredName); err != nil {
 			return config.Config{}, err
 		}
-		removed = recordFromRegistration(registeredName, registration, configuration.DefaultWorkspace)
+		removed = registryRecord(configuration, registeredName, registration)
 		removeRegistration(&configuration, registeredName)
 		return configuration, nil
 	})
@@ -279,7 +282,7 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 		if err := validateDeletionRoot(root, name, registration.ID); err != nil {
 			return config.Config{}, nil, err
 		}
-		for otherName, other := range current.Workspaces {
+		for otherName, other := range current.WorkspaceRegistrations() {
 			if strings.EqualFold(otherName, name) {
 				continue
 			}
@@ -342,8 +345,23 @@ func recordFromRegistration(name string, registration config.WorkspaceRegistrati
 	return record
 }
 
+func registryRecord(configuration config.Config, name string, registration config.WorkspaceRegistration) Record {
+	if invalid, ok := configuration.InvalidWorkspaces[name]; ok {
+		var fields []string
+		for _, violation := range invalid.Violations {
+			if !slices.Contains(fields, violation.Field) {
+				fields = append(fields, violation.Field)
+			}
+		}
+		slices.Sort(fields)
+		return Record{Name: name, Default: configuration.DefaultWorkspace != "" && strings.EqualFold(configuration.DefaultWorkspace, name), Status: "invalid", Violations: fields}
+	}
+	return recordFromRegistration(name, registration, configuration.DefaultWorkspace)
+}
+
 func removeRegistration(configuration *config.Config, name string) {
 	delete(configuration.Workspaces, name)
+	delete(configuration.InvalidWorkspaces, name)
 	if strings.EqualFold(configuration.DefaultWorkspace, name) {
 		configuration.DefaultWorkspace = ""
 	}
@@ -356,20 +374,24 @@ func removeRegistration(configuration *config.Config, name string) {
 }
 
 func validateDefaultReferences(configuration config.Config, name string) error {
-	if len(configuration.Workspaces) == 1 {
+	if len(configuration.WorkspaceNames()) == 1 {
 		return nil
 	}
-	if strings.EqualFold(configuration.DefaultWorkspace, name) {
+	if configuration.DefaultWorkspace != "" && strings.EqualFold(configuration.DefaultWorkspace, name) {
 		return recoveryError(fmt.Sprintf("workspace %q is the global default", name), replacementGuidance(configuration, name, ""), name)
 	}
 	var references []string
-	for alias, environment := range configuration.Environments {
-		if strings.EqualFold(environment.DefaultWorkspace, name) {
+	for _, alias := range configuration.EnvironmentAliases() {
+		environment, err := configuration.EnvironmentForRepair(alias)
+		if err != nil {
+			return err
+		}
+		if environment.DefaultWorkspace != "" && strings.EqualFold(environment.DefaultWorkspace, name) {
 			references = append(references, alias)
 		}
 	}
 	if len(references) > 0 {
-		sort.Strings(references)
+		slices.Sort(references)
 		return recoveryError(fmt.Sprintf("workspace %q is the default for environment %q", name, references[0]), replacementGuidance(configuration, name, references[0]), name)
 	}
 	return nil
@@ -469,12 +491,18 @@ func applyRegistration(configuration config.Config, name, id, resolvedRoot strin
 
 // planRegistration checks registry collisions without requiring a newly created manifest.
 func planRegistration(configuration config.Config, name, id, resolvedRoot string) (config.Config, error) {
-	for existingName, registration := range configuration.Workspaces {
+	for existingName, registration := range configuration.WorkspaceRegistrations() {
 		if strings.EqualFold(existingName, name) {
+			if _, invalid := configuration.InvalidWorkspaces[existingName]; invalid {
+				return config.Config{}, fmt.Errorf("workspace name %q already exists as invalid registration %q; unregister it before reusing its name", name, existingName)
+			}
 			return config.Config{}, fmt.Errorf("workspace name %q already exists as %q (root %q, identity %q)", name, existingName, registration.Path, registration.ID)
 		}
 		if id != "" && registration.ID == id {
-			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q (root %q)", id, existingName, registration.Path)
+			if _, invalid := configuration.InvalidWorkspaces[existingName]; !invalid {
+				return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q (root %q)", id, existingName, registration.Path)
+			}
+			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q", id, existingName)
 		}
 		existingRoot, rootErr := canonicalRoot(registration.Path)
 		if rootErr != nil {
@@ -483,12 +511,18 @@ func planRegistration(configuration config.Config, name, id, resolvedRoot string
 			// offline workspace cannot block registering an unrelated one, while
 			// still rejecting an exact duplicate registration.
 			if samePath(registration.Path, resolvedRoot) {
-				return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q (identity %q)", resolvedRoot, existingName, registration.ID)
+				if _, invalid := configuration.InvalidWorkspaces[existingName]; !invalid {
+					return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q (identity %q)", resolvedRoot, existingName, registration.ID)
+				}
+				return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q", resolvedRoot, existingName)
 			}
 			continue
 		}
 		if samePath(existingRoot, resolvedRoot) {
-			return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q (identity %q)", resolvedRoot, existingName, registration.ID)
+			if _, invalid := configuration.InvalidWorkspaces[existingName]; !invalid {
+				return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q (identity %q)", resolvedRoot, existingName, registration.ID)
+			}
+			return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q", resolvedRoot, existingName)
 		}
 	}
 	if configuration.Workspaces == nil {
@@ -502,7 +536,7 @@ func planRegistration(configuration config.Config, name, id, resolvedRoot string
 }
 
 // Resolve resolves one logical name or the nearest configured default and validates its manifest.
-func (m *Manager) Resolve(ctx context.Context, selector, environmentDefault string) (Record, error) {
+func (m *Manager) Resolve(ctx context.Context, selector, environmentAlias string) (Record, error) {
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
@@ -510,21 +544,21 @@ func (m *Manager) Resolve(ctx context.Context, selector, environmentDefault stri
 	if err != nil {
 		return Record{}, err
 	}
-	return m.ResolveWithConfig(ctx, configuration, selector, environmentDefault)
+	return m.ResolveWithConfig(ctx, configuration, selector, environmentAlias)
 }
 
 // ResolveWithConfig resolves against an immutable command configuration snapshot.
 // Manifest identity and path validation remain the same as Resolve.
-func (m *Manager) ResolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string) (Record, error) {
-	return m.resolveWithConfig(ctx, configuration, selector, environmentDefault, true)
+func (m *Manager) ResolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentAlias string) (Record, error) {
+	return m.resolveWithConfig(ctx, configuration, selector, environmentAlias, true)
 }
 
 // ResolveReadOnlyWithConfig validates local prerequisites without migrating files.
-func (m *Manager) ResolveReadOnlyWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string) (Record, error) {
-	return m.resolveWithConfig(ctx, configuration, selector, environmentDefault, false)
+func (m *Manager) ResolveReadOnlyWithConfig(ctx context.Context, configuration config.Config, selector, environmentAlias string) (Record, error) {
+	return m.resolveWithConfig(ctx, configuration, selector, environmentAlias, false)
 }
 
-func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string, migrate bool) (Record, error) {
+func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentAlias string, migrate bool) (Record, error) {
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
@@ -533,8 +567,14 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 		selector = containingWorkspace(configuration)
 		reason = "containing_directory"
 		if selector == "" {
-			selector = environmentDefault
 			reason = "environment_default"
+			if environmentAlias != "" || configuration.DefaultEnvironment != "" {
+				environment, err := configuration.ResolveEnvironment(environmentAlias)
+				if err != nil {
+					return Record{}, err
+				}
+				selector = environment.DefaultWorkspace
+			}
 		}
 		if selector == "" {
 			reason = "global_default"
@@ -542,8 +582,11 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	}
 	name, registration, err := configuration.ResolveWorkspace(selector)
 	if err != nil {
+		if _, invalid := errors.AsType[*config.InvalidWorkspaceError](err); invalid {
+			return Record{}, err
+		}
 		action := "Select an existing workspace with --workspace <name>; inspect names with tadx workspace list."
-		if len(configuration.Workspaces) == 0 {
+		if len(configuration.WorkspaceNames()) == 0 {
 			action = "Create a workspace first: tadx workspace create <name>."
 		}
 		return Record{}, recoveryError(err.Error(), action)
@@ -587,7 +630,7 @@ func containingWorkspace(configuration config.Config) string {
 		depth int
 	}
 	var matches []candidate
-	for name, registration := range configuration.Workspaces {
+	for name, registration := range configuration.WorkspaceRegistrations() {
 		root, rootErr := canonicalRoot(registration.Path)
 		if rootErr != nil || !containsPath(root, workingDirectory) {
 			continue
@@ -597,11 +640,11 @@ func containingWorkspace(configuration config.Config) string {
 	if len(matches) == 0 {
 		return ""
 	}
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].depth != matches[j].depth {
-			return matches[i].depth > matches[j].depth
+	slices.SortFunc(matches, func(left, right candidate) int {
+		if left.depth != right.depth {
+			return cmp.Compare(right.depth, left.depth)
 		}
-		return strings.ToLower(matches[i].name) < strings.ToLower(matches[j].name)
+		return cmp.Compare(strings.ToLower(left.name), strings.ToLower(right.name))
 	})
 	return matches[0].name
 }
@@ -629,8 +672,12 @@ func (m *Manager) List(ctx context.Context, limit, offset int) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	items := make([]Record, 0, len(configuration.Workspaces))
-	for name, registration := range configuration.Workspaces {
+	items := make([]Record, 0, len(configuration.WorkspaceNames()))
+	for name, registration := range configuration.WorkspaceRegistrations() {
+		if _, invalid := configuration.InvalidWorkspaces[name]; invalid {
+			items = append(items, registryRecord(configuration, name, registration))
+			continue
+		}
 		record := Record{Name: name, ID: registration.ID, Root: registration.Path, Default: strings.EqualFold(configuration.DefaultWorkspace, name)}
 		if reported, presentErr := presentedRoot(registration.Path); presentErr == nil {
 			record.Root = reported
@@ -644,12 +691,12 @@ func (m *Manager) List(ctx context.Context, limit, offset int) (Page, error) {
 		}
 		items = append(items, record)
 	}
-	sort.Slice(items, func(i, j int) bool {
-		left, right := strings.ToLower(items[i].Name), strings.ToLower(items[j].Name)
-		if left == right {
-			return items[i].ID < items[j].ID
+	slices.SortFunc(items, func(left, right Record) int {
+		leftName, rightName := strings.ToLower(left.Name), strings.ToLower(right.Name)
+		if leftName == rightName {
+			return cmp.Compare(left.ID, right.ID)
 		}
-		return left < right
+		return cmp.Compare(leftName, rightName)
 	})
 	page := Page{Total: len(items), Limit: limit}
 	if offset >= len(items) {

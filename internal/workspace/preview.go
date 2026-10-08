@@ -155,12 +155,12 @@ func (m *Manager) PreviewUnregister(ctx context.Context, name string) (Record, e
 	if err != nil {
 		return Record{}, err
 	}
-	registered, entry, ok := exactRegistration(cfg, name)
-	if !ok {
-		return Record{}, fmt.Errorf("workspace %q is not registered", name)
+	registered, entry, err := cfg.WorkspaceForRepair(name)
+	if err != nil {
+		return Record{}, err
 	}
 	if err := validateDefaultReferences(cfg, registered); err != nil {
 		return Record{}, err
 	}
-	return recordFromRegistration(registered, entry, cfg.DefaultWorkspace), nil
+	return registryRecord(cfg, registered, entry), nil
 }

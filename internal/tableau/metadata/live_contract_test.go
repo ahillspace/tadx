@@ -52,7 +52,10 @@ func TestLiveWorkbookPublishedDatasourceContract(t *testing.T) {
 
 	capture := &metadataEvidenceTransport{base: http.DefaultTransport}
 	httpClient := &http.Client{Transport: capture, Timeout: 2 * time.Minute}
-	transport := tableau.NewTransport(httpClient, environment.APIVersion, func() string { return "pds-live-contract" })
+	transport := tableau.NewTransport(httpClient, "", func() string { return "pds-live-contract" })
+	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
+		t.Fatal(err)
+	}
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(context.Background(), coreauth.Target{
 		Environment:       environment.Alias,
@@ -127,7 +130,10 @@ func TestLiveLineageContract(t *testing.T) {
 
 	captureTransport := &metadataEvidenceTransport{base: http.DefaultTransport}
 	httpClient := &http.Client{Transport: captureTransport, Timeout: 2 * time.Minute}
-	transport := tableau.NewTransport(httpClient, environment.APIVersion, func() string { return "lineage-live-contract" })
+	transport := tableau.NewTransport(httpClient, "", func() string { return "lineage-live-contract" })
+	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
+		t.Fatal(err)
+	}
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(context.Background(), coreauth.Target{
 		Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL,

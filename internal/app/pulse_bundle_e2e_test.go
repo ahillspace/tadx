@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -71,7 +70,7 @@ func testPulseBundleRoundTrip(t *testing.T, destinationSite string, change pulse
 	requests := 0
 	currentSite := "site-1"
 	invalidFields, incompletePull := false, false
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		switch {
 		case r.URL.Path == "/api/3.29/auth/signin":

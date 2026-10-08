@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,7 +17,7 @@ func TestAdminRequestedThousandUsesTenBoundedPagesWithoutCache(t *testing.T) {
 	for _, kind := range []string{"user", "group"} {
 		t.Run(kind, func(t *testing.T) {
 			reads, signins := 0, 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					signins++
 					return

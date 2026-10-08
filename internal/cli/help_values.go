@@ -100,7 +100,6 @@ func applyHelpValues(root *cobra.Command) {
 				helpFlagAnnotation(command, "cache-max-concurrency", "tadx.help.omission", []string{"unchanged"})
 			}
 			value("url", "https://server")
-			value("api-version", "major.minor")
 		}
 		if limit, ok := helpLimitDefaults[path]; ok {
 			value("limit", "1..10000")
@@ -178,7 +177,7 @@ func applyHelpSemantics(command *cobra.Command, path string) {
 			helpFlagAnnotation(command, name, "tadx.help.omission", []string{"unchanged"})
 		}
 		if strings.HasPrefix(path, "env ") {
-			for _, name := range []string{"url", "site", "api-version", "pat-name-env", "pat-secret-env", "default-workspace"} {
+			for _, name := range []string{"url", "site", "pat-name-env", "pat-secret-env", "default-workspace"} {
 				helpFlagAnnotation(command, name, "tadx.help.omission", []string{"unchanged"})
 			}
 		}
@@ -356,7 +355,7 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 	case "env add":
 		required("url")
 	case "env update":
-		for _, name := range []string{"site", "api-version", "pat-name-env", "pat-secret-env", "default-workspace", "cache-max-concurrency"} {
+		for _, name := range []string{"site", "pat-name-env", "pat-secret-env", "default-workspace", "cache-max-concurrency"} {
 			group("exclusive", name, "clear-"+name)
 		}
 	case "agent uninstall":

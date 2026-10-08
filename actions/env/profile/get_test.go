@@ -3,8 +3,10 @@ package profile_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	profileget "github.com/ahillspace/tadx/actions/env/profile"
@@ -55,6 +57,23 @@ func TestGetExecuteWrapsReadFailure(t *testing.T) {
 	}
 }
 
+func TestGetInvalidProfileShowsFieldsAndRepairCommands(t *testing.T) {
+	profile := profileget.Profile{Alias: "broken", Default: true, Status: "invalid", Violations: []string{"pat_secret_env"}}
+	got, err := profileget.NewGet(getTestReader{profile: profile}).Execute(t.Context(), profileget.GetInput{Alias: "broken"})
+	if err != nil || got.Profile.Status != "invalid" || len(got.Help) != 2 || !strings.Contains(got.Help[0], "tadx env update broken") || !strings.Contains(got.Help[1], "tadx env remove broken") {
+		t.Fatalf("invalid profile lost recovery: got=%+v err=%v", got, err)
+	}
+	data, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{"\"pat_secret_env\":", "\"server_url\":", "\"auth_type\":"} {
+		if strings.Contains(string(data), unwanted) {
+			t.Fatalf("invalid profile rendered an entry value: %s", data)
+		}
+	}
+}
+
 func TestGetOutputGoldens(t *testing.T) {
 	got, _ := profileget.NewGet(getTestReader{profile: getFixture()}).Execute(context.Background(), profileget.GetInput{Alias: "production"})
 	getAssertGolden(t, got, false, "testdata/get/output.toon")
@@ -65,7 +84,7 @@ func TestGetOutputGoldens(t *testing.T) {
 }
 
 func getFixture() profileget.Profile {
-	return profileget.Profile{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
+	return profileget.Profile{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
 }
 func getAssertGolden(t *testing.T, value any, full bool, path string) {
 	t.Helper()

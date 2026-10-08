@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +43,7 @@ func TestAdminPermissionMutationsThroughCLI(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var reads, writes, allCalls atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				allCalls.Add(1)
 				switch {
 				case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin":
@@ -97,7 +96,7 @@ func TestAdminPermissionMutationsThroughCLI(t *testing.T) {
 			}))
 			defer server.Close()
 			configPath := filepath.Join(t.TempDir(), "config.yaml")
-			config := fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: ''\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PERMISSION_PAT_NAME\n      pat_secret_env: PERMISSION_PAT_SECRET\n", server.URL)
+			config := fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: ''\n    auth:\n      type: pat\n      pat_name_env: PERMISSION_PAT_NAME\n      pat_secret_env: PERMISSION_PAT_SECRET\n", server.URL)
 			if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 				t.Fatal(err)
 			}

@@ -196,30 +196,32 @@ func TableauRequestID(err error) string {
 
 // Payload is the stable serializable form of Error.
 type Payload struct {
-	ID               string             `json:"id,omitempty"`
-	Kind             Kind               `json:"kind"`
-	Operation        string             `json:"operation,omitempty"`
-	Selector         string             `json:"selector,omitempty"`
-	Resource         string             `json:"resource,omitempty"`
-	Environment      string             `json:"environment,omitempty"`
-	Site             string             `json:"site,omitempty"`
-	Summary          string             `json:"summary"`
-	UpstreamCause    string             `json:"upstream_cause,omitempty"`
-	Retryable        *bool              `json:"retryable,omitempty"`
-	CorrectiveAction string             `json:"corrective_action,omitempty"`
-	Recovery         string             `json:"recovery,omitempty"`
-	Validation       []ValidationDetail `json:"validation,omitempty"`
-	UpstreamStatus   int                `json:"upstream_status,omitempty"`
-	UpstreamCode     string             `json:"upstream_code,omitempty"`
-	UpstreamSummary  string             `json:"upstream_summary,omitempty"`
-	UpstreamDetail   string             `json:"upstream_detail,omitempty"`
-	TableauRequestID string             `json:"tableau_request_id,omitempty"`
-	TableauJobID     string             `json:"tableau_job_id,omitempty"`
-	Completed        []string           `json:"completed,omitempty"`
-	Failed           string             `json:"failed,omitempty"`
-	Phase            Phase              `json:"phase,omitempty"`
-	Outcome          Outcome            `json:"outcome,omitempty"`
-	Prerequisite     *Prerequisite      `json:"prerequisite,omitempty"`
+	CorrectiveCommands    [][]string         `json:"-"`
+	CorrectiveExplanation string             `json:"-"`
+	ID                    string             `json:"id,omitempty"`
+	Kind                  Kind               `json:"kind"`
+	Operation             string             `json:"operation,omitempty"`
+	Selector              string             `json:"selector,omitempty"`
+	Resource              string             `json:"resource,omitempty"`
+	Environment           string             `json:"environment,omitempty"`
+	Site                  string             `json:"site,omitempty"`
+	Summary               string             `json:"summary"`
+	UpstreamCause         string             `json:"upstream_cause,omitempty"`
+	Retryable             *bool              `json:"retryable,omitempty"`
+	CorrectiveAction      string             `json:"corrective_action,omitempty"`
+	Recovery              string             `json:"recovery,omitempty"`
+	Validation            []ValidationDetail `json:"validation,omitempty"`
+	UpstreamStatus        int                `json:"upstream_status,omitempty"`
+	UpstreamCode          string             `json:"upstream_code,omitempty"`
+	UpstreamSummary       string             `json:"upstream_summary,omitempty"`
+	UpstreamDetail        string             `json:"upstream_detail,omitempty"`
+	TableauRequestID      string             `json:"tableau_request_id,omitempty"`
+	TableauJobID          string             `json:"tableau_job_id,omitempty"`
+	Completed             []string           `json:"completed,omitempty"`
+	Failed                string             `json:"failed,omitempty"`
+	Phase                 Phase              `json:"phase,omitempty"`
+	Outcome               Outcome            `json:"outcome,omitempty"`
+	Prerequisite          *Prerequisite      `json:"prerequisite,omitempty"`
 }
 
 // Envelope is the top-level structured error document.
@@ -295,6 +297,14 @@ func Structure(err error) Envelope {
 			if payload.Recovery == "" {
 				payload.Recovery = recoveryAdvice(payload.Outcome, payload.Prerequisite)
 			}
+		}
+		var commands interface {
+			CorrectiveCommands() [][]string
+			CorrectiveExplanation() string
+		}
+		if errors.As(err, &commands) {
+			payload.CorrectiveCommands = commands.CorrectiveCommands()
+			payload.CorrectiveExplanation = commands.CorrectiveExplanation()
 		}
 		return Envelope{Error: payload}
 	}

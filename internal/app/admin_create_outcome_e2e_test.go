@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,7 +16,7 @@ func TestAdminCreateMalformedAcknowledgementRetainsRecoveryThroughCLI(t *testing
 	for _, kind := range []string{"user", "group"} {
 		t.Run(kind, func(t *testing.T) {
 			var writes atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}

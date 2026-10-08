@@ -1,6 +1,6 @@
 # Managed policy ceilings
 
-Read this reference when `tadx policy status` reports `active` or `error`.
+Read this reference when `tadx policy status` reports `active` or `error`, or when configuration entries need repair.
 
 An active policy allowlists canonical capability IDs and can set `remote_mutations` to `false`.
 Every operation, including previews and local writes, still needs its own allowed capability ID.
@@ -39,3 +39,15 @@ An active policy is not updated automatically when TADX changes.
 
 Read the repository's `docs/managed-policy.md` for schema, system locations, secure deployment, status checks, updates, and removal.
 When the repository sources are not installed, use the [managed policy guide](https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md).
+
+## Configuration recovery
+
+TADX negotiates the REST version before sign-in; environment profiles do not select or persist it.
+Invalid environment or workspace entries affect only operations that select or reference them.
+Use the reported field violations and recovery commands to repair or remove an invalid entry; unrelated writes preserve it.
+An update must repair every violation before the profile becomes usable.
+Unknown entry fields require removing and recreating the entry with supported fields.
+Unknown top-level fields retain their YAML and produce warnings; mutation consent remains strict.
+Remove stored credentials through logout before removing a profile whose credential reference remains valid.
+Revoke a PAT pasted into a variable-reference field in Tableau; local logout does not revoke it remotely.
+Unreadable settings, malformed YAML, unsupported versions, and malformed site consent block settings use for the whole file.

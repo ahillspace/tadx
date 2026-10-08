@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,7 +41,7 @@ func TestLineageInvalidInputPrecedesWorkspaceSetup(t *testing.T) {
 func TestMalformedLineageRootKeepsObservableEmptyGraphContracts(t *testing.T) {
 	base, mutations := newGroupOneTableauServer(t)
 	defer base.Close()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/metadata/graphql" {
 			base.Config.Handler.ServeHTTP(w, r)
 			return
@@ -122,7 +121,7 @@ func TestMalformedLineageRootKeepsObservableEmptyGraphContracts(t *testing.T) {
 func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
 	base, mutations := newGroupOneTableauServer(t)
 	defer base.Close()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/metadata/graphql" {
 			base.Config.Handler.ServeHTTP(w, r)
 			return
@@ -230,7 +229,7 @@ func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
 func TestPartialFlowLineageThroughCLIAndArtifact(t *testing.T) {
 	base, mutations := newGroupOneTableauServer(t)
 	defer base.Close()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/metadata/graphql" {
 			base.Config.Handler.ServeHTTP(w, r)
 			return

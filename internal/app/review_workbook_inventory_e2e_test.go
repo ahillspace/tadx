@@ -3,7 +3,6 @@ package app_test
 import (
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -14,7 +13,7 @@ func TestReviewProjectWorkbookAllScansOnceThroughCLI(t *testing.T) {
 	for _, drift := range []bool{false, true} {
 		t.Run(fmt.Sprintf("drift=%t", drift), func(t *testing.T) {
 			var calls atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -92,7 +91,7 @@ func TestReviewCachedWorkbookNameIsListFilterThroughCLI(t *testing.T) {
 				`<workbook id="wb-2" name="Finance"><project id="project-2"/><owner id="user-1"/></workbook>`,
 				`<workbook id="wb-3" name="Finance"><project id="project-1"/><owner id="user-1"/></workbook>`,
 			}
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if blocked.Load() {
 					t.Errorf("cache contacted Tableau: %s", r.URL)
 					http.Error(w, "blocked", 500)

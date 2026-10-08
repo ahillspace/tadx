@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -30,7 +30,7 @@ func TestDoctorProductionProbeContracts(t *testing.T) {
 		statuses      []doctorrun.Status
 		workspaceText string
 	}{
-		{name: "unknown alias", environment: "missing", code: 1, statuses: []doctorrun.Status{"fail", "blocked", "blocked", "blocked", "blocked", "warn"}},
+		{name: "unknown alias", environment: "missing", code: 1, statuses: []doctorrun.Status{"pass", "fail", "blocked", "blocked", "blocked", "blocked", "warn"}},
 		{name: "partial default PAT", partialPAT: true, code: 1, statuses: []doctorrun.Status{"pass", "fail", "blocked", "info", "warn", "warn"}, workspaceText: "Workspace status could not be resolved."},
 		{name: "authentication failure", authFailure: true, code: 1, statuses: []doctorrun.Status{"pass", "pass", "fail", "info", "warn", "warn"}, workspaceText: "Workspace status could not be resolved."},
 		{name: "omitted workspace", statuses: []doctorrun.Status{"pass", "pass", "pass", "info", "warn", "warn"}, workspaceText: "Workspace status could not be resolved."},
@@ -38,7 +38,7 @@ func TestDoctorProductionProbeContracts(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var requests atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
 				if r.URL.Path != "/api/3.29/auth/signin" {
 					t.Errorf("unexpected request: %s", r.URL.Path)
@@ -95,10 +95,14 @@ func TestDoctorProductionProbeContracts(t *testing.T) {
 					if err := json.Unmarshal(body, &result); err != nil {
 						t.Fatalf("decode: %v\n%s", err, out.String())
 					}
-					if code != test.code || len(result.Checks) != 6 {
+					ids := []string{"config.valid", "auth.pat.references", "auth.tableau.connectivity", "cache.status", "workspace.status", "logging.context"}
+					if test.environment != "" {
+						ids = slices.Insert(ids, 1, "config.selection")
+					}
+					if code != test.code || len(result.Checks) != len(ids) {
 						t.Fatalf("code=%d output=%s", code, out.String())
 					}
-					for index, id := range []string{"config.valid", "auth.pat.references", "auth.tableau.connectivity", "cache.status", "workspace.status", "logging.context"} {
+					for index, id := range ids {
 						if result.Checks[index].ID != id || result.Checks[index].Status != test.statuses[index] {
 							t.Fatalf("check %d=%+v", index, result.Checks[index])
 						}
@@ -109,11 +113,11 @@ func TestDoctorProductionProbeContracts(t *testing.T) {
 						}
 					}
 					if test.environment != "" {
-						if requests.Load() != 0 || result.Checks[0].Cause == "" || result.Checks[0].ConfigPath != path || result.Checks[1].PAT != nil {
-							t.Fatalf("configuration failure=%+v requests=%d", result, requests.Load())
+						if requests.Load() != 0 || !strings.Contains(result.Checks[1].Summary, "missing") || result.Checks[1].CorrectiveAction == "" || result.Checks[2].PAT != nil {
+							t.Fatalf("selection failure=%+v requests=%d", result, requests.Load())
 						}
-						for _, check := range result.Checks[1:5] {
-							if check.BlockedBy != "config.valid" {
+						for _, check := range result.Checks[2:6] {
+							if check.BlockedBy != "config.selection" {
 								t.Fatalf("blocked check=%+v", check)
 							}
 						}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 
 func TestAdminUserUpdateRejectsPartialAcknowledgementThroughCLI(t *testing.T) {
 	gets, puts := 0, 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -81,7 +80,7 @@ func TestAdminUserUpdateVerificationCasesThroughCLI(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			puts := 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -166,7 +165,7 @@ func TestAdminUserUpdateRejectsKnownSiteAdministratorFullNameThroughCLI(t *testi
 	for _, preview := range []bool{true, false} {
 		t.Run(map[bool]string{true: "preview", false: "execute"}[preview], func(t *testing.T) {
 			puts, callerReads := 0, 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -208,7 +207,7 @@ func TestAdminUserUpdatePartialReceiptFormatsThroughCLI(t *testing.T) {
 		{"full TOON", []string{"--full"}, []string{"status: partial", "field_results[2]{field,status,requested,actual}", "email,mismatch,new@example.com,old@example.com", "language,confirmed,en,en", "tableau_request_id: update-request-3"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -241,7 +240,7 @@ func TestAdminUserUpdatePartialReceiptFormatsThroughCLI(t *testing.T) {
 
 func TestAdminUserUpdateSubmittedFailureRetainsUnknownOutcomeThroughCLI(t *testing.T) {
 	gets, puts := 0, 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}

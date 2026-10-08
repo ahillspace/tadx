@@ -236,7 +236,10 @@ func liveFlowConnection(t *testing.T) (config.Environment, coreauth.Session, *ta
 	if err != nil {
 		fatalLiveFlow(t, "resolve live environment", err)
 	}
-	transport := tableau.NewTransport(nil, environment.APIVersion, func() string { return "flow-live-contract" })
+	transport := tableau.NewTransport(nil, "", func() string { return "flow-live-contract" })
+	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
+		t.Fatal(err)
+	}
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(context.Background(), coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
 	if err != nil {

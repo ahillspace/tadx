@@ -51,7 +51,7 @@ func TestEnvironmentUpdateUsesOrderedStoreChangesInBothProjections(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, full := range []bool{false, true} {
-		args := []string{"env", "update", "test", "--site", "next", "--api-version", "3.30", "--cache-max-concurrency", "8", "--preview", "--json"}
+		args := []string{"env", "update", "test", "--site", "next", "--cache-max-concurrency", "8", "--preview", "--json"}
 		if full {
 			args = append(args, "--full")
 		}
@@ -66,8 +66,8 @@ func TestEnvironmentUpdateUsesOrderedStoreChangesInBothProjections(t *testing.T)
 		if err := json.Unmarshal([]byte(out.String()), &result); err != nil {
 			t.Fatal(err)
 		}
-		want := []string{"site_content_url", "api_version", "cache_max_concurrency"}
-		if !reflect.DeepEqual(result.ChangedFields, want) || result.Environment["api_version"] != "3.30" || result.Environment["cache_max_concurrency"] != float64(8) {
+		want := []string{"site_content_url", "cache_max_concurrency"}
+		if !reflect.DeepEqual(result.ChangedFields, want) || result.Environment["cache_max_concurrency"] != float64(8) {
 			t.Fatalf("full=%v result = %#v", full, result)
 		}
 	}

@@ -21,7 +21,7 @@ const valueFixture = `<labelValue name="Warning" category="Custom" description="
 
 func TestLabelsMetadataHTTPPreviewUsesReadOnlyPOST(t *testing.T) {
 	reads, writes, auth := 0, 0, 0
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			auth++
 			return
@@ -58,7 +58,7 @@ func TestLabelsMetadataHTTPUpdatePreservesFieldsAndReceipt(t *testing.T) {
 	for _, failReadback := range []bool{false, true} {
 		t.Run(fmt.Sprint(failReadback), func(t *testing.T) {
 			writes := 0
-			s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if catalogMetadataSignIn(w, r) {
 					return
 				}
@@ -111,7 +111,7 @@ func TestLabelsMetadataHTTPUpdatePreservesFieldsAndReceipt(t *testing.T) {
 
 func TestLabelsMetadataHTTPAdminNativeValueUpsert(t *testing.T) {
 	writes := 0
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			return
 		}
@@ -151,7 +151,7 @@ func TestLabelsMetadataHTTPAdminNativeValueUpsert(t *testing.T) {
 
 func TestLabelsMetadataHTTPAdminCategoryExactNameAndMembers(t *testing.T) {
 	writes := 0
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			return
 		}

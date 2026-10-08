@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -52,7 +51,7 @@ func TestWorkspaceCreateRejectsBatchFileBeforeCreatingRoots(t *testing.T) {
 func TestPulseMetricListBatchSeparatesDefinitionScopesAndRetainsPartialResults(t *testing.T) {
 	var signins int
 	var definitions []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/3.29/auth/signin" {
 			signins++
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -91,7 +90,7 @@ func TestPulseMetricListBatchSeparatesDefinitionScopesAndRetainsPartialResults(t
 
 func TestSingleOperationCommandsRejectBatchFileBeforeAccessingInputs(t *testing.T) {
 	requests := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		w.WriteHeader(http.StatusInternalServerError)
 	}))

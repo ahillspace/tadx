@@ -20,7 +20,7 @@ import (
 
 func TestPublicationWorkerDefaultWaitsForAcceptedJob(t *testing.T) {
 	var writes, reads atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -92,7 +92,7 @@ func TestPublicationWorkerDefaultWaitsForAcceptedJob(t *testing.T) {
 
 func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneOperation(t *testing.T) {
 	var writes, reads atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -192,7 +192,7 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 	submissionStarted := make(chan struct{})
 	releaseSubmission := make(chan struct{})
 	var writes, reads atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

@@ -145,7 +145,6 @@ type LoginTarget struct {
 	Environment    string
 	ServerURL      string
 	SiteContentURL string
-	APIVersion     string
 }
 
 // LoginCredential carries PAT values only between bounded authentication dependencies.

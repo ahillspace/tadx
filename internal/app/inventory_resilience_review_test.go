@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,7 +22,7 @@ func TestIncompleteFullInventoryFailsWithoutReplacingCache(t *testing.T) {
 	for _, malformed := range []string{`<workbook id="broken" name="Broken" size="large"><project id="child"/></workbook>`, `<workbook id="broken" name="Broken"><project id="missing"/></workbook>`} {
 		t.Run(malformed, func(t *testing.T) {
 			var requests atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
@@ -66,7 +65,7 @@ func TestIncompleteFullInventoryFailsWithoutReplacingCache(t *testing.T) {
 }
 
 func TestProjectInspectCacheRetainsCanonicalPathAfterLiveList(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 		} else {
@@ -86,7 +85,7 @@ func TestProjectInspectCacheRetainsCanonicalPathAfterLiveList(t *testing.T) {
 
 func TestProjectInspectCacheRetainsCanonicalPathAfterFullRefresh(t *testing.T) {
 	ctx := context.Background()
-	server := httptest.NewTLSServer(http.NotFoundHandler())
+	server := tableauFixtureServer(t, http.NotFoundHandler())
 	defer server.Close()
 	runtime := inventoryListRuntime(t, server)
 	store := targetCacheFixture(t, runtime.configPath, runtime.now)

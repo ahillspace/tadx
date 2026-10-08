@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -24,7 +23,7 @@ func TestPulseCaptionForkThroughCLI(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			writes := 0
 			var saved map[string]any
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/3.29/auth/signin":
 					io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -104,7 +103,7 @@ func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			creates := 0
 			var created pulsedefinition.CreateRequest
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
 				case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin":

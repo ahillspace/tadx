@@ -209,7 +209,10 @@ func liveDatasourceConnection(t *testing.T) (config.Environment, coreauth.Sessio
 	if _, ok := os.LookupEnv(environment.Auth.PATSecretEnv); !ok {
 		t.Skip("configured PAT secret variable is not available in this process")
 	}
-	transport := tableau.NewTransport(http.DefaultClient, environment.APIVersion, func() string { return "datasource-live-contract" })
+	transport := tableau.NewTransport(http.DefaultClient, "", func() string { return "datasource-live-contract" })
+	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
+		t.Fatal(err)
+	}
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(context.Background(), coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,13 +22,13 @@ import (
 func TestGeneratedInspectionHintKeepsResolvedEnvironmentThroughCLI(t *testing.T) {
 	const selectedEnvironment = "selected environment's $literal"
 	var wrongRequests atomic.Int32
-	wrong := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wrong := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrongRequests.Add(1)
 		http.Error(w, "wrong default environment", http.StatusNotFound)
 	}))
 	defer wrong.Close()
 	var inspected atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -50,7 +49,7 @@ func TestGeneratedInspectionHintKeepsResolvedEnvironmentThroughCLI(t *testing.T)
 	options := diagnosticOptions(t, server)
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	environment := func(url string) map[string]any {
-		return map[string]any{"url": url, "site_content_url": "", "api_version": "3.29", "auth": map[string]any{"type": "pat", "pat_name_env": "DIAGNOSTIC_PAT_NAME", "pat_secret_env": "DIAGNOSTIC_PAT_SECRET"}}
+		return map[string]any{"url": url, "site_content_url": "", "auth": map[string]any{"type": "pat", "pat_name_env": "DIAGNOSTIC_PAT_NAME", "pat_secret_env": "DIAGNOSTIC_PAT_SECRET"}}
 	}
 	config, err := json.Marshal(map[string]any{"version": 1, "default_environment": "wrong", "environments": map[string]any{"wrong": environment(wrong.URL), selectedEnvironment: environment(server.URL)}})
 	if err != nil {

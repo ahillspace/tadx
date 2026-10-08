@@ -67,14 +67,14 @@ func TestAuthLogoutResolverObservesRemovalAfterConfigurationSnapshot(t *testing.
 		t.Fatal(err)
 	}
 	resolver := authLogoutResolver{runtime: runtime}
-	before, err := resolver.Resolve(context.Background(), "dev")
+	before, err := resolver.Resolve(context.Background(), "dev", true)
 	if err != nil || !before.StoredCredentialReferencePresent {
 		t.Fatalf("before=%#v err=%v", before, err)
 	}
 	if _, err := (authCredentialStore{runtime: runtime}).Remove(context.Background(), authops.LogoutTarget{Environment: "dev"}); err != nil {
 		t.Fatal(err)
 	}
-	after, err := resolver.Resolve(context.Background(), "dev")
+	after, err := resolver.Resolve(context.Background(), "dev", true)
 	if err != nil || after.StoredCredentialReferencePresent {
 		t.Fatalf("after=%#v err=%v", after, err)
 	}

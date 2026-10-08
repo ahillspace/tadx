@@ -8,7 +8,6 @@ import (
 	"io"
 	"maps"
 	"net/http"
-	"net/http/httptest"
 	"path"
 	"path/filepath"
 	"slices"
@@ -45,7 +44,7 @@ func TestCacheRefreshSavedPrerequisites(t *testing.T) {
 			var mu sync.Mutex
 			seen := map[string]bool{}
 			requests := 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				requests++
 				mu.Unlock()
@@ -209,7 +208,7 @@ func cachePolicyOptions(t *testing.T, serverURL string) Options {
 	t.Helper()
 	options := overviewOptions(t, t.TempDir())
 	if err := config.Save(options.ConfigPath, config.Config{Version: config.CurrentVersion, Environments: map[string]config.Environment{
-		"dev": {URL: serverURL, APIVersion: "3.29", Auth: config.Auth{Type: config.AuthTypePAT}},
+		"dev": {URL: serverURL, Auth: config.Auth{Type: config.AuthTypePAT}},
 	}}); err != nil {
 		t.Fatal(err)
 	}

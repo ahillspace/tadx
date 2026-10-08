@@ -18,7 +18,7 @@ import (
 func diagnosticOptions(t *testing.T, server *httptest.Server) app.Options {
 	t.Helper()
 	config := filepath.Join(t.TempDir(), "config.yaml")
-	data := fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: ''\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: DIAGNOSTIC_PAT_NAME\n      pat_secret_env: DIAGNOSTIC_PAT_SECRET\n", server.URL)
+	data := fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: ''\n    auth:\n      type: pat\n      pat_name_env: DIAGNOSTIC_PAT_NAME\n      pat_secret_env: DIAGNOSTIC_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(config, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestAdminUserInputDiagnosticsThroughCLI(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var reads, writes int
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -84,7 +84,7 @@ func TestAdminUserInputDiagnosticsThroughCLI(t *testing.T) {
 func TestPermissionCapabilityDiagnosticsThroughCLI(t *testing.T) {
 	for _, kind := range []string{"project", "datasource", "flow", "workbook"} {
 		t.Run(kind, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if !diagnosticSignIn(w, r) {
 					t.Errorf("invalid capability reached resource API: %s %s", r.Method, r.URL.Path)
 				}
@@ -114,7 +114,7 @@ func TestMissingResourceDiagnosticFocusesOnIdentityThroughCLI(t *testing.T) {
 		{"workbook", "404006", []string{"content", "workbook", "inspect"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
