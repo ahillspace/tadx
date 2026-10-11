@@ -136,6 +136,7 @@ Read the [security guide](docs/security.md) for credential storage, mutation con
 
 ## Documentation
 
+- [Roadmap](ROADMAP.md) tracks planned enhancements.
 - [Getting started](docs/getting-started.md) covers setup, credentials, content, caches, previews, Pulse, and updates.
 - [Capability reference](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html) describe the supported action inventory.
 - [Workspaces](docs/workspaces.md) covers local artifacts, paths, status, and cloning.
