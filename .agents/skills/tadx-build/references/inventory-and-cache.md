@@ -32,6 +32,8 @@ Failed reads must not replace prior verified observations.
 
 Default refresh excludes permissions; require an explicit scope for per-resource permission reads.
 An item-level permission denial may yield a partial usable inventory with warnings, never false complete coverage.
+Explicitly identified Personal Space workbooks remain in inventory but do not require permission-rule collection.
+Missing or unknown location metadata must not suppress permission failures.
 Use the shared adaptive collector and cancelable Retry-After cooldown, not independent worker retry loops.
 The default per-process concurrency ceiling is 32 and is configurable by environment; it is not a server-wide traffic limit.
 Test paging/truncation, filter parity, target isolation, empty results, preserved observations, failed publication, and throttling as relevant to the change.

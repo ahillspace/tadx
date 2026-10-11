@@ -179,10 +179,11 @@ var collectors = map[Scope]collectorDefinition{
 }
 
 type parsedPage struct {
-	page       tabxml.Pagination
-	rows       [][]any
-	identities []string
-	skipped    int
+	page                   tabxml.Pagination
+	rows                   [][]any
+	identities             []string
+	personalSpaceWorkbooks []string
+	skipped                int
 }
 
 func parseList(definition collectorDefinition, body []byte) (parsedPage, error) {
@@ -205,6 +206,9 @@ func parseInventoryList(definition collectorDefinition, body []byte, tolerateMal
 		}
 		result.rows = append(result.rows, row)
 		result.identities = append(result.identities, identity)
+		if definition.scope == ScopeWorkbooks && element.ChildAttr("location", "type") == "PersonalSpace" && strings.TrimSpace(element.ChildAttr("project", "id")) == "" {
+			result.personalSpaceWorkbooks = append(result.personalSpaceWorkbooks, identity)
+		}
 		return nil
 	})
 	if err != nil {

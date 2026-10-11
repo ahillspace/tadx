@@ -13,6 +13,8 @@ Refresh replaces requested inventory scopes atomically while retaining unrelated
 Refreshing inventory does not make retained schema evidence freshly verified.
 Permissions are not in the default refresh because their collection adds per-resource requests.
 Explicit permission collection can retain accessible records with partial coverage; an inaccessible permission record is not an empty rule set.
+Personal Space workbooks remain in inventory and search; permission collection skips them when Tableau explicitly identifies their location.
+Other denied permission reads still produce partial coverage.
 Use reported freshness, coverage, and warnings before treating a scope as exhaustive.
 
 The default cache refresh includes users and groups.

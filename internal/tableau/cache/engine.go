@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -160,7 +161,7 @@ func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, 
 		_, runErr = runner.runTaskStream(runCtx, len(remaining), func(index int) collectTask { return remaining[index] }, false)
 	}
 	if runErr == nil && containsScope(collected, ScopePermissions) {
-		workbookIDs := state.identitiesFor(ScopeWorkbooks)
+		workbookIDs := state.permissionWorkbookIDs()
 		_, runErr = runner.runTaskStream(runCtx, len(workbookIDs), func(index int) collectTask {
 			return collectTask{request: e.permissionRequest(workbookIDs[index]), permission: true}
 		}, false)
@@ -385,6 +386,9 @@ func (r *runExecutor) executeTask(ctx context.Context, task collectTask) (tabxml
 	// Retain malformed-row identities for duplicate detection, but count only
 	// rows emitted to the writer as successfully collected records.
 	r.state.counts[task.request.Scope] += int64(len(parsed.rows) - len(parsed.identities))
+	for _, identity := range parsed.personalSpaceWorkbooks {
+		r.state.personalSpaceWorkbooks[identity] = struct{}{}
+	}
 	r.state.mu.Unlock()
 	if err := r.emit(ctx, task.request.Scope, parsed.rows, response.TableauRequestID); err != nil {
 		return tabxml.Pagination{}, err
@@ -564,17 +568,22 @@ func containsScope(scopes []Scope, target Scope) bool {
 }
 
 type runState struct {
-	mu                sync.Mutex
-	seen              map[Scope]map[string]struct{}
-	counts            map[Scope]int64
-	requestIDs        map[string]struct{}
-	requests          atomic.Int64
-	skipped           map[Scope]int
-	deniedPermissions atomic.Int64
+	mu                     sync.Mutex
+	seen                   map[Scope]map[string]struct{}
+	counts                 map[Scope]int64
+	requestIDs             map[string]struct{}
+	requests               atomic.Int64
+	skipped                map[Scope]int
+	personalSpaceWorkbooks map[string]struct{}
+	deniedPermissions      atomic.Int64
 }
 
 func newRunState(scopes []Scope) *runState {
-	state := &runState{seen: make(map[Scope]map[string]struct{}), counts: make(map[Scope]int64), requestIDs: make(map[string]struct{}), skipped: make(map[Scope]int)}
+	state := &runState{
+		seen: make(map[Scope]map[string]struct{}), counts: make(map[Scope]int64),
+		requestIDs: make(map[string]struct{}), skipped: make(map[Scope]int),
+		personalSpaceWorkbooks: make(map[string]struct{}),
+	}
 	for _, scope := range scopes {
 		state.counts[scope] = 0
 	}
@@ -600,14 +609,18 @@ func (s *runState) register(scope Scope, identities []string, requestID, operati
 	return nil
 }
 
-func (s *runState) identitiesFor(scope Scope) []string {
+func (s *runState) permissionWorkbookIDs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result := make([]string, 0, len(s.seen[scope]))
-	for identity := range s.seen[scope] {
+	result := make([]string, 0, len(s.seen[ScopeWorkbooks]))
+	for identity := range s.seen[ScopeWorkbooks] {
+		// Personal-space workbooks stay in inventory, but have no configurable permissions.
+		if _, personal := s.personalSpaceWorkbooks[identity]; personal {
+			continue
+		}
 		result = append(result, identity)
 	}
-	sort.Strings(result)
+	slices.Sort(result)
 	return result
 }
 
