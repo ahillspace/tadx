@@ -19,15 +19,9 @@ import (
 )
 
 func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
-	var networkBlocked atomic.Bool
 	var fieldPageFailure atomic.Bool
 	var graphCalls atomic.Int32
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if networkBlocked.Load() {
-			t.Errorf("cached workbook inspection contacted Tableau: %s %s", r.Method, r.URL)
-			http.Error(w, "unexpected network", 500)
-			return
-		}
 		if r.URL.Path == "/api/3.29/auth/signin" {
 			fmt.Fprint(w, `{"credentials":{"token":"fixture-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 			return
@@ -200,8 +194,12 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 	if graphCalls.Load() == 0 {
 		t.Fatal("Metadata API was not queried")
 	}
-	networkBlocked.Store(true)
+	noNetwork := &failNetworkTransport{}
+	options.HTTPClient = &http.Client{Transport: noNetwork}
 	code, payload := resultJSON(t, []string{"content", "workbook", "inspect", "--id", "wb-1", "--env", "test", "--cache"})
+	if noNetwork.calls != 0 {
+		t.Fatalf("cached inspection made %d network requests", noNetwork.calls)
+	}
 	workbook, ok := payload["workbook"].(map[string]any)
 	if code != 0 || !ok || workbook["luid"] != "wb-1" {
 		t.Fatalf("cached inspection exit %d: %+v", code, payload)
