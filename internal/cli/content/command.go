@@ -252,7 +252,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("workbook", "Finance--identity")+"; repeat for up to 100 items, processed sequentially")
-	command.Flags().StringVar(&input.File, "file", "", "native .twb or .twbx file; no managed artifact required")
+	command.Flags().StringVar(&input.File, "file", "", "standalone native .twb or .twbx file; no managed artifact required")
 	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source workbook LUID within the resolved workspace")
 	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed workbook name within the resolved workspace")
 	command.Flags().StringVar(&input.Environment, "environment", "", "write environment alias; may be omitted when exactly one environment is configured")

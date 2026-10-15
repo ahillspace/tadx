@@ -49,6 +49,66 @@ func TestWorkbookAuditSeparatesLocalAndPublishedFindings(t *testing.T) {
 	}
 }
 
+func TestWorkbookAuditTopologyAndObjectLimit(t *testing.T) {
+	local := value.MetadataWorkbookDatasource{
+		Identity: value.MetadataIdentity{MetadataID: "local", Name: "Local"}, Kind: "embedded", Complete: true,
+		Fields: []value.FieldDescription{
+			{MetadataID: "local-a", Name: "Revenue", Description: new("Local meaning"), InheritedObserved: true},
+			{MetadataID: "local-b", Name: "Revenue alias", Description: new(""), InheritedObserved: true, Inherited: []value.DescriptionObservation{{Value: new("Source meaning"), SourceMetadataID: "source-field"}}},
+		},
+	}
+	published := value.MetadataWorkbookDatasource{
+		Identity: value.MetadataIdentity{MetadataID: "published", LUID: "ds", Name: "Source", Type: "datasource"}, Kind: "published", Complete: true,
+		Description: new("Source purpose"), Tags: []string{"reviewed"}, TagsObserved: true,
+		Fields: []value.FieldDescription{{MetadataID: "source-field", Name: "Revenue", Description: new("Source meaning"), InheritedObserved: true}},
+	}
+	for _, tc := range []struct {
+		name    string
+		groups  []value.MetadataWorkbookDatasource
+		scanned int
+	}{
+		{"embedded only", []value.MetadataWorkbookDatasource{local}, 3},
+		{"published only", []value.MetadataWorkbookDatasource{published}, 3},
+		{"mixed", []value.MetadataWorkbookDatasource{local, published}, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &workbookReader{result: value.MetadataWorkbookDatasources{
+				Identity:    value.MetadataIdentity{LUID: "wb", MetadataID: "mw", Name: "Workbook", Type: "workbook"},
+				Description: new("Workbook purpose"), Tags: []string{"reviewed"}, TagsObserved: true, Complete: true, Datasources: tc.groups,
+			}}
+			out, err := Execute(t.Context(), r, Input{Type: "workbook", ID: "wb"})
+			if err != nil || !out.Complete || out.Scanned != tc.scanned || len(out.Groups) != len(tc.groups)+1 || out.Summary.Missing != 0 || out.Summary.Unknown != 0 {
+				t.Fatalf("topology coverage: %+v, %v", out, err)
+			}
+			for _, finding := range out.Findings {
+				if finding.Type == "field" && finding.Check == "tags" {
+					t.Fatalf("unsupported field tags assessed: %+v", finding)
+				}
+			}
+			bounded, err := Execute(t.Context(), r, Input{Type: "workbook", ID: "wb", Limit: 2})
+			if err != nil || bounded.Complete || bounded.Scanned != 2 || bounded.Status != "partial" || len(bounded.Findings) < 3 {
+				t.Fatalf("assessment limit must count objects, not checks: %+v, %v", bounded, err)
+			}
+		})
+	}
+}
+
+func TestWorkbookAuditKeepsUnknownFieldDescriptionsDistinctFromMissing(t *testing.T) {
+	r := &workbookReader{result: value.MetadataWorkbookDatasources{
+		Identity:    value.MetadataIdentity{LUID: "wb", MetadataID: "mw", Name: "Workbook", Type: "workbook"},
+		Description: new("Purpose"), TagsObserved: true, Complete: false,
+		Datasources: []value.MetadataWorkbookDatasource{{Identity: value.MetadataIdentity{MetadataID: "local", Name: "Local"}, Kind: "embedded", Complete: false,
+			Fields: []value.FieldDescription{{MetadataID: "field", Name: "Unknown"}}}},
+	}, err: errors.New("metadata permission failure")}
+	out, err := Execute(t.Context(), r, Input{Type: "workbook", ID: "wb", Checks: []string{"descriptions"}})
+	if err == nil || out.Status != "partial" || out.Complete || out.Scanned != 2 || out.Summary.Unknown != 1 || out.Summary.Missing != 0 {
+		t.Fatalf("unknown evidence lost or labeled missing: %+v, %v", out, err)
+	}
+	if len(out.Groups) != 2 || out.Groups[1].Complete || out.Findings[1].DatasourceMetadataID != "local" {
+		t.Fatalf("partial datasource provenance lost: %+v", out)
+	}
+}
+
 func (r *reader) GetDatabase(context.Context, string) (value.MetadataDatabase, error) {
 	r.calls++
 	return value.MetadataDatabase{MetadataIdentity: value.MetadataIdentity{LUID: "db", Name: "DB"}}, nil

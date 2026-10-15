@@ -12,11 +12,16 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/ahillspace/tadx/actions/catalog/audit"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 )
 
 func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 	var networkBlocked atomic.Bool
+	var fieldPageFailure atomic.Bool
 	var graphCalls atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if networkBlocked.Load() {
@@ -48,6 +53,11 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 				return
 			}
 			q := request.Query
+			if _, err := parser.ParseQuery(&ast.Source{Name: "generated.graphql", Input: q}); err != nil {
+				t.Errorf("invalid generated GraphQL: %v", err)
+				http.Error(w, "invalid GraphQL", http.StatusBadRequest)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			switch {
 			case strings.Contains(q, "workbooksConnection"):
@@ -62,7 +72,21 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 				items := `{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}`
 				switch {
 				case strings.Contains(q, "items:fieldsConnection"):
+					if fieldPageFailure.Load() && request.Variables["after"] != nil {
+						fmt.Fprint(w, `{"errors":[{"message":"fixture later field page unavailable"}]}`)
+						return
+					}
 					items = `{"totalCount":2,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"DatasourceField","id":"local-meta","name":"Local Revenue","fullyQualifiedName":"[Revenue]","description":"Local meaning","remoteField":{"__typename":"ColumnField","id":"remote-meta","name":"Revenue"},"descriptionInherited":[],"relatedSheets":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"sheet-meta","luid":"sheet-1","name":"Overview"}]},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}},{"__typename":"CalculatedField","id":"hidden-meta","name":"Private Calc","fullyQualifiedName":"[Private Calc]","description":"","isHidden":true,"formula":"[Revenue] * 2","role":"MEASURE","dataType":"REAL","descriptionInherited":[],"referencedFields":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"local-meta","name":"Local Revenue"}]},"relatedSheets":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}`
+					if fieldPageFailure.Load() {
+						var page map[string]any
+						if err := json.Unmarshal([]byte(items), &page); err != nil {
+							t.Fatal(err)
+						}
+						page["nodes"] = page["nodes"].([]any)[:1]
+						page["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "fields-next"}
+						encoded, _ := json.Marshal(page)
+						items = string(encoded)
+					}
 				case strings.Contains(q, "items:parentPublishedDatasourcesConnection"):
 					items = `{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"published-meta","luid":"ds-1","name":"Published"}]}`
 				}
@@ -120,6 +144,36 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 				t.Fatalf("exit %d: %+v", code, payload)
 			}
 			encoded, _ := json.Marshal(payload)
+			switch tc.name {
+			case "schema":
+				var result workbookops.SchemaOutput
+				if err := json.Unmarshal(encoded, &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.Status != "listed" || !result.Complete || !result.Page.TotalComplete || result.Page.Total != 3 || result.Page.Returned != 3 || len(result.Datasources) != 2 {
+					t.Fatalf("schema coverage: %+v", result)
+				}
+				local, source := result.Datasources[0], result.Datasources[1]
+				if local.Kind != "embedded" || len(local.Fields) != 2 || source.Kind != "published" || len(source.Fields) != 1 || len(local.Parents) != 1 || local.Parents[0].MetadataID != source.Identity.MetadataID {
+					t.Fatalf("schema provenance: %+v", result.Datasources)
+				}
+			case "audit":
+				var result audit.Output
+				if err := json.Unmarshal(encoded, &result); err != nil {
+					t.Fatal(err)
+				}
+				if !result.Complete || result.Scanned != 5 || len(result.Groups) != 3 || result.Summary.Present != 5 || result.Summary.Missing != 2 || result.Summary.Unknown != 0 {
+					t.Fatalf("audit coverage: %+v", result)
+				}
+			case "inspect":
+				var result workbookops.InspectFullResult
+				if err := json.Unmarshal(encoded, &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.Status != "found" || result.DatasourceStatus != "complete" || len(result.Datasources) != 2 || result.Datasources[0].FieldCount != 2 || result.Datasources[1].FieldCount != 1 {
+					t.Fatalf("inspection coverage: %+v", result)
+				}
+			}
 			for _, want := range tc.required {
 				if !strings.Contains(string(encoded), want) {
 					t.Errorf("missing %q: %s", want, encoded)
@@ -127,6 +181,23 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 			}
 		})
 	}
+	t.Run("filtered partial schema preserves known fields", func(t *testing.T) {
+		fieldPageFailure.Store(true)
+		defer fieldPageFailure.Store(false)
+		code, payload := resultJSON(t, []string{"content", "workbook", "schema", "--id", "wb-1", "--env", "test", "--field-id", "Revenue", "--field-id", "Absent", "--full"})
+		failure, _ := payload["error"].(map[string]any)
+		encoded, _ := json.Marshal(payload["output"])
+		var result workbookops.SchemaOutput
+		if err := json.Unmarshal(encoded, &result); err != nil {
+			t.Fatal(err)
+		}
+		if code == 0 || failure["kind"] != "operation" || result.Status != "partial" || result.Complete || result.Page.TotalComplete || result.Page.Returned != 1 || len(result.Datasources) != 1 {
+			t.Fatalf("filtered provider failure lost or mislabeled: exit %d, %+v", code, payload)
+		}
+		if result.Datasources[0].Fields[0].Metadata.MetadataID != "local-meta" {
+			t.Fatalf("confirmed local field lost: %+v", result)
+		}
+	})
 	if graphCalls.Load() == 0 {
 		t.Fatal("Metadata API was not queried")
 	}
@@ -135,5 +206,8 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 	workbook, ok := payload["workbook"].(map[string]any)
 	if code != 0 || !ok || workbook["luid"] != "wb-1" {
 		t.Fatalf("cached inspection exit %d: %+v", code, payload)
+	}
+	if payload["datasource_status"] != "not_captured" || payload["datasources"] != nil {
+		t.Fatalf("cached inspection overstated datasource coverage: %+v", payload)
 	}
 }

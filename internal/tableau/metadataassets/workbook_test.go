@@ -10,7 +10,7 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
-func TestWorkbookDatasourcesUsesExactWorkbookAndEmbeddedMetadataIDs(t *testing.T) {
+func TestWorkbookDatasourcesGeneratedQueriesParseAndUseExactMetadataIDs(t *testing.T) {
 	seen := map[string]bool{}
 	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
@@ -93,6 +93,10 @@ func TestWorkbookPartialFieldPagePreservesObservedField(t *testing.T) {
 			fmt.Fprint(w, `{"data":{"workbooks":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"wb-meta","luid":"wb-1","name":"Book","tagsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},"items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local"}]}}]}}}`)
 			return
 		}
+		if strings.Contains(q.Query, "items:parentPublishedDatasourcesConnection") {
+			fmt.Fprint(w, `{"data":{"embedded":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local","items":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}}`)
+			return
+		}
 		if q.Variables["after"] == "next" {
 			fmt.Fprint(w, `{"errors":[{"message":"access denied"}]}`)
 			return
@@ -170,7 +174,12 @@ func TestWorkbookParentConnectionPagesIndependently(t *testing.T) {
 	requests := 0
 	requestID := ""
 	var ids []string
-	rows, err := c.workbookRelation(t.Context(), "embedded-meta", "parentPublishedDatasourcesConnection", "id luid name", &requests, &requestID, func(n graphNode, _ tableau.Response) error { ids = append(ids, n.ID); return nil })
+	rows, err := c.workbookRelation(t.Context(), "embedded-meta", "parentPublishedDatasourcesConnection", "id luid name", &requests, &requestID, func(nodes []graphNode, _ tableau.Response) error {
+		for _, n := range nodes {
+			ids = append(ids, n.ID)
+		}
+		return nil
+	})
 	if err != nil || requests != 2 || len(rows) != 2 || len(ids) != 2 || ids[0] != "parent-1" || ids[1] != "parent-2" {
 		t.Fatalf("rows %+v, ids %v, requests %d, error %v", rows, ids, requests, err)
 	}

@@ -91,7 +91,7 @@ func TestContentPresentationGroupsAndValuesAreDeterministic(t *testing.T) {
 		t.Fatalf("shared subset flags lost their scope:\n%s", baseline)
 	}
 	publish := contentPresentationSection(t, baseline, "  publish: Publish local content to Tableau")
-	if strings.Contains(publish, "--extra-filter") || !strings.Contains(publish, "workspace ID/name/relative artifact") {
+	if strings.Contains(publish, "--extra-filter") || !strings.Contains(publish, "TADX-managed artifact directory") {
 		t.Fatalf("publish flag semantics incorrectly merged:\n%s", baseline)
 	}
 	if strings.Count(baseline, "--json") != 1 || strings.Count(baseline, "--extra-filter ") != 2 {

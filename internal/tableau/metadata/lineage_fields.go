@@ -10,6 +10,13 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
+// A field connection can contain relationships outside the captured asset scope,
+// so graph capacity does not bound its pages or aggregate transport work.
+const (
+	maxLineageFieldPages    = 100
+	maxLineageFieldRequests = 1000
+)
+
 // Field enrichment uses the captured asset graph as its scope and capacity.
 const lineageFieldSelection = `fieldsConnection(first: $pageSize, after: $after, orderBy: {field: ID, direction: ASC}, permissionMode: OBFUSCATE_RESULTS) {
   totalCount pageInfo { hasNextPage endCursor }
@@ -37,7 +44,7 @@ func lineageFieldsQuery(owner Node) (string, map[string]any) {
 	variables := map[string]any{"rootLuid": owner.RESTLUID, "after": nil, "pageSize": LineagePageSize}
 	if owner.Kind == string(KindEmbeddedDatasource) {
 		rootField = "embeddedDatasourcesConnection"
-		rootSelector = "id: $rootMetadataID"
+		rootSelector = "idWithin: [$rootMetadataID]"
 		rootVariable = "$rootMetadataID: ID!"
 		rootIdentity = "id name"
 		variables = map[string]any{"rootMetadataID": owner.MetadataID, "after": nil, "pageSize": LineagePageSize}
@@ -63,12 +70,13 @@ func (c *Client) enrichLineageFields(ctx context.Context, request CaptureRequest
 	for id := range nodes {
 		assetIDs[id] = struct{}{}
 	}
+	requests := 0
 	for _, owner := range owners {
 		if len(nodes) >= MaxLineageNodes || len(edges) >= MaxLineageEdges {
 			markLineageFieldBound(capture, len(nodes) >= MaxLineageNodes)
 			return nil
 		}
-		if err := c.readLineageFields(ctx, request, owner, capture, nodes, restIdentities, edges, assetIDs); err != nil {
+		if err := c.readLineageFields(ctx, request, owner, capture, nodes, restIdentities, edges, assetIDs, &requests); err != nil {
 			if _, ok := errors.AsType[*RelationError](err); ok {
 				return err
 			}
@@ -78,13 +86,17 @@ func (c *Client) enrichLineageFields(ctx context.Context, request CaptureRequest
 	return nil
 }
 
-func (c *Client) readLineageFields(ctx context.Context, request CaptureRequest, owner Node, capture *Capture, nodes map[string]Node, restIdentities map[string]string, edges map[string]Edge, assetIDs map[string]struct{}) error {
+func (c *Client) readLineageFields(ctx context.Context, request CaptureRequest, owner Node, capture *Capture, nodes map[string]Node, restIdentities map[string]string, edges map[string]Edge, assetIDs map[string]struct{}, requests *int) error {
 	query, variables := lineageFieldsQuery(owner)
 	variables["pageSize"] = request.PageSize
 	seenCursors := make(map[string]struct{})
 	seenFields := make(map[string]struct{})
 	total := -1
-	for {
+	for range maxLineageFieldPages {
+		if *requests >= maxLineageFieldRequests {
+			return fmt.Errorf("lineage field enrichment exceeds %d-request bound", maxLineageFieldRequests)
+		}
+		*requests++
 		response, envelope, warnings, err := c.queryLineage(ctx, query, variables)
 		capture.RequestIDs = append(capture.RequestIDs, response.TableauRequestID)
 		capture.Warnings = append(capture.Warnings, warnings...)
@@ -116,6 +128,12 @@ func (c *Client) readLineageFields(ctx context.Context, request CaptureRequest, 
 		if *fields.TotalCount < 0 {
 			return protocolError(response, "fieldsConnection returned a negative totalCount")
 		}
+		if len(*fields.Nodes) > request.PageSize {
+			return protocolError(response, "fieldsConnection exceeded requested page size %d", request.PageSize)
+		}
+		if *fields.PageInfo.HasNextPage && len(*fields.Nodes) == 0 {
+			return protocolError(response, "fieldsConnection made no progress on a continuing page")
+		}
 		if total < 0 {
 			total = *fields.TotalCount
 		} else if total != *fields.TotalCount {
@@ -130,11 +148,37 @@ func (c *Client) readLineageFields(ctx context.Context, request CaptureRequest, 
 				return protocolError(response, "fieldsConnection repeated Metadata ID %q", id)
 			}
 			seenFields[id] = struct{}{}
+			if len(seenFields) > total {
+				return protocolError(response, "fieldsConnection returned more nodes than totalCount")
+			}
 			field := Node{MetadataID: id, Kind: "field", Name: strings.TrimSpace(raw.Name)}
 			if !addLineageFieldEvidence(field, Edge{FromMetadataID: owner.MetadataID, ToMetadataID: id, Relationship: "contains"}, nodes, restIdentities, edges, capture) {
 				return nil
 			}
-			if err := c.addLineageFieldRelationships(ctx, request, response, owner, raw, field, assetIDs, nodes, restIdentities, edges, capture); err != nil {
+			if len(nodes) >= MaxLineageNodes || len(edges) >= MaxLineageEdges {
+				markLineageFieldBound(capture, len(nodes) >= MaxLineageNodes)
+				return nil
+			}
+		}
+		// Retain the evidence already returned for every field before a remote
+		// continuation can fail and end this capture.
+		var continuations []*lineageFieldPages
+		var pageErr error
+		for _, raw := range *fields.Nodes {
+			field := nodes[strings.TrimSpace(raw.ID)]
+			pages, err := captureLineageFieldRelationships(request, response, raw, field, assetIDs, nodes, restIdentities, edges, capture)
+			continuations = append(continuations, pages...)
+			pageErr = errors.Join(pageErr, err)
+		}
+		if pageErr != nil {
+			return pageErr
+		}
+		if len(nodes) >= MaxLineageNodes || len(edges) >= MaxLineageEdges {
+			markLineageFieldBound(capture, len(nodes) >= MaxLineageNodes)
+			return nil
+		}
+		for _, pages := range continuations {
+			if err := c.walkNestedLineageFields(ctx, request, owner, response, pages, capture, nodes, edges, requests); err != nil {
 				return err
 			}
 			if len(nodes) >= MaxLineageNodes || len(edges) >= MaxLineageEdges {
@@ -158,28 +202,33 @@ func (c *Client) readLineageFields(ctx context.Context, request CaptureRequest, 
 		seenCursors[cursor] = struct{}{}
 		variables["after"] = cursor
 	}
+	return fmt.Errorf("lineage fieldsConnection exceeds %d-page bound", maxLineageFieldPages)
 }
 
-func (c *Client) addLineageFieldRelationships(ctx context.Context, request CaptureRequest, response tableau.Response, owner Node, raw lineageNode, field Node, assetIDs map[string]struct{}, nodes map[string]Node, restIdentities map[string]string, edges map[string]Edge, capture *Capture) error {
+func captureLineageFieldRelationships(request CaptureRequest, response tableau.Response, raw lineageNode, field Node, assetIDs map[string]struct{}, nodes map[string]Node, restIdentities map[string]string, edges map[string]Edge, capture *Capture) ([]*lineageFieldPages, error) {
+	var pages []*lineageFieldPages
+	var resultErr error
+	retainPage := func(relation string, connection *lineageConnection, visit func(tableau.Response, lineageNode) error) {
+		p := &lineageFieldPages{field: field, relation: relation, total: -1, seenNodes: make(map[string]struct{}), seenCursors: make(map[string]struct{}), visit: visit}
+		if err := p.capturePage(response, connection, LineagePageSize, capture, nodes, edges); err != nil {
+			resultErr = errors.Join(resultErr, &RelationError{RootKind: request.Kind, RootRESTLUID: request.RESTLUID, Relation: relation, Cause: err})
+			return
+		}
+		if p.cursor != "" {
+			pages = append(pages, p)
+		}
+	}
 	if raw.RemoteField != nil {
 		if err := addScopedFieldLink(response, *raw.RemoteField, field, "remote_field", assetIDs, nodes, restIdentities, edges, capture); err != nil {
-			return err
+			resultErr = err
 		}
 	}
 	if raw.Typename == "CalculatedField" {
-		if raw.FieldsConnection == nil {
-			return protocolError(response, "calculated field %q omitted fieldsConnection", field.MetadataID)
-		}
-		if err := c.walkNestedLineageFields(ctx, request, owner, field, "fieldsConnection", response, raw.FieldsConnection, capture, nodes, edges, func(page tableau.Response, referenced lineageNode) error {
+		retainPage("fieldsConnection", raw.FieldsConnection, func(page tableau.Response, referenced lineageNode) error {
 			return addScopedFieldLink(page, referenced, field, "references", assetIDs, nodes, restIdentities, edges, capture)
-		}); err != nil {
-			return err
-		}
+		})
 	}
-	if raw.UpstreamColumnsConnection == nil {
-		return protocolError(response, "field %q omitted upstreamColumnsConnection", field.MetadataID)
-	}
-	return c.walkNestedLineageFields(ctx, request, owner, field, "upstreamColumnsConnection", response, raw.UpstreamColumnsConnection, capture, nodes, edges, func(page tableau.Response, column lineageNode) error {
+	retainPage("upstreamColumnsConnection", raw.UpstreamColumnsConnection, func(page tableau.Response, column lineageNode) error {
 		if column.Table == nil || strings.TrimSpace(column.ID) == "" {
 			return protocolError(page, "upstream column omitted its Metadata or table identity")
 		}
@@ -194,6 +243,7 @@ func (c *Client) addLineageFieldRelationships(ctx context.Context, request Captu
 		addLineageFieldEvidence(columnNode, Edge{FromMetadataID: tableID, ToMetadataID: columnNode.MetadataID, Relationship: "contains"}, nodes, restIdentities, edges, capture)
 		return nil
 	})
+	return pages, resultErr
 }
 
 func addScopedFieldLink(response tableau.Response, raw lineageNode, target Node, relationship string, assetIDs map[string]struct{}, nodes map[string]Node, restIdentities map[string]string, edges map[string]Edge, capture *Capture) error {
@@ -212,56 +262,89 @@ func addScopedFieldLink(response tableau.Response, raw lineageNode, target Node,
 	return nil
 }
 
-func (c *Client) walkNestedLineageFields(ctx context.Context, request CaptureRequest, owner, field Node, relation string, response tableau.Response, connection *lineageConnection, capture *Capture, nodes map[string]Node, edges map[string]Edge, visit func(tableau.Response, lineageNode) error) error {
-	total := -1
-	seenNodes := make(map[string]struct{})
-	seenCursors := make(map[string]struct{})
-	for {
-		if connection == nil || connection.TotalCount == nil || connection.Nodes == nil || connection.PageInfo == nil || connection.PageInfo.HasNextPage == nil {
-			return protocolError(response, "%s omitted totalCount, pageInfo, or nodes", relation)
+// lineageFieldPages retains validated inline evidence and its exact continuation state.
+type lineageFieldPages struct {
+	field       Node
+	relation    string
+	total       int
+	cursor      string
+	pageCount   int
+	seenNodes   map[string]struct{}
+	seenCursors map[string]struct{}
+	visit       func(tableau.Response, lineageNode) error
+}
+
+func (p *lineageFieldPages) capturePage(response tableau.Response, connection *lineageConnection, pageSize int, capture *Capture, nodes map[string]Node, edges map[string]Edge) error {
+	p.cursor = ""
+	p.pageCount++
+	if connection == nil || connection.TotalCount == nil || connection.Nodes == nil || connection.PageInfo == nil || connection.PageInfo.HasNextPage == nil {
+		return protocolError(response, "%s omitted totalCount, pageInfo, or nodes", p.relation)
+	}
+	if *connection.TotalCount < 0 {
+		return protocolError(response, "%s returned negative totalCount", p.relation)
+	}
+	if len(*connection.Nodes) > pageSize {
+		return protocolError(response, "%s exceeded requested page size %d", p.relation, pageSize)
+	}
+	if *connection.PageInfo.HasNextPage && len(*connection.Nodes) == 0 {
+		return protocolError(response, "%s made no progress on a continuing page", p.relation)
+	}
+	if p.total < 0 {
+		p.total = *connection.TotalCount
+	} else if p.total != *connection.TotalCount {
+		return protocolError(response, "%s changed totalCount while paging", p.relation)
+	}
+	for _, raw := range *connection.Nodes {
+		id := strings.TrimSpace(raw.ID)
+		if id == "" {
+			return protocolError(response, "%s returned a node without Metadata identity", p.relation)
 		}
-		if *connection.TotalCount < 0 {
-			return protocolError(response, "%s returned negative totalCount", relation)
+		if _, exists := p.seenNodes[id]; exists {
+			return protocolError(response, "%s repeated Metadata ID %q", p.relation, id)
 		}
-		if total < 0 {
-			total = *connection.TotalCount
-		} else if total != *connection.TotalCount {
-			return protocolError(response, "%s changed totalCount while paging", relation)
+		p.seenNodes[id] = struct{}{}
+		if len(p.seenNodes) > p.total {
+			return protocolError(response, "%s returned more nodes than totalCount", p.relation)
 		}
-		for _, raw := range *connection.Nodes {
-			id := strings.TrimSpace(raw.ID)
-			if id == "" {
-				return protocolError(response, "%s returned a node without Metadata identity", relation)
-			}
-			if _, exists := seenNodes[id]; exists {
-				return protocolError(response, "%s repeated Metadata ID %q", relation, id)
-			}
-			seenNodes[id] = struct{}{}
-			if len(seenNodes) > total {
-				return protocolError(response, "%s returned more nodes than totalCount", relation)
-			}
-			if err := visit(response, raw); err != nil {
-				return err
-			}
-			if len(nodes) >= MaxLineageNodes || len(edges) >= MaxLineageEdges {
-				markLineageFieldBound(capture, len(nodes) >= MaxLineageNodes)
-				return nil
-			}
+		if err := p.visit(response, raw); err != nil {
+			return err
 		}
-		if !*connection.PageInfo.HasNextPage {
-			if len(seenNodes) != total {
-				return protocolError(response, "%s ended at %d of %d nodes", relation, len(seenNodes), total)
-			}
+		if len(nodes) >= MaxLineageNodes || len(edges) >= MaxLineageEdges {
+			markLineageFieldBound(capture, len(nodes) >= MaxLineageNodes)
 			return nil
 		}
-		cursor := strings.TrimSpace(connection.PageInfo.EndCursor)
-		if cursor == "" {
-			return protocolError(response, "%s has another page without an end cursor", relation)
+	}
+	if !*connection.PageInfo.HasNextPage {
+		if len(p.seenNodes) != p.total {
+			return protocolError(response, "%s ended at %d of %d nodes", p.relation, len(p.seenNodes), p.total)
 		}
-		if _, exists := seenCursors[cursor]; exists {
-			return protocolError(response, "%s repeated cursor %q", relation, cursor)
+		return nil
+	}
+	cursor := strings.TrimSpace(connection.PageInfo.EndCursor)
+	if cursor == "" {
+		return protocolError(response, "%s has another page without an end cursor", p.relation)
+	}
+	if _, exists := p.seenCursors[cursor]; exists {
+		return protocolError(response, "%s repeated cursor %q", p.relation, cursor)
+	}
+	p.seenCursors[cursor] = struct{}{}
+	p.cursor = cursor
+	return nil
+}
+
+func (c *Client) walkNestedLineageFields(ctx context.Context, request CaptureRequest, owner Node, response tableau.Response, pages *lineageFieldPages, capture *Capture, nodes map[string]Node, edges map[string]Edge, requests *int) (resultErr error) {
+	field, relation := pages.field, pages.relation
+	defer func() {
+		if resultErr != nil {
+			if _, wrapped := errors.AsType[*RelationError](resultErr); !wrapped {
+				resultErr = &RelationError{RootKind: request.Kind, RootRESTLUID: request.RESTLUID, Relation: relation, Cause: resultErr}
+			}
 		}
-		seenCursors[cursor] = struct{}{}
+	}()
+	for pages.cursor != "" {
+		if pages.pageCount >= maxLineageFieldPages {
+			return fmt.Errorf("lineage %s exceeds %d-page bound", relation, maxLineageFieldPages)
+		}
 		remaining := MaxLineageEdges - len(edges)
 		if remaining < 1 {
 			markLineageFieldBound(capture, false)
@@ -269,11 +352,16 @@ func (c *Client) walkNestedLineageFields(ctx context.Context, request CaptureReq
 		}
 		query, variables := lineageNestedQuery(owner, relation)
 		variables["fieldID"] = field.MetadataID
-		variables["after"] = cursor
-		variables["pageSize"] = min(request.PageSize, remaining)
+		variables["after"] = pages.cursor
+		pageSize := min(request.PageSize, remaining)
+		variables["pageSize"] = pageSize
 		var envelope lineageEnvelope
 		var warnings []string
 		var err error
+		if *requests >= maxLineageFieldRequests {
+			return fmt.Errorf("lineage field enrichment exceeds %d-request bound", maxLineageFieldRequests)
+		}
+		*requests++
 		response, envelope, warnings, err = c.queryLineage(ctx, query, variables)
 		capture.RequestIDs = append(capture.RequestIDs, response.TableauRequestID)
 		capture.Warnings = append(capture.Warnings, warnings...)
@@ -306,19 +394,24 @@ func (c *Client) walkNestedLineageFields(ctx context.Context, request CaptureReq
 		if strings.TrimSpace(returnedField.ID) != field.MetadataID || strings.TrimSpace(returnedField.Name) != field.Name || returnedField.Datasource == nil || strings.TrimSpace(returnedField.Datasource.ID) != owner.MetadataID {
 			return protocolError(response, "field %q changed identity while paging %s", field.MetadataID, relation)
 		}
+		var connection *lineageConnection
 		if relation == "fieldsConnection" {
 			connection = returnedField.FieldsConnection
 		} else {
 			connection = returnedField.UpstreamColumnsConnection
 		}
+		if err := pages.capturePage(response, connection, pageSize, capture, nodes, edges); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func lineageNestedQuery(owner Node, relation string) (string, map[string]any) {
 	rootField, rootSelector, rootVariable, rootIdentity := "publishedDatasourcesConnection", "luid: $rootLuid", "$rootLuid: String!", "id luid name"
 	variables := map[string]any{"rootLuid": owner.RESTLUID}
 	if owner.Kind == string(KindEmbeddedDatasource) {
-		rootField, rootSelector, rootVariable, rootIdentity = "embeddedDatasourcesConnection", "id: $rootMetadataID", "$rootMetadataID: ID!", "id name"
+		rootField, rootSelector, rootVariable, rootIdentity = "embeddedDatasourcesConnection", "idWithin: [$rootMetadataID]", "$rootMetadataID: ID!", "id name"
 		variables = map[string]any{"rootMetadataID": owner.MetadataID}
 	}
 	nested := `upstreamColumnsConnection(first: $pageSize, after: $after, orderBy: {field: ID, direction: ASC}, permissionMode: OBFUSCATE_RESULTS) { totalCount pageInfo { hasNextPage endCursor } nodes { id name table { id } } }`
@@ -328,7 +421,7 @@ func lineageNestedQuery(owner Node, relation string) (string, map[string]any) {
 	query := fmt.Sprintf(`query LineageNestedFields(%s, $fieldID: ID!, $after: String, $pageSize: Int!) {
   %s(first: 2, filter: {%s}, permissionMode: OBFUSCATE_RESULTS) {
     totalCount pageInfo { hasNextPage endCursor }
-    nodes { %s fieldsConnection(first: 2, filter: {id: $fieldID}, permissionMode: OBFUSCATE_RESULTS) {
+    nodes { %s fieldsConnection(first: 2, filter: {idWithin: [$fieldID]}, permissionMode: OBFUSCATE_RESULTS) {
       totalCount pageInfo { hasNextPage endCursor }
       nodes { id name datasource { id } %s }
     } }

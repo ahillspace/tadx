@@ -1,17 +1,25 @@
 package metadataassets
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/tableau"
 	"github.com/ahillspace/tadx/internal/value"
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
+	"github.com/vektah/gqlparser/v2/validator"
 )
 
 type testSession struct{}
@@ -26,9 +34,76 @@ func (testSession) SiteLUID() string          { return "site-1" }
 func (testSession) UserLUID() string          { return "user-1" }
 func (testSession) String() string            { return "session" }
 
+var fixtureGraphSchema = sync.OnceValues(func() (*ast.Schema, error) {
+	source, err := os.ReadFile("testdata/tableau-schema.graphql")
+	if err != nil {
+		return nil, err
+	}
+	return gqlparser.LoadSchema(&ast.Source{Name: "tableau.graphql", Input: string(source)})
+})
+
+func scalarMetadataIDFilter(selections ast.SelectionSet) bool {
+	for _, selection := range selections {
+		switch selection := selection.(type) {
+		case *ast.Field:
+			if selection.Name == "embeddedDatasourcesConnection" || selection.Name == "fieldsConnection" {
+				if filter := selection.Arguments.ForName("filter"); filter != nil && filter.Value.Children.ForName("id") != nil {
+					return true
+				}
+			}
+			if scalarMetadataIDFilter(selection.SelectionSet) {
+				return true
+			}
+		case *ast.InlineFragment:
+			if scalarMetadataIDFilter(selection.SelectionSet) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func fixtureClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
-	s := httptest.NewTLSServer(handler)
+	schema, err := fixtureGraphSchema()
+	if err != nil {
+		t.Fatalf("load official Tableau schema fixture: %v", err)
+	}
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/metadata/graphql" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read generated GraphQL request: %v", err)
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			var request struct {
+				Query string `json:"query"`
+			}
+			if err := json.Unmarshal(body, &request); err != nil {
+				t.Errorf("decode generated GraphQL request: %v", err)
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+			doc, err := parser.ParseQuery(&ast.Source{Name: "generated.graphql", Input: request.Query})
+			if err != nil {
+				t.Errorf("generated GraphQL does not parse: %v\nquery: %s", err, request.Query)
+				http.Error(w, "invalid GraphQL syntax", http.StatusBadRequest)
+				return
+			}
+			if errs := validator.Validate(schema, doc); len(errs) != 0 {
+				t.Errorf("generated GraphQL does not validate against the official Tableau schema fixture: %v\nquery: %s", errs, request.Query)
+				http.Error(w, "invalid GraphQL schema usage", http.StatusBadRequest)
+				return
+			}
+			if scalarMetadataIDFilter(doc.Operations[0].SelectionSet) {
+				fmt.Fprint(w, `{"errors":[{"message":"Internal Server Error(s) while executing query"}]}`)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		handler(w, r)
+	}))
 	t.Cleanup(s.Close)
 	return NewClient(tableau.NewTransport(s.Client(), "3.29", nil), testSession{}, s.URL)
 }

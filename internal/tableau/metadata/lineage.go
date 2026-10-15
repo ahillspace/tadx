@@ -746,7 +746,7 @@ const flowLineageRootQuery = `query LineageFlowRoot($rootLuid: String!, $after: 
 func lineageRelationQuery(kind ResourceKind, relation lineageRelation) (string, error) {
 	if kind == KindTable && relation.field == "database" {
 		return `query LineageTableDatabase($rootMetadataID: ID!) {
-  databaseTablesConnection(first: 2, filter: {id: $rootMetadataID}, permissionMode: OBFUSCATE_RESULTS) {
+  databaseTablesConnection(first: 2, filter: {idWithin: [$rootMetadataID]}, permissionMode: OBFUSCATE_RESULTS) {
     totalCount
     pageInfo { hasNextPage endCursor }
     nodes {

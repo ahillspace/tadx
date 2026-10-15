@@ -483,49 +483,38 @@ func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, b
 			out.Identity = identity(parent, "datasource")
 			out.Description = parent.Description
 			out.Tags, out.TagsObserved = graphTagValues(parent.Tags)
+		} else if parent.ID != out.Identity.MetadataID || parent.LUID != out.Identity.LUID || parent.Name != out.Identity.Name {
+			return out, protocol("catalog.metadata.read", r, errors.New("datasource identity changed during field pagination"))
 		}
+		var pending []graphNode
+		var pageErr error
 		for _, n := range p.Nodes {
 			if n.ID == "" || n.Name == "" || n.FullyQualifiedName == "" {
-				return out, protocol("catalog.metadata.read", r, errors.New("datasource field identity incomplete"))
+				pageErr = protocol("catalog.metadata.read", r, errors.New("datasource field identity incomplete"))
+				break
 			}
 			if old, ok := seen[n.ID]; ok {
 				if !reflect.DeepEqual(old, n) {
-					return out, protocol("catalog.metadata.read", r, errors.New("conflicting field identity"))
+					pageErr = protocol("catalog.metadata.read", r, errors.New("conflicting field identity"))
+					break
 				}
 				continue
 			}
 			seen[n.ID] = n
-			v, e := fieldDescription(n)
-			if e != nil {
-				return out, protocol("catalog.metadata.read", r, e)
-			}
-			if e = validatePage(n.Columns, 100, ""); e != nil {
-				return out, protocol("catalog.metadata.read", r, e)
-			}
-			columns, e := c.fieldColumns(ctx, luid, n.ID, n.Columns, &requests, false, budget)
-			for _, col := range columns {
-				if col.ID == "" || col.Name == "" {
-					return out, protocol("catalog.metadata.read", r, errors.New("upstream column identity incomplete"))
-				}
-				v.UpstreamColumns = append(v.UpstreamColumns, graphColumn(col))
-				totalColumns++
-			}
-			if totalColumns > maxItems {
-				return out, &ConstraintError{"field provenance exceeds 10000 column bound"}
-			}
-			out.Fields = append(out.Fields, v)
-			if e != nil {
+			pending = append(pending, n)
+		}
+		start := len(out.Fields)
+		if e := observeFieldPage(pending, &out.Fields, &totalColumns, extended); e != nil {
+			if _, ok := errors.AsType[*ConstraintError](e); ok {
 				return out, e
 			}
-			if extended {
-				field := &out.Fields[len(out.Fields)-1]
-				if e = c.fieldRelations(ctx, luid, n, field, &requests, false, budget); e != nil {
-					return out, e
-				}
-			}
-			if len(out.Fields) > maxItems {
-				return out, &ConstraintError{"datasource fields exceed bound"}
-			}
+			return out, protocol("catalog.metadata.read", r, e)
+		}
+		if pageErr != nil {
+			return out, pageErr
+		}
+		if e := c.enrichFieldPage(ctx, luid, pending, out.Fields[start:], &totalColumns, &requests, false, budget, extended); e != nil {
+			return out, e
 		}
 		if e := coverage.Page(*p.Total, len(seen), !*p.Info.More); e != nil {
 			return out, protocol("catalog.metadata.read", r, e)
@@ -541,6 +530,107 @@ func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, b
 		seenCursor[cursor] = true
 	}
 	return out, &ConstraintError{fmt.Sprintf("datasource fields exceed %d pages", 100)}
+}
+
+// observeFieldPage retains inline evidence before any nested request can fail.
+func observeFieldPage(nodes []graphNode, fields *[]value.FieldDescription, totalColumns *int, extended bool) error {
+	for _, n := range nodes {
+		if n.ID == "" || n.Name == "" || n.FullyQualifiedName == "" {
+			return errors.New("field identity incomplete")
+		}
+		v, err := fieldDescription(n)
+		if err != nil {
+			return err
+		}
+		columns, err := initialFieldRows(n.Columns)
+		if err != nil {
+			return err
+		}
+		if *totalColumns+len(columns) > maxItems {
+			return &ConstraintError{"field provenance exceeds 10000 column bound"}
+		}
+		for _, column := range columns {
+			v.UpstreamColumns = append(v.UpstreamColumns, graphColumn(column))
+		}
+		if extended {
+			for _, relation := range []struct {
+				page *graphPage
+				kind string
+				out  *[]value.MetadataIdentity
+			}{{n.Sheets, "sheet", &v.Sheets}, {n.References, "field", &v.ReferencedFields}} {
+				if relation.kind == "field" && n.Type != "CalculatedField" {
+					continue
+				}
+				rows, err := initialFieldRows(relation.page)
+				if err != nil {
+					return err
+				}
+				for _, row := range rows {
+					*relation.out = append(*relation.out, identity(row, relation.kind))
+				}
+			}
+		}
+		if len(*fields) >= maxItems {
+			return &ConstraintError{"datasource fields exceed bound"}
+		}
+		*fields = append(*fields, v)
+		*totalColumns += len(columns)
+	}
+	return nil
+}
+
+func initialFieldRows(page *graphPage) ([]graphNode, error) {
+	if err := validatePage(page, 100, ""); err != nil {
+		return nil, err
+	}
+	rows := make([]graphNode, 0, len(page.Nodes))
+	seen := make(map[string]graphNode)
+	for _, n := range page.Nodes {
+		if n.ID == "" || n.Name == "" {
+			return nil, errors.New("field relation identity incomplete")
+		}
+		if old, ok := seen[n.ID]; ok {
+			if !reflect.DeepEqual(old, n) {
+				return nil, errors.New("conflicting field relation identity")
+			}
+			continue
+		}
+		seen[n.ID] = n
+		rows = append(rows, n)
+	}
+	var coverage graphCoverage
+	if err := coverage.Page(*page.Total, len(rows), !*page.Info.More); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (c *Client) enrichFieldPage(ctx context.Context, datasource string, nodes []graphNode, fields []value.FieldDescription, totalColumns, requests *int, embedded bool, budget *int, extended bool) error {
+	for i, n := range nodes {
+		field := &fields[i]
+		columns, err := c.fieldColumns(ctx, datasource, n.ID, n.Columns, requests, embedded, budget)
+		total := *totalColumns - len(field.UpstreamColumns) + len(columns)
+		if total > maxItems {
+			return &ConstraintError{"field provenance exceeds 10000 column bound"}
+		}
+		observed := make([]value.MetadataColumn, 0, len(columns))
+		for _, column := range columns {
+			if column.ID == "" || column.Name == "" {
+				return errors.New("upstream column identity incomplete")
+			}
+			observed = append(observed, graphColumn(column))
+		}
+		field.UpstreamColumns, *totalColumns = observed, total
+		if err != nil {
+			return err
+		}
+		if extended {
+			if err := c.fieldRelations(ctx, datasource, n, field, requests, embedded, budget); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func fieldDescription(n graphNode) (value.FieldDescription, error) {
@@ -581,6 +671,7 @@ func (c *Client) fieldRelations(ctx context.Context, datasource string, n graphN
 			return err
 		}
 		rows, err := c.fieldRelation(ctx, datasource, n.ID, relation.name, relation.first, requests, embedded, budget)
+		observed := make([]value.MetadataIdentity, 0, len(rows))
 		for _, row := range rows {
 			if row.ID == "" || row.Name == "" {
 				return errors.New("field relation identity incomplete")
@@ -589,8 +680,9 @@ func (c *Client) fieldRelations(ctx context.Context, datasource string, n graphN
 			if relation.name == "relatedSheets" {
 				kind = "sheet"
 			}
-			*relation.out = append(*relation.out, identity(row, kind))
+			observed = append(observed, identity(row, kind))
 		}
+		*relation.out = observed
 		if err != nil {
 			return err
 		}
@@ -647,14 +739,16 @@ func (c *Client) fieldRelation(ctx context.Context, datasource, field, relation 
 		}
 		*requests++
 		root, selector, parentType := "parents:publishedDatasourcesConnection", "luid", "String!"
+		parentFilter := "luid:$parent"
 		if embedded {
 			root, selector, parentType = "embedded:embeddedDatasourcesConnection", "id", "ID!"
+			parentFilter = "idWithin:[$parent]"
 		}
 		selection := `items:downstreamSheetsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id luid name}}`
 		if relation == "referencedFields" {
 			selection = `... on CalculatedField {items:fieldsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id name}}}`
 		}
-		query := `query FieldRelation($parent:` + parentType + `,$field:ID!,$after:String){` + root + `(filter:{` + selector + `:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + selector + ` items:fieldsConnection(filter:{id:$field},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id ` + selection + `}}}}}`
+		query := `query FieldRelation($parent:` + parentType + `,$field:ID!,$after:String){` + root + `(filter:{` + parentFilter + `},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + selector + ` items:fieldsConnection(filter:{idWithin:[$field]},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id ` + selection + `}}}}}`
 		env, r, err := c.graph(ctx, query, map[string]any{"parent": datasource, "field": field, "after": cursor})
 		if err != nil {
 			return rows, err
@@ -738,11 +832,13 @@ func (c *Client) fieldColumns(ctx context.Context, datasource, field string, fir
 		*requests++
 		root, selector := "parents:publishedDatasourcesConnection", "luid"
 		parentType := "String!"
+		parentFilter := "luid:$parent"
 		if embedded {
 			root, selector = "embedded:embeddedDatasourcesConnection", "id"
 			parentType = "ID!"
+			parentFilter = "idWithin:[$parent]"
 		}
-		query := `query FieldColumns($parent:` + parentType + `,$field:ID!,$after:String){` + root + `(filter:{` + selector + `:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + selector + ` items:fieldsConnection(filter:{id:$field},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{id upstreamColumnsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}}}}}}`
+		query := `query FieldColumns($parent:` + parentType + `,$field:ID!,$after:String){` + root + `(filter:{` + parentFilter + `},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + selector + ` items:fieldsConnection(filter:{idWithin:[$field]},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{id upstreamColumnsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}}}}}}`
 		env, r, e := c.graph(ctx, query, map[string]any{"parent": datasource, "field": field, "after": cursor})
 		if e != nil {
 			return out, e

@@ -30,8 +30,13 @@ func contentReferenceFlagSyntax(resource, action *cobra.Command, flag *pflag.Fla
 		value = "name"
 	case "project-name":
 		value = "leaf"
-	case "project", "parent", "destination-project", "artifact":
+	case "project", "parent", "destination-project":
 		value = "path"
+	case "artifact":
+		value = "path"
+		if action.Name() == "publish" && (resource.Name() == "workbook" || resource.Name() == "flow") {
+			value = "directory"
+		}
 	case "file":
 		if action.Name() == "publish" {
 			value = map[string]string{"workbook": "file.twb|file.twbx", "datasource": "file.tds|file.tdsx|file.hyper", "flow": "file.tfl|file.tflx"}[resource.Name()]
@@ -95,11 +100,17 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 		return notes
 	case "publish":
 		notes := []string{"Source: workspace ID/name/relative artifact, or native file (no workspace). Project: destination; name: source default."}
+		if resource == "workbook" || resource == "flow" {
+			notes = []string{"Workspace ID/name, or --artifact: TADX-managed artifact directory; --file: standalone native file (no workspace). Project: destination; name: source default."}
+		}
 		if resource == "datasource" {
 			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.")
 		}
 		if resource == "workbook" {
-			notes = append(notes, "Publish missing referenced datasources first. Workbook publish does not publish dependencies or rebind references.")
+			notes = append(notes, "Publish missing referenced datasources first; this command does not publish dependencies or rebind them.")
+		}
+		if resource == "workbook" || resource == "flow" {
+			return append(notes, "Creates; --overwrite replaces an exact collision.")
 		}
 		return append(notes, "Creates by default; --overwrite replaces an exact collision.")
 	case "update":
@@ -138,7 +149,7 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 	if has("publish") || has("pull") {
 		fmt.Fprintln(out, "  --no-wait: one single/batch status command, no polling. Wait ends at 20m; work continues.")
 		if has("publish") {
-			fmt.Fprintln(out, "  Save accepted IDs; recover with the returned status command. Do not republish.")
+			fmt.Fprintln(out, "  Save accepted IDs; use the returned status command. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")
 			if resource.Name() == "flow" {
 				fmt.Fprintln(out, "  Flow publication can complete synchronously.")

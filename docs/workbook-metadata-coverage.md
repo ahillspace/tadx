@@ -45,10 +45,45 @@ Test local overrides, repeated published parents, scoped field identities, neste
 Use official API schemas as contract evidence and distinguish hermetic verification from live deployment verification.
 No Tableau mutations, push, PR, or release are authorized by this build.
 
-### Local verification result
+### Initial local verification result
 
 The full Windows test suite and full race suite passed in a clean source snapshot containing tracked source and the feature files.
 The snapshot excluded unrelated local work; architecture checks passed without changing their rules.
 The final removal of unsupported logical-table filtering passed targeted action, command, capability, help, and HTTP-backed tests, including race checks.
 Vet, the CLI build, formatting, module metadata, and generated-reference checks passed.
 No live Tableau verification, remote mutation, CI run, commit, or push occurred.
+
+### Repair validation
+
+The embedded relation query now passes real GraphQL syntax and schema validation.
+Metadata asset and lineage HTTP fixtures validate every generated query against a checked-in schema mechanically derived from Tableau's official current reference.
+The schema fixture includes provenance and a reproducible generator; it does not establish compatibility with every deployment version.
+Singleton `idWithin` filters preserve exact Metadata ID selection and avoid the scalar-ID execution errors observed during live embedded and field reads.
+
+Repair regressions cover confirmed sibling and parent identity retention, published identity drift across enrichment and pagination, embedded aggregate provenance limits, filtered partial schema results, and field-lineage request and page bounds.
+Field enrichment permits at most 1,000 HTTP requests and 100 pages per connection, rejects empty continuing pages and oversized responses, and preserves the failed relationship with confirmed partial graph evidence.
+Embedded and published datasource enrichment share the aggregate 10,000-column bound.
+Workbook and flow publication help identifies managed artifact directories and standalone supported native files without changing publication behavior.
+
+Rebuilt native inspection succeeds on both affected workbooks, observing 22 fields in one embedded datasource and 19 fields in each of two embedded datasources.
+Field lineage captures complete graphs with 24 nodes and 32 edges, and 41 nodes and 44 edges, including calculation references.
+Audits assess all 23 and 39 objects, respectively, while keeping 22 and 38 unknown field descriptions distinct from missing metadata.
+Published datasource inspection and all 29 schema fields remain verified, and published auditing retains its unknown metadata results.
+Published field lineage captures seven columns, one table, and one database in a complete graph.
+
+A workbook containing only a published-parent-backed datasource retains 470 local fields but receives inconsistent native sheet pagination.
+The first page returns 100 of 148 sheets with a continuation cursor; the next returns an empty terminal page with the same total.
+Inspection and audit correctly report incomplete coverage while retaining confirmed identities and findings.
+Its audit confirms 26 inherited descriptions; direct-only assessment keeps those descriptions unknown.
+Its field lineage preserves physical and remote-field relationships in a 304-node graph and explicitly reports the 1,000-edge bound.
+These observations do not establish complete published-reference enrichment or complete lineage for that workbook.
+
+The complete feature and focused repairs receive independent source review, with all identified source findings closed.
+The full Windows test suite and vet pass in an isolated source snapshot that preserves native Git history and excludes unrelated work.
+The unchanged architecture and help-length gates pass, and all four CI platform cross-builds succeed.
+The full Windows race suite also passes.
+
+Successful live workbook schema remains unverified because managed policy denies the action.
+A live workbook with published references and independent embedded datasources remains unverified pending an available seed.
+Positive column-tag values and complete metadata for the workbook with inconsistent sheet pagination remain unverified live.
+These gaps prevent an unconditional production-readiness claim.

@@ -108,6 +108,11 @@ func Schema(ctx context.Context, reader SchemaReader, in SchemaInput) (SchemaOut
 	}
 	in.Role = strings.ToLower(strings.TrimSpace(in.Role))
 	in.Query = strings.TrimSpace(in.Query)
+	inventoryComplete := m.Complete && readErr == nil
+	for _, ds := range m.Datasources {
+		inventoryComplete = inventoryComplete && ds.Complete
+	}
+	selectionIncomplete := !inventoryComplete && (in.Datasource != "" || len(in.FieldIDs) > 0)
 	type entry struct {
 		Group int
 		Field value.SchemaField
@@ -138,11 +143,11 @@ func Schema(ctx context.Context, reader SchemaReader, in SchemaInput) (SchemaOut
 			selected = append(selected, entry{g, f})
 		}
 	}
-	if in.Datasource != "" && groupMatches != 1 {
+	if in.Datasource != "" && (groupMatches > 1 || groupMatches == 0 && inventoryComplete) {
 		return out, schemaError(in, errs.KindUsage, "Datasource name must match exactly one datasource inside the workbook.", nil)
 	}
 	for id, n := range counts {
-		if n != 1 {
+		if n > 1 || n == 0 && inventoryComplete {
 			return out, schemaError(in, errs.KindUsage, fmt.Sprintf("Field %q matched %d fields; use --datasource and matching filters to select one.", id, n), nil)
 		}
 	}
@@ -227,9 +232,12 @@ func Schema(ctx context.Context, reader SchemaReader, in SchemaInput) (SchemaOut
 		i := len(out.Datasources) - 1
 		out.Datasources[i].Fields = append(out.Datasources[i].Fields, f)
 	}
-	if readErr != nil {
+	if readErr != nil || selectionIncomplete {
 		out.Complete = false
 		out.Status = "partial"
+		if selectionIncomplete {
+			out.Warnings = append(out.Warnings, "Incomplete metadata cannot establish exact selector absence or uniqueness; returned fields are confirmed matches from the observed inventory.")
+		}
 		return out, schemaError(in, errs.KindOperation, "Workbook schema metadata is incomplete.", readErr)
 	}
 	if !out.Complete {

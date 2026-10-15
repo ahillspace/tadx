@@ -8,11 +8,17 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/tableau"
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
+	"github.com/vektah/gqlparser/v2/validator"
 )
 
 func TestCaptureLineageMapsWorkbookRESTIdentityAndPagesDirectUpstreamDatasources(t *testing.T) {
@@ -316,8 +322,35 @@ func TestCaptureLineageExpandsTableParentDatabaseByMetadataIDAtDepthTwo(t *testi
 		t.Fatalf("capture = %#v, want edges %#v", capture, wantEdges)
 	}
 	last := (*requests)[len(*requests)-1]
-	if !strings.Contains(last.Query, "databaseTablesConnection") || !strings.Contains(last.Query, "database { id name }") || last.Variables["rootMetadataID"] != "table-meta" || strings.Contains(last.Query, "rootLuid") {
+	if !strings.Contains(last.Query, "databaseTablesConnection") || !strings.Contains(last.Query, "filter: {idWithin: [$rootMetadataID]}") || !strings.Contains(last.Query, "database { id name }") || last.Variables["rootMetadataID"] != "table-meta" || strings.Contains(last.Query, "rootLuid") {
 		t.Fatalf("table expansion request = %#v", last)
+	}
+}
+
+func TestCaptureLineageTableDatabaseLookupDoesNotBlockFieldEnrichment(t *testing.T) {
+	responses := fieldPagingAssets(t)
+	responses[4] = `{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-meta","luid":"ds-rest","name":"Sales","upstreamTablesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"table-meta","name":"Orders"}]}}]}}}`
+	responses = append(responses,
+		`{"data":{"databaseTablesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"table-meta","name":"Orders","database":{"id":"database-meta","name":"Warehouse"}}]}}}`,
+		fieldPagingOwnerResponse(`[{"__typename":"ColumnField","id":"field-meta","name":"Amount","datasource":{"id":"ds-meta"},"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]`, 1, false, ""),
+	)
+	server, requests := lineageTestServer(t, responses)
+	defer server.Close()
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(t.Context(), CaptureRequest{Kind: KindPublishedDatasource, RESTLUID: "ds-rest", Direction: DirectionUpstream, Depth: 2, Fields: true})
+	if err != nil || !capture.Complete || len(capture.Nodes) != 4 || len(capture.Edges) != 3 || len(*requests) != len(responses) {
+		t.Fatalf("requests=%d, capture=%+v, err=%v", len(*requests), capture, err)
+	}
+	for _, edge := range []Edge{
+		{FromMetadataID: "database-meta", ToMetadataID: "table-meta", Relationship: "upstream"},
+		{FromMetadataID: "ds-meta", ToMetadataID: "field-meta", Relationship: "contains"},
+	} {
+		if !slices.Contains(capture.Edges, edge) {
+			t.Errorf("missing edge %+v: %+v", edge, capture.Edges)
+		}
+	}
+	if (*requests)[5].Variables["rootMetadataID"] != "table-meta" || (*requests)[6].Variables["rootLuid"] != "ds-rest" {
+		t.Fatalf("table or field owner selector changed: %+v", *requests)
 	}
 }
 
@@ -657,8 +690,39 @@ func TestCaptureLineageRejectsMalformedConnectionsAndRepeatedCursors(t *testing.
 	}
 }
 
+var lineageFixtureSchema = sync.OnceValues(func() (*ast.Schema, error) {
+	source, err := os.ReadFile("../metadataassets/testdata/tableau-schema.graphql")
+	if err != nil {
+		return nil, err
+	}
+	return gqlparser.LoadSchema(&ast.Source{Name: "tableau-schema.graphql", Input: string(source)})
+})
+
+func scalarIDFilter(selections ast.SelectionSet) bool {
+	for _, selection := range selections {
+		switch item := selection.(type) {
+		case *ast.Field:
+			if filter := item.Arguments.ForName("filter"); filter != nil && filter.Value.Children.ForName("id") != nil {
+				return true
+			}
+			if scalarIDFilter(item.SelectionSet) {
+				return true
+			}
+		case *ast.InlineFragment:
+			if scalarIDFilter(item.SelectionSet) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func lineageTestServer(t *testing.T, responses []string) (*httptest.Server, *[]capturedGraphQLRequest) {
 	t.Helper()
+	schema, err := lineageFixtureSchema()
+	if err != nil {
+		t.Fatalf("load official Tableau schema: %v", err)
+	}
 	requests := make([]capturedGraphQLRequest, 0, len(responses))
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodPost || request.URL.EscapedPath() != "/api/metadata/graphql" {
@@ -668,15 +732,34 @@ func lineageTestServer(t *testing.T, responses []string) (*httptest.Server, *[]c
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
+		document, err := parser.ParseQuery(&ast.Source{Name: "lineage-generated.graphql", Input: payload.Query})
+		if err != nil {
+			t.Errorf("generated lineage GraphQL syntax: %v\nquery: %s", err, payload.Query)
+			http.Error(writer, "invalid GraphQL syntax", http.StatusBadRequest)
+			return
+		}
+		if issues := validator.Validate(schema, document); len(issues) != 0 {
+			t.Errorf("generated lineage GraphQL schema: %v\nquery: %s", issues, payload.Query)
+			http.Error(writer, "invalid GraphQL schema usage", http.StatusBadRequest)
+			return
+		}
 		index := len(requests)
 		requests = append(requests, payload)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("X-Tableau-Request-Id", fmt.Sprintf("request-%d", index+1))
+		// Native deployment evidence rejects scalar Metadata-ID lookups but
+		// accepts equivalent singleton idWithin selections without a retry.
+		for _, operation := range document.Operations {
+			if (operation.Name == "LineageDatasourceFields" || operation.Name == "LineageNestedFields" || operation.Name == "LineageTableDatabase") && scalarIDFilter(operation.SelectionSet) {
+				_, _ = io.WriteString(writer, `{"errors":[{"message":"Internal Server Error"}]}`)
+				return
+			}
+		}
 		if index >= len(responses) {
 			t.Errorf("unexpected request %d: %s", index+1, payload.Query)
 			writer.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		writer.Header().Set("Content-Type", "application/json")
-		writer.Header().Set("X-Tableau-Request-Id", fmt.Sprintf("request-%d", index+1))
 		_, _ = io.WriteString(writer, responses[index])
 	}))
 	return server, &requests
