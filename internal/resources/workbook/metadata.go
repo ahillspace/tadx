@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	"github.com/ahillspace/tadx/internal/value"
@@ -79,9 +78,9 @@ func (a *MetadataAdapter) ReadWorkbookSchema(ctx context.Context, luid string) (
 			schemaErrors = append(schemaErrors, err)
 			continue
 		}
-		out.Fields[i] = resourcedatasource.EnrichFields(schema.Fields, group.Fields)
+		out.Fields[i] = value.EnrichSchemaFields(schema.Fields, group.Fields)
 		out.Metadata.Warnings = append(out.Metadata.Warnings, schema.Warnings...)
-		dependencies := resourcedatasource.EnrichFields(schema.DependencyFields, group.Fields)
+		dependencies := value.EnrichSchemaFields(schema.DependencyFields, group.Fields)
 		groupSources, duplicates := schemaDependencySources(out.Fields[i], dependencies)
 		for id := range duplicates {
 			duplicateSourceIDs[id] = true

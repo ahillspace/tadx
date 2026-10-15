@@ -41,7 +41,7 @@ Automatic content pulls remain asset-only at their existing defaults.
 - `actions/workbook` and `internal/resources/workbook`: workbook-specific selection, grouped schema, identity validation, and output projection.
 - `internal/app/workbook_inventory.go`: inspection enrichment sequencing, REST cache persistence, and schema dependency wiring.
 - `internal/tableau/fieldcatalog` and the existing datasource schema adapter: canonical published schema acquisition and classification, plus embedded dependency analysis using confirmed remote semantic facts.
-- `internal/value/schema.go`: shared compact field projection, filtering, and description and tag suppression.
+- `internal/value/schema.go`: shared exact field metadata matching, compact projection, filtering, and description and tag suppression.
 - Existing lineage provider, adapter, action, artifact, and command files: embedded nodes and optional field relationships.
 - Existing CLI, capability definitions, agent guidance, and generated references: consistent discovery and output documentation.
 
