@@ -42,7 +42,7 @@ func TestLineageInvalidInputPrecedesWorkspaceSetup(t *testing.T) {
 func TestDatasourceFieldLineageRoundTripsThroughCLIAndArtifact(t *testing.T) {
 	base, mutations := newGroupOneTableauServer(t)
 	defer base.Close()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/datasources/ds-1" {
 			w.Header().Set("Content-Type", "application/xml")
 			_, _ = fmt.Fprint(w, `<tsResponse><datasource id="ds-1" name="Sales"><project id="project-ops" name="Operations"/></datasource></tsResponse>`)

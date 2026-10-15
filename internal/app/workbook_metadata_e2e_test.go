@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +22,7 @@ func TestWorkbookMetadataCommandsThroughHTTP(t *testing.T) {
 	var networkBlocked atomic.Bool
 	var fieldPageFailure atomic.Bool
 	var graphCalls atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if networkBlocked.Load() {
 			t.Errorf("cached workbook inspection contacted Tableau: %s %s", r.Method, r.URL)
 			http.Error(w, "unexpected network", 500)
