@@ -200,13 +200,13 @@ func newLogout(deps Dependencies) *cobra.Command {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("auth.logout", err)
 			}
-			if strings.TrimSpace(environment) == "" {
+			if !command.Flags().Changed("environment") {
 				return clierr.Usage("auth.logout", errors.New("--environment is required"))
 			}
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Logout.Execute(command.Context(), authops.LogoutInput{Environment: environment, Preview: preview})
+			result, err := deps.Logout.Execute(command.Context(), authops.LogoutInput{Environment: environment, EnvironmentSet: command.Flags().Changed("environment"), Preview: preview})
 			if err != nil {
 				return err
 			}

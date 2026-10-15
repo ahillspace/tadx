@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +60,7 @@ func TestRunJSONUsageErrorIsOneDocumentWithoutNotice(t *testing.T) {
 }
 
 func TestRunJSONFlagLastValueAndAlias(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "portable", "config.yaml")
 	for _, test := range []struct {
 		name string
 		args []string
@@ -69,7 +69,7 @@ func TestRunJSONFlagLastValueAndAlias(t *testing.T) {
 		{name: "explicit false", args: []string{"capability", "list", "--json=false"}},
 		{name: "alias", args: []string{"capability", "list", "--jsn"}, json: true},
 		{name: "last value", args: []string{"capability", "list", "--json", "--json=false"}},
-		{name: "after inline value", args: []string{"capability", "list", "--config=portable/config.yaml", "--json"}, json: true},
+		{name: "after inline value", args: []string{"capability", "list", "--config=" + configPath, "--json"}, json: true},
 		{name: "value is not mode", args: []string{"capability", "list", "--domain=--json=true"}},
 		{name: "numeric true", args: []string{"capability", "list", "--json=1"}, json: true},
 	} {
@@ -87,7 +87,7 @@ func TestRunJSONFlagLastValueAndAlias(t *testing.T) {
 }
 
 func TestRunUsesExplicitCLIConfigPath(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/3.29/auth/signin" {
 			t.Fatalf("request path = %q", request.URL.Path)
 		}
@@ -243,7 +243,7 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 		}
 	})
 
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("X-Tableau-Request-Id", "signin-request")
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusUnauthorized)
@@ -251,7 +251,7 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	}))
 	defer server.Close()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	configContents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: marketing\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", server.URL)
+	configContents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: marketing\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(configPath, []byte(configContents), 0o600); err != nil {
 		t.Fatal(err)
 	}

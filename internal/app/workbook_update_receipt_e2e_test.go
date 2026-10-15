@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +24,7 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			gets, puts := 0, 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", "application/xml")
 				switch {
 				case request.URL.Path == "/api/3.29/auth/signin":
@@ -86,7 +85,7 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 
 func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
 	gets, puts := 0, 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		switch {
 		case request.URL.Path == "/api/3.29/auth/signin":
@@ -128,7 +127,7 @@ func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
 func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
 	gets, puts := 0, 0
 	descriptions := map[string]string{"wb-1": "Confirmed one", "wb-2": "Confirmed two"}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		switch {
 		case request.URL.Path == "/api/3.29/auth/signin":

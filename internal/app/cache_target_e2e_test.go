@@ -67,9 +67,9 @@ func TestCacheCLIInFlightRefreshRetainsOriginalServerAfterAliasRetarget(t *testi
 			}
 		}
 	}
-	first := httptest.NewTLSServer(handler("Original server", true))
+	first := tableauFixtureServer(t, handler("Original server", true))
 	defer first.Close()
-	second := httptest.NewTLSServer(handler("Retargeted server", false))
+	second := tableauFixtureServer(t, handler("Retargeted server", false))
 	defer second.Close()
 	options := diagnosticOptions(t, first)
 	args := []string{"cache", "refresh", "--environment", "test", "--scope", "workbooks"}

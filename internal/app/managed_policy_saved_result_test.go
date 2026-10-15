@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,7 +21,7 @@ import (
 
 func TestManagedPolicySavedSearchRechecksSemanticPrerequisites(t *testing.T) {
 	var requests atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -43,7 +42,7 @@ func TestManagedPolicySavedSearchRechecksSemanticPrerequisites(t *testing.T) {
 	root := t.TempDir()
 	options := overviewOptions(t, root)
 	options.HTTPClient = server.Client()
-	if err := config.Save(options.ConfigPath, config.Config{Version: config.CurrentVersion, Environments: map[string]config.Environment{"dev": {URL: server.URL, APIVersion: "3.29", Auth: config.Auth{Type: config.AuthTypePAT}}}}); err != nil {
+	if err := config.Save(options.ConfigPath, config.Config{Version: config.CurrentVersion, Environments: map[string]config.Environment{"dev": {URL: server.URL, Auth: config.Auth{Type: config.AuthTypePAT}}}}); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TADX_DEV_PAT_NAME", "fixture-name")

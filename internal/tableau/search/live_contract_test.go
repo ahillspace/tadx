@@ -57,7 +57,10 @@ func liveSearchConnection(t *testing.T) (config.Environment, coreauth.Session, *
 	if environment.SiteContentURL != strings.TrimSpace(os.Getenv("TADX_LIVE_SITE_CONTENT_URL")) {
 		t.Fatal("live search site guard failed")
 	}
-	transport := tableau.NewTransport(http.DefaultClient, environment.APIVersion, func() string { return "native-search-live-contract" })
+	transport := tableau.NewTransport(http.DefaultClient, "", func() string { return "native-search-live-contract" })
+	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
+		t.Fatal(err)
+	}
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(context.Background(), coreauth.Target{
 		Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL,

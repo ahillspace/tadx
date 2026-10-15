@@ -91,7 +91,7 @@ func assertSlashInventory(t *testing.T, kind, out string) {
 func slashInventoryServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	requests := &atomic.Int32{}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):

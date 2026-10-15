@@ -22,7 +22,7 @@ import (
 func pulseEfficiencyOptions(t *testing.T, server *httptest.Server) app.Options {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	config := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PULSE_EFFICIENCY_PAT_NAME\n      pat_secret_env: PULSE_EFFICIENCY_PAT_SECRET\n", server.URL)
+	config := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    auth:\n      type: pat\n      pat_name_env: PULSE_EFFICIENCY_PAT_NAME\n      pat_secret_env: PULSE_EFFICIENCY_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(path, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func pulseEfficiencyOptions(t *testing.T, server *httptest.Server) app.Options {
 
 func TestPulseDeletePreviewResolvesDefaultSiteBeforeAction(t *testing.T) {
 	var reads, writes int
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -109,7 +109,7 @@ func TestPulseDefinitionDatasourceFilterCacheMultipageThroughCLI(t *testing.T) {
 }
 
 func TestPulseCompactMetricRowsHaveStableColumnsThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -147,7 +147,7 @@ func TestPulseCompactMetricRowsHaveStableColumnsThroughCLI(t *testing.T) {
 func TestPulseForkCompletesFromExactReadbackWithoutInventoryThroughCLI(t *testing.T) {
 	var saved map[string]any
 	var writes, metricReads, lists int
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -196,7 +196,7 @@ func TestPulseForkCompletesFromExactReadbackWithoutInventoryThroughCLI(t *testin
 
 func TestPulseDefinitionDatasourceFilterBeforeLimitThroughCLI(t *testing.T) {
 	requests := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/3.29/auth/signin" {
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 			return
@@ -228,7 +228,7 @@ func TestPulseForkDoesNotReportSuccessForUnverifiedReadbackThroughCLI(t *testing
 			defer cancel()
 			var saved map[string]any
 			writes := 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/3.29/auth/signin":
 					_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

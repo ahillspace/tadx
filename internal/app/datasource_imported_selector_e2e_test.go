@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,7 @@ import (
 )
 
 func TestDatasourceInspectAcceptsImportedDisplayNameThroughCLI(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/metadata/graphql":
 			w.WriteHeader(http.StatusForbidden)
@@ -36,7 +35,7 @@ func TestDatasourceInspectAcceptsImportedDisplayNameThroughCLI(t *testing.T) {
 	}))
 	defer server.Close()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	config := fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: IMPORTED_PAT_NAME\n      pat_secret_env: IMPORTED_PAT_SECRET\n", server.URL)
+	config := fmt.Sprintf("version: 1\nenvironments:\n  test:\n    url: %s\n    site_content_url: test\n    auth:\n      type: pat\n      pat_name_env: IMPORTED_PAT_NAME\n      pat_secret_env: IMPORTED_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}

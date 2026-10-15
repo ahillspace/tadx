@@ -28,11 +28,17 @@ type commandRuntime struct {
 	configuration     config.Config
 	configurationErr  error
 	sessions          *coreauth.CommandSessions
-	transports        map[string]*tableau.Transport
+	transports        map[string]*serverTransport
 	clients           map[clientKey]tableauClients
 	workspaces        map[workspaceKey]workspaceResult
 	discovery         map[clientKey]*commandDiscoveryPaths
 	jobMonitoring     map[string]bool
+}
+
+type serverTransport struct {
+	once      sync.Once
+	transport *tableau.Transport
+	err       error
 }
 
 type clientKey struct {
@@ -47,7 +53,7 @@ type tableauClients struct {
 	flows          *tableauflow.RESTClient
 	metadata       *tableaumetadata.Client
 }
-type workspaceKey struct{ selector, environmentDefault string }
+type workspaceKey struct{ selector, environmentAlias string }
 type workspaceResult struct {
 	record workspacecore.Record
 	err    error
@@ -106,20 +112,46 @@ func (r *runtimeDependencies) commandSessions() *coreauth.CommandSessions {
 	return r.command.sessions
 }
 
-func (r *runtimeDependencies) transport(version string) *tableau.Transport {
+func (r *runtimeDependencies) transport(ctx context.Context, server string) (*tableau.Transport, error) {
+	canonical, err := config.CanonicalMutationServer(server)
+	if err != nil {
+		return nil, err
+	}
 	r.command.mu.Lock()
-	defer r.command.mu.Unlock()
 	if r.command.transports == nil {
-		r.command.transports = make(map[string]*tableau.Transport)
+		r.command.transports = make(map[string]*serverTransport)
 	}
-	if r.command.transports[version] == nil {
-		r.command.transports[version] = tableau.NewTransport(r.httpClient, version, func() string { return r.correlationID })
+	selected := r.command.transports[canonical]
+	if selected == nil {
+		selected = &serverTransport{}
+		r.command.transports[canonical] = selected
 	}
-	return r.command.transports[version]
+	r.command.mu.Unlock()
+	selected.once.Do(func() {
+		selected.transport = tableau.NewTransport(r.httpClient, "", func() string { return r.correlationID })
+		if err := selected.transport.NegotiateAPIVersion(ctx, canonical); err != nil {
+			selected.err = &errs.Error{ID: "server.version", Kind: errs.KindOperation, Operation: "server.version", Summary: "Tableau REST version discovery failed.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		}
+	})
+	if selected.err != nil {
+		return nil, selected.err
+	}
+	return selected.transport, nil
 }
 
-func (r *runtimeDependencies) authenticate(ctx context.Context, target coreauth.Target, version string) (coreauth.Session, error) {
-	return r.commandSessions().Authenticate(ctx, target, tableauauth.NewClient(r.transport(version)))
+func (r *runtimeDependencies) authenticate(ctx context.Context, target coreauth.Target) (coreauth.Session, error) {
+	return r.commandSessions().Authenticate(ctx, target, commandSigner{runtime: r})
+}
+
+// commandSigner discovers the server only after command-scoped credentials resolve.
+type commandSigner struct{ runtime *runtimeDependencies }
+
+func (s commandSigner) SignIn(ctx context.Context, request coreauth.SignInRequest) (coreauth.SignInResponse, error) {
+	transport, err := s.runtime.transport(ctx, request.ServerURL)
+	if err != nil {
+		return coreauth.SignInResponse{}, err
+	}
+	return tableauauth.NewClient(transport).SignIn(ctx, request)
 }
 
 func (r *runtimeDependencies) clients(connection authenticatedTableau) tableauClients {
@@ -145,7 +177,7 @@ func (r *runtimeDependencies) clients(connection authenticatedTableau) tableauCl
 	return result
 }
 
-func (r *runtimeDependencies) resolveWorkspace(ctx context.Context, configuration config.Config, selector, environmentDefault string) (workspacecore.Record, error) {
+func (r *runtimeDependencies) resolveWorkspace(ctx context.Context, configuration config.Config, selector, environmentAlias string) (workspacecore.Record, error) {
 	if err := ctx.Err(); err != nil {
 		return workspacecore.Record{}, err
 	}
@@ -154,11 +186,14 @@ func (r *runtimeDependencies) resolveWorkspace(ctx context.Context, configuratio
 	if r.command.workspaces == nil {
 		r.command.workspaces = make(map[workspaceKey]workspaceResult)
 	}
-	key := workspaceKey{selector, environmentDefault}
+	key := workspaceKey{selector, environmentAlias}
 	if previous, ok := r.command.workspaces[key]; ok {
 		return previous.record, previous.err
 	}
-	record, err := workspacecore.NewManager(r.configPath, nil).ResolveReadOnlyWithConfig(ctx, configuration, selector, environmentDefault)
+	record, err := workspacecore.NewManager(r.configPath, nil).ResolveReadOnlyWithConfig(ctx, configuration, selector, environmentAlias)
+	if err != nil {
+		err = &errs.Error{ID: "workspace.resolve", Kind: errs.KindOperation, Operation: "workspace.resolve", Resource: selector, Summary: "Workspace configuration could not be resolved.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+	}
 	r.command.workspaces[key] = workspaceResult{record, err}
 	return record, err
 }

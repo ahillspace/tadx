@@ -84,18 +84,18 @@ func TestUpdateExecutePreservesExactAliasAndStructuredUpdaterAdvice(t *testing.T
 }
 
 func TestUpdateExecutePreservesStoreChangedFields(t *testing.T) {
-	result := profileupdate.UpdateResult{Profile: updateFixture(), ChangedFields: []string{"site_content_url", "api_version"}}
+	result := profileupdate.UpdateResult{Profile: updateFixture(), ChangedFields: []string{"site_content_url"}}
 	store := &updateTestStore{result: result}
-	patch := profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}, APIVersion: profileupdate.StringField{Set: true, Value: "3.29"}}
+	patch := profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}}
 	got, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: patch})
-	if err != nil || got.Status != "updated" || !reflect.DeepEqual(got.ChangedFields, []string{"site_content_url", "api_version"}) {
+	if err != nil || got.Status != "updated" || !reflect.DeepEqual(got.ChangedFields, []string{"site_content_url"}) {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
 }
 
 func TestUpdateExecuteReturnsUnchanged(t *testing.T) {
 	store := &updateTestStore{result: profileupdate.UpdateResult{Profile: updateFixture()}}
-	got, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: profileupdate.Patch{APIVersion: profileupdate.StringField{Set: true, Value: "3.29"}}})
+	got, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}}})
 	if err != nil || got.Status != "unchanged" {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
@@ -109,7 +109,7 @@ func TestUpdateOutputGoldens(t *testing.T) {
 }
 
 func updateFixture() profileupdate.UpdateProfile {
-	return profileupdate.UpdateProfile{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
+	return profileupdate.UpdateProfile{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
 }
 func updateAssertGolden(t *testing.T, value any, full bool, path string) {
 	t.Helper()

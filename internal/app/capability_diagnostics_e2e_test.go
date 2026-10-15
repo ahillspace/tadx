@@ -24,10 +24,7 @@ environments:
       type: pat
       pat_name_env: SELECTED_PAT_NAME
       pat_secret_env: SELECTED_PAT_SECRET
-  unused-invalid:
-    url: https://tableau.example.com
-    auth:
-      type: basic
+site_mutations: SYNTHETIC_INVALID_CONSENT
 `
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
@@ -44,6 +41,9 @@ environments:
 		}
 		if !strings.Contains(first.String(), `"mutation_policy":"unavailable"`) {
 			t.Fatalf("list args=%v omitted unavailable policy: %s", args, first.String())
+		}
+		if strings.Contains(first.String(), "SYNTHETIC_INVALID_CONSENT") {
+			t.Fatalf("list args=%v exposed rejected consent data: %s", args, first.String())
 		}
 	}
 	var envelope struct {
@@ -66,7 +66,7 @@ environments:
 		t.Fatalf("full static output = %#v", envelope.Output)
 	}
 	cause := envelope.Error.Summary + " " + envelope.Error.UpstreamCause
-	expectedCause := `environment "unused-invalid" auth type must be "pat"`
+	expectedCause := "site_mutations must be a sequence"
 	if envelope.Output.MutationPolicy != "unavailable" || !strings.Contains(cause, expectedCause) {
 		t.Fatalf("policy diagnostic = %#v error=%#v", envelope.Output, envelope.Error)
 	}

@@ -371,7 +371,7 @@ type downloadWorkerFixture struct {
 func newDownloadWorkerFixture(t *testing.T, kind, heldID, failedID, body, extension string) *downloadWorkerFixture {
 	t.Helper()
 	fixture := &downloadWorkerFixture{releaseChannel: make(chan struct{}), contentStarted: make(chan struct{})}
-	fixture.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fixture.server = tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"credentials":{"token":"download-session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

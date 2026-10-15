@@ -86,6 +86,8 @@ TADX uses PAT authentication only.
 Interactive login validates the PAT before saving it, and persistence requires the native Windows Credential Manager, macOS Keychain, or Linux Secret Service.
 PATs and session tokens are not written to TADX configuration, output, logs, artifacts, or caches.
 Automation can instead reference PAT name and secret environment variables from an environment profile.
+TADX discovers the server's REST API version before sign-in and selects the supported version automatically.
+An invalid profile does not block valid profiles; see [profile repair](docs/getting-started.md#repair-an-invalid-profile) for diagnostics and recovery commands.
 
 Once connected, search for content and inspect a result.
 Replace `ENVIRONMENT_ALIAS` with the profile you created and `WORKBOOK_LUID` with an ID returned by search before running these examples:
@@ -134,6 +136,7 @@ Read the [security guide](docs/security.md) for credential storage, mutation con
 
 ## Documentation
 
+- [Roadmap](ROADMAP.md) tracks planned enhancements.
 - [Getting started](docs/getting-started.md) covers setup, credentials, content, caches, previews, Pulse, and updates.
 - [Capability reference](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html) describe the supported action inventory.
 - [Workspaces](docs/workspaces.md) covers local artifacts, paths, status, and cloning.

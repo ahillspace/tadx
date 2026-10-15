@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -182,7 +181,7 @@ func (cacheTestSession) UserLUID() string { return "user-luid" }
 func (cacheTestSession) String() string   { return "redacted session" }
 
 func TestCacheExecutorUsesSharedAuthenticatedTransport(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/3.29/sites/site-luid/workbooks" || request.URL.Query().Get("pageSize") != "1000" {
 			t.Fatalf("request URL = %s", request.URL.String())
 		}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,7 +21,7 @@ func TestAdminCreateSubmittedHTTP502IsUnknownThroughCLI(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			var posts int
 			var applied bool
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
@@ -74,7 +73,7 @@ func TestAdminCreateSubmittedHTTP502IsUnknownThroughCLI(t *testing.T) {
 
 func TestPermissionUsernamePreviewFiltersFiveThousandUsersThroughCLI(t *testing.T) {
 	var listGETs, filteredGETs int
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}
@@ -122,7 +121,7 @@ func TestPermissionUsernamePreviewFiltersFiveThousandUsersThroughCLI(t *testing.
 
 func TestCachedGroupMembersRequireObservedCoverageThroughCLI(t *testing.T) {
 	var memberReads int
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			return
 		}

@@ -126,7 +126,7 @@ func TestInspectAndFullOutputKeepTheResolvedContract(t *testing.T) {
 }
 
 func fixture() authops.StatusTarget {
-	return authops.StatusTarget{Environment: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameVariable: "PROD_PAT_NAME", PATSecretVariable: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
+	return authops.StatusTarget{Environment: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", AuthType: "pat", PATNameVariable: "PROD_PAT_NAME", PATSecretVariable: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
 }
 func assertGolden(t *testing.T, value any, full bool, path string) {
 	t.Helper()

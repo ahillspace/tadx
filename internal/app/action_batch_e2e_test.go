@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,7 +18,7 @@ import (
 func TestUserDeleteRepeatedIDsShareSessionAndKeepPartialResults(t *testing.T) {
 	var signins int
 	var deleted []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
 			signins++
 			return
@@ -67,7 +66,7 @@ func TestBatchFileDifferentUserSettingsPreviewAndExecution(t *testing.T) {
 			var signins int
 			roles := map[string]string{"one": "Viewer", "two": "Viewer"}
 			var updated []string
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					signins++
 					return

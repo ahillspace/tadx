@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -19,7 +18,7 @@ import (
 func TestMetadataTagBatchRetainsPartialSuccessAndContinues(t *testing.T) {
 	signins := 0
 	writes := []string{}
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			signins++
 			return

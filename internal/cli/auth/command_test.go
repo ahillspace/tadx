@@ -174,3 +174,19 @@ func TestLogoutRequiresExplicitEnvironment(t *testing.T) {
 		t.Fatalf("error = %#v, inputs = %#v", err, logout.inputs)
 	}
 }
+
+func TestLogoutPreservesExplicitEmptyAndWhitespaceEnvironment(t *testing.T) {
+	for _, alias := range []string{"", "   "} {
+		t.Run("alias_"+alias, func(t *testing.T) {
+			logout := &logout{}
+			command := authcli.New(authcli.Dependencies{Logout: logout, Renderer: &renderer{}})
+			command.SetArgs([]string{"logout", "--environment=" + alias})
+			if err := command.ExecuteContext(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if len(logout.inputs) != 1 || logout.inputs[0].Environment != alias || !logout.inputs[0].EnvironmentSet {
+				t.Fatalf("explicit selection changed: inputs=%+v", logout.inputs)
+			}
+		})
+	}
+}

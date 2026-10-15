@@ -46,15 +46,7 @@ func (w *workspaceRuntime) resolveForEnvironment(ctx context.Context, selector, 
 	if err != nil {
 		return workspacecore.Record{}, err
 	}
-	environmentDefault := ""
-	if environmentAlias != "" || configuration.DefaultEnvironment != "" {
-		environment, resolveErr := configuration.ResolveEnvironment(environmentAlias)
-		if resolveErr != nil {
-			return workspacecore.Record{}, resolveErr
-		}
-		environmentDefault = environment.DefaultWorkspace
-	}
-	return w.runtime.resolveWorkspace(ctx, configuration, selector, environmentDefault)
+	return w.runtime.resolveWorkspace(ctx, configuration, selector, environmentAlias)
 }
 
 func (a *workspaceRuntime) Create(ctx context.Context, input workspaceaction.CreateInput) (workspaceaction.Registration, error) {
@@ -400,7 +392,7 @@ func deleteArtifact(item artifact.Item) workspaceaction.ArtifactTarget {
 }
 
 func workspaceIdentity(item workspacecore.Record) workspaceaction.Workspace {
-	return workspaceaction.Workspace{Name: item.Name, ID: item.ID, Root: item.Root}
+	return workspaceaction.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, Status: item.Status, Violations: item.Violations}
 }
 
 func workspaceRegistration(item workspacecore.Record) workspaceaction.Registration {

@@ -28,6 +28,7 @@ import (
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -39,7 +40,6 @@ import (
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"github.com/ahillspace/tadx/internal/tableau"
-	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	updater "github.com/ahillspace/tadx/internal/update"
 	"github.com/ahillspace/tadx/internal/value"
@@ -86,6 +86,14 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
+		var metadata map[string]any
+		if capture.value != nil && !capture.renderError && capture.operation != "last" {
+			if configuration, err := config.Load(runtime.configPath); err == nil {
+				warnings := configuration.ConfigurationWarnings()
+				metadata = configurationMetadata(warnings, renderOptions.Full, hintConfigPath(renderOptions))
+				capture.metadata = configurationMetadata(warnings, true, hintConfigPath(renderOptions))
+			}
+		}
 		if options.publicationResult != nil && capture.value != nil {
 			if err := options.publicationResult(capture.value, capture.renderError, exitCode); err != nil {
 				exitCode = 1
@@ -99,7 +107,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 			_ = output.RenderWithOptions(warningWriter, lastResultWarning(), output.Options{JSON: renderOptions.JSON})
 		}
 		if capture.value != nil {
-			renderer := writerRenderer{writer: stdout, options: renderOptions, saved: capture.saved}
+			renderer := writerRenderer{writer: stdout, options: renderOptions, saved: capture.saved, metadata: metadata}
 			var renderErr error
 			if capture.renderError {
 				renderErr = output.RenderError(stdout, capture.value.(error), output.Options{Full: renderOptions.Full, JSON: renderOptions.JSON, ConfigPath: hintConfigPath(renderOptions), SavedResult: capture.saved})
@@ -140,7 +148,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		ResolveMutationPolicy: runtime.mutationPolicy,
 		MutationStatus:        runtime,
 		MutationSetter:        runtime,
-		LastReader:            lastaction.New(managedLastReader{store: capture.store, runtime: runtime}),
+		LastReader:            lastaction.New(managedLastReader{runtime: runtime}),
 		Jobs:                  (&jobCommands{runtime: runtime}).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {
 			_, environment, err := runtime.environment(alias, true)
@@ -251,10 +259,11 @@ func renderError(writer io.Writer, err error, renderOptions *cli.RenderOptions) 
 }
 
 type writerRenderer struct {
-	capture *lastCapture
-	writer  io.Writer
-	options *cli.RenderOptions
-	saved   bool
+	capture  *lastCapture
+	writer   io.Writer
+	options  *cli.RenderOptions
+	saved    bool
+	metadata map[string]any
 }
 
 func (r writerRenderer) Render(value any) error {
@@ -269,7 +278,27 @@ func (r writerRenderer) Render(value any) error {
 		full = true
 		configPath = ""
 	}
-	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, JSON: jsonOutput, ConfigPath: configPath, SavedResult: r.saved})
+	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, JSON: jsonOutput, ConfigPath: configPath, SavedResult: r.saved, Metadata: r.metadata})
+}
+
+func configurationMetadata(warnings []config.EntryWarning, full bool, configPath string) map[string]any {
+	if len(warnings) == 0 {
+		return nil
+	}
+	compact := make([]string, len(warnings))
+	details := make([]config.EntryWarning, len(warnings))
+	for index, warning := range warnings {
+		if len(warning.Commands) > 0 {
+			warning.Summary += "; " + commandhint.Recovery(warning.Commands, "", configPath)
+		}
+		details[index] = warning
+		compact[index] = warning.Summary
+	}
+	metadata := map[string]any{"warnings": compact}
+	if full {
+		metadata["configuration_warnings"] = details
+	}
+	return metadata
 }
 
 func hintConfigPath(options *cli.RenderOptions) string {
@@ -409,11 +438,11 @@ func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authops.
 	if err != nil {
 		return authops.CheckTarget{}, err
 	}
-	return authops.CheckTarget{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, nil
+	return authops.CheckTarget{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, nil
 }
 
 func (r *runtimeDependencies) Authenticate(ctx context.Context, target authops.CheckTarget) (authops.CheckAuthentication, error) {
-	session, source, err := r.commandSessions().AuthenticateWithSource(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, tableauauth.NewClient(r.transport(target.APIVersion)))
+	session, source, err := r.commandSessions().AuthenticateWithSource(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, commandSigner{runtime: r})
 	provenance := string(source)
 	if source == coreauth.CredentialSourceOSKeyring {
 		provenance = "os_credential_store"
@@ -427,7 +456,11 @@ func (r *runtimeDependencies) Authenticate(ctx context.Context, target authops.C
 		}
 		return authops.CheckAuthentication{CredentialSource: provenance}, err
 	}
-	return authops.CheckAuthentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID(), CredentialSource: provenance}, nil
+	transport, err := r.transport(ctx, target.ServerURL)
+	if err != nil {
+		return authops.CheckAuthentication{}, err
+	}
+	return authops.CheckAuthentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID(), CredentialSource: provenance, RESTAPIVersion: transport.APIVersion()}, nil
 }
 
 func (r *runtimeDependencies) environment(alias string, explicit bool) (config.Config, config.Environment, error) {
@@ -442,6 +475,9 @@ func (r *runtimeDependencies) environment(alias string, explicit bool) (config.C
 		environment, err = configuration.ResolveEnvironment(alias)
 	}
 	if err != nil {
+		if _, invalid := errors.AsType[*config.InvalidEnvironmentError](err); invalid {
+			return configuration, environment, &errs.Error{ID: "environment.invalid", Kind: errs.KindOperation, Operation: "environment.resolve", Environment: alias, Summary: "The selected environment configuration is invalid.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		}
 		return configuration, environment, &errs.Error{ID: "environment.resolve", Kind: errs.KindUsage, Operation: "environment.resolve", Environment: alias, Summary: "A configured environment alias is required, not a Tableau site name or URL.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Prerequisite: &errs.Prerequisite{Kind: "environment", Resource: alias, Summary: "Select a configured environment alias."}}
 	}
 	return configuration, environment, err
@@ -469,8 +505,11 @@ func (r *runtimeDependencies) tableauConnection(ctx context.Context, alias strin
 	if err != nil {
 		return authenticatedTableau{configuration: configuration, environment: environment}, err
 	}
-	transport := r.transport(environment.APIVersion)
-	session, err := r.authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, environment.APIVersion)
+	session, err := r.authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef})
+	if err != nil {
+		return authenticatedTableau{configuration: configuration, environment: environment}, err
+	}
+	transport, err := r.transport(ctx, environment.URL)
 	return authenticatedTableau{configuration: configuration, environment: environment, transport: transport, session: session}, err
 }
 

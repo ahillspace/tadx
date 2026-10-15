@@ -96,6 +96,7 @@ func newUnregister(deps Dependencies) *cobra.Command {
 			return err
 		}
 		input.Name = args[0]
+		input.NameSet = true
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.Unregistrar.Unregister(command.Context(), input)

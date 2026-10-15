@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ func TestAdminPermissionWrongTypedPrincipalReportsRecoveryWithoutWrites(t *testi
 		for _, operation := range []string{"create", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
 				var groupReads, permissionReads, writes int
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
 					case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin":
 						w.Header().Set("Content-Type", "application/json")
@@ -55,7 +54,6 @@ environments:
   test:
     url: %s
     site_content_url: marketing
-    api_version: "3.29"
     auth:
       type: pat
       pat_name_env: PERMISSION_PRINCIPAL_PAT_NAME

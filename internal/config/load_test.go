@@ -157,7 +157,7 @@ environments:
 	}
 }
 
-func TestLoadRejectsAmbiguousRelativeLegacyWorkspaceDefault(t *testing.T) {
+func TestLoadDefersAmbiguousRelativeLegacyWorkspaceDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	contents := `version: 1
 default_workspace: workspaces/dev
@@ -166,9 +166,12 @@ default_workspace: workspaces/dev
 		t.Fatal(err)
 	}
 
-	_, err := config.Load(path)
-	if err == nil || !strings.Contains(err.Error(), "absolute") || !strings.Contains(err.Error(), "workspace create") {
-		t.Fatalf("Load() error = %v", err)
+	c, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.ResolveWorkspace(""); err == nil {
+		t.Fatal("invalid default resolves")
 	}
 }
 
@@ -201,7 +204,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if environment.Alias != "production" || environment.APIVersion != "3.29" || environment.Auth.PATSecretEnv != "PROD_PAT_SECRET" {
+	if environment.Alias != "production" || environment.Auth.PATSecretEnv != "PROD_PAT_SECRET" {
 		t.Fatalf("environment = %#v", environment)
 	}
 }
@@ -220,8 +223,8 @@ environments:
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err == nil {
-		t.Fatal("Load() accepted persisted PAT values")
+	if c, err := config.Load(path); err != nil || len(c.InvalidEnvironments) != 1 {
+		t.Fatal("Load() did not quarantine persisted PAT values")
 	}
 }
 

@@ -113,7 +113,7 @@ func TestListExecuteValidatesBoundsAndWrapsReadFailure(t *testing.T) {
 }
 
 func TestListOutputProjectionsAndGoldens(t *testing.T) {
-	value, err := profilelist.NewList(listTestReader{profiles: []profilelist.Profile{{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}}}).Execute(context.Background(), profilelist.ListInput{})
+	value, err := profilelist.NewList(listTestReader{profiles: []profilelist.Profile{{Alias: "production", Default: true, ServerURL: "https://example.test", SiteContentURL: "marketing", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}}}).Execute(context.Background(), profilelist.ListInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,5 +141,16 @@ func listAssertGolden(t *testing.T, value any, full bool, path string) {
 	}
 	if !bytes.Equal(actual.Bytes(), want) {
 		t.Fatalf("golden mismatch\nwant:\n%s\ngot:\n%s", want, actual.Bytes())
+	}
+}
+
+func TestListCompactRetainsInvalidStatusAndViolationFields(t *testing.T) {
+	got, err := profilelist.NewList(listTestReader{profiles: []profilelist.Profile{{Alias: "broken", Status: "invalid", Violations: []string{"pat_secret_env"}}}}).Execute(t.Context(), profilelist.ListInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := got.CompactOutput().(profilelist.ListCompactResult).Profiles[0]
+	if profile.Status != "invalid" || !reflect.DeepEqual(profile.Violations, []string{"pat_secret_env"}) {
+		t.Fatalf("compact listing hid invalid entry fields: %+v", profile)
 	}
 }

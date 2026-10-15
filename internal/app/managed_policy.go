@@ -16,7 +16,6 @@ import (
 	"github.com/ahillspace/tadx/internal/cli"
 	policycli "github.com/ahillspace/tadx/internal/cli/policy"
 	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/lastcommand"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/value"
 	"github.com/spf13/cobra"
@@ -51,12 +50,11 @@ func (c *managedCapabilityChecks) snapshot() []string {
 }
 
 type managedLastReader struct {
-	store   lastcommand.Store
 	runtime *runtimeDependencies
 }
 
 func (r managedLastReader) Read(ctx context.Context) (value.SavedExecution, error) {
-	record, err := r.store.Read(ctx)
+	record, err := r.runtime.lastResultStore().Read(ctx)
 	if err != nil {
 		return record, err
 	}

@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	defaultAPIVersion          = "3.29"
 	defaultMaxResponseBytes    = 256 * 1024 * 1024
 	maxUpstreamDiagnosticBytes = 16 * 1024
 	// defaultStallTimeout bounds how long one request may go without progress:
@@ -312,13 +311,10 @@ func NewTransport(client *http.Client, apiVersion string, correlationID func() s
 		}
 		return nil
 	}
-	if apiVersion == "" {
-		apiVersion = defaultAPIVersion
-	}
 	return &Transport{client: &clientCopy, apiVersion: apiVersion, correlationID: correlationID, stallTimeout: defaultStallTimeout}
 }
 
-// APIVersion returns the configured optimistic REST API version.
+// APIVersion returns the negotiated REST API version, or an explicit adapter test version.
 func (t *Transport) APIVersion() string { return t.apiVersion }
 
 // SetStallTimeout overrides how long one request may go without progress

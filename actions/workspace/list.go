@@ -44,9 +44,11 @@ type ListOutput struct {
 }
 
 type listCompactWorkspace struct {
-	Name      string `json:"name"`
-	Default   bool   `json:"default"`
-	Available bool   `json:"available"`
+	Name       string   `json:"name"`
+	Default    bool     `json:"default"`
+	Available  bool     `json:"available"`
+	Status     string   `json:"status,omitempty"`
+	Violations []string `json:"violations,omitempty"`
 }
 
 type listCompactOutput struct {
@@ -66,7 +68,7 @@ type listFullOutput struct {
 func (o ListOutput) CompactOutput() any {
 	items := make([]listCompactWorkspace, len(o.Page.Items))
 	for index, item := range o.Page.Items {
-		items[index] = listCompactWorkspace{Name: item.Name, Default: item.Default, Available: item.Available}
+		items[index] = listCompactWorkspace{Name: item.Name, Default: item.Default, Available: item.Available, Status: item.Status, Violations: item.Violations}
 	}
 	page := output.Page{Returned: o.Page.Returned, Total: o.Page.Total, Limit: o.Page.Limit, NextCursor: o.Page.NextCursor}
 	return listCompactOutput{Page: page, Workspaces: items, Details: "--full", Help: o.Help}

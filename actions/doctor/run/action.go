@@ -3,9 +3,9 @@ package run
 import (
 	"context"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -55,11 +55,16 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, &errs.Error{ID: "doctor.run.usage", Kind: errs.KindUsage, Operation: "doctor.run", Summary: "Doctor scopes must be logical names, not paths.", Retryable: errs.Bool(false), CorrectiveAction: "Provide an environment alias or workspace name.", Validation: []errs.ValidationDetail{{Field: "scope", Code: "invalid", Message: "scope contains a path separator"}}}
 	}
 	scope := Scope{Environment: input.Environment, Workspace: input.Workspace}
-	configuration := a.checkConfiguration(ctx, scope)
+	configuration, findings, selectionPrerequisite := a.checkConfiguration(ctx, scope)
 	checks := []Check{configuration}
-	if configuration.Status != StatusPass {
+	checks = append(checks, findings...)
+	if configuration.Status != StatusPass || selectionPrerequisite != "" {
+		prerequisite := configuration.ID
+		if configuration.Status == StatusPass {
+			prerequisite = selectionPrerequisite
+		}
 		for _, id := range []string{"auth.pat.references", "auth.tableau.connectivity", "cache.status", "workspace.status"} {
-			checks = append(checks, blocked(id, configuration.ID))
+			checks = append(checks, blocked(id, prerequisite))
 		}
 	} else {
 		pat := a.checkPAT(ctx, scope)
@@ -103,18 +108,26 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{commandhint.Target(scope.Environment, scope.Workspace, "doctor", "--full")}}, nil
 }
 
-func (a *Action) checkConfiguration(ctx context.Context, scope Scope) Check {
+func (a *Action) checkConfiguration(ctx context.Context, scope Scope) (Check, []Check, string) {
 	const id = "config.valid"
 	state, err := a.dependencies.Configuration.CheckConfiguration(ctx, scope)
 	if err != nil {
 		check := fail(id, "Configuration could not be validated.", "Review the selected CLI settings file, not the workspace manifest; correct the reported profile or field.")
 		check.Cause, check.ConfigPath = state.Cause, state.ConfigPath
-		return check
+		return check, nil, ""
 	}
 	if !state.Present {
-		return fail(id, "Configuration is missing.", "Create a TADX configuration with an environment profile.")
+		return fail(id, "Configuration is missing.", "Create a TADX configuration with an environment profile."), nil, ""
 	}
-	return pass(id, "Configuration and environment resolution are valid.")
+	summary := "Configuration and environment resolution are valid."
+	if len(state.Findings) > 0 || state.SelectionInvalid {
+		summary = "The settings file is valid; entry findings appear below."
+	}
+	prerequisite := state.SelectionPrerequisite
+	if state.SelectionInvalid && prerequisite == "" {
+		prerequisite = "config.selection"
+	}
+	return pass(id, summary), state.Findings, prerequisite
 }
 
 func (a *Action) checkPAT(ctx context.Context, scope Scope) (check Check) {

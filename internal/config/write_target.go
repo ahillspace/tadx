@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 )
 
@@ -12,14 +10,12 @@ func (c Config) ResolveWriteEnvironment(alias string) (Environment, error) {
 	if alias != "" {
 		return c.ResolveEnvironment(alias)
 	}
-	if len(c.Environments) == 1 {
-		for name := range c.Environments {
-			return c.ResolveEnvironment(name)
-		}
+	names := c.EnvironmentAliases()
+	if len(names) == 1 {
+		return c.ResolveEnvironment(names[0])
 	}
-	if len(c.Environments) == 0 {
+	if len(names) == 0 {
 		return Environment{}, fmt.Errorf("No environments are configured. Add a Tableau connection before writing")
 	}
-	names := slices.Sorted(maps.Keys(c.Environments))
 	return Environment{}, fmt.Errorf("Multiple environments are configured. Choose the target with --env <name>. Configured environments: %s", strings.Join(names, ", "))
 }

@@ -1,6 +1,7 @@
 # API contract evidence
 
 These records preserve the upstream contracts and verification limits supporting TADX capabilities.
+[REST version negotiation](rest-version-negotiation-contract.md) records unauthenticated server discovery and the PAT authentication minimum.
 Official documentation is available without a local documentation capture:
 
 | API family | Official documentation |

@@ -53,7 +53,7 @@ func (a *CheckAction) Execute(ctx context.Context, input CheckInput) (CheckOutpu
 		}
 		return out, failure
 	}
-	return CheckOutput{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID, CredentialSource: result.CredentialSource, Help: []string{commandhint.Environment(target.Environment, "search", "--type", "content")}}, nil
+	return CheckOutput{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID, CredentialSource: result.CredentialSource, RESTAPIVersion: result.RESTAPIVersion, Help: []string{commandhint.Environment(target.Environment, "search", "--type", "content")}}, nil
 }
 
 // CheckInput selects one configured Tableau environment.
@@ -66,7 +66,6 @@ type CheckTarget struct {
 	Environment         string
 	ServerURL           string
 	SiteContentURL      string
-	APIVersion          string
 	PATNameVariable     string
 	PATSecretVariable   string
 	CredentialReference string
@@ -77,6 +76,7 @@ type CheckAuthentication struct {
 	SiteLUID         string
 	UserLUID         string
 	CredentialSource string
+	RESTAPIVersion   string
 }
 
 // CheckOutput is the stable authenticated target result.
@@ -88,5 +88,6 @@ type CheckOutput struct {
 	SiteLUID         string   `json:"site_luid,omitempty"`
 	UserLUID         string   `json:"user_luid,omitempty"`
 	CredentialSource string   `json:"credential_source,omitempty"`
+	RESTAPIVersion   string   `json:"rest_api_version,omitempty"`
 	Help             []string `json:"help"`
 }

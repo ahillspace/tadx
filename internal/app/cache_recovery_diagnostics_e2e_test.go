@@ -146,7 +146,7 @@ func cacheDiagnosticRepair(configPath, advice string) []string {
 func cacheRecoveryServer(t *testing.T, kind string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	requests := &atomic.Int32{}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if diagnosticSignIn(w, r) {
 			return

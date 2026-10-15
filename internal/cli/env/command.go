@@ -57,7 +57,7 @@ func newGet(deps Dependencies) *cobra.Command {
 		Use: use(deps, "env.profile.get", "get <alias>"), Short: short(deps, "env.profile.get", "Inspect one environment profile."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.get"}, Args: exactAlias("env.profile.get"),
 		RunE: func(command *cobra.Command, args []string) error {
-			result, err := deps.Getter(command.Context(), profile.GetInput{Alias: args[0]})
+			result, err := deps.Getter(command.Context(), profile.GetInput{Alias: args[0], AliasSet: true})
 			if err != nil {
 				return err
 			}
@@ -92,7 +92,7 @@ func newAdd(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	addProfileFlags(command, &input.ServerURL, &input.SiteContentURL, &input.APIVersion, &input.PATNameEnv, &input.PATSecretEnv, &input.DefaultWorkspace)
+	addProfileFlags(command, &input.ServerURL, &input.SiteContentURL, &input.PATNameEnv, &input.PATSecretEnv, &input.DefaultWorkspace)
 	command.Flags().BoolVar(&input.Preview, "preview", false, "validate the planned profile without saving configuration")
 	command.Flags().IntVar(&input.CacheMaxConcurrency, "cache-max-concurrency", 0, "maximum concurrent cache read requests, 1 to 256 (default 32)")
 	return command
@@ -111,7 +111,7 @@ func newUpdate(deps Dependencies) *cobra.Command {
 			if err := exactAlias("env.profile.update")(command, args); err != nil {
 				return err
 			}
-			for _, conflict := range []struct{ value, clear string }{{"site", "clear-site"}, {"api-version", "clear-api-version"}, {"pat-name-env", "clear-pat-name-env"}, {"pat-secret-env", "clear-pat-secret-env"}, {"default-workspace", "clear-default-workspace"}, {"cache-max-concurrency", "clear-cache-max-concurrency"}} {
+			for _, conflict := range []struct{ value, clear string }{{"site", "clear-site"}, {"pat-name-env", "clear-pat-name-env"}, {"pat-secret-env", "clear-pat-secret-env"}, {"default-workspace", "clear-default-workspace"}, {"cache-max-concurrency", "clear-cache-max-concurrency"}} {
 				if command.Flags().Changed(conflict.value) && command.Flags().Changed(conflict.clear) {
 					return clierr.Usage("env.profile.update", errors.New("--"+conflict.value+" and --"+conflict.clear+" cannot be used together"))
 				}
@@ -125,23 +125,21 @@ func newUpdate(deps Dependencies) *cobra.Command {
 			patch := profile.Patch{
 				ServerURL:           field(command, "url", values.serverURL, false),
 				SiteContentURL:      field(command, "site", values.site, clears.site),
-				APIVersion:          field(command, "api-version", values.apiVersion, clears.apiVersion),
 				PATNameEnv:          field(command, "pat-name-env", values.patNameEnv, clears.patNameEnv),
 				PATSecretEnv:        field(command, "pat-secret-env", values.patSecretEnv, clears.patSecretEnv),
 				DefaultWorkspace:    field(command, "default-workspace", values.defaultWorkspace, clears.defaultWorkspace),
 				CacheMaxConcurrency: profile.IntField{Set: command.Flags().Changed("cache-max-concurrency") || clearCacheMaxConcurrency, Value: cacheMaxConcurrency},
 			}
-			result, err := deps.Updater(command.Context(), profile.UpdateInput{Alias: args[0], Patch: patch, Preview: preview})
+			result, err := deps.Updater(command.Context(), profile.UpdateInput{Alias: args[0], AliasSet: true, Patch: patch, Preview: preview})
 			if err != nil {
 				return err
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
-	addProfileFlags(command, &values.serverURL, &values.site, &values.apiVersion, &values.patNameEnv, &values.patSecretEnv, &values.defaultWorkspace)
+	addProfileFlags(command, &values.serverURL, &values.site, &values.patNameEnv, &values.patSecretEnv, &values.defaultWorkspace)
 	command.Flags().BoolVar(&preview, "preview", false, "validate the planned profile changes without saving configuration")
 	command.Flags().BoolVar(&clears.site, "clear-site", false, "clear the site content URL")
-	command.Flags().BoolVar(&clears.apiVersion, "clear-api-version", false, "restore the default API version")
 	command.Flags().BoolVar(&clears.patNameEnv, "clear-pat-name-env", false, "restore the conventional PAT name variable")
 	command.Flags().BoolVar(&clears.patSecretEnv, "clear-pat-secret-env", false, "restore the conventional PAT secret variable")
 	command.Flags().BoolVar(&clears.defaultWorkspace, "clear-default-workspace", false, "clear the environment workspace default")
@@ -156,7 +154,7 @@ func newRemove(deps Dependencies) *cobra.Command {
 		Use: use(deps, "env.profile.remove", "remove <alias>"), Short: short(deps, "env.profile.remove", "Remove an environment profile."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.remove"}, Args: exactAlias("env.profile.remove"),
 		RunE: func(command *cobra.Command, args []string) error {
-			result, err := deps.Remover(command.Context(), profile.RemoveInput{Alias: args[0], Preview: preview})
+			result, err := deps.Remover(command.Context(), profile.RemoveInput{Alias: args[0], AliasSet: true, Preview: preview})
 			if err != nil {
 				return err
 			}
@@ -171,6 +169,7 @@ func newDefault(deps Dependencies) *cobra.Command {
 	var preview bool
 	command := &cobra.Command{
 		Use: use(deps, "env.profile.set-default", "default <alias>"), Short: short(deps, "env.profile.set-default", "Set the default environment."),
+		Aliases:     []string{"set-default"},
 		Annotations: map[string]string{"tadx.capability": "env.profile.set-default"}, Args: exactAlias("env.profile.set-default"),
 		RunE: func(command *cobra.Command, args []string) error {
 			result, err := deps.DefaultSetter(command.Context(), profile.SetDefaultInput{Alias: args[0], Preview: preview})
@@ -184,13 +183,12 @@ func newDefault(deps Dependencies) *cobra.Command {
 	return command
 }
 
-type profileValues struct{ serverURL, site, apiVersion, patNameEnv, patSecretEnv, defaultWorkspace string }
-type profileClears struct{ site, apiVersion, patNameEnv, patSecretEnv, defaultWorkspace bool }
+type profileValues struct{ serverURL, site, patNameEnv, patSecretEnv, defaultWorkspace string }
+type profileClears struct{ site, patNameEnv, patSecretEnv, defaultWorkspace bool }
 
-func addProfileFlags(command *cobra.Command, serverURL, site, apiVersion, patNameEnv, patSecretEnv, defaultWorkspace *string) {
+func addProfileFlags(command *cobra.Command, serverURL, site, patNameEnv, patSecretEnv, defaultWorkspace *string) {
 	command.Flags().StringVar(serverURL, "url", "", "Tableau server HTTPS URL")
 	command.Flags().StringVar(site, "site", "", "Tableau site content URL")
-	command.Flags().StringVar(apiVersion, "api-version", "", "Tableau REST API version")
 	command.Flags().StringVar(patNameEnv, "pat-name-env", "", "PAT name environment-variable reference")
 	command.Flags().StringVar(patSecretEnv, "pat-secret-env", "", "PAT secret environment-variable reference")
 	command.Flags().StringVar(defaultWorkspace, "default-workspace", "", "logical default workspace name")

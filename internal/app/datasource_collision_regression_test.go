@@ -8,7 +8,6 @@ import (
 	"github.com/ahillspace/tadx/internal/identity"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,7 +17,7 @@ func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComp
 	const datasourceName = "Revenue & Profit, Daily"
 	const datasourceXMLName = "Revenue &amp; Profit, Daily"
 	var collisionRequests atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
 			writer.Header().Set("Content-Type", "application/json")

@@ -6,7 +6,6 @@ import (
 	"github.com/ahillspace/tadx/internal/artifact"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ func TestNativePublishPreviewThroughCLIWithoutManagedArtifact(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			writes := 0
 			expectedBody := map[string]string{"workbook": "<workbook/>", "datasource": "<datasource/>", "flow": `{"nodes":{}}`}[kind]
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 					w.Header().Set("Content-Type", "application/json")

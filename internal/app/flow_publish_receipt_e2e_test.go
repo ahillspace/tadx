@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,7 @@ import (
 
 func TestFlowPublishPreservesConfirmedPersistenceOutcome(t *testing.T) {
 	var publishes atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/auth/signin"):
 			writer.Header().Set("Content-Type", "application/json")

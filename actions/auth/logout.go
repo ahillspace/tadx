@@ -6,12 +6,13 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 // LogoutResolver resolves one configured environment without reading credentials.
 type LogoutResolver interface {
-	Resolve(context.Context, string) (LogoutTarget, error)
+	Resolve(context.Context, string, bool) (LogoutTarget, error)
 }
 
 // LogoutStore removes credentials from TADX's native OS credential store.
@@ -35,17 +36,17 @@ func (a *LogoutAction) Execute(ctx context.Context, input LogoutInput) (LogoutOu
 	if a == nil || a.resolver == nil || a.store == nil {
 		return LogoutOutput{}, &errs.Error{ID: "auth.logout.unconfigured", Kind: errs.KindRuntime, Operation: "auth.logout", Summary: "PAT logout is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure environment resolution and OS credential storage before retrying."}
 	}
-	target, err := a.resolver.Resolve(ctx, input.Environment)
+	target, err := a.resolver.Resolve(ctx, input.Environment, input.EnvironmentSet)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
 		return LogoutOutput{}, &errs.Error{ID: "auth.logout.resolve", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
+	var repairHelp []string
+	if target.StoredCredentialReferenceInvalid {
+		repairHelp = append(repairHelp, commandhint.Command("env", "remove", "--", target.Environment))
+	}
 	if input.Preview {
-		var warnings []string
-		if target.EnvironmentCredentialsAvailable {
-			warnings = []string{"Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate."}
-		}
-		return LogoutOutput{Status: "preview", Environment: target.Environment, CredentialSource: LogoutCredentialSourceOS, Plan: &LogoutPlan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: warnings, Help: []string{"Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked."}}, nil
+		return LogoutOutput{Status: "preview", Environment: target.Environment, CredentialSource: LogoutCredentialSourceOS, Plan: &LogoutPlan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: target.warnings(), Help: append(repairHelp, "Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked.")}, nil
 	}
 	removed, err := a.store.Remove(ctx, target)
 	if installed, ok := installedConfiguration(err); ok {
@@ -64,14 +65,10 @@ func (a *LogoutAction) Execute(ctx context.Context, input LogoutInput) (LogoutOu
 	if removed.Removed {
 		status = "removed"
 	}
-	var warnings []string
-	if target.EnvironmentCredentialsAvailable {
-		warnings = []string{"Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate."}
-	}
 	return LogoutOutput{
-		Warnings: warnings,
+		Warnings: target.warnings(),
 		Status:   status, Environment: target.Environment, CredentialSource: LogoutCredentialSourceOS, TableauPATRevoked: false,
-		Help: []string{"The Tableau PAT remains valid until you revoke it in Tableau."},
+		Help: append(repairHelp, "The Tableau PAT remains valid until you revoke it in Tableau."),
 	}, nil
 }
 
@@ -101,8 +98,9 @@ const LogoutCredentialSourceOS = "os_credential_store"
 
 // LogoutInput selects one explicit environment credential.
 type LogoutInput struct {
-	Environment string
-	Preview     bool
+	Environment    string
+	EnvironmentSet bool `json:"-"`
+	Preview        bool
 }
 
 // LogoutTarget contains nonsecret credential storage identity.
@@ -110,6 +108,18 @@ type LogoutTarget struct {
 	Environment                      string
 	EnvironmentCredentialsAvailable  bool
 	StoredCredentialReferencePresent bool
+	StoredCredentialReferenceInvalid bool
+}
+
+func (target LogoutTarget) warnings() []string {
+	var warnings []string
+	if target.StoredCredentialReferenceInvalid {
+		warnings = append(warnings, "No stored credential can be located because credential_ref is invalid. Review its settings before removing this environment.")
+	}
+	if target.EnvironmentCredentialsAvailable {
+		warnings = append(warnings, "Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate.")
+	}
+	return warnings
 }
 
 // LogoutRemoveResult reports whether a stored credential existed.

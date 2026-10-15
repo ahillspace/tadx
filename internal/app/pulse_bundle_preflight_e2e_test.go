@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +33,7 @@ func newPulsePreflightFixture(t *testing.T) *pulsePreflightFixture {
 		`{"measurement_period":{"granularity":"GRANULARITY_BY_MONTH","range":"RANGE_CURRENT_PARTIAL"},"filters":[]}`,
 		`{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":17,"offset":3},"filters":[{"field":"Region","operator":"OPERATOR_NOT_EQUAL","categorical_values":[{"string_value":"West"},{"null_value":"NULL_VALUE"}],"include_null":true}]}`,
 	}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fixture.requests.Add(1)
 		if r.Method == http.MethodPost {
 			fixture.posts.Add(1)

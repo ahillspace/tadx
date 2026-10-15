@@ -42,7 +42,7 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 	if input.Preview {
 		add = a.adder.PreviewAdd
 	}
-	profile, err := add(ctx, AddProfile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency})
+	profile, err := add(ctx, AddProfile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency})
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the new environment profile and alias, then retry.")
 		id, summary := "env.profile.add.write", "Environment profile could not be added."
@@ -94,7 +94,6 @@ type AddInput struct {
 	Alias               string `json:"alias"`
 	ServerURL           string `json:"server_url"`
 	SiteContentURL      string `json:"site_content_url,omitempty"`
-	APIVersion          string `json:"api_version,omitempty"`
 	PATNameEnv          string `json:"pat_name_env,omitempty"`
 	PATSecretEnv        string `json:"pat_secret_env,omitempty"`
 	DefaultWorkspace    string `json:"default_workspace,omitempty"`
@@ -106,7 +105,6 @@ type AddProfile struct {
 	Alias                string `json:"alias"`
 	ServerURL            string `json:"server_url"`
 	SiteContentURL       string `json:"site_content_url,omitempty"`
-	APIVersion           string `json:"api_version,omitempty"`
 	AuthType             string `json:"auth_type"`
 	PATNameEnv           string `json:"pat_name_env"`
 	PATSecretEnv         string `json:"pat_secret_env"`

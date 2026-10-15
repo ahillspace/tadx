@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -39,7 +38,7 @@ func TestDefaultSiteLifecyclePreviewThroughCLI(t *testing.T) {
 
 func TestDefaultSiteAdminCreateThroughCLI(t *testing.T) {
 	var creates atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			var body struct {

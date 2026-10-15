@@ -19,9 +19,18 @@ func (r *runtimeDependencies) configuredPATVariables() []string {
 	if err != nil {
 		return nil
 	}
-	names := make([]string, 0, 2*len(configuration.Environments))
-	for _, environment := range configuration.Environments {
-		names = append(names, environment.Auth.PATNameEnv, environment.Auth.PATSecretEnv)
+	aliases := configuration.EnvironmentAliases()
+	names := make([]string, 0, 2*len(aliases))
+	for _, alias := range aliases {
+		environment, err := configuration.EnvironmentForRepair(alias)
+		if err != nil {
+			continue
+		}
+		for _, name := range []string{environment.Auth.PATNameEnv, environment.Auth.PATSecretEnv} {
+			if config.ValidVariableReference(name) {
+				names = append(names, name)
+			}
+		}
 	}
 	return names
 }

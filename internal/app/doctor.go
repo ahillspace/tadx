@@ -10,6 +10,7 @@ import (
 	doctorrun "github.com/ahillspace/tadx/actions/doctor/run"
 	"github.com/ahillspace/tadx/internal/artifact"
 	corecache "github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 )
 
@@ -37,12 +38,36 @@ func (c *doctorRuntime) CheckConfiguration(_ context.Context, scope doctorrun.Sc
 	if err != nil {
 		return doctorrun.ConfigurationState{Present: true, Cause: err.Error(), ConfigPath: c.runtime.configPath}, err
 	}
-	_, err = configuration.ResolveEnvironment(scope.Environment)
 	state := doctorrun.ConfigurationState{Present: true}
-	if err != nil {
-		state.Cause, state.ConfigPath = err.Error(), c.runtime.configPath
+	for _, warning := range configuration.ConfigurationWarnings() {
+		finding := doctorrun.Check{ID: "config." + warning.Kind + "." + warning.Name, Status: doctorrun.StatusWarn, Summary: warning.Summary}
+		switch warning.Kind {
+		case "environment":
+			finding.Status = doctorrun.StatusFail
+			finding.CorrectiveAction = commandhint.Recovery(warning.Commands, warning.Explanation, c.runtime.configPath)
+		case "workspace":
+			finding.Status = doctorrun.StatusFail
+			finding.CorrectiveAction = commandhint.Recovery(warning.Commands, warning.Explanation, c.runtime.configPath)
+		default:
+			finding.CorrectiveAction = "Use a TADX build that supports this configuration field."
+		}
+		state.Findings = append(state.Findings, finding)
 	}
-	return state, err
+	_, err = configuration.ResolveEnvironment(scope.Environment)
+	if err != nil {
+		state.SelectionInvalid = true
+		if invalid, ok := errors.AsType[*config.InvalidEnvironmentError](err); ok {
+			state.SelectionPrerequisite = "config.environment." + invalid.Alias
+		} else {
+			state.SelectionPrerequisite = "config.selection"
+			fix := "Run tadx env list, then select a valid environment with --environment or tadx env set-default."
+			if corrective, ok := err.(interface{ CorrectiveAction() string }); ok {
+				fix = corrective.CorrectiveAction()
+			}
+			state.Findings = append(state.Findings, doctorrun.Check{ID: state.SelectionPrerequisite, Status: doctorrun.StatusFail, Summary: err.Error(), CorrectiveAction: fix})
+		}
+	}
+	return state, nil
 }
 
 func (c *doctorRuntime) CheckPATReferences(_ context.Context, scope doctorrun.Scope) (doctorrun.PATState, error) {

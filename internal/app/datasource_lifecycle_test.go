@@ -23,7 +23,7 @@ import (
 
 func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePaths(t *testing.T) {
 	var deletes atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
 			writer.Header().Set("Content-Type", "application/json")
@@ -111,7 +111,7 @@ func TestDatasourcePublishModeMappingIsExhaustive(t *testing.T) {
 func datasourceLifecycleRuntime(t *testing.T, server *httptest.Server) (*runtimeDependencies, string) {
 	t.Helper()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: team-site\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", server.URL)
+	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: team-site\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

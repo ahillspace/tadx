@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -37,7 +36,7 @@ func TestPulseProjectionRequiredEmptyFields(t *testing.T) {
 
 func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 	var requests []string
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		requests = append(requests, r.Method+" "+r.URL.Path)
 		switch r.URL.Path {
@@ -57,7 +56,7 @@ func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 	}))
 	defer server.Close()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	configuration := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: sandbox\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PULSE_PROJECTION_PAT_NAME\n      pat_secret_env: PULSE_PROJECTION_PAT_SECRET\n", server.URL)
+	configuration := fmt.Sprintf("version: 1\ndefault_environment: test\nenvironments:\n  test:\n    url: %s\n    site_content_url: sandbox\n    auth:\n      type: pat\n      pat_name_env: PULSE_PROJECTION_PAT_NAME\n      pat_secret_env: PULSE_PROJECTION_PAT_SECRET\n", server.URL)
 	if err := os.WriteFile(configPath, []byte(configuration), 0600); err != nil {
 		t.Fatal(err)
 	}

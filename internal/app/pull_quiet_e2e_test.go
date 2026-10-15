@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ import (
 func TestRoutinePullKeepsOptionalEnrichmentDiagnosticsFullOnly(t *testing.T) {
 	for _, kind := range []string{"workbook", "datasource", "flow"} {
 		t.Run(kind, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}

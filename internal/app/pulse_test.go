@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +23,7 @@ import (
 
 func TestPulseDeletesPreviewThenRevalidateExactLiveTarget(t *testing.T) {
 	var definitionGets, definitionDeletes, metricGets, metricDeletes int
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
@@ -56,7 +55,6 @@ environments:
   production:
     url: %s
     site_content_url: marketing
-    api_version: "3.29"
     auth:
       type: pat
       pat_name_env: PULSE_DELETE_PAT_NAME
@@ -114,7 +112,6 @@ environments:
   production:
     url: https://tableau.invalid
     site_content_url: marketing
-    api_version: "3.29"
     auth:
       type: pat
       pat_name_env: MISSING_PULSE_PAT_NAME

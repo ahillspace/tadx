@@ -38,10 +38,11 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 			state.ReadSelection = "only_environment"
 		}
 	}
-	if len(cfg.Environments) == 1 {
+	environmentCount := len(cfg.EnvironmentAliases())
+	if environmentCount == 1 {
 		state.WriteTarget = "only_environment"
 	}
-	if len(cfg.Environments) == 0 {
+	if environmentCount == 0 {
 		state.WriteTarget = "environment_setup_required"
 		state.ReadSelection = "environment_setup_required"
 	}
@@ -74,7 +75,7 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 	for name, workspace := range cfg.Workspaces {
 		state.Workspaces = append(state.Workspaces, sessionoverview.Workspace{Name: name, Path: filepath.ToSlash(workspace.Path), Default: strings.EqualFold(name, cfg.DefaultWorkspace)})
 	}
-	record, workspaceErr := r.runtime.resolveWorkspace(ctx, cfg, "", selected.DefaultWorkspace)
+	record, workspaceErr := r.runtime.resolveWorkspace(ctx, cfg, "", selected.Alias)
 	if ctx.Err() != nil {
 		return state, ctx.Err()
 	}

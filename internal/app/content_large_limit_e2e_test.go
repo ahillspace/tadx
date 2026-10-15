@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,7 +14,7 @@ func TestContentLargeLimitsUseBoundedProviderPagesThroughCLI(t *testing.T) {
 	for _, kind := range []string{"workbook", "datasource", "flow", "project"} {
 		t.Run(kind, func(t *testing.T) {
 			var resourcePages []int
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 					w.Header().Set("Content-Type", "application/json")
 					io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

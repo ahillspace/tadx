@@ -2,7 +2,6 @@ package profile
 
 import (
 	"context"
-	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -19,7 +18,7 @@ func (a *RemoveAction) Execute(ctx context.Context, input RemoveInput) (RemoveOu
 	if a == nil || a.remover == nil {
 		return RemoveOutput{}, &errs.Error{ID: "env.profile.remove.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.remove", Summary: "Environment profile removal is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
-	if strings.TrimSpace(input.Alias) == "" {
+	if input.Alias == "" && !input.AliasSet {
 		return RemoveOutput{}, &errs.Error{ID: "env.profile.remove.usage", Kind: errs.KindUsage, Operation: "env.profile.remove", Summary: "environment alias is required"}
 	}
 	remove := a.remover.Remove
@@ -41,8 +40,9 @@ func (a *RemoveAction) Execute(ctx context.Context, input RemoveInput) (RemoveOu
 }
 
 type RemoveInput struct {
-	Preview bool   `json:"preview,omitempty"`
-	Alias   string `json:"alias"`
+	Preview  bool   `json:"preview,omitempty"`
+	Alias    string `json:"alias"`
+	AliasSet bool   `json:"-"`
 }
 type RemoveOutput struct {
 	Status      string   `json:"status"`

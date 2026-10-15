@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,6 +73,44 @@ type loggingChecker struct {
 	state doctorrun.LoggingState
 	err   error
 	calls int
+}
+
+func TestDoctorReportsInvalidEntriesWithoutBlockingHealthySelection(t *testing.T) {
+	for _, invalidSelection := range []bool{false, true} {
+		t.Run(fmt.Sprintf("invalid_selection_%t", invalidSelection), func(t *testing.T) {
+			pat := &patChecker{state: doctorrun.PATState{NameVariablePresent: true, SecretVariablePresent: true}}
+			connectivity := &connectivityChecker{}
+			prerequisite := ""
+			if invalidSelection {
+				prerequisite = "config.environment.broken"
+			}
+			action := doctorrun.New(doctorrun.Dependencies{
+				Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, SelectionInvalid: invalidSelection, SelectionPrerequisite: prerequisite, Findings: []doctorrun.Check{
+					{ID: "config.environment.other", Status: doctorrun.StatusFail, Summary: "Environment other is invalid (url).", CorrectiveAction: "Run tadx env update other."},
+					{ID: "config.environment.broken", Status: doctorrun.StatusFail, Summary: "Environment broken is invalid (pat_secret_env).", CorrectiveAction: "Run tadx env update broken or tadx env remove broken."},
+				}}},
+				PAT: pat, Connectivity: connectivity,
+				Cache: &cacheChecker{}, Workspace: &workspaceChecker{state: doctorrun.WorkspaceState{Available: true, ManifestValid: true}}, Logging: &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
+			})
+			out, err := action.Execute(t.Context(), doctorrun.Input{Environment: "good"})
+			if err != nil || len(out.Checks) != 8 || out.Checks[0].Status != doctorrun.StatusPass || out.Checks[2].ID != "config.environment.broken" {
+				t.Fatalf("entry findings changed file validity: out=%+v err=%v", out, err)
+			}
+			if invalidSelection && (pat.calls != 0 || connectivity.calls != 0 || out.Counts.Blocked != 4) {
+				t.Fatalf("invalid selection ran dependent probes: out=%+v", out)
+			}
+			if invalidSelection {
+				for _, check := range out.Checks[3:7] {
+					if check.BlockedBy != "config.environment.broken" {
+						t.Fatalf("dependent probe named an unrelated invalid entry: %+v", check)
+					}
+				}
+			}
+			if !invalidSelection && (pat.calls != 1 || connectivity.calls != 1 || out.Counts.Blocked != 0) {
+				t.Fatalf("unrelated invalid entry blocked healthy probes: out=%+v", out)
+			}
+		})
+	}
 }
 
 func (c *loggingChecker) CheckLogging(context.Context, doctorrun.Scope) (doctorrun.LoggingState, error) {

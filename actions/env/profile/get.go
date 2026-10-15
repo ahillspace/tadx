@@ -20,7 +20,7 @@ func (a *GetAction) Execute(ctx context.Context, input GetInput) (GetOutput, err
 	if a == nil || a.reader == nil {
 		return GetOutput{}, &errs.Error{ID: "env.profile.get.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.get", Summary: "Environment profile inspection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
-	if strings.TrimSpace(input.Alias) == "" {
+	if input.Alias == "" && !input.AliasSet {
 		return GetOutput{}, &errs.Error{ID: "env.profile.get.usage", Kind: errs.KindUsage, Operation: "env.profile.get", Summary: "environment alias is required"}
 	}
 	profile, err := a.reader.Get(ctx, input.Alias)
@@ -28,11 +28,20 @@ func (a *GetAction) Execute(ctx context.Context, input GetInput) (GetOutput, err
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
 		return GetOutput{}, &errs.Error{ID: "env.profile.get.read", Kind: errs.KindOperation, Operation: "env.profile.get", Environment: input.Alias, Summary: "Environment profile could not be read.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
-	return GetOutput{Profile: profile, Help: []string{commandhint.Environment(profile.Alias, "auth", "status")}}, nil
+	help := []string{commandhint.Environment(profile.Alias, "auth", "status")}
+	if profile.Status == "invalid" {
+		aliasArgs := []string{profile.Alias}
+		if strings.HasPrefix(profile.Alias, "-") {
+			aliasArgs = append([]string{"--"}, aliasArgs...)
+		}
+		help = []string{commandhint.Command(append([]string{"env", "update"}, aliasArgs...)...), commandhint.Command(append([]string{"env", "remove"}, aliasArgs...)...)}
+	}
+	return GetOutput{Profile: profile, Help: help}, nil
 }
 
 type GetInput struct {
-	Alias string `json:"alias"`
+	Alias    string `json:"alias"`
+	AliasSet bool   `json:"-"`
 }
 
 type GetOutput struct {

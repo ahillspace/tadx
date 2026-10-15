@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -18,7 +17,7 @@ func TestWorkbookDescriptionUpdateThroughCLI(t *testing.T) {
 		t.Run(fmt.Sprint(preview), func(t *testing.T) {
 			puts := 0
 			description := "Existing description"
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/xml")
 				switch {
 				case r.URL.Path == "/api/3.29/auth/signin":

@@ -34,6 +34,8 @@ type Options struct {
 	Secrets         []string
 	TOON            toon.EncodeOptions
 	ConfigPath      string
+	// Metadata adds shared diagnostics after the result selects its projection.
+	Metadata map[string]any
 	// SavedResult permits immediate detail expansion only after successful persistence.
 	SavedResult bool
 }
@@ -94,13 +96,11 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if limit == 0 {
 		limit = DefaultMaxStringLength
 	}
-	if options.ConfigPath != "" {
-		value = bindHintValue(value, options.ConfigPath)
-	}
+	value = bindHintValue(value, options.ConfigPath)
 	if len(detailArgs) > 0 {
 		value = detailHint(value, detailArgs, options.JSON, options.ConfigPath)
 	}
-	if !options.JSON && len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
+	if !options.JSON && len(options.Metadata) == 0 && len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
 		encoded, err := toon.EncodeWithOptions(value, options.TOON)
 		if err != nil {
 			return fmt.Errorf("render TOON: %w", err)
@@ -110,6 +110,13 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	normalized, err := normalize(value)
 	if err != nil {
 		return err
+	}
+	if len(options.Metadata) > 0 {
+		metadata, err := normalize(options.Metadata)
+		if err != nil {
+			return err
+		}
+		normalized = mergeMetadata(normalized, metadata.(map[string]any))
 	}
 	redactor := newRedactor(options.Secrets)
 	normalized = transform(normalized, redactor, limit, options.Full)
@@ -130,7 +137,7 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 }
 
 func bindHintValue(value any, configPath string) any {
-	if value == nil || configPath == "" {
+	if value == nil {
 		return value
 	}
 	cloned := bindHintReflect(reflect.ValueOf(value), configPath, "", make(map[visit]bool), 0)
@@ -172,6 +179,10 @@ func bindHintReflect(value reflect.Value, configPath, detailCommand string, seen
 		result.Elem().Set(bindHintReflect(value.Elem(), configPath, detailCommand, seen, depth+1))
 		return result
 	case reflect.Struct:
+		if payload, ok := value.Interface().(errs.Payload); ok && detailCommand == "" && len(payload.CorrectiveCommands) > 0 {
+			payload.CorrectiveAction = commandhint.Recovery(payload.CorrectiveCommands, payload.CorrectiveExplanation, configPath)
+			value = reflect.ValueOf(payload)
+		}
 		result := reflect.New(value.Type()).Elem()
 		result.Set(value)
 		// An aggregate receipt needs one expansion command, not a copy for
@@ -202,6 +213,9 @@ func bindHintReflect(value reflect.Value, configPath, detailCommand string, seen
 			}
 			if name == "Help" || jsonName == "help" {
 				if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.String {
+					if field.IsNil() {
+						continue
+					}
 					bound := reflect.MakeSlice(field.Type(), field.Len(), field.Len())
 					reflect.Copy(bound, field)
 					field.Set(bound)
@@ -326,6 +340,34 @@ func normalize(value any) (any, error) {
 		return nil, fmt.Errorf("normalize output: %w", err)
 	}
 	return normalized, nil
+}
+
+// mergeMetadata operates on normalized copies, preserving the caller's records.
+func mergeMetadata(value any, added map[string]any) any {
+	if len(added) == 0 {
+		return value
+	}
+	document, object := value.(map[string]any)
+	if !object {
+		document = map[string]any{"output": value}
+	}
+	metadata, exists := document["metadata"].(map[string]any)
+	if !exists {
+		metadata = make(map[string]any, len(added))
+	}
+	for key, item := range added {
+		if key == "warnings" {
+			previous, previousOK := metadata[key].([]any)
+			incoming, incomingOK := item.([]any)
+			if previousOK && incomingOK {
+				metadata[key] = append(previous, incoming...)
+				continue
+			}
+		}
+		metadata[key] = item
+	}
+	document["metadata"] = metadata
+	return document
 }
 
 func newRedactor(secrets []string) func(string) string {

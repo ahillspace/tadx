@@ -21,7 +21,7 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 	if a == nil || a.updater == nil {
 		return UpdateOutput{}, &errs.Error{ID: "env.profile.update.unconfigured", Kind: errs.KindRuntime, Operation: "env.profile.update", Summary: "Environment profile update is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment profile store before retrying."}
 	}
-	if strings.TrimSpace(input.Alias) == "" {
+	if input.Alias == "" && !input.AliasSet {
 		return UpdateOutput{}, updateUsageError("environment alias is required")
 	}
 	if !input.Patch.Any() {
@@ -60,7 +60,11 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 	if len(changedFields) > 0 {
 		status = "updated"
 	}
-	return UpdateOutput{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{commandhint.Command("env", "get", result.Profile.Alias)}}, nil
+	args := []string{"env", "get"}
+	if strings.HasPrefix(result.Profile.Alias, "-") {
+		args = append(args, "--")
+	}
+	return UpdateOutput{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{commandhint.Command(append(args, result.Profile.Alias)...)}}, nil
 }
 
 func updateUsageError(summary string) error {
@@ -80,7 +84,6 @@ type IntField struct {
 type Patch struct {
 	ServerURL           StringField `json:"server_url"`
 	SiteContentURL      StringField `json:"site_content_url"`
-	APIVersion          StringField `json:"api_version"`
 	PATNameEnv          StringField `json:"pat_name_env"`
 	PATSecretEnv        StringField `json:"pat_secret_env"`
 	DefaultWorkspace    StringField `json:"default_workspace"`
@@ -88,13 +91,14 @@ type Patch struct {
 }
 
 func (p Patch) Any() bool {
-	return p.ServerURL.Set || p.SiteContentURL.Set || p.APIVersion.Set || p.PATNameEnv.Set || p.PATSecretEnv.Set || p.DefaultWorkspace.Set || p.CacheMaxConcurrency.Set
+	return p.ServerURL.Set || p.SiteContentURL.Set || p.PATNameEnv.Set || p.PATSecretEnv.Set || p.DefaultWorkspace.Set || p.CacheMaxConcurrency.Set
 }
 
 type UpdateInput struct {
-	Preview bool   `json:"preview,omitempty"`
-	Alias   string `json:"alias"`
-	Patch   Patch  `json:"patch"`
+	Preview  bool   `json:"preview,omitempty"`
+	Alias    string `json:"alias"`
+	AliasSet bool   `json:"-"`
+	Patch    Patch  `json:"patch"`
 }
 
 type UpdateProfile struct {
@@ -102,7 +106,6 @@ type UpdateProfile struct {
 	Default             bool   `json:"default"`
 	ServerURL           string `json:"server_url"`
 	SiteContentURL      string `json:"site_content_url"`
-	APIVersion          string `json:"api_version"`
 	AuthType            string `json:"auth_type"`
 	PATNameEnv          string `json:"pat_name_env"`
 	PATSecretEnv        string `json:"pat_secret_env"`
@@ -133,7 +136,6 @@ type UpdateCompactResult struct {
 func (o UpdateOutput) CompactOutput() any {
 	profile := map[string]any{"alias": o.Profile.Alias, "server_url": o.Profile.ServerURL, "site_content_url": o.Profile.SiteContentURL}
 	values := map[string]any{
-		"api_version":           o.Profile.APIVersion,
 		"pat_name_env":          o.Profile.PATNameEnv,
 		"pat_secret_env":        o.Profile.PATSecretEnv,
 		"default_workspace":     o.Profile.DefaultWorkspace,

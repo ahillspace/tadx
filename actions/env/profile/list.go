@@ -5,6 +5,7 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -74,7 +75,11 @@ func (a *ListAction) Execute(ctx context.Context, input ListInput) (ListOutput, 
 	}
 	var help []string
 	if len(pageProfiles) > 0 {
-		help = append(help, commandhint.Command("env", "get", pageProfiles[0].Alias))
+		args := []string{"env", "get"}
+		if strings.HasPrefix(pageProfiles[0].Alias, "-") {
+			args = append(args, "--")
+		}
+		help = append(help, commandhint.Command(append(args, pageProfiles[0].Alias)...))
 	}
 	if nextCursor != "" {
 		help = append(help, "tadx env list --limit "+strconv.Itoa(min(limit*2, ListMaxLimit)))
@@ -101,8 +106,10 @@ type ListOutput struct {
 }
 
 type ListCompactProfile struct {
-	Alias   string `json:"alias"`
-	Default bool   `json:"default"`
+	Alias      string   `json:"alias"`
+	Default    bool     `json:"default"`
+	Status     string   `json:"status,omitempty"`
+	Violations []string `json:"violations,omitempty"`
 }
 
 type ListCompactResult struct {
@@ -115,7 +122,7 @@ type ListCompactResult struct {
 func (o ListOutput) CompactOutput() any {
 	profiles := make([]ListCompactProfile, len(o.Profiles))
 	for index, profile := range o.Profiles {
-		profiles[index] = ListCompactProfile{Alias: profile.Alias, Default: profile.Default}
+		profiles[index] = ListCompactProfile{Alias: profile.Alias, Default: profile.Default, Status: profile.Status, Violations: profile.Violations}
 	}
 	return ListCompactResult{Page: o.Page, Profiles: profiles, Details: "--full", Help: o.Help}
 }

@@ -120,7 +120,7 @@ func newPublicationStatusFixture(t *testing.T, options publicationStatusFixtureO
 		jobDestination:        options.jobDestination,
 		mismatchedDestination: options.mismatchedDestination,
 	}
-	fixture.server = httptest.NewTLSServer(http.HandlerFunc(fixture.handle))
+	fixture.server = tableauFixtureServer(t, http.HandlerFunc(fixture.handle))
 	t.Cleanup(fixture.server.Close)
 	return fixture
 }

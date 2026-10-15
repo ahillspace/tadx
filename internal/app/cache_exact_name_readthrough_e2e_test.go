@@ -3,14 +3,13 @@ package app_test
 import (
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 )
 
 func TestLiveWorkbookReadThroughKeepsExactNameIndexThroughCLI(t *testing.T) {
 	var blockNetwork atomic.Bool
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if blockNetwork.Load() {
 			t.Errorf("cached inspection contacted Tableau: %s %s", r.Method, r.URL)
 			http.Error(w, "unexpected cache network request", http.StatusInternalServerError)

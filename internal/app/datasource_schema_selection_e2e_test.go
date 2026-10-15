@@ -92,7 +92,7 @@ type schemaSelectionCalls struct{ total, identity, schema atomic.Int32 }
 func schemaSelectionServer(t *testing.T) (*httptest.Server, *schemaSelectionCalls) {
 	t.Helper()
 	calls := &schemaSelectionCalls{}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.total.Add(1)
 		if diagnosticSignIn(w, r) {
 			return

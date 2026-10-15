@@ -56,6 +56,11 @@ These boundaries constrain package dependencies; they do not require an adapter 
 Mutation validation uses fresh state at the relevant validation boundaries.
 Tableau LUIDs provide authoritative remote identity; ambiguous name and project selectors fail deterministically.
 Configuration stores credential references, while approved persistent PATs reside only in the native OS credential store.
+Configuration loading isolates invalid environment and workspace entries while retaining their YAML for unrelated writes.
+File parsing, settings version, and mutation consent remain file-level trust boundaries.
+Unknown top-level settings preserve their YAML and produce warnings; unknown entry fields invalidate only their owning entries.
+Command construction negotiates the REST version once per canonical server before PAT sign-in and reuses that transport for its clients.
+The transport owns the build's maximum REST contract; user settings do not select or persist a REST version.
 Workspaces hold managed content artifacts; the cache holds cached observations and does not replace a live source implicitly.
 Persisted artifact paths are relative to the workspace and use forward slashes.
 

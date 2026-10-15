@@ -72,6 +72,52 @@ tadx env update dev --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_P
 A complete variable pair overrides an OS-stored PAT for that process, and TADX does not combine partial credentials from different sources.
 The flags take variable names, never the PAT name or secret; TADX rejects a value that is not a variable name without saving or showing it.
 
+TADX selects the REST API version from the server's supported version and this build's maximum before sign-in.
+The version belongs to the command's connection and is not a profile setting.
+PAT authentication requires REST API 3.6 or later; individual features can require newer versions.
+`tadx auth check` reports the negotiated version after a live check.
+`tadx auth status` remains local and does not discover a server version.
+See the [REST version negotiation contract](evidence/rest-version-negotiation-contract.md) for the official evidence and verification limits.
+
+## Repair an invalid profile
+
+An invalid environment or workspace registration does not prevent commands from using other valid entries.
+Commands report compact warnings for invalid entries; `--full` and `tadx last --full` expand their details.
+`tadx env list`, `tadx env get`, and `tadx doctor` identify invalid profiles by status and violated fields without showing rejected values.
+Writes preserve unrelated invalid entries and reject changes that introduce new violations.
+Unknown fields within a profile invalidate that profile; remove and recreate it with supported fields when an update cannot repair it.
+Unknown top-level settings are preserved and reported as warnings.
+Site mutation consent remains strict because it controls authorization.
+
+If a PAT reference contains a pasted credential, revoke that PAT in Tableau before using a replacement.
+Correct the reference with an environment-variable name:
+
+```text
+tadx env update broken --pat-secret-env VALID_PAT_SECRET
+```
+
+The repaired profile must satisfy every profile rule.
+To remove a broken profile, first remove its stored credential when a valid reference exists:
+
+```text
+tadx auth logout --environment broken
+tadx env remove broken
+```
+
+Logout can remove a stored PAT from an invalid profile without contacting Tableau.
+If its credential reference is malformed, logout reports that it cannot locate a stored credential, and profile removal remains available.
+Removing an invalid default profile also clears that obsolete default.
+To move an invalid default to a valid profile, run:
+
+```text
+tadx env default good
+```
+
+`tadx env set-default good` is an alias for the same default selection.
+
+An unreadable file, malformed YAML, unsupported settings version, or malformed site mutation consent still prevents settings use.
+These file-level failures require repairing the settings file before an entry can be trusted.
+
 ## Pull other project assets
 
 Search first, select the intended returned LUID, and then pull with that exact identity:

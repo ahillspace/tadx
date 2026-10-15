@@ -70,7 +70,7 @@ func TestAddOutputGoldens(t *testing.T) {
 }
 
 func addFixture() profileadd.AddProfile {
-	return profileadd.AddProfile{Alias: "production", ServerURL: "https://example.test", SiteContentURL: "marketing", APIVersion: "3.29", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
+	return profileadd.AddProfile{Alias: "production", ServerURL: "https://example.test", SiteContentURL: "marketing", AuthType: "pat", PATNameEnv: "PROD_PAT_NAME", PATSecretEnv: "PROD_PAT_SECRET", DefaultWorkspace: "primary"}
 }
 func addAssertGolden(t *testing.T, value any, full bool, path string) {
 	t.Helper()

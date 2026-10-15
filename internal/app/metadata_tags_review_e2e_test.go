@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -27,7 +26,7 @@ func TestMetadataTagLengthRejectedBeforeAnyHTTP(t *testing.T) {
 		for _, preview := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/preview=%v", kind, preview), func(t *testing.T) {
 				calls := 0
-				s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					calls++
 					w.WriteHeader(http.StatusInternalServerError)
 				}))
@@ -59,7 +58,7 @@ func TestMetadataUnicodeTagPreviewAndUnconfirmedWrite(t *testing.T) {
 			t.Run(kind+"/"+tc.name, func(t *testing.T) {
 				preview := tc.preview
 				propertyWrites, tagWrites := 0, 0
-				s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if catalogMetadataSignIn(w, r) {
 						return
 					}

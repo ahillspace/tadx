@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -46,7 +45,7 @@ func TestManagedTemplatesAllowSearchAndDefaultRefreshPrechecks(t *testing.T) {
 					policy.allowed[id] = true
 				}
 				var signins atomic.Int32
-				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if !strings.HasSuffix(r.URL.Path, "/auth/signin") {
 						t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 					}
@@ -74,7 +73,7 @@ func TestManagedTemplatesAllowSearchAndDefaultRefreshPrechecks(t *testing.T) {
 
 func TestManagedDeniedConfirmationPreservesAcknowledgedCategoryCreate(t *testing.T) {
 	var reads, writes atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -143,7 +142,7 @@ func TestManagedIndirectCLIStopsBeforeForbiddenRequests(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				w.WriteHeader(http.StatusInternalServerError)
 			}))
@@ -162,7 +161,7 @@ func TestManagedIndirectCLIStopsBeforeForbiddenRequests(t *testing.T) {
 
 func TestManagedCacheNonAdminScopeRemainsUsable(t *testing.T) {
 	var forbidden atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":
 			_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -196,7 +195,7 @@ func TestManagedCachedAdminReadersCheckBeforeStoreAccess(t *testing.T) {
 
 func TestManagedPublishSkipsDeniedOptionalRoleLookup(t *testing.T) {
 	var userReads, publishes atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -237,7 +236,7 @@ func TestManagedPublishSkipsDeniedOptionalRoleLookup(t *testing.T) {
 
 func TestManagedAdminUsernamePreflightDeniesBeforeInventory(t *testing.T) {
 	var inventory atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/auth/signin") {
 			_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 			return

@@ -40,13 +40,13 @@ func (retryableAuthError) CorrectiveAction() string { return "Retry after Tablea
 
 func TestActionReturnsRedactedAuthenticatedIdentity(t *testing.T) {
 	target := authops.CheckTarget{Environment: "production", ServerURL: "https://example.test", SiteContentURL: "marketing", PATNameVariable: "PAT_NAME", PATSecretVariable: "PAT_SECRET"}
-	action := authops.NewCheck(environmentResolver{target: target}, authenticator{result: authops.CheckAuthentication{SiteLUID: "site-1", UserLUID: "user-1"}})
-	output, err := action.Execute(context.Background(), authops.CheckInput{Environment: "production"})
+	action := authops.NewCheck(environmentResolver{target: target}, authenticator{result: authops.CheckAuthentication{SiteLUID: "site-1", UserLUID: "user-1", RESTAPIVersion: "3.29"}})
+	output, err := action.Execute(t.Context(), authops.CheckInput{Environment: "production"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	data, _ := json.Marshal(output)
-	if output.Status != "authenticated" || output.SiteLUID != "site-1" || strings.Contains(string(data), "PAT_SECRET") {
+	if output.Status != "authenticated" || output.SiteLUID != "site-1" || output.RESTAPIVersion != "3.29" || strings.Contains(string(data), "PAT_SECRET") {
 		t.Fatalf("output = %s", data)
 	}
 }

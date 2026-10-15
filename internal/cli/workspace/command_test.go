@@ -107,7 +107,7 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	if !reflect.DeepEqual(a.setDefault, []workspaceaction.SetDefaultInput{{Name: "development"}}) {
 		t.Fatalf("set default = %#v", a.setDefault)
 	}
-	if !reflect.DeepEqual(a.unregister, []workspaceaction.UnregisterInput{{Name: "old"}}) {
+	if !reflect.DeepEqual(a.unregister, []workspaceaction.UnregisterInput{{Name: "old", NameSet: true}}) {
 		t.Fatalf("unregister = %#v", a.unregister)
 	}
 	if !reflect.DeepEqual(a.deleteWorkspace, []workspaceaction.DeleteWorkspaceInput{{Name: "throwaway", Force: true}}) {

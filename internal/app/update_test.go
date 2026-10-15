@@ -91,7 +91,7 @@ func TestUpdateRootRoutesWithoutReleaseCalls(t *testing.T) {
 
 func TestUpdaterWithholdsConfiguredPATVariables(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := "version: 1\nenvironments:\n  production:\n    url: https://tableau.example.com\n    site_content_url: ''\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_UPDATE_PAT_NAME\n      pat_secret_env: PROD_UPDATE_PAT_SECRET\n"
+	contents := "version: 1\nenvironments:\n  production:\n    url: https://tableau.example.com\n    site_content_url: ''\n    auth:\n      type: pat\n      pat_name_env: PROD_UPDATE_PAT_NAME\n      pat_secret_env: PROD_UPDATE_PAT_SECRET\n"
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestUpdaterWithholdsPATVariablesFromFlagSelectedConfig(t *testing.T) {
 		t.Run(flag, func(t *testing.T) {
 			temp := t.TempDir()
 			configuration := func(name, secret string) string {
-				return "version: 1\nenvironments:\n  production:\n    url: https://tableau.example.com\n    site_content_url: ''\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: " + name + "\n      pat_secret_env: " + secret + "\n"
+				return "version: 1\nenvironments:\n  production:\n    url: https://tableau.example.com\n    site_content_url: ''\n    auth:\n      type: pat\n      pat_name_env: " + name + "\n      pat_secret_env: " + secret + "\n"
 			}
 			defaultPath := filepath.Join(temp, "default.yaml")
 			selectedPath := filepath.Join(temp, "selected.yaml")
@@ -152,6 +152,56 @@ func TestUpdaterWithholdsPATVariablesFromFlagSelectedConfig(t *testing.T) {
 			}
 			if !strings.Contains(upper, "UPDATE_FIXTURE_KEPT") {
 				t.Fatalf("updater child lost ordinary variables: %s", environment)
+			}
+		})
+	}
+}
+
+func TestUpdaterWithholdsKnownPATVariablesFromInvalidEntries(t *testing.T) {
+	for _, fixture := range []struct {
+		name, extra, nameReference string
+	}{
+		{"unknown sibling", "    unknown_field: ignored\n", "CUSTOM_UPDATE_PAT_NAME"},
+		{"duplicate URL", "    url: https://other.example.test\n", "CUSTOM_UPDATE_PAT_NAME"},
+		{"unknown auth field", "      unknown_field: ignored\n", "CUSTOM_UPDATE_PAT_NAME"},
+		{"malformed name reference", "", "malformed-reference:not-a-name"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			temp := t.TempDir()
+			path := filepath.Join(temp, "selected.yaml")
+			contents := "version: 1\nenvironments:\n  broken:\n    url: https://tableau.example.test\n    auth:\n      type: pat\n      pat_name_env: " + fixture.nameReference + "\n      pat_secret_env: CUSTOM_UPDATE_PAT_SECRET\n" + fixture.extra
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(temp, "bin")
+			if err := os.Mkdir(bin, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			capture := filepath.Join(temp, "gh-environment")
+			if runtime.GOOS == "windows" {
+				if err := os.WriteFile(filepath.Join(bin, "gh.bat"), []byte("@set > \"%UPDATE_FAKE_GH_CAPTURE%\"\r\n"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nexport -p > \"$UPDATE_FAKE_GH_CAPTURE\"\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin)
+			t.Setenv("UPDATE_FAKE_GH_CAPTURE", capture)
+			t.Setenv("CUSTOM_UPDATE_PAT_NAME", "fixture-name")
+			t.Setenv("CUSTOM_UPDATE_PAT_SECRET", "fixture-secret")
+			t.Setenv("UPDATE_FIXTURE_KEPT", "kept")
+			var out bytes.Buffer
+			Run(t.Context(), []string{"--config", path, "update", "--check"}, &out, Options{ConfigPath: filepath.Join(temp, "ordinary.yaml")})
+			environment, err := os.ReadFile(capture)
+			if err != nil {
+				t.Fatalf("fake updater child was not run: %v\n%s", err, out.String())
+			}
+			upper := strings.ToUpper(string(environment))
+			if strings.Contains(upper, "CUSTOM_UPDATE_PAT_SECRET") || fixture.nameReference == "CUSTOM_UPDATE_PAT_NAME" && strings.Contains(upper, "CUSTOM_UPDATE_PAT_NAME") {
+				t.Fatal("updater child received a known PAT variable from an invalid entry")
+			}
+			if !strings.Contains(upper, "UPDATE_FIXTURE_KEPT") || fixture.nameReference != "CUSTOM_UPDATE_PAT_NAME" && !strings.Contains(upper, "CUSTOM_UPDATE_PAT_NAME") {
+				t.Fatal("updater child lost an unrelated or unreferenced variable")
 			}
 		})
 	}

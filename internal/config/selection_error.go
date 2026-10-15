@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -33,11 +32,7 @@ func (e *selectionError) PrerequisiteSummary() string {
 	return "Select a configured environment alias."
 }
 func (c Config) selectionError(alias string) error {
-	names := make([]string, 0, len(c.Environments))
-	for name := range c.Environments {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := c.EnvironmentAliases()
 	if len(names) > 12 {
 		names = append(names[:12], "more available through env list")
 	}

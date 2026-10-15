@@ -2,11 +2,8 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // PreviewUpdate applies the normal configuration mutator to an isolated copy.
@@ -30,15 +27,6 @@ func PreviewUpdate(path string, createIfMissing bool, mutate func(Config) (Confi
 	if err != nil {
 		return Config{}, err
 	}
-	if err := next.Validate(); err != nil {
-		return Config{}, err
-	}
-	data, err := yaml.Marshal(next)
-	if err != nil {
-		return Config{}, fmt.Errorf("encode configuration: %w", err)
-	}
-	if len(data) > maxConfigBytes {
-		return Config{}, fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
-	}
-	return next, nil
+	next, _, err = prepareWrite(next)
+	return next, err
 }

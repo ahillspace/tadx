@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -47,7 +46,7 @@ func TestWriteTargetSelectionBeforeNetwork(t *testing.T) {
 
 func TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget(t *testing.T) {
 	var signins, reads, creates atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin":
 			signins.Add(1)
@@ -81,7 +80,7 @@ func TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget(t *te
 	}))
 	defer server.Close()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	cfg := config.Config{Version: 1, Environments: map[string]config.Environment{"one": {URL: server.URL, SiteContentURL: "only-site", APIVersion: "3.29", Auth: config.Auth{Type: "pat", PATNameEnv: "SOLE_TARGET_PAT_NAME", PATSecretEnv: "SOLE_TARGET_PAT_SECRET"}}}}
+	cfg := config.Config{Version: 1, Environments: map[string]config.Environment{"one": {URL: server.URL, SiteContentURL: "only-site", Auth: config.Auth{Type: "pat", PATNameEnv: "SOLE_TARGET_PAT_NAME", PATSecretEnv: "SOLE_TARGET_PAT_SECRET"}}}}
 	if err := config.Save(configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -96,14 +95,14 @@ func TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget(t *te
 
 func TestMultipleEnvironmentsRejectOmittedTargetDespiteDefaultAndArtifactSource(t *testing.T) {
 	var requests atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		http.Error(w, "must not authenticate or access a target", 500)
 	}))
 	defer server.Close()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	auth := config.Auth{Type: "pat", PATNameEnv: "MULTI_TARGET_PAT_NAME", PATSecretEnv: "MULTI_TARGET_PAT_SECRET"}
-	cfg := config.Config{Version: 1, DefaultEnvironment: "one", Environments: map[string]config.Environment{"one": {URL: server.URL, SiteContentURL: "source-site", APIVersion: "3.29", Auth: auth}, "two": {URL: server.URL, SiteContentURL: "other-site", APIVersion: "3.29", Auth: auth}}}
+	cfg := config.Config{Version: 1, DefaultEnvironment: "one", Environments: map[string]config.Environment{"one": {URL: server.URL, SiteContentURL: "source-site", Auth: auth}, "two": {URL: server.URL, SiteContentURL: "other-site", Auth: auth}}}
 	if err := config.Save(configPath, cfg); err != nil {
 		t.Fatal(err)
 	}

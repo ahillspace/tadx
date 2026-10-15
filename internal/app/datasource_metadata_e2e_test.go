@@ -7,7 +7,6 @@ import (
 	"github.com/ahillspace/tadx/internal/app"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,7 +14,7 @@ import (
 
 func TestDatasourceMetadataThroughCLI(t *testing.T) {
 	var calls, graphs atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if diagnosticSignIn(w, r) {
 			return

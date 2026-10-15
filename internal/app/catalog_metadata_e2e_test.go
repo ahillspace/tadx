@@ -34,7 +34,7 @@ func TestCatalogMetadataReadProjectionsAndBounds(t *testing.T) {
 	for _, full := range []bool{false, true} {
 		t.Run(fmt.Sprint(full), func(t *testing.T) {
 			calls, signins := 0, 0
-			s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if catalogMetadataSignIn(w, r) {
 					signins++
 					return
@@ -80,7 +80,7 @@ func TestCatalogMetadataUpdatePreviewGateAndExecution(t *testing.T) {
 	for _, preview := range []bool{false, true} {
 		t.Run(fmt.Sprint(preview), func(t *testing.T) {
 			writes, reads, signins := 0, 0, 0
-			s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if catalogMetadataSignIn(w, r) {
 					signins++
 					return
@@ -129,7 +129,7 @@ func TestCatalogMetadataUpdatePreviewGateAndExecution(t *testing.T) {
 func TestCatalogMetadataBatchOrderedPartialAndOneSession(t *testing.T) {
 	signins := 0
 	written := []string{}
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			signins++
 			return
@@ -197,7 +197,7 @@ func TestCatalogMetadataRejectsLocalErrorsBeforeAuth(t *testing.T) {
 }
 func TestCatalogMetadataWrongIdentityNeverWrites(t *testing.T) {
 	writes := 0
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogMetadataSignIn(w, r) {
 			return
 		}
