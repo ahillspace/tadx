@@ -182,7 +182,7 @@ func normalizeReadMetadata(luid, name string, response readMetadataResponse) Sch
 		}
 		fields = append(fields, rawField{Name: row.FieldName, Caption: row.FieldCaption, DataType: row.DataType, PhysicalType: row.PhysicalType, ColumnClass: row.ColumnClass, DefaultAggregation: value(row.DefaultAggregation), Formula: value(row.Formula), Role: row.FieldRole, LogicalTableID: logicalTableID, Hidden: row.IsHidden, Internal: row.IsInternal, Provenance: "vds_read_metadata"})
 	}
-	return normalizeSchema(luid, name, tables, fields, "vds_read_metadata")
+	return normalizeVDSSchema(luid, name, tables, fields, "vds_read_metadata")
 }
 
 func normalizeDescribe(luid, name string, response describeResponse) Schema {
@@ -201,7 +201,20 @@ func normalizeDescribe(luid, name string, response describeResponse) Schema {
 			fields = append(fields, rawField{Name: field.Name, Caption: value(field.Caption), DataType: field.DataType, PhysicalType: value(field.PhysicalType), ColumnClass: field.ColumnClass, DefaultAggregation: value(field.DefaultAggregation), Formula: value(field.Formula), Role: field.Role, LogicalTableID: logicalTableID, Hidden: field.IsHidden, Internal: field.IsInternal, Provenance: "vds_describe_datasource"})
 		}
 	}
-	return normalizeSchema(luid, name, tables, fields, "vds_describe_datasource")
+	return normalizeVDSSchema(luid, name, tables, fields, "vds_describe_datasource")
+}
+
+func normalizeVDSSchema(luid, name string, tables map[string]string, fields []rawField, provenance string) Schema {
+	result := normalizeSchema(luid, name, tables, fields, provenance)
+	var dependencies []rawField
+	for _, field := range fields {
+		if field.Hidden {
+			field.Hidden = false
+			dependencies = append(dependencies, field)
+		}
+	}
+	result.DependencyFields = normalizeSchema(luid, name, tables, dependencies, provenance).Fields
+	return result
 }
 
 func value(value *string) string {

@@ -131,8 +131,9 @@ func (c *Client) readMetadataGraphQL(ctx context.Context, luid, datasourceName s
 			if len(nodes) != total {
 				return Schema{}, tableau.NewProtocolError("datasource.schema.metadata", response, fmt.Errorf("Metadata API pagination ended at %d of %d fields", len(nodes), total), true)
 			}
-			fields := classifyGraphQLFields(nodes)
+			fields, dependencies := classifyGraphQLFields(nodes)
 			result := normalizeSchema(luid, datasourceName, map[string]string{}, fields, "metadata_graphql")
+			result.DependencyFields = normalizeSchema(luid, datasourceName, map[string]string{}, dependencies, "metadata_graphql").Fields
 			result.RequestID = requestID
 			return result, nil
 		}
@@ -166,11 +167,21 @@ type analyzedField struct {
 	directUserAgg bool
 }
 
-func classifyGraphQLFields(nodes []graphQLNode) []rawField {
-	return classifyFields(nodes, false)
+func classifyGraphQLFields(nodes []graphQLNode) (fields, dependencies []rawField) {
+	for _, field := range classifyFields(nodes, nil) {
+		if field.Hidden {
+			// Hiding controls published selection. It does not change the semantic
+			// facts used by another visible field's dependencies.
+			field.Hidden = false
+			dependencies = append(dependencies, field)
+		} else {
+			fields = append(fields, field)
+		}
+	}
+	return fields, dependencies
 }
 
-func classifyFields(nodes []graphQLNode, includeHidden bool) []rawField {
+func classifyFields(nodes []graphQLNode, sourceFields map[string]Field) []rawField {
 	analysis := make([]*analyzedField, 0, len(nodes))
 	byName := make(map[string][]*analyzedField)
 	for _, node := range nodes {
@@ -187,6 +198,13 @@ func classifyFields(nodes []graphQLNode, includeHidden bool) []rawField {
 			entry.exclusion = "table_calc"
 		case hasBlendedReference(prepared):
 			entry.exclusion = "blend_ref"
+		}
+		if source, confirmed := sourceFields[node.ID]; confirmed {
+			// Source formulas were classified in their published caption namespace.
+			// Only local calculations resolve dependencies against local captions.
+			entry.references = nil
+			entry.exclusion = source.ExclusionReason
+			entry.directUserAgg = source.RequiresUserAggregation
 		}
 		analysis = append(analysis, entry)
 		if strings.TrimSpace(node.Name) != "" {
@@ -247,34 +265,53 @@ func classifyFields(nodes []graphQLNode, includeHidden bool) []rawField {
 	}
 	fields := make([]rawField, 0, len(analysis))
 	for _, entry := range analysis {
-		// Hidden fields participate in dependency analysis but are not selectable.
-		if entry.node.Hidden && !includeHidden {
-			continue
-		}
 		fields = append(fields, rawField{Name: entry.name, Caption: entry.node.Name, DataType: entry.node.DataType, PhysicalType: entry.node.DataType, ColumnClass: map[bool]string{true: "CALCULATION", false: "COLUMN"}[value(entry.node.Formula) != ""], DefaultAggregation: value(entry.node.Aggregation), Formula: value(entry.node.Formula), Role: entry.node.Role, Hidden: entry.node.Hidden, ExclusionHint: entry.exclusion, RequiresUserAggregation: entry.requiresUser, Provenance: "metadata_graphql"})
 	}
 	return fields
 }
 
-// NormalizeMetadataFields shares published field classification while retaining hidden workbook fields.
-func NormalizeMetadataFields(fields []sharedvalue.FieldDescription) []Field {
+// NormalizeMetadataFields classifies local workbook calculations and reuses confirmed
+// published semantics through exact remote Metadata IDs, retaining local observations.
+func NormalizeMetadataFields(fields []sharedvalue.FieldDescription, remoteFields map[string]Field) []Field {
 	nodes := make([]graphQLNode, len(fields))
 	byID := make(map[string][]int, len(fields))
+	confirmedSources := make(map[string]Field)
 	for i, f := range fields {
 		nodes[i] = graphQLNode{Type: f.Type, ID: f.MetadataID, Name: f.Name, FullyQualifiedName: f.FullyQualifiedName, Role: f.Role, DataType: f.DataType, Aggregation: new(f.Aggregation), Formula: new(f.Formula), Description: f.Description, Hidden: f.Hidden != nil && *f.Hidden}
+		if f.RemoteField != nil {
+			if source, confirmed := remoteFields[f.RemoteField.MetadataID]; confirmed {
+				confirmedSources[f.MetadataID] = source
+				if nodes[i].Role == "" {
+					nodes[i].Role = source.Role
+				}
+				if nodes[i].DataType == "" {
+					nodes[i].DataType = source.DataType
+				}
+				if f.Aggregation == "" {
+					nodes[i].Aggregation = new(source.DefaultAggregation)
+				}
+				if f.Formula == "" {
+					nodes[i].Formula = new(source.Formula)
+				}
+			}
+		}
 		byID[canonicalFieldID(nodes[i])] = append(byID[canonicalFieldID(nodes[i])], i)
 	}
-	result := normalizeSchema("", "", map[string]string{}, classifyFields(nodes, true), "metadata_graphql").Fields
+	result := normalizeSchema("", "", map[string]string{}, classifyFields(nodes, confirmedSources), "metadata_graphql").Fields
 	for i := range result {
 		matches := byID[result[i].ID]
 		if len(matches) == 1 {
 			observed := fields[matches[0]]
 			result[i].Metadata = new(observed)
 			result[i].MetadataMatch = "exact"
-			if strings.TrimSpace(observed.Role) == "" && !result[i].Excluded {
+			source, sourced := confirmedSources[observed.MetadataID]
+			if sourced {
+				result[i].Table, result[i].LogicalTableID = source.Table, source.LogicalTableID
+			}
+			if strings.TrimSpace(observed.Role) == "" && !sourced && !result[i].Excluded {
 				result[i].Role = ""
 			}
-			if strings.TrimSpace(observed.DataType) == "" {
+			if strings.TrimSpace(observed.DataType) == "" && !sourced {
 				result[i].DataType = ""
 			}
 		} else {

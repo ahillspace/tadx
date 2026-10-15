@@ -16,18 +16,18 @@ type workbookReader struct {
 	err    error
 }
 
-func (r *workbookReader) WorkbookDatasources(context.Context, string) (value.MetadataWorkbookDatasources, error) {
+func (r *workbookReader) WorkbookFieldDescriptions(context.Context, string) (value.MetadataWorkbookDatasources, error) {
 	return r.result, r.err
 }
 
 func TestWorkbookAuditSeparatesLocalAndPublishedFindings(t *testing.T) {
 	r := &workbookReader{result: value.MetadataWorkbookDatasources{
-		Identity:    value.MetadataIdentity{LUID: "wb", MetadataID: "mw", Name: "Workbook", Type: "workbook"},
+		Identity:    value.MetadataIdentity{LUID: "wb", MetadataID: "mw", Name: "Workbook", Type: "Workbook"},
 		Description: new("Workbook purpose"), TagsObserved: true, Complete: true,
 		Datasources: []value.MetadataWorkbookDatasource{
 			{Identity: value.MetadataIdentity{MetadataID: "embedded", Name: "Local"}, Kind: "embedded", Complete: true,
 				Fields: []value.FieldDescription{{MetadataID: "local-field", Name: "Revenue", Description: new(""), InheritedObserved: true, Inherited: []value.DescriptionObservation{{Value: new("Source meaning")}}}}},
-			{Identity: value.MetadataIdentity{MetadataID: "published", LUID: "ds", Name: "Source"}, Kind: "published", Description: new("Source purpose"), TagsObserved: true, Complete: true,
+			{Identity: value.MetadataIdentity{MetadataID: "published", LUID: "ds", Name: "Source", Type: "PublishedDatasource"}, Kind: "published", Description: new("Source purpose"), TagsObserved: true, Complete: true,
 				Fields: []value.FieldDescription{{MetadataID: "source-field", Name: "Revenue", Description: new("Source meaning"), InheritedObserved: true}}},
 		},
 	}}
@@ -37,6 +37,14 @@ func TestWorkbookAuditSeparatesLocalAndPublishedFindings(t *testing.T) {
 	}
 	if out.Findings[1].DatasourceMetadataID != "embedded" || out.Findings[1].Source != "inherited" {
 		t.Fatalf("local provenance lost: %+v", out.Findings)
+	}
+	for i, kind := range []string{"workbook", "field", "datasource", "field"} {
+		if out.Findings[i].Type != kind {
+			t.Fatalf("finding %d type = %q, want %q", i, out.Findings[i].Type, kind)
+		}
+	}
+	if out.Groups[0].Identity.Type != "Workbook" || out.Groups[2].Identity.Type != "PublishedDatasource" {
+		t.Fatalf("raw provider identity types changed: %+v", out.Groups)
 	}
 	out, err = Execute(t.Context(), r, Input{Type: "workbook", ID: "wb", Checks: []string{"descriptions"}, DirectOnly: true, Limit: 2})
 	if err != nil || out.Complete || out.Scanned != 2 || out.Summary.Missing != 1 {

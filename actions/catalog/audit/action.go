@@ -187,14 +187,14 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 	switch in.Type {
 	case "workbook":
 		workbooks, ok := reader.(interface {
-			WorkbookDatasources(context.Context, string) (value.MetadataWorkbookDatasources, error)
+			WorkbookFieldDescriptions(context.Context, string) (value.MetadataWorkbookDatasources, error)
 		})
 		if !ok {
 			out.Status, out.Complete = "partial", false
 			return out, failure(in, errors.New("workbook metadata reader is not configured"))
 		}
 		var v value.MetadataWorkbookDatasources
-		v, err = workbooks.WorkbookDatasources(ctx, in.ID)
+		v, err = workbooks.WorkbookFieldDescriptions(ctx, in.ID)
 		if v.Identity.LUID != in.ID || v.Identity.MetadataID == "" {
 			if err == nil {
 				err = errors.New("audited workbook identity mismatch")
@@ -222,7 +222,9 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 			}
 			out.Groups = append(out.Groups, g)
 		}
-		record(v.Identity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
+		workbookIdentity := v.Identity
+		workbookIdentity.Type = "workbook"
+		record(workbookIdentity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
 		startGroup(v.Identity, "workbook", 0, 0, true)
 		seen := make(map[string]bool)
 		for _, ds := range v.Datasources {
@@ -237,7 +239,9 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 			needed := 0
 			if ds.Kind == "published" {
 				needed++
-				record(ds.Identity, "", ds.Description, ds.Tags, ds.TagsObserved, nil, false, false)
+				id := ds.Identity
+				id.Type = "datasource"
+				record(id, "", ds.Description, ds.Tags, ds.TagsObserved, nil, false, false)
 			}
 			if slices.Contains(checks, "descriptions") {
 				for _, field := range ds.Fields {
@@ -251,7 +255,11 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 			}
 			complete := ds.Complete && out.Scanned-scanned == needed
 			out.Complete = out.Complete && complete
-			out.Limitations = append(out.Limitations, ds.Warnings...)
+			for _, warning := range ds.Warnings {
+				if !slices.Contains(out.Limitations, warning) {
+					out.Limitations = append(out.Limitations, warning)
+				}
+			}
 			startGroup(ds.Identity, ds.Kind, start, scanned, complete)
 		}
 	case "database":

@@ -6,9 +6,10 @@ import (
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/cache"
-	resourcecatalog "github.com/ahillspace/tadx/internal/resources/catalog"
+	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
+	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -105,9 +106,10 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &cacheWorkbookGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := workbookops.Inspect(ctx, resolver, nil, input)
+		output, err := workbookops.Inspect(ctx, resolver, input)
 		if err == nil {
 			output.Source = resolver.source
+			output.DatasourceStatus = "not_captured"
 		}
 		return output, err
 	}
@@ -116,7 +118,7 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 		return workbookops.InspectOutput{}, remoteSetupError("workbook.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := workbookops.Inspect(ctx, connection.workbooks, resourcecatalog.New(connection.metadataAssets), input)
+	output, err := workbookops.Inspect(ctx, connection.workbooks, input)
 	if err != nil {
 		return output, err
 	}
@@ -126,7 +128,8 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 	if encodeErr == nil {
 		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}
-	return output, nil
+	details, metadataErr := connection.metadataAssets.WorkbookDatasources(ctx, output.Workbook.LUID)
+	return workbookops.ApplyInspectMetadata(output, details, metadataErr)
 }
 
 type workbookInventoryAdapter interface {
@@ -143,7 +146,8 @@ func (c *remoteContentCommands) GetWorkbookSchema(ctx context.Context, input wor
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	clients := c.runtime.clients(connection)
-	return workbookops.Schema(ctx, resourceworkbook.NewMetadataAdapter(clients.workbooks, clients.metadataAssets), input)
+	published := resourcedatasource.NewSchemaAdapter(clients.datasources, fieldcatalog.NewClient(connection.transport, connection.session, connection.environment.URL))
+	return workbookops.Schema(ctx, resourceworkbook.NewMetadataAdapter(clients.workbooks, clients.metadataAssets, published), input)
 }
 
 type workbookListReader struct {

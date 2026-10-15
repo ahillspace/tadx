@@ -74,17 +74,7 @@ type SchemaOutput struct {
 }
 
 // SchemaCompactField contains everything needed to select a field for authoring.
-type SchemaCompactField struct {
-	Metadata                *value.FieldDescription `json:"metadata,omitempty"`
-	MetadataMatch           string                  `json:"metadata_match,omitempty"`
-	ID                      string                  `json:"id"`
-	Caption                 string                  `json:"caption"`
-	Table                   string                  `json:"table,omitempty"`
-	Role                    string                  `json:"role"`
-	DataType                string                  `json:"data_type"`
-	DefaultAggregation      string                  `json:"default_aggregation,omitempty"`
-	RequiresUserAggregation bool                    `json:"requires_user_aggregation"`
-}
+type SchemaCompactField = value.SchemaCompactField
 
 // SchemaCompactResult is the default bounded output.
 type SchemaCompactResult struct {
@@ -120,10 +110,7 @@ type SchemaFullResult struct {
 
 // CompactOutput returns bounded field-selection details.
 func (o SchemaOutput) CompactOutput() any {
-	fields := make([]SchemaCompactField, len(o.Fields))
-	for index, field := range o.Fields {
-		fields[index] = SchemaCompactField{ID: field.ID, Caption: field.Caption, Table: field.Table, Role: field.Role, DataType: field.DataType, DefaultAggregation: field.DefaultAggregation, RequiresUserAggregation: field.RequiresUserAggregation, Metadata: field.Metadata, MetadataMatch: field.MetadataMatch}
-	}
+	fields := value.CompactSchemaFields(o.Fields)
 	return SchemaCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, DatasourceLUID: o.DatasourceLUID, DatasourceName: o.DatasourceName, Source: o.Source, Tables: append([]Table(nil), o.Tables...), Page: o.Page, Fields: fields, Warnings: append([]string(nil), o.Warnings...), Details: "--full", Help: append([]string(nil), o.Help...)}
 }
 

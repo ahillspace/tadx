@@ -296,3 +296,43 @@ func TestWorkbookContinuesAfterOnePublishedParentFails(t *testing.T) {
 		t.Fatalf("got %+v, secondRead %v, error %v", got, secondRead, err)
 	}
 }
+
+func TestWorkbookAuditInventoryIgnoresUnrelatedSheetFailures(t *testing.T) {
+	publishedCalls := 0
+	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			t.Fatal(err)
+		}
+		for _, relation := range []string{"upstreamTablesConnection", "upstreamDatabasesConnection", "upstreamFlowsConnection", "downstreamSheetsConnection", "referencedFields:"} {
+			if strings.Contains(q.Query, relation) {
+				t.Errorf("audit requested unrelated relationship %s", relation)
+			}
+		}
+		switch {
+		case strings.Contains(q.Query, "workbooksConnection"):
+			fmt.Fprint(w, `{"data":{"workbooks":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"Workbook","id":"wb-meta","luid":"wb-1","name":"Book","description":"Purpose","tagsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},"items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local"}]}}]}}}`)
+		case strings.Contains(q.Query, "items:parentPublishedDatasourcesConnection"):
+			fmt.Fprint(w, `{"data":{"embedded":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local","items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"PublishedDatasource","id":"published-meta","luid":"published-1","name":"Published"}]}}]}}}`)
+		case strings.Contains(q.Query, "publishedDatasourcesConnection"):
+			publishedCalls++
+			fmt.Fprint(w, `{"data":{"parents":{"nodes":[{"__typename":"PublishedDatasource","id":"published-meta","luid":"published-1","name":"Published","description":"Published meaning","tagsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},"items":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}}`)
+		case strings.Contains(q.Query, "downstreamSheetsConnection"):
+			fmt.Fprint(w, `{"errors":[{"message":"sheet pagination unavailable"}]}`)
+		case strings.Contains(q.Query, "items:fieldsConnection"):
+			fmt.Fprint(w, `{"data":{"embedded":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local","items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"DatasourceField","id":"local-field","name":"Local Revenue","fullyQualifiedName":"[Revenue]","role":"MEASURE","dataType":"REAL","aggregation":"SUM","description":"Local meaning","isHidden":false,"remoteField":{"__typename":"ColumnField","id":"remote-field","name":"Revenue"},"descriptionInherited":[{"value":"Upstream meaning","assetId":"column-meta","attribute":"description"}],"upstreamColumnsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}]}}}`)
+		default:
+			fmt.Fprint(w, `{"data":{"embedded":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"embedded-meta","name":"Local","items":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}}`)
+		}
+	})
+	got, err := c.WorkbookFieldDescriptions(t.Context(), "wb-1")
+	if err != nil || !got.Complete || publishedCalls != 1 || len(got.Datasources) != 2 || !got.Datasources[1].Complete || got.Datasources[1].Description == nil || *got.Datasources[1].Description != "Published meaning" {
+		t.Fatalf("audit inventory = %+v, published calls %d, error %v", got, publishedCalls, err)
+	}
+	field := got.Datasources[0].Fields[0]
+	if field.Type != "DatasourceField" || field.Role != "MEASURE" || field.DataType != "REAL" || field.Aggregation != "SUM" || field.Hidden == nil || *field.Hidden || field.RemoteField == nil || field.RemoteField.MetadataID != "remote-field" || len(field.Inherited) != 1 || !field.InheritedObserved {
+		t.Fatalf("focused field semantics or provenance lost: %+v", field)
+	}
+}

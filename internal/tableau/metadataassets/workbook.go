@@ -15,20 +15,60 @@ import (
 
 const workbookEmbeddedFields = `id name hasExtracts hasUserReference containsUnsupportedCustomSql extractLastUpdateTime extractLastRefreshTime extractLastIncrementalUpdateTime`
 const workbookRelationPage = `{totalCount pageInfo{hasNextPage endCursor} nodes{`
+const workbookFieldDescriptionFields = fieldProvenanceFields + ` __typename isHidden folderName ... on DataField {role dataType} ... on AnalyticsField {aggregation} ... on CalculatedField {formula} ... on DatasourceField {remoteField{__typename id name fullyQualifiedName}}`
 
 // WorkbookDatasources observes the workbook and its embedded data sources by exact Metadata API identity.
 func (c *Client) WorkbookDatasources(ctx context.Context, luid string) (value.MetadataWorkbookDatasources, error) {
+	requests := 0
+	out, err := c.workbookDatasourceInventory(ctx, luid, &requests)
+	if err != nil {
+		return out, err
+	}
+	for index := range out.Datasources {
+		g := &out.Datasources[index]
+		if err := c.workbookEmbeddedDetails(ctx, g.Identity.MetadataID, g, &requests, &out.TableauRequestID); err != nil {
+			published, identityErr := workbookPublishedGroups(out.Datasources)
+			out.Datasources = append(out.Datasources, published...)
+			return out, errors.Join(err, identityErr)
+		}
+		g.Complete = true
+	}
+	err = c.workbookPublishedDescriptions(ctx, &out, &requests, true)
+	return out, err
+}
+
+// WorkbookFieldDescriptions observes only field facts and provenance needed for
+// workbook schema and audit, without traversing inspection-only relationships.
+func (c *Client) WorkbookFieldDescriptions(ctx context.Context, luid string) (value.MetadataWorkbookDatasources, error) {
+	requests := 0
+	out, err := c.workbookDatasourceInventory(ctx, luid, &requests)
+	if err != nil {
+		return out, err
+	}
+	for index := range out.Datasources {
+		g := &out.Datasources[index]
+		if err := c.workbookEmbeddedDescriptions(ctx, g.Identity.MetadataID, g, &requests, &out.TableauRequestID, false); err != nil {
+			published, identityErr := workbookPublishedGroups(out.Datasources)
+			out.Datasources = append(out.Datasources, published...)
+			return out, errors.Join(err, identityErr)
+		}
+		g.Complete = true
+	}
+	err = c.workbookPublishedDescriptions(ctx, &out, &requests, false)
+	return out, err
+}
+
+func (c *Client) workbookDatasourceInventory(ctx context.Context, luid string, requests *int) (value.MetadataWorkbookDatasources, error) {
 	out := value.MetadataWorkbookDatasources{Datasources: []value.MetadataWorkbookDatasource{}, ObservedAt: time.Now().UTC().Format(time.RFC3339)}
 	if err := exact(luid); err != nil {
 		return out, err
 	}
-	requests := 0
 	cursor := ""
 	cursors := map[string]bool{}
 	seen := map[string]graphNode{}
 	var coverage graphCoverage
 	for page := range 100 {
-		if requests >= 400 {
+		if *requests >= 400 {
 			return out, &ConstraintError{"workbook metadata exceeds 400 request bound"}
 		}
 		var after any
@@ -37,7 +77,7 @@ func (c *Client) WorkbookDatasources(ctx context.Context, luid string) (value.Me
 		}
 		query := `query WorkbookDatasources($luid:String!,$after:String){workbooks:workbooksConnection(filter:{luid:$luid},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id luid name description ` + graphTagFields + ` items:embeddedDatasourcesConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS)` + workbookRelationPage + workbookEmbeddedFields + `}}}}}`
 		env, r, err := c.graph(ctx, query, map[string]any{"luid": luid, "after": after})
-		requests++
+		*requests++
 		out.TableauRequestID = r.TableauRequestID
 		if err != nil {
 			return out, err
@@ -108,18 +148,13 @@ func (c *Client) WorkbookDatasources(ctx context.Context, luid string) (value.Me
 			return out, &ConstraintError{"workbook datasource inventory exceeds page bound"}
 		}
 	}
-	for index := range out.Datasources {
-		g := &out.Datasources[index]
-		if err := c.workbookEmbeddedDetails(ctx, g.Identity.MetadataID, g, &requests, &out.TableauRequestID); err != nil {
-			published, identityErr := workbookPublishedGroups(out.Datasources)
-			out.Datasources = append(out.Datasources, published...)
-			return out, errors.Join(err, identityErr)
-		}
-		g.Complete = true
-	}
+	return out, nil
+}
+
+func (c *Client) workbookPublishedDescriptions(ctx context.Context, out *value.MetadataWorkbookDatasources, requests *int, extended bool) error {
 	published, err := workbookPublishedGroups(out.Datasources)
 	if err != nil {
-		return out, err
+		return err
 	}
 	publishedStart := len(out.Datasources)
 	out.Datasources = append(out.Datasources, published...)
@@ -128,7 +163,7 @@ func (c *Client) WorkbookDatasources(ctx context.Context, luid string) (value.Me
 	for index := publishedStart; index < len(out.Datasources); index++ {
 		target := &out.Datasources[index]
 		p := target.Identity
-		d, fieldErr := c.datasourceFieldDescriptions(ctx, p.LUID, &requests, true)
+		d, fieldErr := c.datasourceFieldDescriptions(ctx, p.LUID, requests, extended)
 		if d.TableauRequestID != "" {
 			out.TableauRequestID = d.TableauRequestID
 		}
@@ -145,28 +180,31 @@ func (c *Client) WorkbookDatasources(ctx context.Context, luid string) (value.Me
 			complete = false
 			if workbookRequestWide(fieldErr) {
 				out.Complete = false
-				return out, errors.Join(failures...)
+				return errors.Join(failures...)
 			}
 		}
-		u, upstreamErr := c.datasourceUpstream(ctx, p.LUID, &requests)
-		target.Databases, target.Tables = u.Databases, u.Tables
-		if u.TableauRequestID != "" {
-			out.TableauRequestID = u.TableauRequestID
-		}
-		if upstreamErr != nil {
-			failures = append(failures, fmt.Errorf("published datasource %s upstream: %w", p.LUID, upstreamErr))
-			target.Warnings = append(target.Warnings, "Published datasource upstream inventory is incomplete")
-			complete = false
-			if workbookRequestWide(upstreamErr) {
-				out.Complete = false
-				return out, errors.Join(failures...)
+		target.Complete = d.Complete && fieldErr == nil
+		if extended {
+			u, upstreamErr := c.datasourceUpstream(ctx, p.LUID, requests)
+			target.Databases, target.Tables = u.Databases, u.Tables
+			if u.TableauRequestID != "" {
+				out.TableauRequestID = u.TableauRequestID
 			}
+			if upstreamErr != nil {
+				failures = append(failures, fmt.Errorf("published datasource %s upstream: %w", p.LUID, upstreamErr))
+				target.Warnings = append(target.Warnings, "Published datasource upstream inventory is incomplete")
+				complete = false
+				if workbookRequestWide(upstreamErr) {
+					out.Complete = false
+					return errors.Join(failures...)
+				}
+			}
+			target.Complete = target.Complete && u.Complete && upstreamErr == nil
 		}
-		target.Complete = d.Complete && u.Complete && fieldErr == nil && upstreamErr == nil
 		complete = complete && target.Complete
 	}
 	out.Complete = complete
-	return out, errors.Join(failures...)
+	return errors.Join(failures...)
 }
 
 func workbookPublishedGroups(embedded []value.MetadataWorkbookDatasource) ([]value.MetadataWorkbookDatasource, error) {
@@ -207,33 +245,18 @@ func workbookRequestWide(err error) bool {
 }
 
 func (c *Client) workbookEmbeddedDetails(ctx context.Context, id string, g *value.MetadataWorkbookDatasource, requests *int, requestID *string) error {
-	totalColumns := 0
+	if err := c.workbookEmbeddedDescriptions(ctx, id, g, requests, requestID, true); err != nil {
+		return err
+	}
 	for _, rel := range []struct{ name, fields string }{
-		{"parentPublishedDatasourcesConnection", `__typename id luid name`},
-		{"fieldsConnection", fieldDescriptionFields},
 		{"upstreamTablesConnection", tableFields + ` ` + graphTagFields},
 		{"upstreamDatabasesConnection", databaseFields + ` ` + graphTagFields},
 		{"upstreamFlowsConnection", `__typename id luid name`},
 		{"downstreamSheetsConnection", `__typename id luid name`},
 	} {
 		rows, err := c.workbookRelation(ctx, id, rel.name, rel.fields, requests, requestID, func(nodes []graphNode, r tableau.Response) error {
-			if rel.name == "fieldsConnection" {
-				start := len(g.Fields)
-				if err := observeFieldPage(nodes, &g.Fields, &totalColumns, true); err != nil {
-					if _, ok := errors.AsType[*ConstraintError](err); ok {
-						return err
-					}
-					return protocol("catalog.metadata.read", r, err)
-				}
-				return c.enrichFieldPage(ctx, id, nodes, g.Fields[start:], &totalColumns, requests, true, nil, true)
-			}
 			for _, n := range nodes {
 				switch rel.name {
-				case "parentPublishedDatasourcesConnection":
-					if n.LUID == "" {
-						return protocol("catalog.metadata.read", r, errors.New("published parent LUID missing"))
-					}
-					g.Parents = append(g.Parents, identity(n, "datasource"))
 				case "upstreamTablesConnection":
 					g.Tables = append(g.Tables, graphTable(n))
 				case "upstreamDatabasesConnection":
@@ -252,6 +275,37 @@ func (c *Client) workbookEmbeddedDetails(ctx context.Context, id string, g *valu
 		}
 	}
 	return nil
+}
+
+func (c *Client) workbookEmbeddedDescriptions(ctx context.Context, id string, g *value.MetadataWorkbookDatasource, requests *int, requestID *string, extended bool) error {
+	_, err := c.workbookRelation(ctx, id, "parentPublishedDatasourcesConnection", `__typename id luid name`, requests, requestID, func(nodes []graphNode, r tableau.Response) error {
+		for _, n := range nodes {
+			if n.LUID == "" {
+				return protocol("catalog.metadata.read", r, errors.New("published parent LUID missing"))
+			}
+			g.Parents = append(g.Parents, identity(n, "datasource"))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	fields := workbookFieldDescriptionFields
+	if extended {
+		fields = fieldDescriptionFields
+	}
+	totalColumns := 0
+	_, err = c.workbookRelation(ctx, id, "fieldsConnection", fields, requests, requestID, func(nodes []graphNode, r tableau.Response) error {
+		start := len(g.Fields)
+		if err := observeFieldPage(nodes, &g.Fields, &totalColumns, extended); err != nil {
+			if _, ok := errors.AsType[*ConstraintError](err); ok {
+				return err
+			}
+			return protocol("catalog.metadata.read", r, err)
+		}
+		return c.enrichFieldPage(ctx, id, nodes, g.Fields[start:], &totalColumns, requests, true, nil, extended)
+	})
+	return err
 }
 
 func (c *Client) workbookRelation(ctx context.Context, id, connection, fields string, requests *int, requestID *string, consume func([]graphNode, tableau.Response) error) ([]graphNode, error) {

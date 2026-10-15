@@ -53,11 +53,38 @@ type SchemaOutput struct {
 	RequestID   string                 `json:"tableau_request_id,omitempty"`
 }
 
-func (o SchemaOutput) CompactOutput() any { o.RequestID = ""; return o }
-func (o SchemaOutput) FullOutput() any    { return o }
+func (o SchemaOutput) CompactOutput() any {
+	type group struct {
+		Identity value.MetadataIdentity     `json:"identity"`
+		Kind     string                     `json:"kind"`
+		Parents  []value.MetadataIdentity   `json:"parents,omitempty"`
+		Fields   []value.SchemaCompactField `json:"fields"`
+	}
+	groups := make([]group, len(o.Datasources))
+	for i, ds := range o.Datasources {
+		groups[i] = group{Identity: ds.Identity, Kind: ds.Kind, Parents: ds.Parents, Fields: value.CompactSchemaFields(ds.Fields)}
+	}
+	return struct {
+		Status      string                 `json:"status"`
+		Environment string                 `json:"environment,omitempty"`
+		Site        string                 `json:"site,omitempty"`
+		Workbook    value.MetadataIdentity `json:"workbook"`
+		Complete    bool                   `json:"complete"`
+		Datasources []group                `json:"datasources"`
+		Page        SchemaPage             `json:"page"`
+		Warnings    []string               `json:"warnings,omitempty"`
+		Details     string                 `json:"details"`
+	}{o.Status, o.Environment, o.Site, o.Workbook, o.Complete, groups, o.Page, o.Warnings, "--full"}
+}
+func (o SchemaOutput) FullOutput() any { return o }
 
 func schemaError(in SchemaInput, kind errs.Kind, message string, cause error) error {
 	return &errs.Error{ID: "workbook.schema." + string(kind), Kind: kind, Operation: "workbook.schema", Environment: in.Environment, Site: in.Site, Summary: message, Cause: cause, Retryable: new(false), CorrectiveAction: "Inspect the workbook schema and correct the exact selectors; restart without --cursor if the schema changed.", TableauRequestID: errs.TableauRequestID(cause)}
+}
+
+func schemaReadError(in SchemaInput, message string, cause error) error {
+	retryable, corrective := errs.CompleteRetryAdvice(cause, "Verify workbook and datasource access and Metadata API availability, then retry.")
+	return &errs.Error{ID: "workbook.schema.read", Kind: errs.KindOperation, Operation: "workbook.schema", Environment: in.Environment, Site: in.Site, Summary: message, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause)}
 }
 
 func ValidateSchemaInput(in SchemaInput) error {
@@ -104,6 +131,9 @@ func Schema(ctx context.Context, reader SchemaReader, in SchemaInput) (SchemaOut
 	out := SchemaOutput{Status: "listed", Environment: in.Environment, Site: in.Site, Workbook: m.Identity, Complete: m.Complete, Warnings: slices.Clone(m.Warnings), RequestID: m.TableauRequestID, Datasources: []SchemaGroup{}}
 	if m.Identity.LUID != in.WorkbookLUID || m.Identity.MetadataID == "" || len(record.Fields) != len(m.Datasources) {
 		out.Status, out.Complete = "partial", false
+		if readErr != nil {
+			return out, schemaReadError(in, "Workbook schema discovery failed.", readErr)
+		}
 		return out, schemaError(in, errs.KindOperation, "Workbook schema identity or datasource grouping is incomplete.", readErr)
 	}
 	in.Role = strings.ToLower(strings.TrimSpace(in.Role))
@@ -209,26 +239,7 @@ func Schema(ctx context.Context, reader SchemaReader, in SchemaInput) (SchemaOut
 			out.Datasources = append(out.Datasources, SchemaGroup{Identity: ds.Identity, Kind: ds.Kind, Parents: slices.Clone(ds.Parents), Fields: []value.SchemaField{}})
 			lastGroup = item.Group
 		}
-		f := item.Field
-		if f.Metadata != nil {
-			metadata := *f.Metadata
-			metadata.UpstreamColumns = slices.Clone(metadata.UpstreamColumns)
-			if !in.Descriptions {
-				metadata.Description = nil
-				metadata.Inherited = nil
-				metadata.InheritedObserved = false
-			}
-			for i := range metadata.UpstreamColumns {
-				if !in.Descriptions {
-					metadata.UpstreamColumns[i].Description = nil
-				}
-				if !in.Tags {
-					metadata.UpstreamColumns[i].Tags = nil
-					metadata.UpstreamColumns[i].TagsObserved = false
-				}
-			}
-			f.Metadata = &metadata
-		}
+		f := item.Field.ProjectMetadata(in.Descriptions, in.Tags, true)
 		i := len(out.Datasources) - 1
 		out.Datasources[i].Fields = append(out.Datasources[i].Fields, f)
 	}
@@ -238,7 +249,10 @@ func Schema(ctx context.Context, reader SchemaReader, in SchemaInput) (SchemaOut
 		if selectionIncomplete {
 			out.Warnings = append(out.Warnings, "Incomplete metadata cannot establish exact selector absence or uniqueness; returned fields are confirmed matches from the observed inventory.")
 		}
-		return out, schemaError(in, errs.KindOperation, "Workbook schema metadata is incomplete.", readErr)
+		if readErr != nil {
+			return out, schemaReadError(in, "Workbook schema metadata is incomplete.", readErr)
+		}
+		return out, schemaError(in, errs.KindOperation, "Workbook schema metadata is incomplete.", nil)
 	}
 	if !out.Complete {
 		out.Status = "partial"

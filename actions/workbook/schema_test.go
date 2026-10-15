@@ -2,14 +2,62 @@ package workbook
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 )
+
+func TestSchemaCompactUsesFieldSelectionProjection(t *testing.T) {
+	r := filteredSchemaFixture()
+	r.data.Fields[1][1].Provenance = "metadata_graphql"
+	r.data.Fields[1][1].Metadata = &value.FieldDescription{MetadataID: "field-meta", Type: "CalculatedField", FullyQualifiedName: "[Margin]", Formula: "[Revenue] - [Cost]", Description: new("Profit meaning")}
+	out, err := Schema(t.Context(), r, SchemaInput{WorkbookLUID: "wb", All: true, Descriptions: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, _ := json.Marshal(out.CompactOutput())
+	full, _ := json.Marshal(out.FullOutput())
+	var projection struct {
+		Datasources []struct{ Fields []map[string]any }
+	}
+	if err := json.Unmarshal(compact, &projection); err != nil {
+		t.Fatal(err)
+	}
+	for _, ds := range projection.Datasources {
+		for _, field := range ds.Fields {
+			for _, key := range []string{"formula", "excluded", "provenance", "name", "label"} {
+				if _, exists := field[key]; exists {
+					t.Fatalf("compact output includes expanded %s: %s", key, compact)
+				}
+			}
+		}
+	}
+	if !strings.Contains(string(full), `"formula":`) || !strings.Contains(string(full), `"provenance":`) {
+		t.Fatalf("full details lost: %s", full)
+	}
+	if strings.Contains(string(compact), `"formula":`) || !strings.Contains(string(compact), `"type":"CalculatedField"`) || !strings.Contains(string(compact), `"description":"Profit meaning"`) {
+		t.Fatalf("compact metadata must retain identities and requested facts: %s", compact)
+	}
+	if r.data.Fields[1][1].Metadata.Formula == "" {
+		t.Fatal("compact projection changed the provider metadata")
+	}
+}
+
+func TestSchemaPreservesProviderRetryAdvice(t *testing.T) {
+	r := filteredSchemaFixture()
+	r.err = &errs.Error{Kind: errs.KindOperation, Retryable: new(true), CorrectiveAction: "Wait for the service and retry."}
+	_, err := Schema(t.Context(), r, SchemaInput{WorkbookLUID: "wb"})
+	failure, ok := errors.AsType[*errs.Error](err)
+	if !ok || failure.Retryable == nil || !*failure.Retryable || failure.CorrectiveAction != "Wait for the service and retry." {
+		t.Fatalf("provider retry advice lost: %+v", failure)
+	}
+}
 
 type schemaReader struct {
 	data value.WorkbookSchema

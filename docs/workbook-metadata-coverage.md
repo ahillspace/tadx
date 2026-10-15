@@ -8,6 +8,8 @@ Published datasource commands retain their behavior.
 Local field overrides and published source fields remain distinct, linked by provider identity rather than caption.
 
 Audit uses existing description inheritance and object-tag checks, with separate workbook-local and published-source summaries.
+Audit reads only the field descriptions, tags, and parent identities needed for assessment.
+Inspection-only sheet, flow, and upstream object relationships do not determine audit completeness.
 Unsupported field tags are not missing tags; upstream column tags retain their source identity.
 Each published parent is assessed once, while separate local field objects remain separate assessments.
 The request-wide audit limit counts assessed objects, not checks.
@@ -18,9 +20,14 @@ Schema groups fields by datasource, applies one global field limit, and supports
 Ambiguous datasource names and field identifiers fail rather than select arbitrarily.
 Continuation binds the request and observed schema; no workbook-schema cache is introduced.
 Schema totals identify whether the observed inventory is complete.
-Workbook schema does not offer logical-table filtering because this metadata path does not report those assignments.
+Published groups use the existing datasource schema reader and retain its logical-table assignments and field classification.
+Embedded groups use Metadata API observations and do not invent logical-table assignments.
+Workbook schema filters by datasource group rather than logical table.
 Physical upstream tables remain provenance, not substitutes for logical tables.
+Compact field output and description and tag projection use the same contracts as datasource schema.
+Remote fields reuse confirmed published semantic facts through exact Metadata IDs, including when workbook captions differ.
 Cached workbook inspection stays offline and marks datasource detail not captured.
+Live inspection caches confirmed REST details independently of optional metadata enrichment failures.
 
 Lineage retains existing upstream shortcuts and adds embedded containment without changing existing asset-depth meaning.
 Optional field mode adds API-reported field relationships to the same bounded graph and records the requested mode in artifacts.
@@ -29,10 +36,12 @@ Automatic content pulls remain asset-only at their existing defaults.
 
 ## Implementation ownership
 
-- `internal/tableau/metadataassets` and `internal/value/metadata.go`: one workbook metadata read with shared field interpretation and independent connection pagination.
+- `internal/tableau/metadataassets` and `internal/value/metadata.go`: workbook identity and inventory facts, focused field-description reads, and inspection graph coverage with independent connection pagination.
 - `actions/catalog/audit` and `internal/app/catalog.go`: extend existing audit rules and wiring.
-- `actions/workbook`, `internal/resources/workbook`, and `internal/app/workbook_inventory.go`: workbook schema and inspection, preserving cached reads.
-- `internal/tableau/fieldcatalog` and existing datasource schema helpers: share field classification and filtering where behavior matches.
+- `actions/workbook` and `internal/resources/workbook`: workbook-specific selection, grouped schema, identity validation, and output projection.
+- `internal/app/workbook_inventory.go`: inspection enrichment sequencing, REST cache persistence, and schema dependency wiring.
+- `internal/tableau/fieldcatalog` and the existing datasource schema adapter: canonical published schema acquisition and classification, plus embedded dependency analysis using confirmed remote semantic facts.
+- `internal/value/schema.go`: shared compact field projection, filtering, and description and tag suppression.
 - Existing lineage provider, adapter, action, artifact, and command files: embedded nodes and optional field relationships.
 - Existing CLI, capability definitions, agent guidance, and generated references: consistent discovery and output documentation.
 
@@ -73,7 +82,8 @@ Published field lineage captures seven columns, one table, and one database in a
 
 A workbook containing only a published-parent-backed datasource retains 470 local fields but receives inconsistent native sheet pagination.
 The first page returns 100 of 148 sheets with a continuation cursor; the next returns an empty terminal page with the same total.
-Inspection and audit correctly report incomplete coverage while retaining confirmed identities and findings.
+The earlier inspection and audit paths report incomplete coverage while retaining confirmed identities and findings.
+Focused audit reads now exclude the unrelated sheet relationship, while inspection continues to report its graph coverage independently.
 Its audit confirms 26 inherited descriptions; direct-only assessment keeps those descriptions unknown.
 Its field lineage preserves physical and remote-field relationships in a 304-node graph and explicitly reports the 1,000-edge bound.
 These observations do not establish complete published-reference enrichment or complete lineage for that workbook.
@@ -87,3 +97,15 @@ Successful live workbook schema remains unverified because managed policy denies
 A live workbook with published references and independent embedded datasources remains unverified pending an available seed.
 Positive column-tag values and complete metadata for the workbook with inconsistent sheet pagination remain unverified live.
 These gaps prevent an unconditional production-readiness claim.
+
+### Datasource alignment repairs
+
+Published workbook groups use the existing datasource schema adapter and its VDS read, VDS describe, and Metadata API fallback methods.
+The canonical field catalog retains hidden dependency semantics separately from display hiding, preserving source exclusions and aggregation requirements for renamed workbook references.
+Standalone datasource output retains its existing behavior.
+No additional provider requests or parallel classifier are introduced.
+
+CLI HTTP regressions reproduce and verify cache recovery after metadata failure, audit independence from sheet pagination, canonical VDS schema facts, provider retry advice, and hidden dependency semantics.
+Focused tests, race tests, and vet pass, and independent comparative reviews sign off on the repaired owners and contracts.
+Live audit and inspection checks agree with the downloaded native description counts and datasource identities.
+Successful live workbook schema remains blocked by managed policy until an administrator completes the approved policy refresh.
