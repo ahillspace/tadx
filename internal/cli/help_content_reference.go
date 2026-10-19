@@ -121,7 +121,7 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 		if resource == "workbook" {
 			return []string{"Live fields; total limit. Scope duplicate IDs with --datasource."}
 		}
-		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata; cache needs observations."}
+		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata. Live schema reads attempt cache updates; --cache needs prior live schema observations. Cache refresh omits schema."}
 	case "create":
 		return []string{"Omit parent for top level; omit content-permissions for the server default."}
 	case "move":
@@ -141,22 +141,22 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 		}
 		return false
 	}
-	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Project paths use /.")
+	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Project paths: /.")
 	if has("list") {
 		fmt.Fprintln(out, "  list --all: <=10000; incomplete/overflow fails. Cache: unfiltered replaces scope; filtered merges; cache failures retain live results.")
-		fmt.Fprintln(out, "  Bounded reads never cache.")
+		fmt.Fprintln(out, "  Bounded lists never cache.")
 	}
 	if has("publish") || has("pull") {
-		fmt.Fprintln(out, "  --no-wait: one single/batch status command, no polling. Wait ends at 20m; work continues.")
+		fmt.Fprintln(out, "  --no-wait: one single/batch status command; no polling. Wait: 20m; work continues.")
 		if has("publish") {
-			fmt.Fprintln(out, "  Save accepted IDs; use the returned status command. Do not republish.")
+			fmt.Fprintln(out, "  Save accepted IDs; use returned status command. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")
 			if resource.Name() == "flow" {
 				fmt.Fprintln(out, "  Flow publication can complete synchronously.")
 			}
 		}
 		if has("pull") {
-			fmt.Fprintln(out, "  Downloads have no remote jobs to poll.")
+			fmt.Fprintln(out, "  Downloads: no remote jobs.")
 		}
 	}
 	if has("publish") || has("update") || has("delete") || has("move") || has("create") {

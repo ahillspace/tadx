@@ -20,6 +20,10 @@ func applyHelpValues(root *cobra.Command) {
 		value := func(name, format string) { helpFlagAnnotation(command, name, "tadx.help.value", []string{format}) }
 		note := func(name, text string) { appendHelpUsage(command.Flags().Lookup(name), text) }
 		switch path {
+		case "mutation set":
+			choices("enabled", "true", "false")
+		case "content workbook pull":
+			choices("include-extract", "true", "false")
 		case "search":
 			types, _ := searchaction.Types("")
 			choices("type", append(types, "content", "admin", "pulse")...)
@@ -53,6 +57,7 @@ func applyHelpValues(root *cobra.Command) {
 			note("language", "Tableau language code supported by the site")
 			note("locale", "Tableau locale code supported by the site")
 		case "admin group create", "admin group update":
+			choices("external-user-enabled", "true", "false")
 			note("minimum-site-role", "accepted roles depend on the Tableau site and version")
 		case "catalog lineage pull":
 			choices("kind", "workbook", "datasource", "published_datasource", "flow")
@@ -64,6 +69,10 @@ func applyHelpValues(root *cobra.Command) {
 			choices("kind", "workbook", "datasource", "flow", "pulse-definition", "lineage")
 		case "catalog label list", "catalog label inspect", "catalog label update", "catalog label delete":
 			choices("type", "database", "table", "column", "datasource", "flow")
+			if path == "catalog label update" {
+				choices("active", "true", "false")
+				choices("elevated", "true", "false")
+			}
 		case "pulse definition create":
 			choices("aggregation", "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "USER")
 			choices("minimum-granularity", "DAY", "WEEK", "MONTH", "QUARTER", "YEAR")

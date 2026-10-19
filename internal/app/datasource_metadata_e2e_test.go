@@ -75,7 +75,14 @@ func TestDatasourceMetadataThroughCLI(t *testing.T) {
 	if calls.Load() != before {
 		t.Fatal("cached inspect used Tableau")
 	}
-	schema := run("content", "datasource", "schema", "--id", "ds-1", "--descriptions", "--tags", "--field-id", "[Sales]")
+	var cold strings.Builder
+	if code := app.Run(t.Context(), []string{"content", "datasource", "schema", "--env", "test", "--id", "ds-1", "--cache", "--json"}, &cold, options); code == 0 || !strings.Contains(cold.String(), `"operation":"datasource.schema"`) || !strings.Contains(cold.String(), "without --cache") {
+		t.Fatalf("inventory observation unexpectedly satisfied cached schema: exit=%d output=%s", code, cold.String())
+	}
+	if calls.Load() != before {
+		t.Fatal("cold cached schema used Tableau")
+	}
+	schema := run("content", "datasource", "schema", "--id", "ds-1", "--descriptions", "--tags", "--field-id", "[Sales]", "--limit", "1")
 	for _, want := range []string{"Published meaning", "Physical meaning", "column-meta", "finance", "[Sales]"} {
 		if !strings.Contains(schema, want) {
 			t.Fatalf("missing %s: %s", want, schema)
@@ -90,6 +97,9 @@ func TestDatasourceMetadataThroughCLI(t *testing.T) {
 		t.Fatalf("cache enrichment lost: %s", cached)
 	}
 	plain := run("content", "datasource", "schema", "--id", "ds-1", "--cache", "--full")
+	if calls.Load() != before || !strings.Contains(plain, "[Cost]") || !strings.Contains(plain, "[Sales]") {
+		t.Fatalf("bounded schema read failed to cache complete observations: %s", plain)
+	}
 	if strings.Contains(plain, "Published meaning") {
 		t.Fatalf("optional metadata emitted unrequested: %s", plain)
 	}

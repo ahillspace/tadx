@@ -143,6 +143,8 @@ func TestFocusedHelpCleanupKeepsOperationalGuidance(t *testing.T) {
 		{path: "admin group list", avoid: []string{"Booleans:"}},
 		{path: "mutation set", want: []string{"--enabled=true|false"}, avoid: []string{"Booleans:"}},
 		{path: "admin group create", want: []string{"--external-user-enabled=true|false"}},
+		{path: "catalog label update", want: []string{"--active=true|false", "--elevated=true|false"}},
+		{path: "content workbook pull", want: []string{"--include-extract=true|false"}},
 		{path: "content workbook publish", want: []string{"Save accepted IDs", "returned status command", "Do not republish"}, avoid: []string{"Publish polls:"}},
 		{path: "workspace register", avoid: []string{"artifact file operations", "workspace status -h"}},
 		{path: "workspace clean", want: []string{"workspace status -h"}, avoid: []string{"artifact file operations"}},

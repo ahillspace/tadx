@@ -163,17 +163,24 @@ func normalizeQuery(q Query) (Query, map[string]any, error) {
 	if len(q.Cursor) > 4096 {
 		return q, nil, errors.New("metadata cursor exceeds bound")
 	}
-	filter := map[string]any{}
-	for k, s := range map[string]string{"luid": q.LUID, "id": q.MetadataID, "name": q.Name, "text": q.Text} {
+	for _, s := range []string{q.LUID, q.MetadataID, q.Name, q.Text} {
 		if s != "" {
 			if e := exact(s); e != nil {
 				return q, nil, e
 			}
-			filter[k] = s
 		}
 	}
 	if q.LUID != "" && q.MetadataID != "" {
 		return q, nil, errors.New("select either REST LUID or Metadata ID")
+	}
+	filter := struct {
+		LUID     string   `json:"luid,omitempty"`
+		IDWithin []string `json:"idWithin,omitempty"`
+		Name     string   `json:"name,omitempty"`
+		Text     string   `json:"text,omitempty"`
+	}{LUID: q.LUID, Name: q.Name, Text: q.Text}
+	if q.MetadataID != "" {
+		filter.IDWithin = []string{q.MetadataID}
 	}
 	var after any
 	if q.Cursor != "" {

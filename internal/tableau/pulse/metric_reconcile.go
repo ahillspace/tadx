@@ -143,8 +143,10 @@ func normalizeFilterArray(filters []any) error {
 	return nil
 }
 
-// normalizeFilterRepresentations makes the provider's typed categorical values
-// and the portable text values comparable without ignoring conflicting fields.
+// normalizeFilterRepresentations retains the complete typed population and
+// checks its legacy mirror independently. The documented NULL_VALUE and native
+// protobuf null are equivalent; null inclusion leaves that member out of the
+// text mirror without removing it from the typed population.
 func normalizeFilterRepresentations(entry map[string]any) error {
 	rawCategorical, hasCategorical := entry["categorical_values"]
 	rawText, hasText := entry["values"]
@@ -152,10 +154,11 @@ func normalizeFilterRepresentations(entry map[string]any) error {
 		return nil
 	}
 
-	var categorical []any
+	var categorical, mirror []any
 	if hasCategorical {
+		includeNull, _ := entry["include_null"].(bool)
 		var err error
-		categorical, err = typedFilterValues(rawCategorical)
+		categorical, mirror, err = typedFilterValues(rawCategorical, includeNull)
 		if err != nil {
 			return err
 		}
@@ -165,12 +168,12 @@ func normalizeFilterRepresentations(entry map[string]any) error {
 		if err != nil {
 			return err
 		}
+		sortJSONValues(text)
 		if hasCategorical {
-			sortJSONValues(categorical)
-			sortJSONValues(text)
-			categoricalJSON, _ := json.Marshal(categorical)
+			sortJSONValues(mirror)
+			mirrorJSON, _ := json.Marshal(mirror)
 			textJSON, _ := json.Marshal(text)
-			if !bytes.Equal(categoricalJSON, textJSON) {
+			if !bytes.Equal(mirrorJSON, textJSON) {
 				return errors.New("filter categorical_values and values conflict")
 			}
 		} else {
@@ -183,17 +186,29 @@ func normalizeFilterRepresentations(entry map[string]any) error {
 	return nil
 }
 
-func typedFilterValues(raw any) ([]any, error) {
+func typedFilterValues(raw any, includeNull bool) ([]any, []any, error) {
 	values, ok := raw.([]any)
 	if !ok {
-		return nil, errors.New("filter categorical_values must be an array")
+		return nil, nil, errors.New("filter categorical_values must be an array")
 	}
+	mirror := make([]any, 0, len(values))
 	for _, value := range values {
-		if _, ok := value.(map[string]any); !ok {
-			return nil, errors.New("filter categorical_values must contain typed objects")
+		item, ok := value.(map[string]any)
+		if !ok {
+			return nil, nil, errors.New("filter categorical_values must contain typed objects")
 		}
+		nullValue, hasNull := item["null_value"]
+		if len(item) == 1 && hasNull {
+			if nullValue == "NULL_VALUE" {
+				item["null_value"], nullValue = nil, nil
+			}
+			if includeNull && nullValue == nil {
+				continue
+			}
+		}
+		mirror = append(mirror, item)
 	}
-	return values, nil
+	return values, mirror, nil
 }
 
 func textFilterValues(raw any) ([]any, error) {

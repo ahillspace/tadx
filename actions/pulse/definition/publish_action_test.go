@@ -176,6 +176,93 @@ func TestPublishRejectsBadLocalMappingsAndUnknownSections(t *testing.T) {
 	}
 }
 
+func TestPublishAcceptsEmptyPulledMetricProjectionWithoutDroppingConfiguration(t *testing.T) {
+	bundle := publishBundleFixture()
+	var source map[string]json.RawMessage
+	if err := json.Unmarshal(bundle.Configuration, &source); err != nil {
+		t.Fatal(err)
+	}
+	source["metrics"] = json.RawMessage(`[]`)
+	source["tags"] = json.RawMessage(`[]`)
+	source["total_metrics"] = json.RawMessage(`"1"`)
+	bundle.Configuration, _ = json.Marshal(source)
+	original := string(bundle.Configuration)
+	plan, err := preparePublish(publishInputFixture(), bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mapped map[string]json.RawMessage
+	if err := json.Unmarshal(plan.DefinitionConfiguration, &mapped); err != nil {
+		t.Fatal(err)
+	}
+	for _, section := range []string{"metrics", "tags", "total_metrics"} {
+		if _, present := mapped[section]; present {
+			t.Fatalf("returned observation %s was copied into creation: %#v", section, plan)
+		}
+	}
+	if len(plan.Metrics) != len(bundle.Metrics) {
+		t.Fatalf("bundle variants lost: %#v", plan)
+	}
+	if !reflect.DeepEqual(mapped["extension_options"], source["extension_options"]) {
+		t.Fatal("definition configuration changed while removing the empty response projection")
+	}
+	if string(bundle.Configuration) != original {
+		t.Fatal("preparation changed the retained source definition")
+	}
+	for _, unsupported := range []string{`null`, `{}`, `[{"id":"unrepresented-metric"}]`} {
+		source["metrics"] = json.RawMessage(unsupported)
+		bundle.Configuration, _ = json.Marshal(source)
+		if _, err := preparePublish(publishInputFixture(), bundle); err == nil {
+			t.Fatalf("accepted unsupported metric projection %s", unsupported)
+		}
+	}
+	source["metrics"] = json.RawMessage(`[]`)
+	for _, section := range []string{"tags", "total_metrics"} {
+		original := source[section]
+		source[section] = json.RawMessage(`{"unexpected":"configuration"}`)
+		bundle.Configuration, _ = json.Marshal(source)
+		if _, err := preparePublish(publishInputFixture(), bundle); err == nil {
+			t.Fatalf("accepted unsupported %s observation", section)
+		}
+		source[section] = original
+	}
+}
+
+func TestPublishRejectsUnrepresentedReturnedObservations(t *testing.T) {
+	for _, test := range []struct {
+		name, section, observation string
+	}{
+		{"populated metrics", "metrics", `[{"id":"metric-1"}]`},
+		{"populated tags", "tags", `["important"]`},
+		{"null tags", "tags", `null`},
+		{"object tags", "tags", `{}`},
+		{"wrong metric total", "total_metrics", `"2"`},
+		{"numeric metric total", "total_metrics", `1`},
+		{"null metric total", "total_metrics", `null`},
+		{"noncanonical metric total", "total_metrics", `"01"`},
+		{"unknown empty section", "unknown_observation", `[]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bundle := publishBundleFixture()
+			var source map[string]json.RawMessage
+			if err := json.Unmarshal(bundle.Configuration, &source); err != nil {
+				t.Fatal(err)
+			}
+			source[test.section] = json.RawMessage(test.observation)
+			var err error
+			bundle.Configuration, err = json.Marshal(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = preparePublish(publishInputFixture(), bundle)
+			structured, ok := errors.AsType[*errs.Error](err)
+			if !ok || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted {
+				t.Fatalf("unsupported observation must fail before mutation: %v", err)
+			}
+		})
+	}
+}
+
 func TestPublishCompactMarksCappedDecisionDetailsIncomplete(t *testing.T) {
 	output := pulsedefinition.PublishOutput{Plan: pulsedefinition.PublishPlan{ReviewComplete: true, Metrics: make([]pulsedefinition.PublishMetric, 11)}, Mappings: make([]pulsedefinition.PublishMapping, 21)}
 	encoded, _ := json.Marshal(output.CompactOutput())

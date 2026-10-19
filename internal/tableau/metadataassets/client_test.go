@@ -170,6 +170,63 @@ func TestGraphQLExactFilterAndBoundedPage(t *testing.T) {
 	}
 }
 
+func TestGraphQLMetadataIDUsesSingletonFilter(t *testing.T) {
+	for _, kind := range []string{"database", "table", "column"} {
+		t.Run(kind, func(t *testing.T) {
+			c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					Variables struct {
+						Filter map[string]json.RawMessage `json:"filter"`
+						First  int                        `json:"first"`
+					} `json:"variables"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if len(body.Variables.Filter) != 1 || string(body.Variables.Filter["idWithin"]) != `["meta-1"]` || body.Variables.First != 2 {
+					t.Fatalf("Metadata-ID request must use one exact singleton filter: %+v", body.Variables)
+				}
+				io.WriteString(w, `{"data":{"items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"meta-1","luid":"asset-1","name":"Sales"}]}}}`)
+			})
+			query := Query{MetadataID: "meta-1", Limit: 2}
+			var complete bool
+			var err error
+			switch kind {
+			case "database":
+				got, e := c.DiscoverDatabases(t.Context(), query)
+				complete, err = got.Complete && len(got.Items) == 1 && got.Items[0].MetadataID == query.MetadataID, e
+			case "table":
+				got, e := c.DiscoverTables(t.Context(), query)
+				complete, err = got.Complete && len(got.Items) == 1 && got.Items[0].MetadataID == query.MetadataID, e
+			case "column":
+				got, e := c.DiscoverColumns(t.Context(), query)
+				complete, err = got.Complete && len(got.Items) == 1 && got.Items[0].MetadataID == query.MetadataID, e
+			}
+			if err != nil || !complete {
+				t.Fatalf("exact Metadata-ID discovery failed: complete=%v err=%v", complete, err)
+			}
+		})
+	}
+}
+
+func TestGraphQLMetadataIDRejectsUnqualifiedResult(t *testing.T) {
+	for name, body := range map[string]string{
+		"errors":   `{"errors":[{"message":"partial"}],"data":{"items":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}}`,
+		"warnings": `{"warnings":[{"message":"partial"}],"data":{"items":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}}`,
+		"identity": `{"data":{"items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"different","luid":"asset-1","name":"Sales"}]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, body)
+			})
+			got, err := c.DiscoverTables(t.Context(), Query{MetadataID: "meta-1", Limit: 2})
+			if err == nil || got.Complete {
+				t.Fatalf("unqualified Metadata-ID lookup accepted: %#v %v", got, err)
+			}
+		})
+	}
+}
+
 func TestRejectsInvalidBeforeNetwork(t *testing.T) {
 	c := fixtureClient(t, func(http.ResponseWriter, *http.Request) { t.Fatal("unexpected request") })
 	empty := ""

@@ -306,9 +306,6 @@ func referenceSharedText(flag *pflag.Flag) string {
 
 func referenceFlagSyntax(flag *pflag.Flag) string {
 	text := helpFlagSyntax(flag, false)
-	if flag.Value.Type() == "bool" && (flag.Name == "enabled" || flag.Name == "external-user-enabled") {
-		text += "=true|false"
-	}
 	if _, repeatable := flag.Value.(pflag.SliceValue); repeatable || helpAnnotationTrue(flag, "tadx.help.repeatable") {
 		text += "..."
 	}

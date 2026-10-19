@@ -342,6 +342,57 @@ func TestHelpValuesAreScopedAndPreserveFlagBehavior(t *testing.T) {
 	}
 }
 
+func TestBooleanHelpChoicesFollowCommandSemantics(t *testing.T) {
+	for _, test := range []struct {
+		path, flag   string
+		defaultValue bool
+		explicit     bool
+	}{
+		{"mutation set", "enabled", false, true},
+		{"admin group create", "external-user-enabled", false, true},
+		{"admin group update", "external-user-enabled", false, true},
+		{"catalog label update", "active", false, true},
+		{"catalog label update", "elevated", false, true},
+		{"content workbook pull", "include-extract", true, true},
+		{"unrelated update", "active", false, false},
+	} {
+		t.Run(test.path+"/"+test.flag, func(t *testing.T) {
+			root := &cobra.Command{Use: "tadx"}
+			command := root
+			for _, name := range strings.Fields(test.path) {
+				child := &cobra.Command{Use: name}
+				command.AddCommand(child)
+				command = child
+			}
+			setting := command.Flags().Bool(test.flag, test.defaultValue, "boolean setting")
+			applyHelpValues(root)
+			flag := command.Flags().Lookup(test.flag)
+			if *setting != test.defaultValue || flag.Changed || flag.NoOptDefVal != "true" {
+				t.Fatal("help changed boolean defaults or parsing")
+			}
+			want := "--" + test.flag
+			if test.explicit {
+				want += "=true|false"
+			}
+			if got := helpFlagSyntax(flag, false); got != want {
+				t.Fatalf("syntax=%q, want %q", got, want)
+			}
+			reference := want
+			if test.defaultValue {
+				reference += " (default: true)"
+			}
+			if got := referenceFlagSyntax(flag); got != reference {
+				t.Fatalf("reference=%q, want %q", got, reference)
+			}
+			for _, value := range []string{"false", "true"} {
+				if err := command.ParseFlags([]string{"--" + test.flag + "=" + value}); err != nil || *setting != (value == "true") {
+					t.Fatalf("advertised value %s rejected: value=%t err=%v", value, *setting, err)
+				}
+			}
+		})
+	}
+}
+
 func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 	for _, tc := range []struct {
 		path, flag string
