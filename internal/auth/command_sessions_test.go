@@ -255,7 +255,7 @@ func testForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T, sameManage
 		}
 		foregroundDone <- err
 	}()
-	time.Sleep(75 * time.Millisecond)
+	waitForForegroundAdmission(t, directory)
 	if err := holder.Close(); err != nil {
 		t.Fatal(err)
 	}
