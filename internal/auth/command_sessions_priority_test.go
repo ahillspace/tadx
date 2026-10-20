@@ -66,7 +66,7 @@ func TestCommandSessionForegroundPriorityAcrossProcesses(t *testing.T) {
 					_ = child.Wait()
 				}
 			}()
-			waitForForegroundAdmission(t, directory)
+			waitForAdmissionBeforeMonitorStarts(t, directory)
 
 			monitor := auth.NewCommandSessions(auth.LookupEnvFunc(commandEnvironmentLookup), nil, directory)
 			defer monitor.Close()
@@ -147,7 +147,7 @@ func TestCommandSessionCanceledForegroundReleasesAdmission(t *testing.T) {
 		_, err := foreground.AuthenticateCredentials(ctx, commandTarget(), commandCredential(), &commandSigner{})
 		done <- err
 	}()
-	waitForForegroundAdmission(t, directory)
+	waitForAdmissionBeforeMonitorStarts(t, directory)
 	cancel()
 	select {
 	case err := <-done:
@@ -169,7 +169,8 @@ func TestCommandSessionCanceledForegroundReleasesAdmission(t *testing.T) {
 	}
 }
 
-func waitForForegroundAdmission(t *testing.T, directory string) {
+// Call before starting any monitor: only foreground work can hold admission.
+func waitForAdmissionBeforeMonitorStarts(t *testing.T, directory string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
