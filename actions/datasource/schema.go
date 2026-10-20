@@ -120,29 +120,17 @@ func schemaNormalizeFieldSelection(input SchemaInput) (SchemaInput, error) {
 }
 
 func schemaFilterFields(fields []Field, input SchemaInput) ([]Field, error) {
-	query := strings.ToLower(input.Query)
-	table := strings.ToLower(input.Table)
 	selected := make(map[string]int, len(input.FieldIDs))
 	for _, id := range input.FieldIDs {
 		selected[id] = 0
 	}
 	result := make([]Field, 0, len(fields))
 	for _, field := range fields {
-		role := strings.ToLower(strings.TrimSpace(field.Role))
-		if input.Role != "" && role != input.Role {
+		if !field.Matches(input.Query, input.Role, input.Table) {
 			continue
 		}
 		if len(selected) > 0 {
 			if _, requested := selected[field.ID]; !requested {
-				continue
-			}
-		}
-		if table != "" && strings.ToLower(field.Table) != table {
-			continue
-		}
-		if query != "" {
-			haystack := strings.ToLower(strings.Join([]string{field.ID, field.Name, field.Caption, field.Label, field.Formula}, "\x00"))
-			if !strings.Contains(haystack, query) {
 				continue
 			}
 		}

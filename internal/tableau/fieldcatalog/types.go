@@ -9,8 +9,12 @@ type Schema struct {
 	DatasourceName string
 	Tables         []Table
 	Fields         []Field
-	Warnings       []string
-	RequestID      string
+	// DependencyFields retains hidden dependency semantics before display hiding.
+	// GraphQL omits these fields from Fields; VDS retains display-hidden placeholders
+	// in Fields, whose dependency semantics are supplied by this inventory instead.
+	DependencyFields []Field
+	Warnings         []string
+	RequestID        string
 }
 
 // Table is one logical table reported by Tableau.

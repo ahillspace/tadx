@@ -11,6 +11,7 @@ import (
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
+	"github.com/ahillspace/tadx/internal/value"
 	"strings"
 	"time"
 )
@@ -81,7 +82,7 @@ func (r *datasourceSchemaReader) ReadDatasourceSchema(ctx context.Context, luid 
 		if err != nil {
 			return datasourceops.SchemaRecord{}, err
 		}
-		r.result.Fields = resourcedatasource.EnrichFields(fields, metadata.Fields)
+		r.result.Fields = value.EnrichSchemaFields(fields, metadata.Fields)
 		r.result.DescriptionsObserved, r.result.TagsObserved = true, true
 		if !metadata.Complete {
 			r.result.Warnings = append(r.result.Warnings, "Metadata coverage is incomplete; unmatched fields and absent observations do not prove metadata is missing.")

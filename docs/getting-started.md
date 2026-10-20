@@ -246,6 +246,8 @@ Start from an exact published datasource and inspect its field metadata:
 ```text
 tadx search sales --environment dev --type datasource
 tadx content datasource schema --environment dev --id DATASOURCE_LUID --query sales --limit 20 --full
+tadx content workbook schema --environment dev --id WORKBOOK_LUID --descriptions --tags
+tadx catalog audit --environment dev --type workbook --id WORKBOOK_LUID
 ```
 
 Use the installed Pulse Guidance for complete measure, date, dimension, and slicer discovery.

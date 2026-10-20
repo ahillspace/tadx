@@ -32,6 +32,7 @@ type Request struct {
 	RESTLUID  string
 	Direction string
 	Depth     int
+	Fields    bool
 }
 
 // Node preserves distinct Metadata and REST identities.
@@ -46,6 +47,7 @@ type Graph struct {
 	RootMetadataID string
 	Direction      string
 	Depth          int
+	Fields         bool
 	Complete       bool
 	Failure        *value.LineageFailure
 	Nodes          []Node
@@ -67,7 +69,7 @@ func (a *Adapter) Capture(ctx context.Context, input Request) (Graph, error) {
 	}
 	request, err := tableaumetadata.ValidateLineageRequest(tableaumetadata.CaptureRequest{
 		Kind: tableaumetadata.ResourceKind(strings.TrimSpace(input.Kind)), RESTLUID: input.RESTLUID,
-		Direction: tableaumetadata.Direction(strings.TrimSpace(input.Direction)), Depth: input.Depth,
+		Direction: tableaumetadata.Direction(strings.TrimSpace(input.Direction)), Depth: input.Depth, Fields: input.Fields,
 	})
 	if err != nil {
 		return Graph{}, err
@@ -193,7 +195,7 @@ func normalize(request tableaumetadata.CaptureRequest, capture tableaumetadata.C
 
 	warnings := normalizeStrings(append(generatedWarnings, capture.Warnings...), MaxWarnings)
 	requestIDs := normalizeStrings(capture.RequestIDs, MaxWarnings)
-	return Graph{RootRESTLUID: request.RESTLUID, RootMetadataID: rootMetadataID, Direction: string(request.Direction), Depth: request.Depth, Complete: complete, Nodes: nodes, Edges: edges, Warnings: warnings, RequestIDs: requestIDs}, nil
+	return Graph{RootRESTLUID: request.RESTLUID, RootMetadataID: rootMetadataID, Direction: string(request.Direction), Depth: request.Depth, Fields: request.Fields, Complete: complete, Nodes: nodes, Edges: edges, Warnings: warnings, RequestIDs: requestIDs}, nil
 }
 
 func nodeKey(node Node) string {

@@ -91,7 +91,7 @@ func TestContentPresentationGroupsAndValuesAreDeterministic(t *testing.T) {
 		t.Fatalf("shared subset flags lost their scope:\n%s", baseline)
 	}
 	publish := contentPresentationSection(t, baseline, "  publish: Publish local content to Tableau")
-	if strings.Contains(publish, "--extra-filter") || !strings.Contains(publish, "workspace ID/name/relative artifact") {
+	if strings.Contains(publish, "--extra-filter") || !strings.Contains(publish, "TADX-managed artifact directory") {
 		t.Fatalf("publish flag semantics incorrectly merged:\n%s", baseline)
 	}
 	if strings.Count(baseline, "--json") != 1 || strings.Count(baseline, "--extra-filter ") != 2 {
@@ -149,14 +149,21 @@ func TestContentFocusedHelpKeepsSharedConstraintsAndRelatedRoute(t *testing.T) {
 }
 
 func TestContentPresentationListCacheEffectsAreScoped(t *testing.T) {
-	for _, resourceName := range []string{"workbook", "flow", "project"} {
+	for _, resourceName := range []string{"workbook", "datasource", "flow", "project"} {
 		t.Run(resourceName, func(t *testing.T) {
-			_, resource := contentPresentationTree(resourceName, "list")
+			actions := []string{"list"}
+			if resourceName == "datasource" {
+				actions = append(actions, "schema")
+			}
+			_, resource := contentPresentationTree(resourceName, actions...)
 			got := contentPresentationOutput(t, resource)
-			for _, want := range []string{"Bounded reads never cache", "list --all: <=10000", "unfiltered replaces scope", "filtered merges", "cache failures retain live results", "incomplete/overflow fails"} {
+			for _, want := range []string{"Bounded lists never cache", "list --all: <=10000", "unfiltered replaces scope", "filtered merges", "cache failures retain live results", "incomplete/overflow fails"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("missing list behavior %q", want)
 				}
+			}
+			if resourceName == "datasource" && !strings.Contains(got, "Live schema reads attempt cache updates") {
+				t.Errorf("datasource help omits schema cache effects:\n%s", got)
 			}
 			_, withoutList := contentPresentationTree(resourceName, "inspect")
 			if strings.Contains(contentPresentationOutput(t, withoutList), "list --all") {

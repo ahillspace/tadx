@@ -41,7 +41,7 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
-		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: c, WorkbookMover: c, WorkbookUpdater: c,
+		WorkbookLister: c, WorkbookInspector: c, WorkbookSchema: c, WorkbookDeleter: c, WorkbookMover: c, WorkbookUpdater: c,
 		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c, DatasourceMover: c, DatasourceUpdater: c,
 		ProjectLister: c, ProjectInspector: c, ProjectCreator: c, ProjectUpdater: c, ProjectDeleter: c, ProjectMover: c,
 		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c, FlowUpdater: c,
@@ -805,8 +805,8 @@ func (r lineageResolver) ResolveLineageResource(ctx context.Context, kind string
 type lineageReader struct{ adapter *resourcelineage.Adapter }
 
 func (r lineageReader) CaptureLineage(ctx context.Context, input lineagepull.CaptureRequest) (lineagepull.Graph, error) {
-	graph, err := r.adapter.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
-	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Direction: graph.Direction, Depth: graph.Depth, Complete: graph.Complete, Failure: graph.Failure, Nodes: graph.Nodes, Edges: graph.Edges, Warnings: graph.Warnings, RequestIDs: graph.RequestIDs}, err
+	graph, err := r.adapter.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields})
+	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Direction: graph.Direction, Depth: graph.Depth, Fields: graph.Fields, Complete: graph.Complete, Failure: graph.Failure, Nodes: graph.Nodes, Edges: graph.Edges, Warnings: graph.Warnings, RequestIDs: graph.RequestIDs}, err
 }
 
 type lineageArtifactWriter struct{ manager *artifact.LineageManager }
@@ -820,6 +820,6 @@ func (w lineageArtifactWriter) WriteLineage(ctx context.Context, input lineagepu
 	for index, edge := range input.Edges {
 		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
+	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
 	return lineagepull.ArtifactResult{Path: result.Path, LineagePath: result.LineagePath, Fingerprint: result.Fingerprint}, err
 }

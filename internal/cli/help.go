@@ -329,7 +329,8 @@ func helpFlagSyntax(flag *pflag.Flag, aliases bool) string {
 	}
 	typeName := flag.Value.Type()
 	value := typeName
-	if choices := flag.Annotations["tadx.help.choices"]; len(choices) > 0 {
+	choices := flag.Annotations["tadx.help.choices"]
+	if len(choices) > 0 {
 		value = strings.Join(choices, "|")
 	} else if values := flag.Annotations["tadx.help.value"]; len(values) > 0 {
 		value = values[0]
@@ -338,7 +339,9 @@ func helpFlagSyntax(flag *pflag.Flag, aliases bool) string {
 	} else {
 		value = strings.TrimSuffix(strings.TrimSuffix(typeName, "Array"), "Slice")
 	}
-	if typeName != "bool" {
+	if typeName == "bool" && len(choices) > 0 {
+		label += "=" + value
+	} else if typeName != "bool" {
 		label += " <" + value + ">"
 	}
 	return label

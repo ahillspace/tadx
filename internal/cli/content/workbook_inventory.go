@@ -18,6 +18,39 @@ type WorkbookInspector interface {
 	InspectWorkbook(context.Context, workbookops.InspectInput) (workbookops.InspectOutput, error)
 }
 
+type WorkbookSchemaGetter interface {
+	GetWorkbookSchema(context.Context, workbookops.SchemaInput) (workbookops.SchemaOutput, error)
+}
+
+func newWorkbookSchema(getter WorkbookSchemaGetter, renderer Renderer) *cobra.Command {
+	var in workbookops.SchemaInput
+	c := &cobra.Command{Use: "schema", Short: "Inspect fields inside a workbook's embedded and published datasources.", Annotations: map[string]string{"tadx.capability": "workbook.schema"}, Args: noContentArgs("workbook.schema"), RunE: func(c *cobra.Command, _ []string) error {
+		if err := workbookops.ValidateSchemaInput(in); err != nil {
+			return err
+		}
+		out, err := getter.GetWorkbookSchema(c.Context(), in)
+		if err != nil {
+			return clierr.WithOutput(out, err)
+		}
+		return renderer.Render(out)
+	}}
+	c.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to configured read environment")
+	c.Flags().StringVar(&in.WorkbookLUID, "id", "", "authoritative workbook LUID")
+	c.Flags().StringVar(&in.Datasource, "datasource", "", "exact datasource name within the workbook; ambiguous names fail")
+	c.Flags().StringVar(&in.Query, "query", "", "case-insensitive field ID, name, caption, label, or formula text")
+	c.Flags().StringVar(&in.Role, "role", "", "field role: measure, dimension, date, or excluded")
+	c.Flags().StringArrayVar(&in.FieldIDs, "field-id", nil, "exact field identifier; repeatable; ambiguous IDs require --datasource")
+	c.Flags().IntVar(&in.Limit, "limit", 0, "maximum fields across all datasource groups, 1 to 10000 (default 20)")
+	c.Flags().BoolVar(&in.All, "all", false, "return all matching fields, up to 10000")
+	c.Flags().StringVar(&in.Cursor, "cursor", "", "opaque schema continuation cursor")
+	_ = c.Flags().MarkHidden("cursor")
+	c.Flags().BoolVar(&in.Descriptions, "descriptions", false, "include direct and inherited descriptions with provenance")
+	c.Flags().BoolVar(&in.Tags, "tags", false, "include upstream column tags; fields do not own tags")
+	c.MarkFlagsMutuallyExclusive("all", "limit")
+	c.MarkFlagsMutuallyExclusive("all", "cursor")
+	return c
+}
+
 func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	var input workbookops.ListInput
 	command := &cobra.Command{

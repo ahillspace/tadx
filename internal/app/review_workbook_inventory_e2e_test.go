@@ -97,6 +97,9 @@ func TestReviewCachedWorkbookNameIsListFilterThroughCLI(t *testing.T) {
 					http.Error(w, "blocked", 500)
 					return
 				}
+				if diagnosticEmptyWorkbookMetadata(w, r) {
+					return
+				}
 				if diagnosticSignIn(w, r) {
 					return
 				}

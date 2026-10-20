@@ -34,7 +34,7 @@ func newSearch(d Dependencies) *cobra.Command {
 }
 func newAudit(d Dependencies) *cobra.Command {
 	var in catalogaudit.Input
-	c := &cobra.Command{Use: "audit", Short: "Audit descriptions and tags inside one exact database, table, or datasource scope.", Annotations: map[string]string{"tadx.capability": "catalog.audit"}, Args: noArgs("catalog.audit", func() error { return catalogaudit.ValidateInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "audit", Short: "Audit descriptions and tags inside one exact database, table, datasource, or workbook scope.", Annotations: map[string]string{"tadx.capability": "catalog.audit"}, Args: noArgs("catalog.audit", func() error { return catalogaudit.ValidateInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.Auditor == nil {
 			return missing("catalog.audit")
 		}
@@ -42,7 +42,7 @@ func newAudit(d Dependencies) *cobra.Command {
 		return render(d.Renderer, out, e)
 	}}
 	c.Flags().StringVar(&in.Environment, "environment", "", "environment alias; defaults to the configured read environment")
-	c.Flags().StringVar(&in.Type, "type", "", "required scope type: database, table, or datasource")
+	c.Flags().StringVar(&in.Type, "type", "", "required scope type: database, table, datasource, or workbook")
 	c.Flags().StringVar(&in.ID, "id", "", "required exact scope REST LUID")
 	c.Flags().StringArrayVar(&in.Checks, "check", nil, "descriptions or tags; repeatable; omitted runs all supported checks in scope")
 	c.Flags().BoolVar(&in.DirectOnly, "direct-only", false, "require field-owned descriptions instead of counting inherited descriptions")

@@ -20,18 +20,22 @@ func applyHelpValues(root *cobra.Command) {
 		value := func(name, format string) { helpFlagAnnotation(command, name, "tadx.help.value", []string{format}) }
 		note := func(name, text string) { appendHelpUsage(command.Flags().Lookup(name), text) }
 		switch path {
+		case "mutation set":
+			choices("enabled", "true", "false")
+		case "content workbook pull":
+			choices("include-extract", "true", "false")
 		case "search":
 			types, _ := searchaction.Types("")
 			choices("type", append(types, "content", "admin", "pulse")...)
 			value("limit", "1..2000")
-		case "content datasource schema":
+		case "content datasource schema", "content workbook schema":
 			choices("role", "measure", "dimension", "date", "excluded")
 			note("field-id", "at most 10000 distinct identifiers")
 		case "catalog search":
 			choices("type", "database", "table", "column")
 			note("type", "values must be unique; column requires --table-id")
 		case "catalog audit":
-			choices("type", "database", "table", "datasource")
+			choices("type", "database", "table", "datasource", "workbook")
 			choices("check", "descriptions", "tags")
 			note("check", "values must be unique")
 		case "cache refresh":
@@ -53,6 +57,7 @@ func applyHelpValues(root *cobra.Command) {
 			note("language", "Tableau language code supported by the site")
 			note("locale", "Tableau locale code supported by the site")
 		case "admin group create", "admin group update":
+			choices("external-user-enabled", "true", "false")
 			note("minimum-site-role", "accepted roles depend on the Tableau site and version")
 		case "catalog lineage pull":
 			choices("kind", "workbook", "datasource", "published_datasource", "flow")
@@ -64,6 +69,10 @@ func applyHelpValues(root *cobra.Command) {
 			choices("kind", "workbook", "datasource", "flow", "pulse-definition", "lineage")
 		case "catalog label list", "catalog label inspect", "catalog label update", "catalog label delete":
 			choices("type", "database", "table", "column", "datasource", "flow")
+			if path == "catalog label update" {
+				choices("active", "true", "false")
+				choices("elevated", "true", "false")
+			}
 		case "pulse definition create":
 			choices("aggregation", "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "USER")
 			choices("minimum-granularity", "DAY", "WEEK", "MONTH", "QUARTER", "YEAR")
@@ -293,7 +302,7 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 	case "catalog column update":
 		required("id", "table-id")
 		group("one-required", "description", "add-tag", "remove-tag")
-	case "content datasource schema":
+	case "content datasource schema", "content workbook schema":
 		required("id")
 	case "content project create":
 		required("name")
@@ -420,7 +429,7 @@ func appendHelpUsage(flag *pflag.Flag, text string) {
 // Action-level zero-value fallbacks, independent of Cobra's declared zero.
 var helpLimitDefaults = map[string]string{
 	"content workbook list": "25", "content datasource list": "25", "content flow list": "25", "content project list": "25",
-	"content datasource schema": "20", "catalog label list": "20",
+	"content datasource schema": "20", "content workbook schema": "20", "catalog label list": "20",
 	"admin user list": "25", "admin group list": "25", "admin label-value list": "20", "admin label-category list": "20",
 	"catalog database list": "25", "catalog table list": "25", "catalog column list": "25", "catalog search": "25", "catalog audit": "1000",
 	"pulse definition list": "25", "pulse metric list": "25",

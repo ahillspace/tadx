@@ -6,8 +6,10 @@ import (
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
 	"github.com/ahillspace/tadx/internal/cache"
+	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
+	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -107,6 +109,7 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 		output, err := workbookops.Inspect(ctx, resolver, input)
 		if err == nil {
 			output.Source = resolver.source
+			output.DatasourceStatus = "not_captured"
 		}
 		return output, err
 	}
@@ -125,11 +128,26 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 	if encodeErr == nil {
 		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}
-	return output, nil
+	details, metadataErr := connection.metadataAssets.WorkbookDatasources(ctx, output.Workbook.LUID)
+	return workbookops.ApplyInspectMetadata(output, details, metadataErr)
 }
 
 type workbookInventoryAdapter interface {
 	ListWorkbooks(context.Context, tableauworkbook.ListRequest) (resourceworkbook.Page, error)
+}
+
+func (c *remoteContentCommands) GetWorkbookSchema(ctx context.Context, input workbookops.SchemaInput) (workbookops.SchemaOutput, error) {
+	if err := workbookops.ValidateSchemaInput(input); err != nil {
+		return workbookops.SchemaOutput{}, err
+	}
+	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+	if err != nil {
+		return workbookops.SchemaOutput{}, capabilitySetupError("workbook.schema.setup", "workbook.schema", input.Environment, "", "Workbook schema setup failed.", "Verify the selected environment and Metadata API access.", err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	clients := c.runtime.clients(connection)
+	published := resourcedatasource.NewSchemaAdapter(clients.datasources, fieldcatalog.NewClient(connection.transport, connection.session, connection.environment.URL))
+	return workbookops.Schema(ctx, resourceworkbook.NewMetadataAdapter(clients.workbooks, clients.metadataAssets, published), input)
 }
 
 type workbookListReader struct {

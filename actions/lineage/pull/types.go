@@ -26,6 +26,7 @@ type Input struct {
 	Selector      identity.Selector
 	Direction     string
 	Depth         int
+	Fields        bool
 	Overwrite     bool
 }
 
@@ -49,6 +50,7 @@ type CaptureRequest struct {
 	RESTLUID  string
 	Direction string
 	Depth     int
+	Fields    bool
 }
 
 // Node preserves distinct Metadata and REST identities.
@@ -62,6 +64,7 @@ type Graph struct {
 	RootMetadataID string
 	Direction      string
 	Depth          int
+	Fields         bool
 	Complete       bool
 	Failure        *value.LineageFailure
 	Nodes          []Node
@@ -80,6 +83,7 @@ type Artifact struct {
 	SiteLUID        string
 	Direction       string
 	Depth           int
+	Fields          bool
 	Complete        bool
 	CountsKnown     bool
 	Failure         *value.LineageFailure
@@ -112,6 +116,7 @@ type ArtifactSummary struct {
 	LineagePath string `json:"lineage_path"`
 	Direction   string `json:"direction"`
 	Depth       int    `json:"depth"`
+	Fields      bool   `json:"fields,omitzero"`
 	Complete    bool   `json:"complete"`
 	NodeCount   *int   `json:"node_count,omitempty"`
 	EdgeCount   *int   `json:"edge_count,omitempty"`
@@ -124,6 +129,7 @@ type FullArtifact struct {
 	Fingerprint string                `json:"fingerprint"`
 	Direction   string                `json:"direction"`
 	Depth       int                   `json:"depth"`
+	Fields      bool                  `json:"fields,omitzero"`
 	Complete    bool                  `json:"complete"`
 	NodeCount   *int                  `json:"node_count,omitempty"`
 	EdgeCount   *int                  `json:"edge_count,omitempty"`
@@ -138,6 +144,7 @@ type Output struct {
 	Artifact          ArtifactResult
 	Direction         string
 	Depth             int
+	Fields            bool
 	Complete          bool
 	CountsKnown       bool
 	Nodes             []Node
@@ -187,7 +194,7 @@ func (o Output) CompactOutput() any {
 	nodeCount, edgeCount := o.counts()
 	return CompactResult{
 		Status: o.Status, Resource: compactResource(o.Resource),
-		Artifact: ArtifactSummary{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Direction: o.Direction, Depth: o.Depth, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount},
+		Artifact: ArtifactSummary{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Direction: o.Direction, Depth: o.Depth, Fields: o.Fields, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount},
 		Warnings: o.Warnings, WarningsOmitted: o.WarningsOmitted, Details: "--full", Help: o.Help,
 	}
 }
@@ -214,7 +221,7 @@ func (o Output) FullOutput() any {
 	nodeCount, edgeCount := o.counts()
 	return FullResult{
 		Status: o.Status, Resource: o.Resource,
-		Artifact: FullArtifact{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Fingerprint: o.Artifact.Fingerprint, Direction: o.Direction, Depth: o.Depth, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount, Failure: o.Failure},
+		Artifact: FullArtifact{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Fingerprint: o.Artifact.Fingerprint, Direction: o.Direction, Depth: o.Depth, Fields: o.Fields, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount, Failure: o.Failure},
 		Nodes:    append([]Node(nil), o.Nodes[:nodeLimit]...), Edges: append([]Edge(nil), o.Edges[:edgeLimit]...),
 		OmittedNodeCount: len(o.Nodes) - nodeLimit, OmittedEdgeCount: len(o.Edges) - edgeLimit,
 		Warnings: o.Warnings, WarningsOmitted: o.WarningsOmitted, Provenance: o.Provenance,

@@ -101,10 +101,55 @@ type FieldDescription struct {
 	MetadataID         string                   `json:"metadata_id"`
 	Name               string                   `json:"name"`
 	FullyQualifiedName string                   `json:"fully_qualified_name"`
+	Type               string                   `json:"type,omitempty"`
+	Role               string                   `json:"role,omitempty"`
+	DataType           string                   `json:"data_type,omitempty"`
+	Aggregation        string                   `json:"aggregation,omitempty"`
+	Formula            string                   `json:"formula,omitempty"`
+	FolderName         string                   `json:"folder_name,omitempty"`
+	Hidden             *bool                    `json:"hidden,omitempty"`
+	RemoteField        *MetadataIdentity        `json:"remote_field,omitempty"`
+	ReferencedFields   []MetadataIdentity       `json:"referenced_fields,omitempty"`
+	Sheets             []MetadataIdentity       `json:"sheets,omitempty"`
 	Description        *string                  `json:"description,omitempty"`
 	Inherited          []DescriptionObservation `json:"inherited,omitempty"`
 	InheritedObserved  bool                     `json:"inherited_observed"`
 	UpstreamColumns    []MetadataColumn         `json:"upstream_columns,omitempty"`
+}
+
+// MetadataWorkbookDatasources is one exact workbook observation from Metadata API.
+type MetadataWorkbookDatasources struct {
+	Identity         MetadataIdentity             `json:"identity"`
+	Description      *string                      `json:"description,omitempty"`
+	Tags             []string                     `json:"tags,omitempty"`
+	TagsObserved     bool                         `json:"tags_observed"`
+	Datasources      []MetadataWorkbookDatasource `json:"datasources"`
+	Complete         bool                         `json:"complete"`
+	ObservedAt       string                       `json:"observed_at,omitempty"`
+	TableauRequestID string                       `json:"tableau_request_id,omitempty"`
+	Warnings         []string                     `json:"warnings,omitempty"`
+}
+
+type MetadataWorkbookDatasource struct {
+	Identity                         MetadataIdentity   `json:"identity"`
+	Kind                             string             `json:"kind"`
+	Description                      *string            `json:"description,omitempty"`
+	Tags                             []string           `json:"tags,omitempty"`
+	TagsObserved                     bool               `json:"tags_observed"`
+	Fields                           []FieldDescription `json:"fields,omitempty"`
+	Parents                          []MetadataIdentity `json:"parents,omitempty"`
+	Tables                           []MetadataTable    `json:"tables,omitempty"`
+	Databases                        []MetadataDatabase `json:"databases,omitempty"`
+	Flows                            []MetadataIdentity `json:"flows,omitempty"`
+	Sheets                           []MetadataIdentity `json:"sheets,omitempty"`
+	HasExtracts                      *bool              `json:"has_extracts,omitempty"`
+	HasUserReference                 *bool              `json:"has_user_reference,omitempty"`
+	ContainsUnsupportedCustomSQL     *bool              `json:"contains_unsupported_custom_sql,omitempty"`
+	ExtractLastUpdateTime            string             `json:"extract_last_update_time,omitempty"`
+	ExtractLastRefreshTime           string             `json:"extract_last_refresh_time,omitempty"`
+	ExtractLastIncrementalUpdateTime string             `json:"extract_last_incremental_update_time,omitempty"`
+	Complete                         bool               `json:"complete"`
+	Warnings                         []string           `json:"warnings,omitempty"`
 }
 
 type LabelTarget struct {

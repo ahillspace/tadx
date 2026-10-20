@@ -8,6 +8,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 // Inspect resolves one authoritative workbook.
@@ -41,7 +42,31 @@ func Inspect(ctx context.Context, resolver Resolver, input InspectInput) (Inspec
 	if workbook.LUID == "" || workbook.Name == "" || (input.Selector.LUID != "" && workbook.LUID != string(input.Selector.LUID)) || (input.Selector.Name != "" && workbook.Name != input.Selector.Name) || (input.Selector.ProjectLUID != "" && workbook.ProjectLUID != string(input.Selector.ProjectLUID)) {
 		return InspectOutput{}, &errs.Error{ID: "workbook.inspect.identity_mismatch", Kind: errs.KindOperation, Operation: "workbook.inspect", Environment: input.Environment, Site: input.Site, Summary: "Workbook adapter returned a mismatched authoritative identity.", Retryable: new(false), CorrectiveAction: "Provide a LUID or an exact name with --project or --project-id."}
 	}
-	return InspectOutput{Status: "found", Environment: input.Environment, Site: input.Site, Workbook: workbook, RequestID: workbook.RequestID, Help: []string{commandhint.Environment(input.Environment, "content", "workbook", "pull", "--id", workbook.LUID)}}, nil
+	return InspectOutput{Status: "found", Environment: input.Environment, Site: input.Site, Workbook: workbook, RequestID: workbook.RequestID, Help: []string{commandhint.Environment(input.Environment, "content", "workbook", "pull", "--id", workbook.LUID), commandhint.Environment(input.Environment, "content", "workbook", "schema", "--id", workbook.LUID)}}, nil
+}
+
+// ApplyInspectMetadata validates enrichment identity and retains confirmed partial details.
+func ApplyInspectMetadata(out InspectOutput, details value.MetadataWorkbookDatasources, readErr error) (InspectOutput, error) {
+	if details.Identity.LUID != out.Workbook.LUID || details.Identity.MetadataID == "" {
+		out.Status = "partial"
+		out.DatasourceStatus = "incomplete"
+		if readErr == nil || details.Identity.LUID != "" || details.Identity.MetadataID != "" {
+			return out, &errs.Error{ID: "workbook.inspect.metadata_identity", Kind: errs.KindOperation, Operation: "workbook.inspect", Environment: out.Environment, Site: out.Site, Summary: "Workbook datasource metadata omitted or changed the selected identity.", Cause: readErr, Retryable: new(false), CorrectiveAction: "Verify Metadata API access for the selected workbook.", TableauRequestID: errs.TableauRequestID(readErr)}
+		}
+	} else {
+		out.Datasources = details.Datasources
+		out.DatasourceStatus = "complete"
+		out.MetadataWarnings = details.Warnings
+		if !details.Complete || readErr != nil {
+			out.Status = "partial"
+			out.DatasourceStatus = "incomplete"
+		}
+	}
+	if readErr != nil {
+		retryable, correctiveAction := errs.CompleteRetryAdvice(readErr, "Review Metadata API availability and retry the read.")
+		return out, &errs.Error{ID: "workbook.inspect.metadata", Kind: errs.KindOperation, Operation: "workbook.inspect", Environment: out.Environment, Site: out.Site, Summary: "Workbook datasource metadata is incomplete; confirmed workbook details are retained.", Cause: readErr, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(readErr)}
+	}
+	return out, nil
 }
 
 func inspectResolveUsageError(id string, input InspectInput, summary string, cause error) error {

@@ -52,6 +52,7 @@ type LineageDocument struct {
 	Complete  bool            `json:"complete"`
 	Direction string          `json:"direction"`
 	Depth     int             `json:"depth"`
+	Fields    bool            `json:"fields,omitzero"`
 	Failure   *LineageFailure `json:"failure,omitempty"`
 	Nodes     []LineageNode   `json:"nodes"`
 	Edges     []LineageEdge   `json:"edges"`

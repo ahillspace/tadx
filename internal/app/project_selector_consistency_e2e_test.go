@@ -89,6 +89,9 @@ func runProjectSelectorCLI(t *testing.T, configPath string, client *http.Client,
 func projectSelectorFixture(t *testing.T) http.HandlerFunc {
 	t.Helper()
 	return func(writer http.ResponseWriter, request *http.Request) {
+		if diagnosticEmptyWorkbookMetadata(writer, request) {
+			return
+		}
 		switch {
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

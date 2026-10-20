@@ -3,6 +3,7 @@ package fieldcatalog_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -119,6 +120,65 @@ func TestClientFallsBackToMetadataGraphQLAndPreservesCalculatedFieldID(t *testin
 	}
 }
 
+func TestVDSHiddenDependencyFactsPreserveSemanticsBeforeDisplayHiding(t *testing.T) {
+	for _, describe := range []bool{false, true} {
+		for _, tc := range []struct {
+			name, columnClass, aggregation, exclusion string
+			internal, userAggregation                 bool
+		}{
+			{name: "hidden measure", columnClass: "COLUMN", aggregation: "SUM"},
+			{name: "hidden aggregate", columnClass: "CALCULATION", aggregation: "AGG", userAggregation: true},
+			{name: "hidden table calculation", columnClass: "TABLE_CALCULATION", aggregation: "SUM", exclusion: "table_calc"},
+			{name: "internal field", columnClass: "COLUMN", aggregation: "SUM", internal: true, exclusion: "internal"},
+		} {
+			t.Run(fmt.Sprintf("describe=%t/%s", describe, tc.name), func(t *testing.T) {
+				requests := 0
+				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requests++
+					w.Header().Set("Content-Type", "application/json")
+					if describe && r.URL.Path == "/api/v1/vizql-data-service/read-metadata" {
+						w.WriteHeader(http.StatusNotFound)
+						return
+					}
+					if !describe && r.URL.Path == "/api/v1/vizql-data-service/read-metadata" {
+						_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"fieldName": "Calculation_1", "fieldCaption": "Hidden Source", "dataType": "REAL", "fieldRole": "MEASURE", "columnClass": tc.columnClass, "defaultAggregation": tc.aggregation, "isHidden": true, "isInternal": tc.internal}}})
+						return
+					}
+					if describe && r.URL.Path == "/api/v1/vizql-data-service/describe-datasource" {
+						_ = json.NewEncoder(w).Encode(map[string]any{"fieldGroups": []any{map[string]any{"fields": []any{map[string]any{"name": "Calculation_1", "caption": "Hidden Source", "dataType": "REAL", "role": "MEASURE", "columnClass": tc.columnClass, "defaultAggregation": tc.aggregation, "isHidden": true, "isInternal": tc.internal}}}}})
+						return
+					}
+					t.Errorf("unexpected request %s", r.URL.Path)
+					w.WriteHeader(http.StatusBadRequest)
+				}))
+				defer server.Close()
+				client := fieldcatalog.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+				got, err := client.Read(t.Context(), "ds-1", "Published")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(got.Fields) != 1 || !got.Fields[0].Excluded {
+					t.Fatalf("published display contract changed: %+v", got.Fields)
+				}
+				if len(got.DependencyFields) != 1 {
+					t.Fatalf("hidden dependency fact missing: %+v", got.DependencyFields)
+				}
+				dependency := got.DependencyFields[0]
+				if dependency.ExclusionReason != tc.exclusion || dependency.RequiresUserAggregation != tc.userAggregation {
+					t.Fatalf("semantic facts lost: %+v", dependency)
+				}
+				wantRequests := 1
+				if describe {
+					wantRequests++
+				}
+				if requests != wantRequests {
+					t.Fatalf("extra dependency request: got %d want %d", requests, wantRequests)
+				}
+			})
+		}
+	}
+}
+
 func TestClientClassifiesVisibleCalculationsThroughHiddenMetadataDependencies(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -193,6 +253,23 @@ func TestClientClassifiesVisibleCalculationsThroughHiddenMetadataDependencies(t 
 			}
 			if tt.wantExcluded && (field.ExclusionReason != "table_calc" || field.Role != "excluded") {
 				t.Errorf("table calculation classification = %#v", field)
+			}
+			if len(got.DependencyFields) != 3 {
+				t.Fatalf("hidden dependencies lost: %+v", got.DependencyFields)
+			}
+			for _, dependency := range got.DependencyFields {
+				if dependency.ID == "Calculation_1" {
+					t.Fatalf("visible field duplicated as a dependency: %+v", dependency)
+				}
+				if dependency.ID != "Calculation_2" && dependency.ID != "Calculation_3" {
+					continue
+				}
+				if dependency.Excluded != tt.wantExcluded || dependency.RequiresUserAggregation != tt.wantUser {
+					t.Errorf("hidden semantic fact = %+v; want excluded=%t requires_user_aggregation=%t", dependency, tt.wantExcluded, tt.wantUser)
+				}
+				if tt.wantExcluded && dependency.ExclusionReason != "table_calc" {
+					t.Errorf("hidden table calculation lost exclusion: %+v", dependency)
+				}
 			}
 		})
 	}

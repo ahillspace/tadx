@@ -15,6 +15,9 @@ func NormalizeInput(input Input) (Input, error) {
 	if input.Kind != "workbook" && input.Kind != "published_datasource" && input.Kind != "flow" {
 		return Input{}, usageCause("kind", "unsupported lineage root kind", fmt.Errorf("unsupported lineage root kind %q", input.Kind))
 	}
+	if input.Fields && input.Kind == "flow" {
+		return Input{}, usage("fields", "field lineage is supported only for workbook and datasource roots")
+	}
 	if input.Selector.LUID == "" && strings.TrimSpace(input.Selector.Name) == "" {
 		return Input{}, usage("selector", "lineage pull requires a REST LUID or exact name selector")
 	}

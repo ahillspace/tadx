@@ -19,6 +19,9 @@ import (
 func TestShorthandReadPathsKeepCanonicalOperationsAndFlagValues(t *testing.T) {
 	var workbookNameFilter atomic.Bool
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if diagnosticEmptyWorkbookMetadata(w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/3.29/auth/signin":

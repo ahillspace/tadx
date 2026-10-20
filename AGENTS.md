@@ -55,6 +55,9 @@ Do not read `archived/` for current guidance.
 Local API captures are optional and ignored; [docs/evidence/README.md](docs/evidence/README.md) links the official documentation available to fresh clones.
 
 The maintainer runs agent-based code reviews in ChatGPT.
-Run automated tests and CI, but do not launch agent-based reviews unless explicitly requested.
+Run automated validation locally before pushes or merges, following [CONTRIBUTING.md](CONTRIBUTING.md).
+Hosted CI is manual-only; dispatch it only when the user explicitly requests it.
+Report native platform and privilege limits without treating skipped checks as passes.
+Keep release validation gates intact, and do not launch agent-based reviews unless explicitly requested.
 After every GitHub push, provide a concise, paste-ready ChatGPT review prompt with the repository, branch, base and head commit IDs, review scope, and material exclusions or verification limits.
 Do not repeat review methodology in that prompt; the maintainer supplies it separately.

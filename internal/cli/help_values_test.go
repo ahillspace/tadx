@@ -213,7 +213,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 		{"catalog search", "type", 3, func(v string) error {
 			return catalogsearch.ValidateInput(catalogsearch.Input{Query: "sales", Types: []string{v}, TableID: "table-id"})
 		}},
-		{"catalog audit", "type", 3, func(v string) error { return catalogaudit.ValidateInput(catalogaudit.Input{Type: v, ID: "scope-id"}) }},
+		{"catalog audit", "type", 4, func(v string) error { return catalogaudit.ValidateInput(catalogaudit.Input{Type: v, ID: "scope-id"}) }},
 		{"catalog audit", "check", 2, func(v string) error {
 			return catalogaudit.ValidateInput(catalogaudit.Input{Type: "table", ID: "scope-id", Checks: []string{v}})
 		}},
@@ -314,7 +314,10 @@ func TestHelpValuesAreScopedAndPreserveFlagBehavior(t *testing.T) {
 			t.Errorf("--%s behavior changed: %v -> %v", f.Name, want, got)
 		}
 	}
-	for _, path := range []string{"catalog search", "catalog audit", "catalog label list"} {
+	if !slices.Contains(helpValueFlag(t, root, "catalog audit", "type").Annotations["tadx.help.choices"], "workbook") {
+		t.Fatal("workbook audit scope is not discoverable")
+	}
+	for _, path := range []string{"catalog search", "catalog label list"} {
 		if slices.Contains(helpValueFlag(t, root, path, "type").Annotations["tadx.help.choices"], "workbook") {
 			t.Errorf("search family leaked into %s", path)
 		}
@@ -336,6 +339,57 @@ func TestHelpValuesAreScopedAndPreserveFlagBehavior(t *testing.T) {
 		if !strings.Contains(command.Long, kind+": "+strings.Join(tableauadmin.PermissionCapabilities(kind), ", ")) {
 			t.Errorf("missing authoritative %s capabilities", kind)
 		}
+	}
+}
+
+func TestBooleanHelpChoicesFollowCommandSemantics(t *testing.T) {
+	for _, test := range []struct {
+		path, flag   string
+		defaultValue bool
+		explicit     bool
+	}{
+		{"mutation set", "enabled", false, true},
+		{"admin group create", "external-user-enabled", false, true},
+		{"admin group update", "external-user-enabled", false, true},
+		{"catalog label update", "active", false, true},
+		{"catalog label update", "elevated", false, true},
+		{"content workbook pull", "include-extract", true, true},
+		{"unrelated update", "active", false, false},
+	} {
+		t.Run(test.path+"/"+test.flag, func(t *testing.T) {
+			root := &cobra.Command{Use: "tadx"}
+			command := root
+			for _, name := range strings.Fields(test.path) {
+				child := &cobra.Command{Use: name}
+				command.AddCommand(child)
+				command = child
+			}
+			setting := command.Flags().Bool(test.flag, test.defaultValue, "boolean setting")
+			applyHelpValues(root)
+			flag := command.Flags().Lookup(test.flag)
+			if *setting != test.defaultValue || flag.Changed || flag.NoOptDefVal != "true" {
+				t.Fatal("help changed boolean defaults or parsing")
+			}
+			want := "--" + test.flag
+			if test.explicit {
+				want += "=true|false"
+			}
+			if got := helpFlagSyntax(flag, false); got != want {
+				t.Fatalf("syntax=%q, want %q", got, want)
+			}
+			reference := want
+			if test.defaultValue {
+				reference += " (default: true)"
+			}
+			if got := referenceFlagSyntax(flag); got != reference {
+				t.Fatalf("reference=%q, want %q", got, reference)
+			}
+			for _, value := range []string{"false", "true"} {
+				if err := command.ParseFlags([]string{"--" + test.flag + "=" + value}); err != nil || *setting != (value == "true") {
+					t.Fatalf("advertised value %s rejected: value=%t err=%v", value, *setting, err)
+				}
+			}
+		})
 	}
 }
 

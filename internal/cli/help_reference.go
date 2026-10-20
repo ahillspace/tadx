@@ -306,9 +306,6 @@ func referenceSharedText(flag *pflag.Flag) string {
 
 func referenceFlagSyntax(flag *pflag.Flag) string {
 	text := helpFlagSyntax(flag, false)
-	if flag.Value.Type() == "bool" && (flag.Name == "enabled" || flag.Name == "external-user-enabled") {
-		text += "=true|false"
-	}
 	if _, repeatable := flag.Value.(pflag.SliceValue); repeatable || helpAnnotationTrue(flag, "tadx.help.repeatable") {
 		text += "..."
 	}
@@ -476,7 +473,8 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"search":                    {"Term or --type required; type omitted: all types. No term: bounded inventory; term: live search or --cache.", "--type admin includes users and groups. Use --type user or --type group to select one resource type."},
 		"catalog search":            {"Unique types; default types: database+table. Column requires --table-id.", "--all: <=10000; results can be incomplete."},
 		"catalog audit":             {"Unique checks; default: descriptions+tags. --direct-only: field-owned descriptions, excluding inherited.", "Metadata coverage, not data values; limit: assessed assets."},
-		"catalog lineage pull":      {"--name requires --project; --id excludes both. --overwrite replaces dirty local metadata.", "Saves lineage.json, not native files. Physical nodes use Metadata API IDs; --full shows bounded nodes/edges."},
+		"content workbook schema":   {"Fields are grouped by embedded or published datasource; --limit applies across groups.", "Exact --datasource resolves field ambiguity. No cache; unsupported metadata remains explicit."},
+		"catalog lineage pull":      {"--name requires --project; --id excludes both. --overwrite replaces dirty local metadata.", "Saves lineage.json; --fields adds bounded field dependencies for workbook/datasource roots. --full shows nodes/edges."},
 		"catalog label update":      {"Changes an asset attachment, not the shared label definition. Empty message clears it."},
 		"update":                    {"--check: no installation changes; target omitted: auto. Repeat --target up to 32."},
 		"capability get":            {"ID: from capability list."},

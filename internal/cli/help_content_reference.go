@@ -26,12 +26,17 @@ func contentReferenceFlagSyntax(resource, action *cobra.Command, flag *pflag.Fla
 	switch flag.Name {
 	case "id", "project-id", "owner-id", "parent-id", "destination-project-id":
 		value = "luid"
-	case "name", "new-name", "artifact-name", "workspace", "environment":
+	case "name", "new-name", "artifact-name", "workspace", "environment", "datasource":
 		value = "name"
 	case "project-name":
 		value = "leaf"
-	case "project", "parent", "destination-project", "artifact":
+	case "project", "parent", "destination-project":
 		value = "path"
+	case "artifact":
+		value = "path"
+		if action.Name() == "publish" && (resource.Name() == "workbook" || resource.Name() == "flow") {
+			value = "directory"
+		}
 	case "file":
 		if action.Name() == "publish" {
 			value = map[string]string{"workbook": "file.twb|file.twbx", "datasource": "file.tds|file.tdsx|file.hyper", "flow": "file.tfl|file.tflx"}[resource.Name()]
@@ -95,11 +100,17 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 		return notes
 	case "publish":
 		notes := []string{"Source: workspace ID/name/relative artifact, or native file (no workspace). Project: destination; name: source default."}
+		if resource == "workbook" || resource == "flow" {
+			notes = []string{"Workspace ID/name, or --artifact: TADX-managed artifact directory; --file: standalone native file (no workspace). Project: destination; name: source default."}
+		}
 		if resource == "datasource" {
 			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.")
 		}
 		if resource == "workbook" {
-			notes = append(notes, "Publish missing referenced datasources first, then the workbook. Workbook publish does not publish dependencies or rebind their references.")
+			notes = append(notes, "Publish missing referenced datasources first; this command does not publish dependencies or rebind them.")
+		}
+		if resource == "workbook" || resource == "flow" {
+			return append(notes, "Creates; --overwrite replaces an exact collision.")
 		}
 		return append(notes, "Creates by default; --overwrite replaces an exact collision.")
 	case "update":
@@ -107,7 +118,10 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 			return []string{"Empty --description clears it."}
 		}
 	case "schema":
-		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata; cache needs observations."}
+		if resource == "workbook" {
+			return []string{"Live fields; total limit. Scope duplicate IDs with --datasource."}
+		}
+		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata. Live schema reads attempt cache updates; --cache needs prior live schema observations. Cache refresh omits schema."}
 	case "create":
 		return []string{"Omit parent for top level; omit content-permissions for the server default."}
 	case "move":
@@ -127,22 +141,22 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 		}
 		return false
 	}
-	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Project paths use /.")
+	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Project paths: /.")
 	if has("list") {
-		fmt.Fprintln(out, "  list --all: <=10000; incomplete/overflow fails. Live --all caches best-effort: unfiltered replaces scope; filtered merges.")
-		fmt.Fprintln(out, "  Bounded reads never cache; cache failures retain live results.")
+		fmt.Fprintln(out, "  list --all: <=10000; incomplete/overflow fails. Cache: unfiltered replaces scope; filtered merges; cache failures retain live results.")
+		fmt.Fprintln(out, "  Bounded lists never cache.")
 	}
 	if has("publish") || has("pull") {
-		fmt.Fprintln(out, "  --no-wait: one single/batch status command, no polling. Wait stops at 20m; work continues.")
+		fmt.Fprintln(out, "  --no-wait: one single/batch status command; no polling. Wait: 20m; work continues.")
 		if has("publish") {
-			fmt.Fprintln(out, "  Save accepted IDs before waiting; use the returned status command to recover. Do not republish.")
+			fmt.Fprintln(out, "  Save accepted IDs; use returned status command. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")
 			if resource.Name() == "flow" {
 				fmt.Fprintln(out, "  Flow publication can complete synchronously.")
 			}
 		}
 		if has("pull") {
-			fmt.Fprintln(out, "  Downloads have no remote jobs to poll.")
+			fmt.Fprintln(out, "  Downloads: no remote jobs.")
 		}
 	}
 	if has("publish") || has("update") || has("delete") || has("move") || has("create") {

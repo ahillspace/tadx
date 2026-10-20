@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
@@ -131,7 +134,7 @@ func PublishPrepareBundle(input PublishInput, bundle PublishBundle) (PublishPlan
 	if !ok || len(mappings) != 1 {
 		return PublishPlan{}, publishFailure(input, "mapping", errs.KindUsage, "Every bundle datasource requires exactly one explicit mapping; unrelated mappings are not accepted.", nil)
 	}
-	document, name, err := publishCreateDocument(bundle.Configuration, destination)
+	document, name, err := publishCreateDocument(bundle.Configuration, destination, len(bundle.Metrics))
 	if err != nil {
 		return PublishPlan{}, publishFailure(input, "configuration", errs.KindUsage, "Pulse bundle definition cannot be recreated without losing configuration.", err)
 	}
@@ -173,7 +176,7 @@ func PublishPrepareBundle(input PublishInput, bundle PublishBundle) (PublishPlan
 	return PublishPlan{Environment: input.Environment, Site: input.Site, Artifact: input.Artifact, SourceDefinitionLUID: bundle.DefinitionLUID, Name: name, SourceDatasourceLUID: bundle.DatasourceLUID, DestinationDatasourceLUID: destination, NewObjectsOnly: true, MetricCount: len(metrics), DefinitionConfiguration: document, Metrics: metrics, ReviewComplete: true}, nil
 }
 
-func publishCreateDocument(configuration []byte, destination string) (json.RawMessage, string, error) {
+func publishCreateDocument(configuration []byte, destination string, metricCount int) (json.RawMessage, string, error) {
 	var source map[string]json.RawMessage
 	if json.Unmarshal(configuration, &source) != nil || source == nil {
 		return nil, "", errors.New("definition requires a JSON object")
@@ -182,17 +185,34 @@ func publishCreateDocument(configuration []byte, destination string) (json.RawMe
 	if json.Unmarshal(source["metadata"], &metadata) != nil || metadata.ID == "" || metadata.Name == "" {
 		return nil, "", errors.New("definition metadata identity is incomplete")
 	}
-	allowed := map[string]bool{"metadata": true, "specification": true, "extension_options": true, "representation_options": true, "insights_options": true, "comparisons": true, "datasource_goals": true, "related_links": true, "certification": true}
-	for key := range source {
-		if !allowed[key] {
-			return nil, "", fmt.Errorf("unsupported source definition section %q; no field was silently discarded", key)
+	// Stored bundles retain the provider response losslessly. Construct the
+	// creation document from its business sections, checking observations against
+	// the separately retained metric inventory rather than forwarding them.
+	document := make(map[string]json.RawMessage, len(source))
+	for _, section := range slices.Sorted(maps.Keys(source)) {
+		raw := source[section]
+		switch section {
+		case "metadata":
+			document["name"], _ = json.Marshal(metadata.Name)
+			document["description"], _ = json.Marshal(metadata.Description)
+		case "specification", "extension_options", "representation_options", "insights_options", "comparisons", "datasource_goals", "related_links", "certification":
+			document[section] = raw
+		case "metrics", "tags":
+			var items []json.RawMessage
+			if json.Unmarshal(raw, &items) != nil || items == nil || len(items) != 0 {
+				return nil, "", fmt.Errorf("unsupported source definition observation %q; no field was silently discarded", section)
+			}
+		case "total_metrics":
+			var count string
+			if json.Unmarshal(raw, &count) != nil || count != strconv.Itoa(metricCount) {
+				return nil, "", errors.New("source definition metric count differs from the retained bundle variants")
+			}
+		default:
+			return nil, "", fmt.Errorf("unsupported source definition section %q; no field was silently discarded", section)
 		}
 	}
-	delete(source, "metadata")
-	source["name"], _ = json.Marshal(metadata.Name)
-	source["description"], _ = json.Marshal(metadata.Description)
 	var specification map[string]json.RawMessage
-	if json.Unmarshal(source["specification"], &specification) != nil || specification == nil {
+	if json.Unmarshal(document["specification"], &specification) != nil || specification == nil {
 		return nil, "", errors.New("definition specification is missing")
 	}
 	var datasource map[string]json.RawMessage
@@ -201,8 +221,8 @@ func publishCreateDocument(configuration []byte, destination string) (json.RawMe
 	}
 	datasource["id"], _ = json.Marshal(destination)
 	specification["datasource"], _ = json.Marshal(datasource)
-	source["specification"], _ = json.Marshal(specification)
-	data, err := json.Marshal(source)
+	document["specification"], _ = json.Marshal(specification)
+	data, err := json.Marshal(document)
 	return data, metadata.Name, err
 }
 
@@ -231,6 +251,9 @@ type PublishInput struct {
 	Preview       bool
 }
 
+// PublishBundle retains the complete saved definition document and its metric
+// inventory. Configuration can include provider observations; preparation maps
+// only recreatable business sections into the creation request.
 type PublishBundle struct {
 	DefinitionLUID string
 	DatasourceLUID string

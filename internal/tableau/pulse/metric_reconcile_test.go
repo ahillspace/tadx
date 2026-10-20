@@ -157,6 +157,102 @@ func TestExactReconciliationComparesTypedFilterRepresentationsSemantically(t *te
 			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"East"}],"include_null":false}]}`,
 			wantStatus:    "specification_mismatch",
 		},
+		{
+			name:          "native null category has no legacy text entry",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"West"}],"values":["West"],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"},{"null_value":null}],"include_null":true}]}`,
+			wantStatus:    "verified",
+		},
+		{
+			name:          "typed null does not excuse conflicting string mirror",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"East"}],"values":["West"],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"East"}],"include_null":true}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "unqualified boolean mirror remains strict",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"bool_value":true},{"string_value":"West"}],"values":["West"],"include_null":false}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"},{"bool_value":true}],"include_null":false}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "protobuf null enum equals native null",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"West"}],"values":["West"],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":"NULL_VALUE"},{"string_value":"West"}],"include_null":true}]}`,
+			wantStatus:    "verified",
+		},
+		{
+			name:          "unknown typed attributes cannot be inferred from text mirror",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West","annotation":{"source":"owned"}}],"values":["West"]}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West","annotation":{"source":"owned"}}]}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "missing boolean population remains mismatch",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"}],"values":["West"]}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"},{"bool_value":true}]}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "changed unknown typed attributes remain mismatch",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West","annotation":{"source":"other"}}],"values":["West"]}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West","annotation":{"source":"owned"}}]}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "null member cannot be inferred from inclusion flag",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"}],"values":["West"],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"West"}],"include_null":true}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "null metadata remains part of population",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null,"annotation":true}],"values":[],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null}],"include_null":true}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "unknown categorical attributes match only when retained",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null,"annotation":{"source":"owned"}},{"string_value":"West"}],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"},{"null_value":null,"annotation":{"source":"owned"}}],"include_null":true}]}`,
+			wantStatus:    "verified",
+		},
+		{
+			name:          "unknown null enum is not native null",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":"UNKNOWN_NULL"}],"values":[],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null}],"include_null":true}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "null enum with unknown attributes remains distinct",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":"NULL_VALUE","annotation":true}],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null,"annotation":true}],"include_null":true}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "native null without inclusion cannot omit text mirror",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null}],"values":[],"include_null":false}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null}],"include_null":false}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "duplicate typed population is not discarded",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"},{"string_value":"West"}],"values":["West","West"]}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"}]}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+		{
+			name:          "saved null enum is normalized only for comparison",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":"NULL_VALUE"},{"string_value":"West"}],"values":["West"],"include_null":true}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"West"}],"include_null":true}]}`,
+			wantStatus:    "verified",
+		},
+		{
+			name:          "native null flag must remain true",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"West"}],"values":["West"],"include_null":false}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"null_value":null},{"string_value":"West"}],"include_null":true}]}`,
+			wantStatus:    "specification_mismatch",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -177,9 +273,31 @@ func TestExactReconciliationComparesTypedFilterRepresentationsSemantically(t *te
 			if err := json.Unmarshal([]byte(test.requestedSpec), &specification); err != nil {
 				t.Fatal(err)
 			}
-			result, err := client.ReconcileMetric(context.Background(), tableaupulse.ExpectedMetric{MetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1", SiteLUID: "site-1", Specification: specification})
+			before, err := json.Marshal(specification)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.ReconcileMetric(t.Context(), tableaupulse.ExpectedMetric{MetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1", SiteLUID: "site-1", Specification: specification})
+			after, marshalErr := json.Marshal(specification)
+			if marshalErr != nil || string(before) != string(after) {
+				t.Fatalf("requested specification changed: before=%s after=%s err=%v", before, after, marshalErr)
+			}
 			if err != nil || result.Status != test.wantStatus {
 				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			if result.Status == "verified" {
+				var savedFilter map[string]any
+				if err := json.Unmarshal([]byte(test.savedFilter), &savedFilter); err != nil {
+					t.Fatal(err)
+				}
+				wanted, err := json.Marshal([]any{savedFilter})
+				if err != nil {
+					t.Fatal(err)
+				}
+				observed, err := json.Marshal(result.Metric.Specification["filters"])
+				if err != nil || string(wanted) != string(observed) {
+					t.Fatalf("saved filter evidence changed: wanted=%s observed=%s err=%v", wanted, observed, err)
+				}
 			}
 		})
 	}

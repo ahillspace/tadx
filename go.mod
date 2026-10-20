@@ -6,6 +6,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
+	github.com/vektah/gqlparser/v2 v2.5.61
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.42.0
 	golang.org/x/term v0.41.0
@@ -14,6 +15,7 @@ require (
 )
 
 require (
+	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
