@@ -23,9 +23,27 @@ type CreateFieldValidator interface {
 	ResolveDefinitionFields(context.Context, CreateFieldReferences) (CreateFieldReferences, error)
 }
 
-// CollisionFinder finds exact name collisions within one datasource.
+// CreateCollisionFinder lists every definition on one datasource.
 type CreateCollisionFinder interface {
-	FindDefinitions(context.Context, string, string) ([]Definition, error)
+	FindDefinitions(context.Context, string) ([]CreateCandidate, error)
+}
+
+// CreateCandidate is an existing definition with the specification Tableau
+// compares when it rejects an equivalent definition.
+type CreateCandidate struct {
+	LUID, Name, MeasureField, Aggregation, TimeDimension, Temporality string
+	RunningTotal                                                      bool
+	FixedFilters                                                      []any
+	FixedFiltersKnown                                                 bool
+}
+
+// equivalent reports whether Tableau rejects the request as a duplicate of the
+// candidate; name, dimensions, and presentation options do not distinguish them.
+func (c CreateCandidate) equivalent(spec CreateSpecification) bool {
+	basic := spec.BasicSpecification
+	return c.MeasureField == basic.Measure.Field && c.Aggregation == basic.Measure.Aggregation && c.TimeDimension == basic.TimeDimension.Field &&
+		c.RunningTotal == spec.RunningTotal && c.Temporality == spec.Temporality &&
+		c.FixedFiltersKnown && len(c.FixedFilters) == 0 && len(basic.Filters) == 0
 }
 
 // Creator creates one definition and performs bounded default-metric resolution.
@@ -102,7 +120,7 @@ func createFailureAdvice(input CreateInput, cause error) string {
 		case 400:
 			return "Review the Tableau error details and the same create command with --preview --full. " + lookup
 		case 409:
-			return "Check whether an equivalent definition exists, including definitions with different names; HTTP 409 alone does not establish the conflict cause. " + lookup
+			return "Tableau rejects an equivalent definition, one with the same datasource, measure, aggregation, time dimension, running total, temporality, and filters whatever its name; check whether one was created since the preview. " + lookup
 		case 401, 403:
 			_, advice := errs.CompleteRetryAdvice(cause, "Verify authentication and access in the selected environment.")
 			return advice + " " + lookup
@@ -140,14 +158,19 @@ func Create(ctx context.Context, validator CreateFieldValidator, finder CreateCo
 }
 
 func createCheckCollision(ctx context.Context, finder CreateCollisionFinder, input CreateInput, request CreateRequest) error {
-	items, err := finder.FindDefinitions(ctx, request.Name, request.Specification.Datasource.ID)
+	items, err := finder.FindDefinitions(ctx, request.Specification.Datasource.ID)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Review current Pulse definitions, then request a new preview.")
 		return &errs.Error{ID: "pulse.definition.create.collision", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
 	}
 	for _, item := range items {
-		if item.Name == request.Name && item.DatasourceLUID == request.Specification.Datasource.ID {
+		if item.Name == request.Name {
 			return &errs.Error{ID: "pulse.definition.create.conflict", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "A Pulse definition with this name already exists for the datasource.", Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID) + "; inspect the existing definition or choose a different name.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
+		}
+	}
+	for _, item := range items {
+		if item.equivalent(request.Specification) {
+			return &errs.Error{ID: "pulse.definition.create.equivalent", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: fmt.Sprintf("Pulse definition %q already uses this datasource, measure, aggregation, time dimension, running total, temporality, and filters; Tableau rejects an equivalent definition whatever its name or dimensions.", item.Name), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID) + "; reuse that definition, or change the measure, aggregation, time dimension, running total, or temporality.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 		}
 	}
 	return nil

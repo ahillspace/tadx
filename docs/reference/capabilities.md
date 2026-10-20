@@ -1023,7 +1023,7 @@ Report generation age, completeness, source, and stale state.
 
 Return focused execution, ownership, selector, safety, and availability guidance for one capability.
 
-- Surface: tadx capability get <id>
+- Surface: tadx capability get &lt;id&gt;
 - Operation type: inspect
 - Owner: cli
 - Selectors: Stable capability ID

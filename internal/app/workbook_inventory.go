@@ -110,6 +110,7 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 		if err == nil {
 			output.Source = resolver.source
 			output.DatasourceStatus = "not_captured"
+			output.MetadataWarnings = []string{"The cache holds workbook details only; datasources come from a live Metadata API read, so inspect without --cache to include them."}
 		}
 		return output, err
 	}

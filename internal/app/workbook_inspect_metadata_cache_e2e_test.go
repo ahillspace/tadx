@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/managedpolicy"
@@ -58,7 +59,7 @@ func TestWorkbookInspectCachesConfirmedRESTWhenMetadataFails(t *testing.T) {
 	options.HTTPClient = &http.Client{Transport: noNetwork}
 	code, payload = run("--cache")
 	confirmed, _ = payload["workbook"].(map[string]any)
-	if code != 0 || confirmed["luid"] != "wb-1" || payload["datasource_status"] != "not_captured" || payload["datasources"] != nil {
+	if code != 0 || confirmed["luid"] != "wb-1" || payload["datasource_status"] != "not_captured" || payload["datasources"] != nil || !strings.Contains(fmt.Sprint(payload["metadata_warnings"]), "without --cache") {
 		t.Fatalf("confirmed REST workbook missing from offline cache: exit %d: %+v", code, payload)
 	}
 	if noNetwork.calls != 0 {
