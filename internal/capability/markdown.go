@@ -33,7 +33,7 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 	output.WriteString("\n## Out of scope\n\nThese capabilities are outside TADX; no command or automatic handoff is provided.\n\n")
 	for _, definition := range definitions {
 		if definition.Disposition == DispositionDelegated {
-			fmt.Fprintf(&output, "- `%s`: %s\n", definition.ID, definition.Outcome)
+			fmt.Fprintf(&output, "- `%s`: %s\n", definition.ID, escapeProse(definition.Outcome))
 		}
 	}
 	output.WriteString("\n## Capability definitions\n\n")
@@ -42,13 +42,13 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 			continue
 		}
 		fmt.Fprintf(&output, "### `%s`\n\n", definition.ID)
-		fmt.Fprintf(&output, "%s\n\n", definition.Outcome)
+		fmt.Fprintf(&output, "%s\n\n", escapeProse(definition.Outcome))
 		fields := [][2]string{
-			{"Surface", definition.Surface},
+			{"Surface", escapeProse(definition.Surface)},
 			{"Operation type", string(definition.Type)},
 			{"Owner", string(definition.Owner)},
-			{"Selectors", definition.Selectors},
-			{"Products and availability", definition.Availability},
+			{"Selectors", escapeProse(definition.Selectors)},
+			{"Products and availability", escapeProse(definition.Availability)},
 			{"Product disposition", string(definition.Disposition)},
 			{"Evidence level", string(definition.EvidenceLevel)},
 			{"Verification readiness", string(definition.Verification)},
@@ -59,11 +59,11 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 			{"Supports `--preview`", yesNo(definition.SupportsPreview)},
 			{"Supports `--batch-file`", yesNo(definition.SupportsBatch)},
 			{"Raw capable", yesNo(definition.RawCapable)},
-			{"Safety and guard", definition.SafetyGuard},
-			{"Artifact effect", definition.ArtifactEffect},
-			{"Upstream operation", definition.Upstream},
-			{"Evidence", definition.Evidence},
-			{"Validation or blocker", definition.Validation},
+			{"Safety and guard", escapeProse(definition.SafetyGuard)},
+			{"Artifact effect", escapeProse(definition.ArtifactEffect)},
+			{"Upstream operation", escapeProse(definition.Upstream)},
+			{"Evidence", escapeProse(definition.Evidence)},
+			{"Validation or blocker", escapeProse(definition.Validation)},
 			{"Blocker ID", emptyAsNone(string(definition.Blocker))},
 			{"Command binding", command(definition)},
 		}
@@ -104,6 +104,12 @@ func command(definition Definition) string {
 }
 
 func escapeTable(value string) string { return strings.ReplaceAll(value, "|", "\\|") }
+
+// escapeProse keeps placeholders such as <name> visible instead of letting
+// markdown viewers treat them as HTML tags.
+func escapeProse(value string) string {
+	return strings.NewReplacer("<", "&lt;", ">", "&gt;").Replace(value)
+}
 func emptyAsNone(value string) string {
 	if value == "" {
 		return "None"

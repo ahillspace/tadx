@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -81,5 +83,27 @@ func TestGeneratedCapabilityReferenceIsClean(t *testing.T) {
 	}
 	if string(generated) != string(again) {
 		t.Fatal("GenerateMarkdown is not deterministic")
+	}
+}
+
+// TestCapabilityProseIsPlainTextAndEscapedInMarkdown keeps registry prose
+// readable in terminal help while markdown viewers still show placeholders
+// such as <name> instead of treating them as HTML tags.
+func TestCapabilityProseIsPlainTextAndEscapedInMarkdown(t *testing.T) {
+	for _, definition := range All() {
+		prose := strings.Join([]string{definition.Outcome, definition.Surface, definition.Selectors, definition.Availability, definition.SafetyGuard, definition.ArtifactEffect, definition.Upstream, definition.Evidence, definition.Validation}, " ")
+		if strings.Contains(prose, "&lt;") || strings.Contains(prose, "&gt;") {
+			t.Errorf("%s stores HTML entities; write plain text", definition.ID)
+		}
+	}
+	generated, err := GenerateMarkdown(All())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for number, line := range strings.Split(string(generated), "\n")[1:] {
+		prose := regexp.MustCompile("`[^`]*`").ReplaceAllString(line, "")
+		if strings.ContainsAny(prose, "<>") {
+			t.Errorf("line %d has unescaped angle brackets outside code: %s", number+2, line)
+		}
 	}
 }

@@ -97,13 +97,13 @@ func TestCreatePlanOwnsNormalizedInput(t *testing.T) {
 }
 
 type createFinder struct {
-	items []pulsedefinition.Definition
+	items []pulsedefinition.CreateCandidate
 	calls int
 }
 
-func (f *createFinder) FindDefinitions(context.Context, string, string) ([]pulsedefinition.Definition, error) {
+func (f *createFinder) FindDefinitions(context.Context, string) ([]pulsedefinition.CreateCandidate, error) {
 	f.calls++
-	return append([]pulsedefinition.Definition(nil), f.items...), nil
+	return append([]pulsedefinition.CreateCandidate(nil), f.items...), nil
 }
 
 type createCreator struct {
@@ -220,7 +220,7 @@ func TestCreatePreservesFieldValidationErrorContract(t *testing.T) {
 
 func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 	v := &createValidator{}
-	f := &createFinder{items: []pulsedefinition.Definition{{LUID: "definition-old", Name: "Revenue", DatasourceLUID: "datasource-1"}}}
+	f := &createFinder{items: []pulsedefinition.CreateCandidate{{LUID: "definition-old", Name: "Revenue"}}}
 	c := &createCreator{}
 	_, err := create(context.Background(), v, f, c, pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM", AllowedDimensions: []string{"Region"}}}, false)
 	var structured *errs.Error

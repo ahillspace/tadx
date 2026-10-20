@@ -538,8 +538,8 @@ func pulseDefinitionBundle(input pulsedefinition.PullArtifact) artifact.PulseBun
 
 type pulseDefinitionMutationAdapter struct{ client *tableaupulse.Client }
 
-func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, name, datasourceLUID string) ([]pulsedefinition.Definition, error) {
-	result := []pulsedefinition.Definition{}
+func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, datasourceLUID string) ([]pulsedefinition.CreateCandidate, error) {
+	result := []pulsedefinition.CreateCandidate{}
 	token := ""
 	for pageNumber := 0; pageNumber < 100; pageNumber++ {
 		page, err := a.client.ListDefinitions(ctx, tableaupulse.PageRequest{PageSize: 100, PageToken: token})
@@ -547,8 +547,8 @@ func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, na
 			return nil, err
 		}
 		for _, item := range page.Definitions {
-			if item.Name == name && item.DatasourceLUID == datasourceLUID {
-				result = append(result, pulsedefinition.Definition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID})
+			if item.DatasourceLUID == datasourceLUID {
+				result = append(result, pulsedefinition.CreateCandidate{LUID: item.LUID, Name: item.Name, MeasureField: item.MeasureField, Aggregation: item.Aggregation, TimeDimension: item.TimeDimension, Temporality: item.Temporality, RunningTotal: item.RunningTotal, FixedFilters: item.FixedFilters, FixedFiltersKnown: item.FixedFiltersKnown})
 			}
 		}
 		if page.NextPageToken == "" {

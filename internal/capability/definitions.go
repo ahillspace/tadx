@@ -2317,7 +2317,7 @@ var canonicalDefinitions = []Definition{
 	{
 		ID:              "workspace.clone",
 		Surface:         "tadx workspace clone",
-		Outcome:         "Copy an existing managed workspace under a new identity at &lt;home&gt;/TADX/workspaces/&lt;name&gt; or an explicit --path.",
+		Outcome:         "Copy an existing managed workspace under a new identity at <home>/TADX/workspaces/<name> or an explicit --path.",
 		Type:            OperationChange,
 		Disposition:     DispositionShip,
 		Owner:           OwnerCLI,
@@ -2342,7 +2342,7 @@ var canonicalDefinitions = []Definition{
 	{
 		ID:              "workspace.create",
 		Surface:         "tadx workspace create",
-		Outcome:         "Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under &lt;home&gt;/TADX/workspaces/&lt;name&gt; or an explicit --path.",
+		Outcome:         "Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under <home>/TADX/workspaces/<name> or an explicit --path.",
 		Type:            OperationChange,
 		Disposition:     DispositionShip,
 		Owner:           OwnerCLI,
