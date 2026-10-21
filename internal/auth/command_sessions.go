@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
 )
 
@@ -318,20 +319,24 @@ func (c *CommandSessions) authenticate(ctx context.Context, target Target, crede
 			delete(c.sessions, previous)
 		}
 	}
+	if epoch == ^uint64(0) {
+		return nil, errors.New("credential sign-in epoch is exhausted")
+	}
+	epoch++
+	// Publish invalidation before contacting Tableau: even a failed response
+	// can follow an accepted sign-in that invalidates a suspended session.
+	if err := writeSignInEpoch(directory, identity, epoch); err != nil {
+		// A durability failure can leave the replacement visible. Keep that
+		// invalidation installed and do not contact Tableau on a write error.
+		return nil, err
+	}
 	session, err := signIn(ctx, target, credentials, signer)
 	if err != nil {
 		c.sessions[key] = sessionResult{err: err, epoch: epoch}
 		return nil, err
 	}
-	if epoch == ^uint64(0) {
-		return nil, errors.New("credential sign-in epoch is exhausted")
-	}
-	epoch++
-	if err := writeSignInEpoch(directory, identity, epoch); err != nil {
-		return nil, err
-	}
 	c.sessions[key] = sessionResult{session: session, epoch: epoch}
-	return session, err
+	return session, nil
 }
 
 func validateAuthenticationInputs(target Target, credentials PATCredentials) error {
@@ -430,7 +435,7 @@ func readSignInEpoch(directory, key string) (uint64, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil
 	}
-	if err != nil || len(data) > 20 {
+	if err != nil || len(data) > 21 {
 		return 0, errors.New("credential sign-in epoch is unavailable")
 	}
 	epoch, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
@@ -442,8 +447,24 @@ func readSignInEpoch(directory, key string) (uint64, error) {
 
 func writeSignInEpoch(directory, key string, epoch uint64) error {
 	path := signInEpochPath(directory, key)
-	if err := os.WriteFile(path, []byte(strconv.FormatUint(epoch, 10)+"\n"), 0600); err != nil {
+	temporary, err := os.CreateTemp(directory, ".epoch-*.txt")
+	if err != nil {
 		return errors.New("credential sign-in epoch is unavailable")
+	}
+	defer os.Remove(temporary.Name())
+	if _, err := temporary.Write([]byte(strconv.FormatUint(epoch, 10) + "\n")); err != nil {
+		temporary.Close()
+		return errors.New("credential sign-in epoch is unavailable")
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return errors.New("credential sign-in epoch is unavailable")
+	}
+	if err := temporary.Close(); err != nil {
+		return errors.New("credential sign-in epoch is unavailable")
+	}
+	if err := fsreplace.Replace(temporary.Name(), path); err != nil {
+		return fmt.Errorf("credential sign-in epoch is unavailable: %w", err)
 	}
 	return nil
 }

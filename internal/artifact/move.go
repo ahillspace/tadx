@@ -59,19 +59,13 @@ func PreviewMove(ctx context.Context, request MoveRequest) (_ Item, err error) {
 		return Item{}, errors.New("artifact path escapes workspace root")
 	}
 	destination := filepath.Join(destinationRoot, filepath.FromSlash(source.Path))
+	if err := validateArtifactDirectory(destinationRoot, source.Kind, destination); err != nil {
+		return Item{}, err
+	}
 	if _, err := os.Lstat(destination); err == nil {
 		return Item{}, errors.New("destination artifact already exists")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Item{}, err
-	}
-	for parent := filepath.Dir(destination); parent != destinationRoot; parent = filepath.Dir(parent) {
-		info, err := os.Lstat(parent)
-		if err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
-			return Item{}, errors.New("destination artifact parent must be a real directory")
-		}
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return Item{}, err
-		}
 	}
 	entries := 0
 	err = filepath.WalkDir(filepath.Join(sourceRoot, filepath.FromSlash(source.Path)), func(_ string, entry fs.DirEntry, walkErr error) error {
@@ -130,6 +124,9 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 		return Item{}, fmt.Errorf("artifact path escapes workspace root: %q", source.Path)
 	}
 	destinationPath := filepath.Join(destinationRoot, filepath.FromSlash(source.Path))
+	if err := validateArtifactDirectory(destinationRoot, source.Kind, destinationPath); err != nil {
+		return Item{}, err
+	}
 	if _, err := os.Lstat(destinationPath); err == nil {
 		return Item{}, errors.New("destination artifact already exists")
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -137,6 +134,9 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 	}
 	destinationParent := filepath.Dir(destinationPath)
 	if err := os.MkdirAll(destinationParent, 0o700); err != nil {
+		return Item{}, err
+	}
+	if err := validateArtifactDirectory(destinationRoot, source.Kind, destinationParent); err != nil {
 		return Item{}, err
 	}
 	stage, err := os.MkdirTemp(destinationParent, ".tadx-move-stage-")

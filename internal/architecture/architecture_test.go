@@ -122,6 +122,40 @@ var _ tableau.Client
 	})
 }
 
+func TestCheckExcludesRepositoryExplorationState(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, ".tadx-explore/snapshot/actions/example/action.go", "not production Go source")
+	writeGo(t, root, "actions/newsource/action_windows.go", `package newsource
+import _ "example.test/tadx/internal/app"
+`)
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"actions/newsource/action_windows.go imports example.test/tadx/internal/app: actions must not import the composition root",
+	})
+}
+
+func TestCheckKeepsOtherSourceTreesInScope(t *testing.T) {
+	root := moduleFixture(t)
+	for _, file := range []string{
+		"scratch/example.go",
+		".tadx-explore-copy/example.go",
+		"actions/example/.tadx-explore/action.go",
+	} {
+		writeGo(t, root, file, "package example\nimport _ \"example.test/tadx/internal/app\"\n")
+	}
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 3 {
+		t.Fatalf("source outside repository exploration state must remain checked: %v", violations)
+	}
+}
+
 func TestCheckAllowsThirdPartyImportsInActionsAndAdapters(t *testing.T) {
 	root := moduleFixture(t)
 	writeGo(t, root, "actions/workbook/pull/action.go", `package pull
@@ -270,6 +304,7 @@ func TestCheckAllowsLocalStateWritersToUseReplaceLeaf(t *testing.T) {
 	for _, file := range []string{
 		"internal/agent/install.go",
 		"internal/artifact/workbook.go",
+		"internal/auth/command_sessions.go",
 		"internal/config/config.go",
 		"internal/jobmonitor/store.go",
 		"internal/lastcommand/store.go",

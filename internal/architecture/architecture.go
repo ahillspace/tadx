@@ -38,7 +38,7 @@ func Check(root string) ([]Violation, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() && path != root && ignoredDirectory(entry.Name()) {
+		if entry.IsDir() && path != root && (ignoredDirectory(entry.Name()) || path == filepath.Join(root, ".tadx-explore")) {
 			return filepath.SkipDir
 		}
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
@@ -280,9 +280,9 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/operationrun") {
 			return matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
-		// Authentication holds the leaf advisory lock for a command's PAT session.
+		// Authentication locks PAT sessions and atomically publishes their epochs.
 		if hasPathPrefix(file, "internal/auth") {
-			return matchesExact(imported, "internal/lock")
+			return matchesExact(imported, "internal/lock", "internal/fsreplace")
 		}
 		// The batch runner invokes supplied operations and aggregates their
 		// structured outcomes without depending on actions or remote adapters.

@@ -398,6 +398,16 @@ func migrateLegacyWorkspaceDefaults(configuration Config) (Config, bool, error) 
 		}
 		key := workspaceRootKey(root)
 		if existing, ok := registered[key]; ok {
+			if existing.root != root {
+				registeredInfo, registeredErr := os.Stat(existing.root)
+				rootInfo, rootErr := os.Stat(root)
+				if registeredErr != nil || rootErr != nil || !registeredInfo.IsDir() || !rootInfo.IsDir() || !os.SameFile(registeredInfo, rootInfo) {
+					return Config{}, false, fmt.Errorf(
+						"migrate legacy %s: path %q does not identify registered workspace %q; verify the intended directory and set the default workspace to an explicitly registered logical name",
+						reference.label, root, existing.name,
+					)
+				}
+			}
 			reference.set(existing.name)
 			continue
 		}

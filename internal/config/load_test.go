@@ -157,6 +157,152 @@ environments:
 	}
 }
 
+func TestLoadLegacyCaseAliasRequiresFilesystemIdentity(t *testing.T) {
+	for _, scenario := range []string{"exact missing root", "unverifiable case alias", "verified case alias", "distinct case sensitive roots", "directory symlink alias", "file alias is not directory identity"} {
+		t.Run(scenario, func(t *testing.T) {
+			directory := t.TempDir()
+			registeredRoot := filepath.Join(directory, "Workspace")
+			legacyRoot := filepath.Join(directory, "workspace")
+			reuse := false
+			switch scenario {
+			case "exact missing root":
+				legacyRoot, reuse = registeredRoot, true
+			case "file alias is not directory identity":
+				if err := os.WriteFile(registeredRoot, []byte("not a workspace directory"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Stat(legacyRoot); os.IsNotExist(err) {
+					if err := os.Link(registeredRoot, legacyRoot); err != nil {
+						t.Skipf("file alias unavailable: %v", err)
+					}
+				} else if err != nil {
+					t.Fatal(err)
+				}
+				registeredInfo, registeredErr := os.Stat(registeredRoot)
+				legacyInfo, legacyErr := os.Stat(legacyRoot)
+				if registeredErr != nil || legacyErr != nil || registeredInfo.IsDir() || legacyInfo.IsDir() || !os.SameFile(registeredInfo, legacyInfo) {
+					t.Fatalf("file alias fixture does not share a non-directory identity: %v, %v", registeredErr, legacyErr)
+				}
+			case "verified case alias", "distinct case sensitive roots", "directory symlink alias":
+				if err := os.MkdirAll(registeredRoot, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "distinct case sensitive roots" {
+					if err := os.MkdirAll(legacyRoot, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if scenario == "directory symlink alias" {
+					if err := os.Symlink(registeredRoot, legacyRoot); err != nil {
+						t.Skipf("directory symlink alias unavailable: %v", err)
+					}
+				}
+				registeredInfo, err := os.Stat(registeredRoot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				legacyInfo, err := os.Stat(legacyRoot)
+				if scenario == "verified case alias" && os.IsNotExist(err) {
+					t.Skip("filesystem does not resolve case aliases to the same directory")
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				same := os.SameFile(registeredInfo, legacyInfo)
+				if scenario == "distinct case sensitive roots" && same {
+					t.Skip("filesystem does not support distinct directories differing only by case")
+				}
+				if scenario != "distinct case sensitive roots" && !same {
+					t.Fatal("alias fixture does not identify the registered directory")
+				}
+				reuse = same
+			}
+			const workspaceID = "ws_11111111111111111111111111111111"
+			contents := "version: 1\ndefault_workspace: " + quoteYAML(legacyRoot) + "\nworkspaces:\n  registered:\n    id: " + workspaceID + "\n    path: " + quoteYAML(registeredRoot) + "\nenvironments:\n  target:\n    url: https://example.test\n    auth:\n      type: pat\n    default_workspace: " + quoteYAML(legacyRoot) + "\n"
+			path := filepath.Join(directory, "config.yaml")
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if registration := loaded.Workspaces["registered"]; len(loaded.Workspaces) != 1 || registration.ID != workspaceID || registration.Path != registeredRoot {
+				t.Fatalf("migration changed registered identity: %#v", loaded.Workspaces)
+			}
+			if reuse {
+				if loaded.DefaultWorkspace != "registered" || loaded.Environments["target"].DefaultWorkspace != "registered" {
+					t.Fatalf("verified identity was not reused: global=%q environment=%#v", loaded.DefaultWorkspace, loaded.Environments)
+				}
+			} else {
+				if loaded.DefaultWorkspace != legacyRoot {
+					t.Fatalf("unverified legacy root silently became workspace %q", loaded.DefaultWorkspace)
+				}
+				if _, _, err := loaded.ResolveWorkspace(""); err == nil {
+					t.Fatal("unverified legacy default resolves operationally")
+				}
+				environment, err := loaded.EnvironmentForRepair("target")
+				if err != nil || environment.DefaultWorkspace != legacyRoot || len(loaded.InvalidEnvironments) != 1 {
+					t.Fatalf("environment legacy default was not preserved for repair: %#v err=%v", loaded, err)
+				}
+				if _, err := loaded.ResolveEnvironment("target"); err == nil {
+					t.Fatal("environment with unverified legacy default resolves operationally")
+				}
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != contents {
+				t.Fatalf("Load changed the source configuration: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadUnverifiedLegacyRootRemainsRepairable(t *testing.T) {
+	directory := t.TempDir()
+	registeredRoot := filepath.Join(directory, "Workspace")
+	legacyRoot := filepath.Join(directory, "workspace")
+	contents := "version: 1\ndefault_workspace: " + quoteYAML(legacyRoot) + "\nworkspaces:\n  registered:\n    id: ws_11111111111111111111111111111111\n    path: " + quoteYAML(registeredRoot) + "\nenvironments:\n  target:\n    url: https://example.test\n    auth:\n      type: pat\n    default_workspace: " + quoteYAML(legacyRoot) + "\n"
+	path := filepath.Join(directory, "config.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(path)
+	if err != nil || loaded.DefaultWorkspace != legacyRoot {
+		t.Fatalf("unverifiable root was not retained: default=%q err=%v", loaded.DefaultWorkspace, err)
+	}
+	if _, err := config.Update(path, false, func(config.Config) (config.Config, error) {
+		return config.Config{}, config.ErrNoChange
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != contents {
+		t.Fatalf("unrequested migration changed legacy defaults: %v", err)
+	}
+	if _, err := config.Update(path, false, func(c config.Config) (config.Config, error) {
+		c.DefaultWorkspace = "registered"
+		if err := c.PatchEnvironment("target", map[string]any{"default_workspace": "registered"}); err != nil {
+			return config.Config{}, err
+		}
+		return c, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name, registration, err := repaired.ResolveWorkspace("")
+	if err != nil || name != "registered" || registration.Path != registeredRoot || registration.ID != loaded.Workspaces["registered"].ID {
+		t.Fatalf("explicit repair failed: name=%q registration=%#v err=%v", name, registration, err)
+	}
+	environment, err := repaired.ResolveEnvironment("target")
+	if err != nil || environment.DefaultWorkspace != "registered" {
+		t.Fatalf("explicit environment repair failed: %#v err=%v", environment, err)
+	}
+	if _, err := os.Stat(path + ".pre-workspace-migration-v1.bak"); !os.IsNotExist(err) {
+		t.Fatalf("unverified migration created a backup: %v", err)
+	}
+}
+
 func TestLoadDefersAmbiguousRelativeLegacyWorkspaceDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	contents := `version: 1
