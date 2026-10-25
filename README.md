@@ -105,6 +105,22 @@ tadx content workbook pull --help
 
 Read [Getting started](docs/getting-started.md) for authentication checks, workspaces, caches, previews, Pulse authoring, and maintenance.
 
+## VS Code extension
+
+TADX Artifact Explorer shows cached Tableau inventory and registered local workspaces in VS Code.
+Expand sites and nested project folders, inspect artifacts, or open, move, and delete individual local copies.
+
+To try it:
+
+1. Build the VSIX using the [extension setup instructions](extensions/vscode/README.md#develop-and-validate).
+2. In VS Code, open **Extensions**, choose **Install from VSIX**, and select `extensions/vscode/dist/tadx.vsix`.
+3. Select the **TADX** sidebar icon to browse sites and workspaces.
+4. Open **Bulk Actions** to download into one workspace or upload into one project, including mixed artifact types.
+
+Use **TADX: CLI Status and Setup** to select, install, or update the CLI on the workspace host.
+Configure Tableau environments and workspace registrations through the CLI.
+See the [extension guide](extensions/vscode/README.md) for refresh behavior, previews, and supported actions.
+
 ## Agent Guidance
 
 The installer and `tadx update` automatically deploy the bundled `tadx` and `tadx-pulse` Guidance for detected agents.
