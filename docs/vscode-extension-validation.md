@@ -8,7 +8,54 @@ The extension is implemented in `extensions/vscode` and produces an independent 
 The [implementation plan](vscode-extension-plan.md) records the architecture and accepted scope.
 The [extension guide](../extensions/vscode/README.md) covers installation, operation, and development.
 
-## Release and setup checks on 2026-10-25
+## Review corrections in extension 0.2.1
+
+The corrected source is commit `0cf8f54ff79b572d12b7cedac1f9b05f2bc0e08e`.
+Validation uses a clean committed checkout, excluding unrelated worktree changes.
+The extension configuration page remains outside this build.
+
+| Check | Result |
+| --- | --- |
+| Strict TypeScript, ESLint, unit and contract tests, bundle | Passed; 114 tests passed. |
+| Source-built and checksum-pinned released CLI contracts | Passed; pinned release `1.0.0` on Windows amd64. |
+| Browser scenarios | Seven groups passed; narrow light and mixed-upload dark layouts inspected. |
+| Native VS Code hosts | Ten checks passed on each of `1.143.1` and `1.95.3`. |
+| Synthetic host fixture | Go vet and formatting passed. |
+| Windows PowerShell 5.1 installer fixtures | Passed, including intervening replacement/creation and native junction rejection. |
+| Git Bash installer fixtures and syntax | Passed; its directory-link assertion explicitly skips because this host emulates links by copying. |
+| PowerShell 7 installer fixtures | Unavailable on this host. |
+| Fresh independent code review | No remaining findings in runtime, setup/delivery, source inventory, or capability-registry changes. |
+| VSIX construction and verification | Both packages contain eleven expected files matching committed inputs; release metadata records `sourceDirty=false`. |
+| Full normal Go suite | Passed; 111 tested packages and 6,424 tests/subtests in 257.891 seconds. |
+| Full Go race suite | Passed; the same packages/tests in 380.422 seconds with the unchanged 15-minute timeout. |
+| Documented fuzz targets | All three passed five-second runs. |
+| Repository formatting, vet, module, and generation checks | Passed; the validation checkout remains clean. |
+| Cross-builds with `CGO_ENABLED=0` | Passed for Windows amd64, Linux amd64, macOS amd64, and macOS arm64; these are compile checks. |
+| Repository Node fixtures | Twenty passed; one Windows symlink-privilege check skipped. |
+| Opt-in architecture inventory and workflow evidence | Combined package passed 119 tests/subtests; one symlink-privilege check skipped. |
+
+The original installer race fixture now rejects replacement and preserves the intervening `1.1.0` executable.
+Forced-reload regressions reject superseded data and errors, including clients that ignore cancellation.
+Operation regressions preserve unknown startup outcomes, receipts, warnings, confirmed partial evidence, and explicit rejection states.
+Both full Go runs report 37 explicit skips: 30 Windows symlink-privilege checks, four administrator-only policy fixtures, two POSIX-permission cases, and one intentional subprocess helper.
+Ten additional packages contain no tests.
+Configured Python support runs the local Hyper fixtures successfully; no `livecli` tag or live Tableau target is enabled.
+The registry performance correction resolves the earlier cumulative race timeout without increasing its limit or weakening assertions.
+The review and correction details remain in the [architecture review record](architecture/review.md#pr-35-review-on-2026-10-25).
+
+| Artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| `extensions/vscode/dist/tadx.vsix` | 63,913 | `a59ff3a8620d79fd864d6bd1196faa0c3d9c43900a7d82a466309e2afbe30251` |
+| Clean-checkout `extensions/vscode/dist/release/tadx-0.2.1.vsix` | 63,952 | `cd7b914b2ae2cd73775e66f8deac251c2a559cea5cb807749eb1f468fd8d880a` |
+
+These checks do not establish native Linux/macOS/remote-host behavior, live Tableau transfers, or an actual user's guided CLI installation.
+The stable host log includes a TextMate worker module error under the deep test-checkout path.
+The minimum host log includes chat-registry network and utility-process shutdown warnings.
+All extension assertions pass, but those logs are not warning-free.
+The two high development-tool dependency audit findings remain documented in the [release guide](vscode-extension-release.md#current-toolchain-advisory).
+No Marketplace publication, GitHub release, or hosted CI dispatch is part of this validation.
+
+## Historical release and setup checks for 0.2.0
 
 The final extension checks use source commit `c10dc23414dddcce5f35017d0e210896c0e32eba` and prepare extension version `0.2.0`.
 They cover independent versioning, capability-based CLI compatibility, guided CLI setup, and the manual release path.
@@ -61,7 +108,8 @@ Before integration, an isolated checkout of the staged source passes the complet
 The full race command fails at its configured 15-minute package timeout in `internal/app`.
 The active test, `TestReadDiscoveryWithoutPublicCursorsThroughCLI`, had run for four seconds when the package deadline expired; that observation does not identify it as the cause.
 Other packages in the race run complete successfully, and the log contains no race-detector report.
-The full race gate remains failed and requires investigation before a validated push or release.
+This was a failed gate at the `0.2.0` baseline.
+The complete `0.2.1` race run above resolves it after the registry performance correction.
 All three documented fuzz targets pass five-second runs.
 Cross-compilation passes for Windows amd64, Linux amd64, macOS amd64, and macOS arm64.
 Cross-compilation does not establish native behavior on those targets.
