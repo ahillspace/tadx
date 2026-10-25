@@ -31,6 +31,10 @@ type StatusArtifact struct {
 	Reason              string `json:"reason,omitempty"`
 	Diagnostic          string `json:"diagnostic,omitempty"`
 	CanonicalPath       string `json:"canonical_path,omitempty"`
+	SourceServerOrigin  string `json:"source_server_origin,omitempty"`
+	SourceSiteLUID      string `json:"source_site_luid,omitempty"`
+	SourceEnvironment   string `json:"source_environment,omitempty"`
+	SourceSite          string `json:"source_site,omitempty"`
 	BaselineFingerprint string `json:"baseline_fingerprint,omitempty"`
 	CurrentFingerprint  string `json:"current_fingerprint,omitempty"`
 }

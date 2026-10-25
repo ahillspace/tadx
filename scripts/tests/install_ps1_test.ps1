@@ -38,7 +38,8 @@ try {
 
     $fakeSource = @'
 package main
-import ("os"; "strings"; "os/exec")
+import ("fmt"; "os"; "strings"; "os/exec")
+var fixtureVersion = "1.2.3"
 func main() {
  if len(os.Args)>1 && os.Args[1]=="selfupdate" {
   c:=exec.Command("powershell.exe",os.Args[2:]...)
@@ -50,7 +51,9 @@ func main() {
   f,e:=os.OpenFile(os.Getenv("TADX_TEST_GUIDANCE_LOG"),os.O_APPEND|os.O_CREATE|os.O_WRONLY,0600); if e!=nil {panic(e)}
   _,_=f.WriteString(strings.Join(os.Args[1:]," ")+"\n"); _=f.Close()
   if os.Getenv("TADX_TEST_GUIDANCE_FAIL")=="1" {os.Exit(7)}
+  return
  }
+ fmt.Println("tadx test " + fixtureVersion)
 }
 '@
     $fakeSourcePath = Join-Path $testRoot 'fake.go'
@@ -87,6 +90,7 @@ if "%1"=="--output" (
 shift
 goto args
 :copy
+if not "%TADX_TEST_REPLACE_TARGET%"=="" if "%pattern:~-4%"==".zip" copy /Y "%TADX_TEST_REPLACE_BINARY%" "%TADX_TEST_REPLACE_TARGET%" >nul
 copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
 '@
     Set-Content -LiteralPath (Join-Path $fakeBin 'gh.cmd') -Value $fakeGitHubCLI
@@ -150,14 +154,122 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     & (Join-Path $installDirectory 'tadx.exe') selfupdate -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion
     Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not update while the old executable remained running.'
     Assert-PolicyPreserved
+    & go build -ldflags '-X main.fixtureVersion=0.9.0' -o (Join-Path $installDirectory 'tadx.exe') $fakeSourcePath
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not build the distinct prior binary.'
     $originalBinaryHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash
+    $releaseBinaryHash = (Get-FileHash -LiteralPath (Join-Path $payloadDirectory 'tadx.exe')).Hash
+    Assert-True -Condition ($originalBinaryHash -cne $releaseBinaryHash) -Message 'Rollback requires distinct prior and release binary bytes.'
+    Assert-True -Condition ((& (Join-Path $installDirectory 'tadx.exe')) -ceq 'tadx test 0.9.0') -Message 'Prior binary fixture has the wrong version.'
+    # A caller pin must still protect against a changed archive with a matching published manifest.
+    $pinProfileBefore = [IO.File]::ReadAllText($completionProfile)
+    $pinGuidanceBefore = [IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG)
+    $pinFailed = $false
+    try { & $installer -Version 1.2.3 -ExpectedSHA256 ('0' * 64) -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile } catch {
+        $pinFailed = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('expected SHA-256')) -Message 'Caller pin failed for a reason other than the archive digest mismatch.'
+    }
+    Assert-True -Condition $pinFailed -Message 'An archive different from the caller pin was installed.'
+    Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -ceq $originalBinaryHash) -Message 'Caller pin failure replaced the prior binary.'
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -ceq $pinProfileBefore) -Message 'Caller pin failure changed the completion profile.'
+    Assert-True -Condition ([IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG) -ceq $pinGuidanceBefore) -Message 'Caller pin failure invoked Guidance installation.'
+    Assert-PolicyPreserved
+    foreach ($pinCase in @(
+        @{ Version = '1.2.3'; ExpectedSHA256 = 'not-a-digest' },
+        @{ Version = 'latest'; ExpectedSHA256 = $hash },
+        @{ ExpectedSHA256 = $hash }
+    )) {
+        $pinFailed = $false
+        try { & $installer @pinCase -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch { $pinFailed = $true }
+        Assert-True -Condition $pinFailed -Message 'An invalid or unversioned caller pin was accepted.'
+        Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -ceq $originalBinaryHash) -Message 'Invalid pin options changed the prior binary.'
+    }
+    $pinnedInstallDirectory = Join-Path $testRoot 'pinned-install'
+    & $installer -Version 1.2.3 -ExpectedSHA256 $hash.ToUpperInvariant() -InstallDir $pinnedInstallDirectory -NoModifyPath -NoCompletion
+    Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $pinnedInstallDirectory 'tadx.exe')).Hash -ceq $releaseBinaryHash) -Message 'A valid caller pin did not install the verified release.'
+
+    # A second installation can finish during download, before this installer takes its replacement lock.
+    $raceInstall = Join-Path $testRoot 'race-install'
+    New-Item -ItemType Directory -Path $raceInstall | Out-Null
+    $raceTarget = Join-Path $raceInstall 'tadx.exe'
+    $newerBinary = Join-Path $testRoot 'newer-tadx.exe'
+    & go build -ldflags '-X main.fixtureVersion=9.0.0' -o $newerBinary $fakeSourcePath
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not build the distinct newer binary.'
+    $newerHash = (Get-FileHash -LiteralPath $newerBinary).Hash
+    $raceGuidanceBefore = [IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG)
+    $raceProfileBefore = [IO.File]::ReadAllText($completionProfile)
+    $env:TADX_TEST_REPLACE_TARGET = $raceTarget
+    $env:TADX_TEST_REPLACE_BINARY = $newerBinary
+    foreach ($expectedCurrent in @($originalBinaryHash, 'absent')) {
+        Remove-Item -LiteralPath $raceTarget -Force -ErrorAction SilentlyContinue
+        if ($expectedCurrent -cne 'absent') { Copy-Item -LiteralPath (Join-Path $installDirectory 'tadx.exe') -Destination $raceTarget }
+        $raceFailed = $false
+        try { & $installer -Version 1.2.3 -ExpectedSHA256 $hash -ExpectedCurrentSHA256 $expectedCurrent -InstallDir $raceInstall -NoModifyPath -CompletionProfile $completionProfile } catch {
+            $raceFailed = $true
+            Assert-True -Condition ($_.Exception.Message.Contains('installation target changed after preview')) -Message 'Download race failed for a reason other than stale executable state.'
+        }
+        Assert-True -Condition $raceFailed -Message 'Installer replaced an executable created or changed during download.'
+        Assert-True -Condition ((Get-FileHash -LiteralPath $raceTarget).Hash -ceq $newerHash) -Message 'Download race changed the intervening executable.'
+        Assert-True -Condition ((& $raceTarget) -ceq 'tadx test 9.0.0') -Message 'Download race downgraded the newer executable.'
+        Assert-True -Condition ([IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG) -ceq $raceGuidanceBefore) -Message 'Download race invoked Guidance installation.'
+        Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -ceq $raceProfileBefore) -Message 'Download race changed the completion profile.'
+        Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $raceInstall '.tadx-install.lock'))) -Message 'Download race left its installation lock behind.'
+    }
+    Remove-Item Env:TADX_TEST_REPLACE_TARGET, Env:TADX_TEST_REPLACE_BINARY
+
+    # A conflicting owner wins over a stale precondition: executable inspection must happen under the lock.
+    $raceLock = Join-Path $raceInstall '.tadx-install.lock'
+    New-Item -ItemType Directory -Path $raceLock | Out-Null
+    [IO.File]::WriteAllText((Join-Path $raceLock 'owner'), "$PID $([Environment]::MachineName)")
+    $raceFailed = $false
+    try { & $installer -Version 1.2.3 -ExpectedCurrentSHA256 $originalBinaryHash -InstallDir $raceInstall -NoModifyPath -NoCompletion } catch {
+        $raceFailed = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('Another installer is using this directory')) -Message 'Executable state was checked before taking the installation lock.'
+    }
+    Assert-True -Condition $raceFailed -Message 'Installer ignored an existing replacement lock.'
+    Remove-Item -LiteralPath (Join-Path $raceLock 'owner')
+    Remove-Item -LiteralPath $raceLock
+    foreach ($invalidCurrent in @('', 'not-a-digest', 'ABC')) {
+        $raceFailed = $false
+        try { & $installer -ExpectedCurrentSHA256 $invalidCurrent -InstallDir $raceInstall -NoModifyPath -NoCompletion } catch {
+            $raceFailed = $true
+            Assert-True -Condition ($_.Exception.Message.Contains('ExpectedCurrentSHA256 must be')) -Message 'Invalid target precondition was not rejected during argument validation.'
+        }
+        Assert-True -Condition $raceFailed -Message 'Invalid target precondition was accepted.'
+    }
+    $raceFailed = $false
+    try { & $installer -Action Uninstall -ExpectedCurrentSHA256 absent -InstallDir $raceInstall -NoModifyPath -NoCompletion } catch { $raceFailed = $true }
+    Assert-True -Condition $raceFailed -Message 'Uninstall accepted an installation precondition.'
+    Assert-True -Condition ((Get-FileHash -LiteralPath $raceTarget).Hash -ceq $newerHash) -Message 'Invalid preconditions changed the executable.'
+
+    # Matching existing bytes and explicit absence both permit replacement; uppercase digests are accepted.
+    Copy-Item -LiteralPath (Join-Path $installDirectory 'tadx.exe') -Destination $raceTarget -Force
+    & $installer -Version 1.2.3 -ExpectedCurrentSHA256 $originalBinaryHash -InstallDir $raceInstall -NoModifyPath -NoCompletion
+    Assert-True -Condition ((Get-FileHash -LiteralPath $raceTarget).Hash -ceq $releaseBinaryHash) -Message 'Matching target precondition did not install the release.'
+    Remove-Item -LiteralPath $raceTarget
+    & $installer -Version 1.2.3 -ExpectedCurrentSHA256 absent -InstallDir $raceInstall -NoModifyPath -NoCompletion
+    Assert-True -Condition ((Get-FileHash -LiteralPath $raceTarget).Hash -ceq $releaseBinaryHash) -Message 'Expected absence did not install the release.'
+
+    $redirectedInstall = Join-Path $testRoot 'redirected-install'
+    New-Item -ItemType Junction -Path $redirectedInstall -Target $raceInstall | Out-Null
+    $raceFailed = $false
+    try { & $installer -Version 1.2.3 -ExpectedCurrentSHA256 $releaseBinaryHash -InstallDir $redirectedInstall -NoModifyPath -NoCompletion } catch {
+        $raceFailed = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('installation directory is redirected by a link')) -Message 'Redirected installation was not rejected at the directory boundary.'
+    }
+    Assert-True -Condition $raceFailed -Message 'Target precondition followed a redirected installation directory.'
+    Assert-True -Condition ((Get-FileHash -LiteralPath $raceTarget).Hash -ceq $releaseBinaryHash) -Message 'Redirected installation changed the executable.'
+
     $env:TADX_TEST_GUIDANCE_FAIL = '1'
     $failed = $false
-    try { & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch { $failed = $true }
+    try { & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch {
+        $failed = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('Guidance installation failed.')) -Message 'Rollback fixture failed before Guidance installation.'
+    }
     Remove-Item Env:TADX_TEST_GUIDANCE_FAIL
     Assert-True -Condition $failed -Message 'Guidance failure was reported as successful installation.'
     Assert-PolicyPreserved
     Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -eq $originalBinaryHash) -Message 'Guidance failure did not restore the prior binary.'
+    Assert-True -Condition ((& (Join-Path $installDirectory 'tadx.exe')) -ceq 'tadx test 0.9.0') -Message 'Guidance failure retained the release binary.'
     $firstProfile = [IO.File]::ReadAllText($completionProfile)
     $parseTokens = $null
     $parseErrors = $null

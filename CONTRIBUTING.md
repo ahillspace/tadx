@@ -3,6 +3,10 @@
 Use the repository-local [tadx-build skill](.agents/skills/tadx-build/SKILL.md) for implementation standards, architecture guidance, examples, and verification.
 Select the skill's guidance that matches your change.
 
+Read the [architecture guide](docs/architecture/README.md) to understand package ownership, command execution, state, dependencies, and delivery.
+It links implementation owners, representative operation traces, and the [review coverage and limitations](docs/architecture/review.md).
+Use the existing action family and its contracts to place a change before adding a new layer.
+
 ## Start with your agent
 
 Ask your coding agent to use the build skill for a named task and state the outcome, scope, and stopping point.
@@ -93,6 +97,10 @@ It requires an explicit target, candidate executable, prepared selection, and ex
 Ordinary local checks do not run the live contracts.
 
 ## Keep changes maintainable
+
+For changes to the VS Code extension, run the package checks and host tests in the [extension contributor instructions](extensions/vscode/README.md#develop-and-validate).
+The extension package owns its Node dependencies and VSIX output separately from the Go CLI.
+CLI contract changes also require the relevant Go checks above.
 
 - Keep command plumbing, action behavior, Tableau adapters, and composition wiring within their established responsibilities.
 - Preserve distinct operation contracts and mutation sequences, and share mechanisms only when their behavior matches.

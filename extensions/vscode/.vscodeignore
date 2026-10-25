@@ -1,0 +1,8 @@
+**
+!package.json
+!README.md
+!LICENSE
+!dist/extension.js
+!dist/installers/install.sh
+!dist/installers/install.ps1
+!media/**

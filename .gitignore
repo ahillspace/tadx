@@ -15,6 +15,7 @@ __pycache__/
 /.agents/skills/tadx-feedback
 /.claude/skills/tadx-feedback
 /.tadx-explore/
+/workflow-evidence/
 /.tadx-live/
 /agent-review/
 /openspec/

@@ -3,8 +3,10 @@ package architecture_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,40 +43,36 @@ func TestFirstPartyFilesDoNotContainDeveloperHomePaths(t *testing.T) {
 		".go": true, ".md": true, ".yaml": true, ".yml": true, ".json": true, ".toon": true,
 	}
 	var violations []string
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if path != root && excludedDirectories[entry.Name()] {
-				return filepath.SkipDir
-			}
-			if filepath.ToSlash(path) == filepath.ToSlash(filepath.Join(root, "internal", "toon", "testdata", "upstream-v4.1.1")) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !textExtensions[strings.ToLower(filepath.Ext(path))] {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		for _, pattern := range patterns {
-			if pattern.Match(content) {
-				relative, err := filepath.Rel(root, path)
-				if err != nil {
-					return err
-				}
-				violations = append(violations, filepath.ToSlash(relative))
+	source, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatalf("open source root: %v", err)
+	}
+	defer source.Close()
+	files, err := architecture.FirstPartyFiles(root)
+	if err != nil {
+		t.Fatalf("select first-party files: %v", err)
+	}
+	for _, relative := range files {
+		excluded := strings.HasPrefix(relative, "internal/toon/testdata/upstream-v4.1.1/")
+		for part := range strings.SplitSeq(relative, "/") {
+			if excludedDirectories[part] {
+				excluded = true
 				break
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("scan first-party files: %v", err)
+		if excluded || !textExtensions[strings.ToLower(filepath.Ext(relative))] {
+			continue
+		}
+		content, err := source.ReadFile(filepath.FromSlash(relative))
+		if err != nil {
+			t.Fatalf("read first-party file %s: %v", relative, err)
+		}
+		for _, pattern := range patterns {
+			if pattern.Match(content) {
+				violations = append(violations, relative)
+				break
+			}
+		}
 	}
 	if len(violations) > 0 {
 		t.Fatalf("developer home paths found in first-party files:\n%s", strings.Join(violations, "\n"))
@@ -120,6 +118,160 @@ var _ tableau.Client
 		"actions must not import Cobra",
 		"actions must not use net/http directly",
 	})
+}
+
+func TestCheckUsesFirstPartySourceOwnership(t *testing.T) {
+	root := moduleFixture(t)
+	git := func(args ...string) {
+		t.Helper()
+		command := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	git("init", "--quiet")
+	writeGo(t, root, ".gitignore", "/scratch/\n*.ignored.go\n")
+	writeGo(t, root, "actions/example/action.go", "package example\nimport _ \"fmt\"\n")
+	writeGo(t, root, "main.go", "package main\nimport _ \"fmt\"\n")
+	writeGo(t, root, "deleted/source.go", "package deleted\n")
+	git("add", "go.mod", ".gitignore", "main.go", "actions/example/action.go", "deleted/source.go")
+	if err := os.Remove(filepath.Join(root, "deleted", "source.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "deleted")); err != nil {
+		t.Fatal(err)
+	}
+	writeGo(t, root, "extra.ignored.go", "package main\nimport _ \"example.test/tadx/internal/config\"\n")
+	writeGo(t, root, "actions/example/extra.ignored.go", "package example\nimport _ \"net/http\"\n")
+	writeGo(t, root, "actions/new/action.ignored.go", "package new\nimport _ \"net/http\"\n")
+	writeGo(t, root, "newpackage/source.go", "package newpackage\nimport _ \"example.test/tadx/internal/config\"\n")
+	writeGo(t, root, "scratch/copy.go", "not Go source")
+	writeGo(t, root, "extensions/editor/node_modules/dependency/example.go", "not Go source")
+	writeGo(t, root, "tools/separate/go.mod", "module example.test/separate\n\ngo 1.26\n")
+	writeGo(t, root, "tools/separate/main.go", "package main\nimport _ \"example.test/tadx/internal/config\"\n")
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"actions/example/extra.ignored.go imports net/http: actions must not use net/http directly",
+		"actions/new/action.ignored.go imports net/http: actions must not use net/http directly",
+		"extra.ignored.go imports example.test/tadx/internal/config: unrecognized packages must not import local packages",
+		"newpackage/source.go imports example.test/tadx/internal/config: unrecognized packages must not import local packages",
+	})
+}
+
+func TestCheckSourceExportPreservesUnknownPackages(t *testing.T) {
+	root := moduleFixture(t)
+	for _, directory := range []string{".scratch", "_build", "vendor", "node_modules", "archived"} {
+		writeGo(t, root, directory+"/copy.go", "not Go source")
+	}
+	writeGo(t, root, "newpackage/source.go", "package newpackage\nimport _ \"example.test/tadx/internal/config\"\n")
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"newpackage/source.go imports example.test/tadx/internal/config: unrecognized packages must not import local packages",
+	})
+}
+
+func TestGoSourceFilesPreserveModuleOwnershipAndIgnoreLocalBuilds(t *testing.T) {
+	root := moduleFixture(t)
+	git := func(args ...string) {
+		t.Helper()
+		command := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	git("init", "--quiet")
+	writeGo(t, root, ".gitignore", "/dist/\nnode_modules/\n")
+	writeGo(t, root, "internal/tool/tool.go", "package tool\n")
+	writeGo(t, root, "extensions/host/go.mod", "module example.test/host\n\ngo 1.26\n")
+	writeGo(t, root, "extensions/host/main.go", "package main\n")
+	writeGo(t, root, "extensions/host/nested/go.mod", "module example.test/nested\n\ngo 1.26\n")
+	writeGo(t, root, "extensions/host/nested/check/check_test.go", "package check\n")
+	writeGo(t, root, "unowned/new.go", "package unowned\n")
+	git("add", ".")
+	want := []architecture.GoSourceFile{
+		{Path: "extensions/host/main.go", PackagePath: "example.test/host", ModuleDirectory: "extensions/host"},
+		{Path: "extensions/host/nested/check/check_test.go", PackagePath: "example.test/nested/check", ModuleDirectory: "extensions/host/nested"},
+		{Path: "internal/tool/tool.go", PackagePath: "example.test/tadx/internal/tool", ModuleDirectory: "."},
+		{Path: "unowned/new.go", PackagePath: "example.test/tadx/unowned", ModuleDirectory: "."},
+	}
+	check := func() {
+		t.Helper()
+		got, err := architecture.GoSourceFiles(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("source ownership = %#v, want %#v", got, want)
+		}
+	}
+	check()
+	writeGo(t, root, "dist/snapshot/invalid.go", "not Go source")
+	writeGo(t, root, "extensions/node_modules/dependency/invalid.go", "not Go source")
+	check()
+}
+
+func TestCheckFollowsExplicitImportsIntoGoExcludedDirectories(t *testing.T) {
+	for _, directory := range []string{"_helper", ".hidden"} {
+		t.Run(directory, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/app/app.go", "package app\nimport _ \"example.test/tadx/internal/resources/"+directory+"\"\n")
+			writeGo(t, root, "internal/resources/"+directory+"/source.go", "package helper\nimport _ \"net/http\"\n")
+			command := exec.CommandContext(t.Context(), "go", "list", "-deps", "./internal/app")
+			command.Dir = root
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("Go rejected explicit fixture import: %v\n%s", err, output)
+			}
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, []string{
+				"internal/resources/" + directory + "/source.go imports net/http: resource adapters must not use net/http directly",
+			})
+			files, err := architecture.FirstPartyFiles(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(files, "internal/resources/"+directory+"/source.go") {
+				t.Fatal("first-party content checks omitted an explicitly imported source file")
+			}
+		})
+	}
+}
+
+func TestCheckReportsBrokenGitMetadata(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, ".git", "gitdir: missing-git-directory\n")
+	if _, err := architecture.Check(root); err == nil {
+		t.Fatal("Check accepted unreadable Git ownership metadata")
+	}
+}
+
+func TestCheckReportsMalformedNestedModule(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/new/go.mod", "not a module declaration\n")
+	writeGo(t, root, "internal/new/source.go", "package new\nimport _ \"example.test/tadx/internal/config\"\n")
+	if _, err := architecture.Check(root); err == nil {
+		t.Fatal("Check treated malformed module evidence as a separate ownership boundary")
+	}
+}
+
+func TestCheckRejectsNonregularGoSource(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "target.txt", "package fixture\n")
+	if err := os.Symlink(filepath.Join(root, "target.txt"), filepath.Join(root, "source.go")); err != nil {
+		t.Skipf("source symlink requires platform support and privileges: %v", err)
+	}
+	if _, err := architecture.Check(root); err == nil {
+		t.Fatal("Check silently accepted nonregular Go source")
+	}
 }
 
 func TestCheckAllowsThirdPartyImportsInActionsAndAdapters(t *testing.T) {

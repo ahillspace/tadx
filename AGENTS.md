@@ -11,7 +11,10 @@ Invoke `$tadx-build` only when the user explicitly requests it for a named build
 Free-form installed-CLI exploration uses the [.agents/skills/tadx-explore/SKILL.md](.agents/skills/tadx-explore/SKILL.md) workflow and ignored `.tadx-explore/` run state.
 Keep repository-wide agent instructions here and task-specific development instructions in that skill, not in plans or parallel agent files.
 
+Start with the [architecture guide](docs/architecture/README.md) for runtime, resource, state, dependency, and delivery explanations.
+For editor changes, use the [extension architecture](docs/architecture/editor-extension.md) and keep persistence, Tableau access, and mutation enforcement in the CLI.
 Use the [repository structure](docs/repository-structure.md) for current package locations and the [refactoring playbook](docs/resource-refactoring-playbook.md) for behavior-preserving changes.
+The [architecture review record](docs/architecture/review.md) separates examined behavior, proposed simplifications, and verification limits.
 Assess related workflows and shared consumers before choosing a boundary; extend cohesive resource packages rather than creating a package per verb.
 Give each responsibility one owner at each real boundary, and reuse validated values instead of repeating unchanged-input checks.
 Keep external-input validation, authorization, filesystem protection, and fresh-state checks where the facts can change.

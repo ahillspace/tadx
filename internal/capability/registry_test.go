@@ -2,10 +2,58 @@ package capability
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
+
+func TestRegistryResultsAreIndependentAcrossConcurrentConsumers(t *testing.T) {
+	want, ok := Lookup("workbook.pull")
+	if !ok || len(want.CommandPath) == 0 || !want.SupportsBatch {
+		t.Fatalf("missing canonical workbook pull metadata: %#v", want)
+	}
+	var workers sync.WaitGroup
+	for range 16 {
+		workers.Go(func() {
+			for _, definitions := range [][]Definition{All(), Executable()} {
+				index := slices.IndexFunc(definitions, func(item Definition) bool { return item.ID == want.ID })
+				if index < 0 {
+					t.Error("workbook.pull absent from registry")
+					return
+				}
+				definitions[index].ID = "caller-only"
+				definitions[index].CommandPath[0] = "caller-only"
+				definitions[index].SupportsBatch = false
+			}
+			got, ok := Lookup(want.ID)
+			if !ok || !reflect.DeepEqual(got, want) {
+				t.Errorf("registry retained another consumer's mutation: %#v", got)
+			}
+			got.CommandPath[0] = "lookup-only"
+		})
+	}
+	workers.Wait()
+	got, ok := Lookup(want.ID)
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Lookup retained caller mutation: %#v", got)
+	}
+	for _, id := range []string{"", "Workbook.Pull", "workbook.pull.missing"} {
+		if got, ok := Lookup(id); ok || !reflect.DeepEqual(got, Definition{}) {
+			t.Errorf("nonexact ID %q matched %#v", id, got)
+		}
+	}
+}
+
+func BenchmarkLookup(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, ok := Lookup("workbook.pull"); !ok {
+			b.Fatal("missing workbook.pull")
+		}
+	}
+}
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()

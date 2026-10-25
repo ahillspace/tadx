@@ -1,0 +1,256 @@
+name: VS Code extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Extension tag matching package.json, such as extension-v0.2.0
+        required: true
+        type: string
+      channel:
+        description: Stable uses an even minor version; prerelease uses an odd minor version
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - prerelease
+      action:
+        description: Validate only, or explicitly publish the validated artifact
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - github-release
+          - github-and-marketplace
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vscode-extension-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: extensions/vscode
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  RELEASE_CHANNEL: ${{ inputs.channel }}
+  RELEASE_ACTION: ${{ inputs.action }}
+
+jobs:
+  validate:
+    name: Validate extension release identity
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+      - run: npm ci
+      - name: Validate version, channel, and exact source tag
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$RELEASE_ACTION" != validate ]; then args+=(--require-tag); fi
+          node scripts/release.mjs check --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" "${args[@]}" > "$RUNNER_TEMP/extension-release.json"
+          node --input-type=module -e 'import fs from "node:fs"; const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${result.version}\n`);' "$RUNNER_TEMP/extension-release.json"
+      - name: Require configured Marketplace trusted publishing
+        if: inputs.action == 'github-and-marketplace'
+        env:
+          TRUSTED_PUBLISHING: ${{ vars.VSCODE_MARKETPLACE_TRUSTED_PUBLISHING }}
+        run: |
+          test "$TRUSTED_PUBLISHING" = true || {
+            echo 'Configure the ahillspace publisher trusted policy for this repository and workflow, then set VSCODE_MARKETPLACE_TRUSTED_PUBLISHING=true.' >&2
+            exit 1
+          }
+
+  quality:
+    name: Extension checks (${{ matrix.os }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:cli
+      - name: Verify the reviewed released CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run test:released-cli
+      - name: Check CLI update support
+        working-directory: .
+        run: go test ./internal/update ./internal/cli/update ./actions/update
+      - name: Check the bundled shell installer
+        if: runner.os != 'Windows'
+        working-directory: .
+        shell: bash
+        run: |
+          bash -n scripts/install.sh scripts/tests/install_sh_test.sh
+          bash scripts/tests/install_sh_test.sh
+      - name: Check the bundled Windows installer on both PowerShell versions
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/tests/install_ps1_test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -NonInteractive -File scripts/tests/install_ps1_test.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check the native host fixture
+        working-directory: extensions/vscode/tests/fixtures/host
+        shell: bash
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then printf '%s\n' "$files"; exit 1; fi
+          go vet ./...
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - name: Test current and minimum VS Code on Linux
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a npm run test:host
+          xvfb-run -a node scripts/test-host.mjs --version=1.95.3
+      - name: Test current and minimum VS Code on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm run test:host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/test-host.mjs --version=1.95.3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test current and minimum VS Code on macOS
+        if: runner.os == 'macOS'
+        run: |
+          npm run test:host
+          node scripts/test-host.mjs --version=1.95.3
+
+  package:
+    name: Package one verified VSIX
+    needs: [validate, quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+      - run: npm ci
+      - name: Package and inspect the release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$RELEASE_ACTION" != validate ]; then args+=(--require-tag); fi
+          node scripts/release.mjs package --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" "${args[@]}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: tadx-extension-${{ needs.validate.outputs.version }}
+          path: extensions/vscode/dist/release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  github-release:
+    name: Publish the verified GitHub release
+    needs: [validate, package]
+    if: inputs.action != 'validate'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+      - run: npm ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: tadx-extension-${{ needs.validate.outputs.version }}
+          path: extensions/vscode/dist/release
+      - run: node scripts/release.mjs verify --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --require-tag
+      - name: Create a new release without replacing assets or the CLI latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXTENSION_VERSION: ${{ needs.validate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$RELEASE_CHANNEL" = prerelease ]; then args+=(--prerelease); fi
+          printf 'TADX Artifact Explorer %s (%s).\n\nThis release updates the VS Code extension. Install a compatible TADX CLI separately.\n\nVerify the downloaded files against SHA256SUMS.\n' "$EXTENSION_VERSION" "$RELEASE_CHANNEL" > "$RUNNER_TEMP/extension-notes.md"
+          gh release create "$RELEASE_TAG" \
+            "dist/release/tadx-${EXTENSION_VERSION}.vsix" dist/release/release.json dist/release/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+            --title "TADX Artifact Explorer $EXTENSION_VERSION" \
+            --notes-file "$RUNNER_TEMP/extension-notes.md" "${args[@]}"
+
+  marketplace:
+    name: Publish the same VSIX to Marketplace
+    needs: [validate, github-release]
+    if: inputs.action == 'github-and-marketplace'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+      - run: npm ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: tadx-extension-${{ needs.validate.outputs.version }}
+          path: extensions/vscode/dist/release
+      - run: node scripts/release.mjs verify --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --require-tag
+      - name: Publish with Marketplace trusted publishing
+        env:
+          EXTENSION_VERSION: ${{ needs.validate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$RELEASE_CHANNEL" = prerelease ]; then args+=(--pre-release); fi
+          npx --no-install vsce publish --packagePath "dist/release/tadx-${EXTENSION_VERSION}.vsix" --oidc "${args[@]}"
