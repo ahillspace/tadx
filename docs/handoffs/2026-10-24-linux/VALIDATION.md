@@ -1,11 +1,50 @@
 # Validation baseline and Linux setup
 
-Snapshot date: 2026-10-24.
-The results below summarize earlier Windows validation and are not new Linux test results.
-No product tests run solely to create this handoff.
+Original archive snapshot: 2026-10-24.
+Release and setup validation update: 2026-10-25.
+The results below distinguish the original archive baseline from the later Windows release checks.
+They do not establish Linux runtime coverage.
 See the [maintained validation record](../../vscode-extension-validation.md) for regression evidence and review scope.
 
-## Last completed extension checks
+## Release and setup checks on 2026-10-25
+
+The final extension checks use source commit `c10dc23414dddcce5f35017d0e210896c0e32eba` and prepare version `0.2.0`.
+Use current Git source for continued development; the original offline ZIP contains the earlier `0.1.0` baseline.
+
+| Check | Recorded result |
+| --- | --- |
+| Strict TypeScript, ESLint, unit/contract tests, and bundle | Passed; 96 tests passed. |
+| Actual webview browser scenarios | Seven groups passed. |
+| Native VS Code host | Ten checks passed on Windows for both `1.143.1` and `1.95.3`. |
+| Actual source-built and pinned-release CLI adapters | Passed for isolated read contracts; the published binary is Windows amd64 CLI `1.0.0`. |
+| Guided setup fixtures | Passed without installing or updating the user's CLI. |
+| Installer fixtures | Git Bash and Windows PowerShell 5.1 passed; PowerShell 7 was unavailable. |
+| Repository Node fixtures | Twenty passed; one Windows file-symlink privilege check skipped. |
+| VSIX packaging and release verification | Eleven expected files; local and versioned packages verified. |
+
+The versioned package is `extensions/vscode/dist/release/tadx-0.2.0.vsix`, with a size of 62,754 bytes.
+Its recorded SHA-256 is:
+
+```text
+90bf9f201f7d915c9ab0ceafdfb8ed595da021892e7a8b7aa58fabb0f1393c8f
+```
+
+The local `dist/tadx.vsix` package is 62,716 bytes with SHA-256 `04ef068c4fc154ef7f835d66117c9c29fa5dc5dc0163fccd2cd42040ac682b41`.
+Fresh package bytes can differ; use their own generated checksums.
+The release manifest records dirty source, so this local artifact is not eligible for publication.
+
+The [maintained record](../../vscode-extension-validation.md#repository-validation-scope) separates staged-source Go checks from final integrated-source checks.
+The complete normal Go suite passes, but the full race command reaches the 15-minute package timeout in `internal/app`.
+Other race packages and the final merged-source delta race checks pass; these results do not replace the failed full race gate.
+Investigate that timeout before treating the branch as ready for a validated push or release.
+The final merged-source delta suites pass 603 tests and subtests in both normal and race modes, with six native Windows symlink privilege skips.
+Separate configured Hyper runs pass five tests and subtests in both modes, covering the initial Hyper skips.
+Full formatting, vet, module tidy, and generated-file stability checks pass in the clean merged-source checkout.
+Native Linux/macOS/remote hosts, live Tableau behavior, and actual guided installation or update remain untested.
+The manual release workflow was not dispatched, and these checks did not publish packages or change Tableau consent.
+Two high-severity development-dependency audit findings remain documented in the [release guide](../../vscode-extension-release.md#current-toolchain-advisory).
+
+## Historical archive checks through 2026-10-24
 
 | Check | Recorded result |
 | --- | --- |
@@ -17,16 +56,16 @@ See the [maintained validation record](../../vscode-extension-validation.md) for
 | Focused UI and transfer reviews | No remaining concrete findings in their final reviewed scopes. |
 | VSIX contents | Nine expected files; bundle and media match validated source output. |
 
-The current package is `extensions/vscode/dist/tadx.vsix`, version `0.1.0`, with a size of 41,990 bytes.
-Its SHA-256 hash was rechecked while preparing the handoff:
+The historical archive includes extension `0.1.0`, with a size of 41,990 bytes.
+Its SHA-256 was checked when the original handoff archive was prepared:
 
 ```text
 4e0520fe2a149ca01e341d9cc0dcdf6648c412f091f59b5a0a1889c1ead1df49
 ```
 
-Treat this hash as the Windows package baseline, not an expected hash for a fresh Linux build.
+This hash identifies only the archived `0.1.0` package, not the current `0.2.0` build or a fresh Linux build.
 Packaging timestamps and toolchains can change the archive bytes.
-The bundle includes this verified package for convenience; rebuild it when changing source.
+The original bundle includes that package for convenience; use current Git source and rebuild for continued development.
 
 Regression-first evidence includes the blocked mixed-type selection, flattened project hierarchy, unloaded initial site, and incorrect classification of a failed submission with an operation ID.
 The permission warning has both a real extension-host fixture and isolated CLI/SQLite regression coverage.
@@ -38,13 +77,14 @@ The mixed-transfer client test uses the real TypeScript client with synthetic CL
 - Live Tableau authentication, transfer, and policy behavior are not validated by these fixtures.
 - Native tree structure is tested, but native tree pixel rendering was not captured.
 - Dark, light, narrow, and high-contrast webview layouts were inspected through browser screenshots.
-- Real Go CLI compatibility, the Activity inspection finding, and cache-generation evidence remain separate open items.
+- Actual Go CLI read contracts and the Activity inspection parser now have regression coverage; live transfer recovery remains separate acceptance work.
+- Cache-generation consistency remains an open finding.
 - No push, Marketplace publication, hosted CI dispatch, or saved Tableau consent change occurred during this work.
 
-The initial broad Go checks encountered ignored historical fixtures under `workflow-evidence` that import deleted packages.
-Maintained-package vet passed, and focused architecture and workbook checks passed after targeted corrections.
-The complete broad command was not rerun after those corrections, so a full-repository pass is not established.
-A clean Linux restoration that excludes those ignored fixtures can behave differently; run the required checks and report actual results.
+The original broad Go checks encountered ignored historical fixtures under `workflow-evidence` that import deleted packages.
+The later release task uses isolated source checkouts for repository-wide validation, separate from the original dirty checkout.
+Use the [maintained validation record](../../vscode-extension-validation.md) for those dated results and their exact scope.
+Run the required checks on Linux and report actual results.
 Do not exclude failing maintained packages or weaken a gate to obtain a pass.
 
 ## Prepare Linux
@@ -74,6 +114,8 @@ Then run the extension checks:
 cd extensions/vscode
 npm ci
 npm run check
+npm run test:cli
+npm run test:released-cli
 npx playwright install chromium
 npm run test:ui
 npm run test:host
@@ -84,7 +126,7 @@ npm run package
 Stop after a failed command and investigate its cause.
 If Chromium reports missing system libraries, provision them through the machine's approved package-management process.
 The default host command tests the stable release available at run time, which can differ from the recorded Windows baseline.
-To reproduce that baseline version, run `node scripts/test-host.mjs --version=1.143.0` as an additional targeted check.
+The latest recorded Windows stable host is `1.143.1`; use that explicit version only when reproducing the dated baseline.
 When no desktop display exists, use `xvfb-run -a npm run test:host` and `xvfb-run -a node scripts/test-host.mjs --version=1.95.3` after provisioning Xvfb.
 
 Validate the synthetic host fixture separately:
@@ -98,6 +140,8 @@ go vet ./...
 Formatting passes only when `gofmt` prints no filenames.
 Use [CONTRIBUTING.md](../../../CONTRIBUTING.md) for the complete required CLI checks when modifying CLI contracts or preparing a push.
 The fixture is synthetic, so passing host checks does not establish real-CLI or live-site compatibility.
+The source and pinned-release CLI suites cover actual read contracts in isolated fixtures; the released binary is verified before execution.
+The pinned-release suite needs GitHub release access and does not contact Tableau.
 
 ## Focused CLI regressions
 
