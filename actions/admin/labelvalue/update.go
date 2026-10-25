@@ -115,8 +115,8 @@ func Update(ctx context.Context, reader UpdateReader, writer UpdateWriter, in Up
 		return out, updateFail(in, "conflict", errs.OutcomeNotAttempted, fmt.Errorf("label value changed after its baseline was read"))
 	}
 	oldName := ""
-	if in.NewName != nil {
-		oldName = in.Name
+	if before != nil {
+		oldName = before.Name
 	}
 	saved, err := writer.SetLabelValue(ctx, oldName, desired)
 	if err != nil {

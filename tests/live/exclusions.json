@@ -1,0 +1,170 @@
+[
+  {
+    "id": "agent.install",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "agent.uninstall",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "auth.logout",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "auth.status",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "capability.get",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "capability.list",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "custom-view.data",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "custom-view.image",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "custom-view.list",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "datasource.field-description.generate",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "datasource.metadata",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "datasource.query",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "env.profile.add",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "env.profile.get",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "env.profile.list",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "env.profile.remove",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "env.profile.set-default",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "env.profile.update",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "last",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "mutation.set",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "policy.install",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "policy.samples",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "policy.status",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "policy.validate",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "pulse.insight.brief",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "pulse.metric.insight-bundle",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "session.overview",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "update",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "version.get",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "view.data",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "view.image",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "view.inspect",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "view.list",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "workbook.author",
+    "reason": "delegated outside TADX"
+  },
+  {
+    "id": "workspace.clean",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.clone",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.create",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.delete",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.list",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.register",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.set-default",
+    "reason": "local-state or release/platform responsibility"
+  },
+  {
+    "id": "workspace.unregister",
+    "reason": "local-state or release/platform responsibility"
+  }
+]

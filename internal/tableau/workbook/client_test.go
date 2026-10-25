@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -980,6 +981,8 @@ func TestClientReportsUnknownWhenFinalPublishTransportFails(t *testing.T) {
 }
 
 func TestClientPollingTimeoutBoundsInFlightRequest(t *testing.T) {
+	pollStarted := make(chan struct{})
+	pollCanceled := make(chan struct{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		if request.Method == http.MethodPost {
@@ -991,21 +994,35 @@ func TestClientPollingTimeoutBoundsInFlightRequest(t *testing.T) {
 		writer.Header().Set("X-Tableau-Request-Id", "poll-request")
 		writer.WriteHeader(http.StatusOK)
 		writer.(http.Flusher).Flush()
+		close(pollStarted)
 		<-request.Context().Done()
+		close(pollCanceled)
 	}))
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetPollPolicy(time.Millisecond, 20*time.Millisecond)
+	client.SetPollPolicy(time.Millisecond, 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 	started := time.Now()
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+	result, err := client.Publish(ctx, tableauworkbook.PublishRequest{
 		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("error = %v", err)
 	}
-	if time.Since(started) > time.Second {
-		t.Fatalf("polling exceeded bound: %s", time.Since(started))
+	if time.Since(started) > 5*time.Second {
+		t.Fatalf("polling exceeded internal deadline bound: %s", time.Since(started))
+	}
+	select {
+	case <-pollStarted:
+	default:
+		t.Fatal("timeout occurred before the in-flight poll reached its handler")
+	}
+	select {
+	case <-pollCanceled:
+	case <-ctx.Done():
+		t.Fatal("poll timeout did not cancel the in-flight server request")
 	}
 	if result.Status != "timed_out" || result.JobID != "job-blocked" || result.TableauRequestID != "poll-request" {
 		t.Fatalf("poll timeout result = %#v", result)
@@ -1030,6 +1047,7 @@ func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			var polls atomic.Int32
 			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", "application/xml")
 				if request.Method == http.MethodPost {
@@ -1038,16 +1056,21 @@ func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
 					_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
 					return
 				}
+				polls.Add(1)
 				writer.Header().Set("X-Tableau-Request-Id", "poll-request")
 				_, _ = io.WriteString(writer, test.response)
 			}))
 			defer server.Close()
 
 			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			client.SetPollPolicy(time.Millisecond, 20*time.Millisecond)
-			result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+			// Protocol checks need the first TLS response; the deadline only bounds hangs.
+			client.SetPollPolicy(time.Millisecond, 5*time.Second)
+			result, err := client.Publish(t.Context(), tableauworkbook.PublishRequest{
 				Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
 			})
+			if polls.Load() != 1 {
+				t.Fatalf("malformed response must be inspected after exactly one poll; got %d", polls.Load())
+			}
 			if err == nil || !strings.Contains(err.Error(), test.errorText) {
 				t.Fatalf("error = %v", err)
 			}

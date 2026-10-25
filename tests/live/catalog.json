@@ -1,0 +1,4305 @@
+[
+  {
+    "id": "live.admin-group.converge-members",
+    "title": "Converge the complete direct-member set",
+    "group": "admin-group",
+    "capabilities": [
+      "admin.group.update"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-group",
+      "two-fixture-users"
+    ],
+    "commands": [
+      "tadx admin group update --id <group-id> --set-members --member-id <user-b-id> --environment <env> --config <config> --json",
+      "tadx admin group update --id <group-id> --set-members --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed only user A; independent GET groups/{id}/users equals exactly {B} after the first command.",
+      "Independent member set is empty after the second command; user accounts still exist."
+    ],
+    "cleanup": "Restore fixture members or delete the owned group through REST.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "Membership convergence is a distinct core behavior from group metadata update.",
+    "go_name": "TestLiveAdminGroupConvergeMembers",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group.create",
+    "title": "Create a local site group",
+    "group": "admin-group",
+    "capabilities": [
+      "admin.group.create"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures"
+    ],
+    "commands": [
+      "tadx admin group create --name <unique-group-name> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST inventory proves the name was absent before creation.",
+      "Exactly one group with the returned LUID and requested name exists after creation; no existing group changes."
+    ],
+    "cleanup": "Delete created group through REST; verify users remain.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminGroupCreate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group.delete",
+    "title": "Delete a group while preserving users",
+    "group": "admin-group",
+    "capabilities": [
+      "admin.group.delete"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-group-with-member"
+    ],
+    "commands": [
+      "tadx admin group delete --id <group-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST groups inventory confirms absence.",
+      "Independent GET users/{id} proves its former fixture members still exist."
+    ],
+    "cleanup": "Delete residual owned group through REST if necessary.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminGroupDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group.inspect",
+    "title": "Read a group and its direct members",
+    "group": "admin-group",
+    "capabilities": [
+      "admin.group.inspect"
+    ],
+    "requires": [
+      "admin",
+      "fixture-group",
+      "fixture-users"
+    ],
+    "commands": [
+      "tadx admin group inspect --id <group-id> --members --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Group identity and complete direct-member LUID set equal independent REST groups inventory and GET groups/{id}/users.",
+      "No inherited membership claim appears."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminGroupInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group.list",
+    "title": "Discover the live fixture group",
+    "group": "admin-group",
+    "capabilities": [
+      "admin.group.list"
+    ],
+    "requires": [
+      "admin",
+      "fixture-group"
+    ],
+    "commands": [
+      "tadx admin group list --name <group-name> --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Fixture group name, LUID, and domain match independent REST groups inventory.",
+      "Only the exact matching group is returned with complete matching coverage."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminGroupList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group.update",
+    "title": "Rename an owned group",
+    "group": "admin-group",
+    "capabilities": [
+      "admin.group.update"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-group"
+    ],
+    "commands": [
+      "tadx admin group update --id <group-id> --new-name <renamed-group> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST group inventory shows the same LUID with the new name.",
+      "Direct members equal the pre-test snapshot."
+    ],
+    "cleanup": "Restore original name or delete owned group through REST.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminGroupUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-category.create",
+    "title": "Create an isolated shared category",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.category.create"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "labels-api",
+      "owned-fixtures"
+    ],
+    "commands": [
+      "tadx admin label-category create --name <unique-category> --description \"Live suite category\" --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST labelCategories inventory proves one new category has the exact name and description."
+    ],
+    "cleanup": "Delete owned category through REST after owned label values.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelCategoryCreate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-category.delete",
+    "title": "Delete an unused owned category",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.category.delete"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "labels-api",
+      "owned-fixtures",
+      "unused-fixture-label-category"
+    ],
+    "commands": [
+      "tadx admin label-category delete --name <category-name> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST labelCategories inventory no longer contains the exact owned category; a sentinel category remains."
+    ],
+    "cleanup": "Remove residual owned category through REST.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelCategoryDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-category.inspect",
+    "title": "Inspect one shared category by exact name",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.category.inspect"
+    ],
+    "requires": [
+      "admin",
+      "labels-api",
+      "fixture-label-category"
+    ],
+    "commands": [
+      "tadx admin label-category inspect --name <category-name> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Exact category name and description match independent REST labelCategories data; no invented LUID is needed."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelCategoryInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-category.list",
+    "title": "List custom shared categories",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.category.list"
+    ],
+    "requires": [
+      "admin",
+      "labels-api",
+      "fixture-label-category"
+    ],
+    "commands": [
+      "tadx admin label-category list --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST labelCategories inventory and CLI include the fixture's exact name and description."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelCategoryList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-category.update",
+    "title": "Rename and describe a shared category",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.category.update"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "labels-api",
+      "owned-fixtures",
+      "fixture-label-category"
+    ],
+    "commands": [
+      "tadx admin label-category update --name <category-name> --new-name <renamed-category> --description \"Updated live category\" --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST read shows requested name and description; the old name no longer identifies a separate category."
+    ],
+    "cleanup": "Delete owned category through REST, or restore its snapshot.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelCategoryUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-value.delete",
+    "title": "Delete an unused owned label value",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.value.delete"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "labels-api",
+      "owned-fixtures",
+      "unused-fixture-label-value"
+    ],
+    "commands": [
+      "tadx admin label-value delete --name <value-name> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST labelValues inventory confirms the owned definition is absent; sentinel definitions remain."
+    ],
+    "cleanup": "Delete any residual owned value through REST.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelValueDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-value.inspect",
+    "title": "Inspect one shared label value",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.value.inspect"
+    ],
+    "requires": [
+      "admin",
+      "labels-api",
+      "fixture-label-value"
+    ],
+    "commands": [
+      "tadx admin label-value inspect --name <value-name> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Exact name, category, and description equal independently retrieved labelValues data."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelValueInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-value.list",
+    "title": "List shared label value definitions",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.value.list"
+    ],
+    "requires": [
+      "admin",
+      "labels-api",
+      "fixture-label-value"
+    ],
+    "commands": [
+      "tadx admin label-value list --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST labelValues inventory and CLI agree on the fixture name, category, and description."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminLabelValueList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-label-value.upsert",
+    "title": "Create a missing value and update its description",
+    "group": "admin-label",
+    "capabilities": [
+      "admin.label.value.update"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "labels-api",
+      "owned-fixtures",
+      "fixture-label-category"
+    ],
+    "commands": [
+      "tadx admin label-value update --name <unique-value> --category <category-name> --description \"Live value\" --environment <env> --config <config> --json",
+      "tadx admin label-value update --name <unique-value> --description \"Updated live value\" --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST read confirms the missing value is created in the fixture category.",
+      "Independent REST read confirms the same exact value has the changed description after the second command; category remains unchanged."
+    ],
+    "cleanup": "Delete owned value through REST before deleting its category.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "The update leaf owns both creation and update. No label-value create leaf exists.",
+    "go_name": "TestLiveAdminLabelValueUpsert",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group-member.add",
+    "title": "Add one direct member without replacing others",
+    "group": "admin-membership",
+    "capabilities": [
+      "admin.group.member.add"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-group",
+      "two-fixture-users"
+    ],
+    "commands": [
+      "tadx admin group-member add --group-id <group-id> --user-id <user-b-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed user A only; independent REST member inventory equals {A,B} after the command.",
+      "Returned group and user identities equal the requested fixture LUIDs."
+    ],
+    "cleanup": "Remove B through REST or delete owned group.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminGroupMemberAdd",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-group-member.remove",
+    "title": "Remove one direct member while preserving others",
+    "group": "admin-membership",
+    "capabilities": [
+      "admin.group.member.remove"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-group",
+      "two-fixture-users"
+    ],
+    "commands": [
+      "tadx admin group-member remove --group-id <group-id> --username <user-b-login> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed A and B; independent REST member inventory equals {A}.",
+      "B remains a site user; exact username resolution identifies the intended account."
+    ],
+    "cleanup": "Restore B through REST or delete owned group.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "Using the username form here covers the real resolution path without multiplying every selector variation.",
+    "go_name": "TestLiveAdminGroupMemberRemove",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.datasource",
+    "title": "Manage an exact datasource permission rule",
+    "commands": [
+      "tadx admin permission create --kind datasource --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind datasource --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind datasource --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the datasource permission endpoint. Target setup supplies an editable resource with unlocked permission rules. ",
+    "go_name": "TestLiveAdminPermissionDatasource",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.defaults-datasources",
+    "title": "Manage an exact defaults-datasources permission rule",
+    "commands": [
+      "tadx admin permission create --kind project --id <resource-id> --default-for datasources --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind project --id <resource-id> --default-for datasources --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind project --id <resource-id> --default-for datasources --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the defaults-datasources permission endpoint. Target setup supplies an editable resource with unlocked permission rules. Project default permissions own a separate resource-type endpoint and affect future content defaults.",
+    "go_name": "TestLiveAdminPermissionDefaultsDatasources",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.defaults-flows",
+    "title": "Manage an exact defaults-flows permission rule",
+    "commands": [
+      "tadx admin permission create --kind project --id <resource-id> --default-for flows --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind project --id <resource-id> --default-for flows --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind project --id <resource-id> --default-for flows --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the defaults-flows permission endpoint. Target setup supplies an editable resource with unlocked permission rules. Project default permissions own a separate resource-type endpoint and affect future content defaults.",
+    "go_name": "TestLiveAdminPermissionDefaultsFlows",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.defaults-workbooks",
+    "title": "Manage an exact defaults-workbooks permission rule",
+    "commands": [
+      "tadx admin permission create --kind project --id <resource-id> --default-for workbooks --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind project --id <resource-id> --default-for workbooks --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind project --id <resource-id> --default-for workbooks --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the defaults-workbooks permission endpoint. Target setup supplies an editable resource with unlocked permission rules. Project default permissions own a separate resource-type endpoint and affect future content defaults.",
+    "go_name": "TestLiveAdminPermissionDefaultsWorkbooks",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.flow",
+    "title": "Manage an exact flow permission rule",
+    "commands": [
+      "tadx admin permission create --kind flow --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind flow --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind flow --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the flow permission endpoint. Target setup supplies an editable resource with unlocked permission rules. ",
+    "go_name": "TestLiveAdminPermissionFlow",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.project",
+    "title": "Manage an exact project permission rule",
+    "commands": [
+      "tadx admin permission create --kind project --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind project --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind project --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the project permission endpoint. Target setup supplies an editable resource with unlocked permission rules. ",
+    "go_name": "TestLiveAdminPermissionProject",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-principal"
+    ],
+    "cleanup": "Restore exact test-owned permission rule state through independent REST; preserve sentinel rules.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "group": "admin-permission",
+    "capabilities": [
+      "admin.permission.create",
+      "admin.permission.inspect",
+      "admin.permission.delete"
+    ],
+    "id": "live.admin-permission.workbook",
+    "title": "Manage an exact workbook permission rule",
+    "commands": [
+      "tadx admin permission create --kind workbook --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json",
+      "tadx admin permission inspect --kind workbook --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --environment <env> --config <config> --json",
+      "tadx admin permission delete --kind workbook --id <resource-id> --principal-type group --principal-id <group-id> --capability Read --mode Allow --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no exact rule and one unrelated sentinel rule through the independent REST fixture client.",
+      "After create, independent REST permissions contain the exact group Read=Allow rule.",
+      "Inspect returns the same principal, capability, and mode as independent REST.",
+      "After delete, independent REST confirms only the exact rule is absent; sentinel rule remains."
+    ],
+    "notes": "Uses the workbook permission endpoint. Target setup supplies an editable resource with unlocked permission rules. ",
+    "go_name": "TestLiveAdminPermissionWorkbook",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-user.create",
+    "title": "Add a controlled user to the site",
+    "group": "admin-user",
+    "capabilities": [
+      "admin.user.create"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "provisionable-test-login",
+      "auth-setting"
+    ],
+    "commands": [
+      "tadx admin user create --name <controlled-login> --site-role Unlicensed --auth-setting <supported-auth-setting> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST inventory proves the controlled login was absent before the command.",
+      "Returned authoritative LUID resolves through REST GET users/{id}; login, Unlicensed role, and auth setting match.",
+      "Existing users and their roles remain unchanged."
+    ],
+    "cleanup": "Delete only the newly added site user through independent REST; confirm absence. Do not delete a pre-existing server identity.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "Target profile supplies a controlled account and authentication setting. Creation can invite the account on Cloud; provision only an approved test identity.",
+    "go_name": "TestLiveAdminUserCreate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-user.delete",
+    "title": "Remove an owned user from the selected site",
+    "group": "admin-user",
+    "capabilities": [
+      "admin.user.delete"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-disposable-user-with-no-content"
+    ],
+    "commands": [
+      "tadx admin user delete --id <user-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent REST site inventory no longer contains the user.",
+      "Another fixture user remains present; no content ownership is reassigned."
+    ],
+    "cleanup": "If the command fails, remove only the owned fixture through REST; record any retained user.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveAdminUserDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-user.inspect",
+    "title": "Read one exact user",
+    "group": "admin-user",
+    "capabilities": [
+      "admin.user.inspect"
+    ],
+    "requires": [
+      "admin",
+      "fixture-users"
+    ],
+    "commands": [
+      "tadx admin user inspect --id <user-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Identity, login, and site role match independent REST GET users/{id}.",
+      "Exactly one selected user is returned; display-name coincidence cannot change the chosen identity."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminUserInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-user.list",
+    "title": "Discover the fixture user through the live inventory",
+    "group": "admin-user",
+    "capabilities": [
+      "admin.user.list"
+    ],
+    "requires": [
+      "admin",
+      "fixture-users"
+    ],
+    "commands": [
+      "tadx admin user list --name <fixture-login> --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Returned fixture username, LUID, and site role match independent REST GET users inventory.",
+      "Result has live source and truthful complete matching coverage; unrelated usernames are absent."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAdminUserList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.admin-user.update",
+    "title": "Change and verify one supported user property",
+    "group": "admin-user",
+    "capabilities": [
+      "admin.user.update"
+    ],
+    "requires": [
+      "admin",
+      "consent",
+      "owned-fixtures",
+      "fixture-disposable-user"
+    ],
+    "commands": [
+      "tadx admin user update --id <user-id> --site-role Viewer --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed a distinct supported initial role; independent REST GET users/{id} confirms Viewer after the command.",
+      "Returned mutation result and requested-field evidence agree with the independent read; unrelated identity fields remain intact."
+    ],
+    "cleanup": "Restore original role or remove the test-owned user through REST; verify.",
+    "owners": [
+      "internal/cli/admin",
+      "actions/admin",
+      "internal/resources/admin",
+      "internal/tableau/admin",
+      "internal/app/admin.go"
+    ],
+    "mode": "write",
+    "notes": "Requires a Viewer license or a supported role pair supplied by target setup. Full-name is Server-only and stays outside the portable core.",
+    "go_name": "TestLiveAdminUserUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.auth.check",
+    "title": "Authenticate with a PAT and identify the selected site",
+    "group": "auth",
+    "capabilities": [
+      "auth.check"
+    ],
+    "requires": [
+      "pat",
+      "target"
+    ],
+    "commands": [
+      "tadx auth check --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Exit zero; authenticated site LUID and user LUID equal the independently signed-in oracle session.",
+      "No PAT or session token in captured stdout, stderr, config, or report."
+    ],
+    "cleanup": "Sign out independent oracle session; discard isolated process variables.",
+    "owners": [
+      "internal/cli/auth",
+      "actions/auth",
+      "internal/auth",
+      "internal/tableau/auth"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveAuthCheck",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.auth.reject-invalid-pat",
+    "title": "Preserve an actual PAT rejection",
+    "group": "auth",
+    "capabilities": [
+      "auth.check"
+    ],
+    "requires": [
+      "target"
+    ],
+    "commands": [
+      "tadx auth check --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Use isolated PAT variable references containing an intentionally invalid PAT pair.",
+      "Nonzero authentication result; no authenticated-success identity, secret echo, or unrequested fallback to another identity."
+    ],
+    "cleanup": "Discard isolated config and variables.",
+    "owners": [
+      "internal/cli/auth",
+      "actions/auth",
+      "internal/auth",
+      "internal/tableau/auth"
+    ],
+    "mode": "read",
+    "notes": "One invalid attempt; no password authentication. No existing valid PAT is altered.",
+    "go_name": "TestLiveAuthRejectInvalidPat",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.auth.login-native-store",
+    "title": "Validate and persist a PAT through the interactive command",
+    "group": "auth-native",
+    "capabilities": [
+      "auth.login",
+      "auth.check"
+    ],
+    "requires": [
+      "pat",
+      "target",
+      "interactive-terminal",
+      "native-keyring",
+      "explicit-persistence-consent"
+    ],
+    "commands": [
+      "tadx auth login --environment <env> --config <config> --json",
+      "tadx auth check --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Supply the PAT through terminal prompts without recording keystrokes or terminal input.",
+      "Independent native-store inspection confirms one new owned credential record; config stores an opaque reference only.",
+      "A fresh CLI process authenticates without PAT process variables; independent REST sign-in resolves the same site and user."
+    ],
+    "cleanup": "Run tadx auth logout --environment <env> --config <config> --json; verify only the created keyring item disappears; discard isolated config.",
+    "owners": [
+      "internal/cli/auth",
+      "internal/app/auth_credentials.go",
+      "internal/auth"
+    ],
+    "mode": "write",
+    "notes": "Optional native credential integration lane. Never overwrite an existing saved credential or automate persistence consent.",
+    "go_name": "TestLiveAuthLoginNativeStore",
+    "optional": true,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.cache.admin-generation",
+    "title": "Hydrate users, groups, and memberships",
+    "group": "cache",
+    "capabilities": [
+      "cache.refresh",
+      "cache.status"
+    ],
+    "requires": [
+      "site-admin",
+      "admin-baseline"
+    ],
+    "commands": [
+      "tadx cache refresh --scope users --scope groups --environment <env> --json",
+      "tadx cache status --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Read the persisted generation independently; compare exact user roles, group identities, and seeded membership pairs with REST.",
+      "Do not assert only counts or stringified values."
+    ],
+    "cleanup": "Remove the isolated cache.",
+    "mode": "local-write",
+    "owners": [
+      "actions/cache/",
+      "internal/cache/",
+      "internal/tableau/cache/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCacheAdminGeneration",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.cache.content-generation",
+    "title": "Hydrate real content inventory and read it locally",
+    "group": "cache",
+    "capabilities": [
+      "cache.refresh",
+      "cache.status",
+      "search.run"
+    ],
+    "requires": [
+      "core",
+      "content-baseline"
+    ],
+    "commands": [
+      "tadx cache refresh --scope projects --scope workbooks --scope datasources --scope views --environment <env> --json",
+      "tadx cache status --environment <env> --full --json",
+      "tadx search <unique-token> --type content --cache --environment <env> --json"
+    ],
+    "assertions": [
+      "Compare persisted identities and relationships with direct REST inventory; verify generation, scope coverage, site, and completeness.",
+      "Run cached search with Tableau egress disabled for that process; require cached fixture identities and no fallback."
+    ],
+    "cleanup": "Remove the isolated local cache/config directory.",
+    "mode": "local-write",
+    "owners": [
+      "actions/cache/",
+      "internal/cache/",
+      "internal/tableau/cache/"
+    ],
+    "notes": "Add the flows scope only when available; lack of flow coverage remains explicit.",
+    "go_name": "TestLiveCacheContentGeneration",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.cache.permission-generation",
+    "title": "Hydrate permissions for owned resources",
+    "group": "cache",
+    "capabilities": [
+      "cache.refresh",
+      "cache.status"
+    ],
+    "requires": [
+      "site-admin",
+      "permissions"
+    ],
+    "commands": [
+      "tadx cache refresh --scope permissions --environment <env> --json",
+      "tadx cache status --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Compare exact principal, resource, capability, and Allow/Deny pairs with independent REST reads.",
+      "Require the documented implicit inventory scopes and truthful denied-resource coverage."
+    ],
+    "cleanup": "Remove the isolated cache.",
+    "mode": "local-write",
+    "owners": [
+      "actions/cache/",
+      "internal/cache/",
+      "internal/tableau/cache/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCachePermissionGeneration",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.cache.replace-generation",
+    "title": "Replace stale live observations after remote changes",
+    "group": "cache",
+    "capabilities": [
+      "cache.refresh",
+      "search.run"
+    ],
+    "requires": [
+      "core",
+      "disposable-content"
+    ],
+    "commands": [
+      "tadx cache refresh --scope workbooks --environment <env> --json",
+      "Fixture adapter renames one workbook and deletes another.",
+      "tadx cache refresh --scope workbooks --environment <env> --json",
+      "tadx search <unique-token> --type workbook --cache --environment <env> --json"
+    ],
+    "assertions": [
+      "Require a new committed generation with the new name and no deleted identity.",
+      "Compare against independently verified remote state; preserve the separate unselected scope generation according to the current cache contract."
+    ],
+    "cleanup": "Remove disposable content and the isolated cache.",
+    "mode": "write",
+    "owners": [
+      "actions/cache/",
+      "internal/cache/",
+      "internal/tableau/cache/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCacheReplaceGeneration",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.audit-database",
+    "title": "Assess tables and columns in one database",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.audit"
+    ],
+    "requires": [
+      "catalog-read",
+      "audit-fixture"
+    ],
+    "commands": [
+      "tadx catalog audit --type database --id <database> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Compare the exact seeded tables, columns, description/tag findings, and totals.",
+      "Exclude another database; never turn an incomplete upstream observation into a complete assessment."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCatalogAuditDatabase",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.audit-datasource",
+    "title": "Assess known description coverage for a datasource",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.audit"
+    ],
+    "requires": [
+      "catalog-read",
+      "audit-fixture"
+    ],
+    "commands": [
+      "tadx catalog audit --type datasource --id <datasource> --check descriptions --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Use authored fields with direct, inherited, and missing descriptions; compare each assessed identity and state with the fixture truth table.",
+      "Reconcile scanned totals, summaries, completeness, and published-source groups where applicable; missing observations remain unknown."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "The table fixture also assesses known present and missing tags using --check tags. The workbook fixture distinguishes embedded fields from published-source fields.",
+    "go_name": "TestLiveCatalogAuditDatasource",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.audit-table",
+    "title": "Assess known description coverage for a table",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.audit"
+    ],
+    "requires": [
+      "catalog-read",
+      "audit-fixture"
+    ],
+    "commands": [
+      "tadx catalog audit --type table --id <table> --check descriptions --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Use authored fields with direct, inherited, and missing descriptions; compare each assessed identity and state with the fixture truth table.",
+      "Reconcile scanned totals, summaries, completeness, and published-source groups where applicable; missing observations remain unknown."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "The table fixture also assesses known present and missing tags using --check tags. The workbook fixture distinguishes embedded fields from published-source fields.",
+    "go_name": "TestLiveCatalogAuditTable",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.audit-workbook",
+    "title": "Assess known description coverage for a workbook",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.audit"
+    ],
+    "requires": [
+      "catalog-read",
+      "audit-fixture"
+    ],
+    "commands": [
+      "tadx catalog audit --type workbook --id <workbook> --check descriptions --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Use authored fields with direct, inherited, and missing descriptions; compare each assessed identity and state with the fixture truth table.",
+      "Reconcile scanned totals, summaries, completeness, and published-source groups where applicable; missing observations remain unknown."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "The table fixture also assesses known present and missing tags using --check tags. The workbook fixture distinguishes embedded fields from published-source fields.",
+    "go_name": "TestLiveCatalogAuditWorkbook",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.column-read",
+    "title": "Read known column identities and metadata",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.column.list",
+      "catalog.column.inspect"
+    ],
+    "requires": [
+      "catalog-read",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog column list --table-id <table> --name <fixture-name> --environment <env> --json",
+      "tadx catalog column inspect --id <column> --table-id <table> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Require the exact seeded identity and parent; compare names and descriptions with fixture expectations and independent REST/Metadata reads.",
+      "Fail on missing expected records even if output is empty or counts look plausible."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "If the target exposes Metadata ID only, exercise inspect --metadata-id as a read-only child case; report the REST-LUID path unsupported separately.",
+    "go_name": "TestLiveCatalogColumnRead",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.column-update",
+    "title": "Persist column metadata without losing existing tags",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.column.update"
+    ],
+    "requires": [
+      "catalog-write",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog column update --id <column> --table-id <table> --description <new-description> --add-tag <new-tag> --remove-tag <old-tag> --environment <env> --json"
+    ],
+    "assertions": [
+      "Independently read the changed asset: exact new description, contact when supported, added tag present, removed tag absent, unrelated tag retained.",
+      "Verify a sibling asset remains unchanged."
+    ],
+    "cleanup": "Restore the exact original fields and tags through the fixture adapter; verify restoration.",
+    "mode": "write",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCatalogColumnUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.database-read",
+    "title": "Read known database identities and metadata",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.database.list",
+      "catalog.database.inspect"
+    ],
+    "requires": [
+      "catalog-read",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog database list --name <fixture-name> --environment <env> --json",
+      "tadx catalog database inspect --id <database> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Require the exact seeded identity and parent; compare names and descriptions with fixture expectations and independent REST/Metadata reads.",
+      "Fail on missing expected records even if output is empty or counts look plausible."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "If the target exposes Metadata ID only, exercise inspect --metadata-id as a read-only child case; report the REST-LUID path unsupported separately.",
+    "go_name": "TestLiveCatalogDatabaseRead",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.database-update",
+    "title": "Persist database metadata without losing existing tags",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.database.update"
+    ],
+    "requires": [
+      "catalog-write",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog database update --id <database> --description <new-description> --contact-id <contact-user> --add-tag <new-tag> --remove-tag <old-tag> --environment <env> --json"
+    ],
+    "assertions": [
+      "Independently read the changed asset: exact new description, contact when supported, added tag present, removed tag absent, unrelated tag retained.",
+      "Verify a sibling asset remains unchanged."
+    ],
+    "cleanup": "Restore the exact original fields and tags through the fixture adapter; verify restoration.",
+    "mode": "write",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCatalogDatabaseUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.search-column-scope",
+    "title": "Keep column search inside the selected table",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.search"
+    ],
+    "requires": [
+      "catalog-read",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog search <column-token> --type column --table-id <table> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Seed matching column names in two tables; return only the selected table column.",
+      "Require exact column identity and parent, not only result count."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCatalogSearchColumnScope",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.search-upstream",
+    "title": "Find seeded databases and tables",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.search"
+    ],
+    "requires": [
+      "catalog-read",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog search <unique-token> --type database --type table --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Compare exact expected database/table identities with independently seeded names.",
+      "A contrasting asset without the token must not match; completeness and bounds must be truthful."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCatalogSearchUpstream",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.table-read",
+    "title": "Read known table identities and metadata",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.table.list",
+      "catalog.table.inspect"
+    ],
+    "requires": [
+      "catalog-read",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog table list --database-id <database> --name <fixture-name> --environment <env> --json",
+      "tadx catalog table inspect --id <table> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Require the exact seeded identity and parent; compare names and descriptions with fixture expectations and independent REST/Metadata reads.",
+      "Fail on missing expected records even if output is empty or counts look plausible."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "If the target exposes Metadata ID only, exercise inspect --metadata-id as a read-only child case; report the REST-LUID path unsupported separately.",
+    "go_name": "TestLiveCatalogTableRead",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.catalog.table-update",
+    "title": "Persist table metadata without losing existing tags",
+    "group": "catalog",
+    "capabilities": [
+      "catalog.table.update"
+    ],
+    "requires": [
+      "catalog-write",
+      "upstream-assets"
+    ],
+    "commands": [
+      "tadx catalog table update --id <table> --description <new-description> --contact-id <contact-user> --add-tag <new-tag> --remove-tag <old-tag> --environment <env> --json"
+    ],
+    "assertions": [
+      "Independently read the changed asset: exact new description, contact when supported, added tag present, removed tag absent, unrelated tag retained.",
+      "Verify a sibling asset remains unchanged."
+    ],
+    "cleanup": "Restore the exact original fields and tags through the fixture adapter; verify restoration.",
+    "mode": "write",
+    "owners": [
+      "actions/catalog/",
+      "internal/cli/catalog/",
+      "internal/tableau/metadataassets/",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveCatalogTableUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.contract.batch-partial",
+    "title": "Retain a confirmed success when another batch item fails",
+    "group": "contract",
+    "capabilities": [
+      "workbook.update"
+    ],
+    "requires": [
+      "core",
+      "disposable-workbook"
+    ],
+    "commands": [
+      "tadx content workbook update --id <existing-workbook> --id <verified-missing-workbook> --new-name <new-name> --environment <env> --json"
+    ],
+    "assertions": [
+      "Require ordered per-item outcomes, the exact successful workbook identity, and the documented aggregate error.",
+      "Independent REST confirms the first update persisted and the second identity is absent; no invented rollback or retry."
+    ],
+    "cleanup": "Delete the owned workbook.",
+    "mode": "write",
+    "owners": [
+      "internal/cli/batch.go",
+      "internal/app/",
+      "actions/workbook/"
+    ],
+    "notes": "Use a verified absent LUID, not a malformed selector; both entries pass local input validation.",
+    "go_name": "TestLiveContractBatchPartial",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.contract.output-real-result",
+    "title": "Render a real result across supported encodings",
+    "group": "contract",
+    "capabilities": [
+      "workbook.inspect"
+    ],
+    "requires": [
+      "core",
+      "content-baseline"
+    ],
+    "commands": [
+      "tadx content workbook inspect --id <workbook> --environment <env>",
+      "tadx content workbook inspect --id <workbook> --environment <env> --json",
+      "tadx content workbook inspect --id <workbook> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Decode TOON and JSON independently; require the same selected identity and operation outcome.",
+      "Full output adds bounded detail for that operation; scan all evidence for runtime PAT/session values without storing those values."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "internal/output/",
+      "internal/toon/",
+      "internal/errs/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveContractOutputRealResult",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.contract.permission-refusal",
+    "title": "Preserve the real authorization refusal",
+    "group": "contract",
+    "capabilities": [
+      "workbook.update"
+    ],
+    "requires": [
+      "restricted-actor",
+      "disposable-workbook"
+    ],
+    "commands": [
+      "tadx content workbook update --id <forbidden-workbook> --name <new-name> --environment <restricted-env> --json"
+    ],
+    "assertions": [
+      "Ensure the same actor can authenticate and read an allowed fixture first.",
+      "Require an authorization-specific structured failure, correct target context, and no claimed mutation success.",
+      "An independent admin read confirms the forbidden workbook is unchanged."
+    ],
+    "cleanup": "Admin fixture adapter deletes the owned workbook.",
+    "mode": "read",
+    "owners": [
+      "internal/auth/",
+      "internal/errs/",
+      "internal/tableau/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveContractPermissionRefusal",
+    "optional": true,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.contract.preview-no-mutation",
+    "title": "Preview a real update while consent is disabled",
+    "group": "contract",
+    "capabilities": [
+      "mutation.status",
+      "workbook.update"
+    ],
+    "requires": [
+      "core",
+      "disposable-workbook"
+    ],
+    "commands": [
+      "tadx mutation status --environment <consent-disabled-alias> --json",
+      "tadx content workbook update --id <workbook> --new-name <new-name> --preview --environment <consent-disabled-alias> --json",
+      "tadx content workbook update --id <workbook> --new-name <new-name> --environment <consent-disabled-alias> --json"
+    ],
+    "assertions": [
+      "Use an isolated config with no saved consent; preview resolves the right target and proposed change.",
+      "Execution returns the specific consent refusal; independent REST before/after observations show unchanged name and identity.",
+      "Pair with the existing offline zero-write request assertion; unchanged state alone cannot prove zero transient writes."
+    ],
+    "cleanup": "Remove disposable workbook and isolated config; leave the operator consent untouched.",
+    "mode": "read",
+    "owners": [
+      "internal/cli/root.go",
+      "internal/config/",
+      "internal/app/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveContractPreviewNoMutation",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.delete",
+    "title": "Delete only the selected datasource",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.delete"
+    ],
+    "requires": [
+      "Per-test disposable object; same-name decoy outside its scope."
+    ],
+    "commands": [
+      "tadx content datasource delete --environment <E> --id <DATASOURCE> --preview --json",
+      "tadx content datasource delete --environment <E> --id <DATASOURCE> --json"
+    ],
+    "assertions": [
+      "Direct REST after preview still finds unchanged resource.",
+      "After execution, independent GET returns documented not-found, and decoy still exists.",
+      "Receipt identifies exact deleted resource and confirmed outcome."
+    ],
+    "cleanup": "If object remains, independent API cleanup by owned LUID; no retry on unknown outcome before observation.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveDatasourceDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.inspect",
+    "title": "Resolve exact datasource identity",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.inspect"
+    ],
+    "requires": [
+      "Known fixture N in nested project path; same-name decoy elsewhere."
+    ],
+    "commands": [
+      "tadx content datasource inspect --environment <E> --name <N> --project <NESTED_PATH> --full --json"
+    ],
+    "assertions": [
+      "Identity, project, owner, and resource-specific metadata match direct REST plus authored fixture manifest.",
+      "No accidental match to same-name decoy; upstream metadata identity and coverage states are accurate when available."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveDatasourceInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.list",
+    "title": "Discover only scoped datasource fixtures",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.list"
+    ],
+    "requires": [
+      "Exactly two independently seeded fixture objects of this kind in isolated project P; same-name decoy in separate project Q."
+    ],
+    "commands": [
+      "tadx content datasource list --environment <E> --project-id <P> --limit 1 --json",
+      "tadx content datasource list --environment <E> --project-id <P> --limit 1 --cursor <NEXT> --json"
+    ],
+    "assertions": [
+      "Returned identities equal independent REST project-scoped inventory; no Q decoy.",
+      "Two pages neither repeat nor omit fixture IDs; terminal page has no continuation."
+    ],
+    "cleanup": "None; immutable setup fixtures.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveDatasourceList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.move",
+    "title": "Move exact datasource between projects",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.move"
+    ],
+    "requires": [
+      "Per-test object in P; destination Q with required permissions; same-name decoy elsewhere."
+    ],
+    "commands": [
+      "tadx content datasource move --environment <E> --id <DATASOURCE> --destination-project-id <Q> --json"
+    ],
+    "assertions": [
+      "Direct REST confirms same LUID now in Q, absent from P inventory.",
+      "Native payload and metadata are preserved; decoy remains unchanged."
+    ],
+    "cleanup": "Independent API delete moved LUID in Q.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveDatasourceMove",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.publish-append",
+    "title": "Append extract rows without changing identity",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish"
+    ],
+    "requires": [
+      "Disposable Hyper datasource with exact baseline row set A; prepared compatible .hyper fixture B has distinct row keys.",
+      "Hyper API available to inspect downloaded extract."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <HYPER_B> --project-id <Q> --name <EXISTING_NAME> --append --json"
+    ],
+    "assertions": [
+      "Downloaded extract queried independently with Hyper API equals A union B, including exact values and multiplicities.",
+      "Direct REST confirms target identity and project; unrelated datasource unchanged."
+    ],
+    "cleanup": "Independent API delete owned datasource.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "A successful receipt or changed row count is insufficient; assert exact rows.",
+    "go_name": "TestLiveDatasourcePublishAppend",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.publish-artifact",
+    "title": "Publish a pulled datasource artifact",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish",
+      "datasource.pull"
+    ],
+    "requires": [
+      "Fresh workspace contains a real pulled fixture; destination Q is isolated."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --workspace <W> --artifact <ARTIFACT> --project-id <Q> --name <UNIQUE_NAME> --create --json"
+    ],
+    "assertions": [
+      "Direct REST and independent download prove one destination resource with preserved payload.",
+      "Local provenance and source remote fixture remain intact; publication result identifies destination, not source.",
+      "Published dependency references point to expected preprovisioned dependencies."
+    ],
+    "cleanup": "Independent API delete destination LUID; delete W.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "Prepared upstream dependencies remain setup fixtures. This is a distinct source acquisition path, not selector-flag enumeration.",
+    "go_name": "TestLiveDatasourcePublishArtifact",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.publish-composed",
+    "title": "Publish an authored composed datasource",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish"
+    ],
+    "requires": [
+      "Negotiated REST API >= 3.29; valid authored composed TDS fixture; immediate parents preprovisioned and rebound by setup."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <COMPOSED_TDS> --project-id <Q> --name <UNIQUE_NAME> --create --json"
+    ],
+    "assertions": [
+      "Independent downloaded TDS and Metadata graph contain exact immediate parent URLs and identities.",
+      "No parent duplication or recursive flattening; source parents remain unchanged."
+    ],
+    "cleanup": "Delete composed child before test-owned parents.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "Capability pack, not universal baseline. Composition authoring itself is unsupported; this tests deployment of prepared content.",
+    "go_name": "TestLiveDatasourcePublishComposed",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.publish-large-upload",
+    "title": "Publish a datasource through upload sessions",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish"
+    ],
+    "requires": [
+      "Optional large_upload qualification pack explicitly requested.",
+      "Pinned valid native package larger than 64 MiB after ZIP compression; payload includes distinctive independently verifiable data.",
+      "Fresh isolated destination project and unique name; sufficient upload and storage quota."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <LARGE_TDSX> --project-id <Q> --name <UNIQUE_NAME> --create --json"
+    ],
+    "assertions": [
+      "Independent REST inventory finds exactly one published destination object with returned authoritative LUID.",
+      "Independent download and parsed extract/native manifest confirm complete expected content, including data near the end of the uploaded payload.",
+      "Package is actually larger than runtime direct-upload threshold; no lowered test threshold or internal transport bypass."
+    ],
+    "cleanup": "Independent API deletes owned published LUID after terminal outcome; preserve upload-session/job IDs on unresolved outcome.",
+    "owners": [
+      "internal/tableau/datasource",
+      "actions/datasource",
+      "internal/app/publication.go"
+    ],
+    "mode": "write",
+    "notes": "Separate per-kind upload implementation warrants two cases. Run surgically for uploader, transport, or large-publish changes; exclude routine metadata-only selections.",
+    "go_name": "TestLiveDatasourcePublishLargeUpload",
+    "optional": true,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.publish-native",
+    "title": "Publish a standalone native datasource",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish"
+    ],
+    "requires": [
+      "Valid pinned native fixture file; isolated destination project Q; no preexisting test name."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <TDSX> --project-id <Q> --name <UNIQUE_NAME> --create --json"
+    ],
+    "assertions": [
+      "Direct REST finds exactly one new resource at Q with returned LUID and requested name.",
+      "Independent download contains authored native payload, known fields/data, and connection reference expectations.",
+      "No source object changes; no managed workspace artifact created implicitly."
+    ],
+    "cleanup": "Independent API delete only returned, owned LUID.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveDatasourcePublishNative",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.publish-overwrite",
+    "title": "Overwrite the exact datasource",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish"
+    ],
+    "requires": [
+      "Destination object has payload version A; native fixture B has distinguishing schema/data; project-Q name decoy in another project."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <NATIVE_B> --project-id <Q> --name <EXISTING_NAME> --overwrite --json"
+    ],
+    "assertions": [
+      "Independent download proves payload B replaced A at exact destination.",
+      "Authoritative destination LUID and identity agree with receipt; unrelated decoy and source remain unchanged."
+    ],
+    "cleanup": "Delete owned destination and workspace, if any.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveDatasourcePublishOverwrite",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.publish-replace",
+    "title": "Replace extract rows without changing identity",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.publish"
+    ],
+    "requires": [
+      "Disposable Hyper datasource with exact baseline row set A; prepared compatible .hyper fixture B has distinct row keys.",
+      "Hyper API available to inspect downloaded extract. Negotiated REST API >= 3.25."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <HYPER_B> --project-id <Q> --name <EXISTING_NAME> --replace --json"
+    ],
+    "assertions": [
+      "Downloaded extract queried independently with Hyper API equals B only, with all A-only rows absent.",
+      "Direct REST confirms target identity and project; unrelated datasource unchanged."
+    ],
+    "cleanup": "Independent API delete owned datasource.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "A successful receipt or changed row count is insufficient; assert exact rows.",
+    "go_name": "TestLiveDatasourcePublishReplace",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.pull",
+    "title": "Acquire a native datasource artifact",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.pull"
+    ],
+    "requires": [
+      "Known packaged fixture with distinctive extract/embedded payload; fresh isolated workspace W."
+    ],
+    "commands": [
+      "tadx content datasource pull --environment <E> --workspace <W> --id <DATASOURCE> --json"
+    ],
+    "assertions": [
+      "Canonical file opens with native XML/ZIP parser and contains known fixture structure and data.",
+      "Compare payload with independent REST download, normalizing only documented server-generated package metadata.",
+      "Sidecar records exact source LUID, project, target, and clean baseline; reported artifact paths are relative."
+    ],
+    "cleanup": "Delete W; no remote mutation.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveDatasourcePull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.schema",
+    "title": "Read datasource tables and fields",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.schema"
+    ],
+    "requires": [
+      "Published fixture has multiple tables and distinctive field types, formulas, roles, descriptions, and upstream tags; Metadata enabled and indexed."
+    ],
+    "commands": [
+      "tadx content datasource schema --environment <E> --id <DATASOURCE> --all --descriptions --tags --full --json"
+    ],
+    "assertions": [
+      "Tables, field IDs, formulas, roles, and types match independently authored manifest.",
+      "Description/tag source identities agree with direct Metadata oracle; no fabricated field-owned tag API semantics."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveDatasourceSchema",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.update",
+    "title": "Update exact datasource metadata",
+    "group": "datasource",
+    "capabilities": [
+      "datasource.update"
+    ],
+    "requires": [
+      "Per-test mutable object; alternate existing licensed owner U2; oracle account retains read and delete access."
+    ],
+    "commands": [
+      "tadx content datasource update --environment <E> --id <DATASOURCE> --new-name <UPDATED_NAME> --owner-id <U2> --json"
+    ],
+    "assertions": [
+      "Fresh direct REST read confirms requested owner and all supported changed metadata at same LUID.",
+      "Content payload, project, and unrelated fixture remain unchanged."
+    ],
+    "cleanup": "Independent API delete owned resource, retaining account permission after owner transfer.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveDatasourceUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.doctor.live-readiness",
+    "title": "Diagnose a configured, reachable Tableau target",
+    "group": "doctor",
+    "capabilities": [
+      "doctor.run"
+    ],
+    "requires": [
+      "core",
+      "workspace"
+    ],
+    "commands": [
+      "tadx doctor --environment <env> --workspace <ws> --full --json"
+    ],
+    "assertions": [
+      "Require the connectivity check to pass for the selected site; compare selected environment and workspace.",
+      "Optional missing-cache information is valid; no credential value appears in results or diagnostic evidence."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/doctor/run/",
+      "internal/app/doctor.go",
+      "internal/app/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveDoctorLiveReadiness",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.flow.delete",
+    "title": "Delete only the selected flow",
+    "group": "flow",
+    "capabilities": [
+      "flow.delete"
+    ],
+    "requires": [
+      "Per-test disposable object; same-name decoy outside its scope."
+    ],
+    "commands": [
+      "tadx content flow delete --environment <E> --id <FLOW> --preview --json",
+      "tadx content flow delete --environment <E> --id <FLOW> --json"
+    ],
+    "assertions": [
+      "Direct REST after preview still finds unchanged resource.",
+      "After execution, independent GET returns documented not-found, and decoy still exists.",
+      "Receipt identifies exact deleted resource and confirmed outcome."
+    ],
+    "cleanup": "If object remains, independent API cleanup by owned LUID; no retry on unknown outcome before observation.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveFlowDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.flow.inspect",
+    "title": "Resolve exact flow identity",
+    "group": "flow",
+    "capabilities": [
+      "flow.inspect"
+    ],
+    "requires": [
+      "Known fixture N in nested project path; same-name decoy elsewhere."
+    ],
+    "commands": [
+      "tadx content flow inspect --environment <E> --name <N> --project <NESTED_PATH> --full --json"
+    ],
+    "assertions": [
+      "Identity, project, owner, and resource-specific metadata match direct REST plus authored fixture manifest.",
+      "No accidental match to same-name decoy; upstream metadata identity and coverage states are accurate when available."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveFlowInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.flow.list",
+    "title": "Discover only scoped flow fixtures",
+    "group": "flow",
+    "capabilities": [
+      "flow.list"
+    ],
+    "requires": [
+      "Exactly two independently seeded fixture objects of this kind in isolated project P; same-name decoy in separate project Q."
+    ],
+    "commands": [
+      "tadx content flow list --environment <E> --project-id <P> --limit 1 --json",
+      "tadx content flow list --environment <E> --project-id <P> --limit 1 --cursor <NEXT> --json"
+    ],
+    "assertions": [
+      "Returned identities equal independent REST project-scoped inventory; no Q decoy.",
+      "Two pages neither repeat nor omit fixture IDs; terminal page has no continuation."
+    ],
+    "cleanup": "None; immutable setup fixtures.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveFlowList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.flow.move",
+    "title": "Move exact flow between projects",
+    "group": "flow",
+    "capabilities": [
+      "flow.move"
+    ],
+    "requires": [
+      "Per-test object in P; destination Q with required permissions; same-name decoy elsewhere."
+    ],
+    "commands": [
+      "tadx content flow move --environment <E> --id <FLOW> --destination-project-id <Q> --json"
+    ],
+    "assertions": [
+      "Direct REST confirms same LUID now in Q, absent from P inventory.",
+      "Native payload and metadata are preserved; decoy remains unchanged."
+    ],
+    "cleanup": "Independent API delete moved LUID in Q.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveFlowMove",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.flow.publish-artifact",
+    "title": "Publish a pulled flow artifact",
+    "group": "flow",
+    "capabilities": [
+      "flow.publish",
+      "flow.pull"
+    ],
+    "requires": [
+      "Fresh workspace contains a real pulled fixture; destination Q is isolated."
+    ],
+    "commands": [
+      "tadx content flow publish --environment <E> --workspace <W> --artifact <ARTIFACT> --project-id <Q> --name <UNIQUE_NAME> --json"
+    ],
+    "assertions": [
+      "Direct REST and independent download prove one destination resource with preserved payload.",
+      "Local provenance and source remote fixture remain intact; publication result identifies destination, not source.",
+      "Published dependency references point to expected preprovisioned dependencies."
+    ],
+    "cleanup": "Independent API delete destination LUID; delete W.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "write",
+    "notes": "Prepared upstream dependencies remain setup fixtures. This is a distinct source acquisition path, not selector-flag enumeration.",
+    "go_name": "TestLiveFlowPublishArtifact",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.flow.publish-native",
+    "title": "Publish a standalone native flow",
+    "group": "flow",
+    "capabilities": [
+      "flow.publish"
+    ],
+    "requires": [
+      "Valid pinned native fixture file; isolated destination project Q; no preexisting test name."
+    ],
+    "commands": [
+      "tadx content flow publish --environment <E> --file <TFLX> --project-id <Q> --name <UNIQUE_NAME> --json"
+    ],
+    "assertions": [
+      "Direct REST finds exactly one new resource at Q with returned LUID and requested name.",
+      "Independent download contains authored native payload, known fields/data, and connection reference expectations.",
+      "No source object changes; no managed workspace artifact created implicitly."
+    ],
+    "cleanup": "Independent API delete only returned, owned LUID.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveFlowPublishNative",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.flow.publish-overwrite",
+    "title": "Overwrite the exact flow",
+    "group": "flow",
+    "capabilities": [
+      "flow.publish"
+    ],
+    "requires": [
+      "Destination object has payload version A; native fixture B has distinguishing schema/data; project-Q name decoy in another project."
+    ],
+    "commands": [
+      "tadx content flow publish --environment <E> --file <NATIVE_B> --project-id <Q> --name <EXISTING_NAME> --overwrite --json"
+    ],
+    "assertions": [
+      "Independent download proves payload B replaced A at exact destination.",
+      "Authoritative destination LUID and identity agree with receipt; unrelated decoy and source remain unchanged."
+    ],
+    "cleanup": "Delete owned destination and workspace, if any.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveFlowPublishOverwrite",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.flow.pull",
+    "title": "Acquire a native flow artifact",
+    "group": "flow",
+    "capabilities": [
+      "flow.pull"
+    ],
+    "requires": [
+      "Known packaged fixture with distinctive extract/embedded payload; fresh isolated workspace W."
+    ],
+    "commands": [
+      "tadx content flow pull --environment <E> --workspace <W> --id <FLOW> --json"
+    ],
+    "assertions": [
+      "Canonical file opens with native XML/ZIP parser and contains known fixture structure and data.",
+      "Compare payload with independent REST download, normalizing only documented server-generated package metadata.",
+      "Sidecar records exact source LUID, project, target, and clean baseline; reported artifact paths are relative."
+    ],
+    "cleanup": "Delete W; no remote mutation.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveFlowPull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.flow.update",
+    "title": "Transfer exact flow ownership",
+    "group": "flow",
+    "capabilities": [
+      "flow.update"
+    ],
+    "requires": [
+      "Per-test mutable object; alternate existing licensed owner U2; oracle account retains read and delete access."
+    ],
+    "commands": [
+      "tadx content flow update --environment <E> --id <FLOW> --owner-id <U2> --json"
+    ],
+    "assertions": [
+      "Fresh direct REST read confirms requested owner and all supported changed metadata at same LUID.",
+      "Content payload, project, and unrelated fixture remain unchanged."
+    ],
+    "cleanup": "Independent API delete owned resource, retaining account permission after owner transfer.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveFlowUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.datasource.detached-publish",
+    "title": "Recover detached datasource publication",
+    "group": "job",
+    "capabilities": [
+      "datasource.publish",
+      "job.inspect"
+    ],
+    "requires": [
+      "Native fixture; fresh unique destination; isolated operation state directory."
+    ],
+    "commands": [
+      "tadx content datasource publish --environment <E> --file <NATIVE> --project-id <Q> --name <UNIQUE_NAME> --create --no-wait --json",
+      "tadx job inspect --operation-id <OPERATION_ID> --json",
+      "tadx job wait --receipt <RETURNED_ACCEPTED_RECEIPT> --json"
+    ],
+    "assertions": [
+      "Follow only returned inspect command within bounded wait; terminal result confirms one independently observed destination object.",
+      "Repeated inspection in a fresh CLI process resolves same operation/resource identity; no duplicate publish.",
+      "Flow publication remains synchronous at Tableau boundary while local detachment still recovers correctly.",
+      "Operation item exposes a real Tableau job and saved accepted receipt; run job wait --receipt on that exact returned path in a fresh process and confirm the same terminal job and resource."
+    ],
+    "cleanup": "Observe terminal outcome before independent API deletion; retain pending operation evidence on timeout.",
+    "owners": [
+      "internal/cli/content",
+      "actions/datasource",
+      "internal/resources/datasource",
+      "internal/tableau/datasource",
+      "internal/artifact/datasource.go",
+      "internal/app/publication.go",
+      "internal/app/jobs.go"
+    ],
+    "mode": "write",
+    "notes": "Do not require HTTP 202 for flow. Process detachment is core lifecycle behavior, not a redundant output flag.",
+    "go_name": "TestLiveDatasourceDetachedPublish",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.datasource.detached-pull",
+    "title": "Recover a detached datasource download",
+    "group": "job",
+    "capabilities": [
+      "datasource.pull",
+      "job.inspect"
+    ],
+    "requires": [
+      "Real immutable native fixture; fresh isolated workspace W; isolated local operation state."
+    ],
+    "commands": [
+      "tadx content datasource pull --environment <E> --workspace <W> --id <REMOTE_ID> --no-wait --json",
+      "tadx job inspect --operation-id <OPERATION_ID> --json"
+    ],
+    "assertions": [
+      "Follow returned inspect command under bounded deadline; terminal local operation points to exact source identity and relative artifact path.",
+      "Independent file parsing and fixture manifest confirm expected native payload, extract rows, or flow structure.",
+      "Fresh-process inspection returns same local operation identity; only one clean managed artifact exists.",
+      "No remote Tableau job is invented for a local download; remote source remains unchanged."
+    ],
+    "cleanup": "Remove isolated workspace and completed local operation evidence according to retention policy.",
+    "owners": [
+      "actions/datasource",
+      "internal/app/publication.go",
+      "internal/app/publication_status.go",
+      "internal/artifact"
+    ],
+    "mode": "read",
+    "notes": "Distinct local acquisition operation path. Do not require a remote job or HTTP 202.",
+    "go_name": "TestLiveDatasourceDetachedPull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.flow.detached-publish",
+    "title": "Recover detached flow publication",
+    "group": "job",
+    "capabilities": [
+      "flow.publish",
+      "job.inspect"
+    ],
+    "requires": [
+      "Native fixture; fresh unique destination; isolated operation state directory."
+    ],
+    "commands": [
+      "tadx content flow publish --environment <E> --file <NATIVE> --project-id <Q> --name <UNIQUE_NAME> --no-wait --json",
+      "tadx job inspect --operation-id <OPERATION_ID> --json"
+    ],
+    "assertions": [
+      "Follow only returned inspect command within bounded wait; terminal result confirms one independently observed destination object.",
+      "Repeated inspection in a fresh CLI process resolves same operation/resource identity; no duplicate publish.",
+      "Flow publication remains synchronous at Tableau boundary while local detachment still recovers correctly."
+    ],
+    "cleanup": "Observe terminal outcome before independent API deletion; retain pending operation evidence on timeout.",
+    "owners": [
+      "internal/cli/content/flow.go",
+      "actions/flow",
+      "internal/resources/flow",
+      "internal/tableau/flow",
+      "internal/artifact/flow.go",
+      "internal/app/publication.go",
+      "internal/app/jobs.go"
+    ],
+    "mode": "write",
+    "notes": "Do not require HTTP 202 for flow. Process detachment is core lifecycle behavior, not a redundant output flag.",
+    "go_name": "TestLiveFlowDetachedPublish",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.flow.detached-pull",
+    "title": "Recover a detached flow download",
+    "group": "job",
+    "capabilities": [
+      "flow.pull",
+      "job.inspect"
+    ],
+    "requires": [
+      "Real immutable native fixture; fresh isolated workspace W; isolated local operation state."
+    ],
+    "commands": [
+      "tadx content flow pull --environment <E> --workspace <W> --id <REMOTE_ID> --no-wait --json",
+      "tadx job inspect --operation-id <OPERATION_ID> --json"
+    ],
+    "assertions": [
+      "Follow returned inspect command under bounded deadline; terminal local operation points to exact source identity and relative artifact path.",
+      "Independent file parsing and fixture manifest confirm expected native payload, extract rows, or flow structure.",
+      "Fresh-process inspection returns same local operation identity; only one clean managed artifact exists.",
+      "No remote Tableau job is invented for a local download; remote source remains unchanged."
+    ],
+    "cleanup": "Remove isolated workspace and completed local operation evidence according to retention policy.",
+    "owners": [
+      "actions/flow",
+      "internal/app/publication.go",
+      "internal/app/publication_status.go",
+      "internal/artifact"
+    ],
+    "mode": "read",
+    "notes": "Distinct local acquisition operation path. Do not require a remote job or HTTP 202.",
+    "go_name": "TestLiveFlowDetachedPull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.job.cancel",
+    "title": "Cancel an owned supported active job",
+    "group": "job",
+    "capabilities": [
+      "job.cancel"
+    ],
+    "requires": [
+      "Adapter creates a cancellable refresh/flow-run job with enough deterministic pending duration; exact ID and owned target recorded.",
+      "Supported job types: RefreshExtract, RefreshWorkbook, RefreshFlow, RunFlow; publication job is invalid fixture."
+    ],
+    "commands": [
+      "tadx job cancel --environment <E> --id <JOB> --preview --json",
+      "tadx job cancel --environment <E> --id <JOB> --json"
+    ],
+    "assertions": [
+      "Preview leaves active job unchanged.",
+      "Independent polling confirms cancelled terminal state; receipt identifies exact job and acknowledgement.",
+      "Completion before submission is a fixture race, not cancellation success; report inconclusive and permit only bounded fresh-fixture retry."
+    ],
+    "cleanup": "Observe exact job, then delete owned target; retain evidence if outcome unknown.",
+    "owners": [
+      "internal/cli/job",
+      "actions/job",
+      "internal/app/jobs.go",
+      "internal/tableau/job"
+    ],
+    "mode": "write",
+    "notes": "Capability pack. TADX has no refresh/run submission leaf; independent setup adapter owns this prerequisite.",
+    "go_name": "TestLiveJobCancel",
+    "optional": true,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.job.inspect",
+    "title": "Inspect a real Tableau job",
+    "group": "job",
+    "capabilities": [
+      "job.inspect"
+    ],
+    "requires": [
+      "Setup adapter starts a small owned refresh job and records exact job ID; API permissions allow querying it."
+    ],
+    "commands": [
+      "tadx job inspect --environment <E> --id <JOB> --json"
+    ],
+    "assertions": [
+      "Identity, job type, status, and available progress match independent GET job response.",
+      "No job submission or remote state change occurs."
+    ],
+    "cleanup": "Observe completion and clean job target resource.",
+    "owners": [
+      "internal/cli/job",
+      "actions/job",
+      "internal/app/jobs.go",
+      "internal/tableau/job"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveJobInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.job.wait",
+    "title": "Observe a real job and recover its durable receipt",
+    "group": "job",
+    "capabilities": [
+      "job.wait"
+    ],
+    "requires": [
+      "Independent setup adapter starts an owned real refresh job and records exact job ID; no receipt is fabricated.",
+      "First TADX job wait call by exact ID creates the genuine durable observation receipt. Second command runs in a fresh CLI process using its returned receipt path."
+    ],
+    "commands": [
+      "tadx job wait --environment <E> --id <JOB> --json",
+      "tadx job wait --receipt <RETURNED_RECEIPT> --json"
+    ],
+    "assertions": [
+      "Same job and exact site persist across a fresh CLI process; terminal observation matches independent API.",
+      "Second wait uses saved identity and never resubmits original operation; target inventory contains no duplicate.",
+      "If first read is already terminal, pass terminal replay only and report active-monitoring coverage unavailable."
+    ],
+    "cleanup": "Clean owned job resource after outcome established.",
+    "owners": [
+      "internal/cli/job",
+      "actions/job",
+      "internal/app/jobs.go",
+      "internal/jobmonitor"
+    ],
+    "mode": "read",
+    "notes": "This case proves real job observation and receipt replay. Accepted publication receipt recovery is also checked by detached workbook/datasource publication tests when they expose the saved real receipt. Active-monitoring coverage is unavailable if initial read is already terminal.",
+    "go_name": "TestLiveJobWait",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.detached-publish",
+    "title": "Recover detached workbook publication",
+    "group": "job",
+    "capabilities": [
+      "workbook.publish",
+      "job.inspect"
+    ],
+    "requires": [
+      "Native fixture; fresh unique destination; isolated operation state directory."
+    ],
+    "commands": [
+      "tadx content workbook publish --environment <E> --file <NATIVE> --project-id <Q> --name <UNIQUE_NAME> --no-wait --json",
+      "tadx job inspect --operation-id <OPERATION_ID> --json",
+      "tadx job wait --receipt <RETURNED_ACCEPTED_RECEIPT> --json"
+    ],
+    "assertions": [
+      "Follow only returned inspect command within bounded wait; terminal result confirms one independently observed destination object.",
+      "Repeated inspection in a fresh CLI process resolves same operation/resource identity; no duplicate publish.",
+      "Flow publication remains synchronous at Tableau boundary while local detachment still recovers correctly.",
+      "Operation item exposes a real Tableau job and saved accepted receipt; run job wait --receipt on that exact returned path in a fresh process and confirm the same terminal job and resource."
+    ],
+    "cleanup": "Observe terminal outcome before independent API deletion; retain pending operation evidence on timeout.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go",
+      "internal/app/publication.go",
+      "internal/app/jobs.go"
+    ],
+    "mode": "write",
+    "notes": "Do not require HTTP 202 for flow. Process detachment is core lifecycle behavior, not a redundant output flag.",
+    "go_name": "TestLiveWorkbookDetachedPublish",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.detached-pull",
+    "title": "Recover a detached workbook download",
+    "group": "job",
+    "capabilities": [
+      "workbook.pull",
+      "job.inspect"
+    ],
+    "requires": [
+      "Real immutable native fixture; fresh isolated workspace W; isolated local operation state."
+    ],
+    "commands": [
+      "tadx content workbook pull --environment <E> --workspace <W> --id <REMOTE_ID> --no-wait --json",
+      "tadx job inspect --operation-id <OPERATION_ID> --json"
+    ],
+    "assertions": [
+      "Follow returned inspect command under bounded deadline; terminal local operation points to exact source identity and relative artifact path.",
+      "Independent file parsing and fixture manifest confirm expected native payload, extract rows, or flow structure.",
+      "Fresh-process inspection returns same local operation identity; only one clean managed artifact exists.",
+      "No remote Tableau job is invented for a local download; remote source remains unchanged."
+    ],
+    "cleanup": "Remove isolated workspace and completed local operation evidence according to retention policy.",
+    "owners": [
+      "actions/workbook",
+      "internal/app/publication.go",
+      "internal/app/publication_status.go",
+      "internal/artifact"
+    ],
+    "mode": "read",
+    "notes": "Distinct local acquisition operation path. Do not require a remote job or HTTP 202.",
+    "go_name": "TestLiveWorkbookDetachedPull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.labels.delete-attachment",
+    "title": "Delete an attachment without deleting its asset",
+    "group": "labels",
+    "capabilities": [
+      "content.label.delete"
+    ],
+    "requires": [
+      "labels",
+      "mutable-label-attachment"
+    ],
+    "commands": [
+      "tadx catalog label delete --id <label> --environment <env> --json"
+    ],
+    "assertions": [
+      "Independently confirm the attachment is absent and the target datasource plus another attachment remain present."
+    ],
+    "cleanup": "Delete the disposable datasource and remaining owned attachments.",
+    "mode": "write",
+    "owners": [
+      "actions/contentlabel/",
+      "internal/cli/content/labels.go",
+      "internal/tableau/metadataassets/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveLabelsDeleteAttachment",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.labels.read-attachment",
+    "title": "Read a known content label attachment",
+    "group": "labels",
+    "capabilities": [
+      "content.label.list",
+      "content.label.inspect"
+    ],
+    "requires": [
+      "labels",
+      "label-attachment"
+    ],
+    "commands": [
+      "tadx catalog label list --type datasource --target-id <datasource> --environment <env> --json",
+      "tadx catalog label inspect --id <label> --environment <env> --full --json"
+    ],
+    "assertions": [
+      "Compare exact label attachment identity, target identity, category, value, message, and active state with independent REST reads."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/contentlabel/",
+      "internal/cli/content/labels.go",
+      "internal/tableau/metadataassets/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveLabelsReadAttachment",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.labels.update-attachment",
+    "title": "Persist the requested label state",
+    "group": "labels",
+    "capabilities": [
+      "content.label.update"
+    ],
+    "requires": [
+      "labels",
+      "mutable-label-attachment"
+    ],
+    "commands": [
+      "tadx catalog label update --id <label> --message <new-message> --active=true --environment <env> --json"
+    ],
+    "assertions": [
+      "Independently verify message and active state on the exact attachment, while its value and target remain unchanged."
+    ],
+    "cleanup": "Delete the owned attachment and its disposable datasource.",
+    "mode": "write",
+    "owners": [
+      "actions/contentlabel/",
+      "internal/cli/content/labels.go",
+      "internal/tableau/metadataassets/"
+    ],
+    "notes": "",
+    "go_name": "TestLiveLabelsUpdateAttachment",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.lineage.datasource-graph",
+    "title": "Capture the known datasource dependency graph",
+    "group": "lineage",
+    "capabilities": [
+      "lineage.pull"
+    ],
+    "requires": [
+      "metadata",
+      "lineage-datasource"
+    ],
+    "commands": [
+      "tadx catalog lineage pull --kind datasource --id <datasource> --workspace <ws> --environment <env> --fields --json"
+    ],
+    "assertions": [
+      "Parse the saved graph and compare fixture-required nodes and directed edges with a separately maintained expected graph.",
+      "Resolve the root REST LUID to the right Metadata identity; require every edge endpoint to exist.",
+      "Require REST LUID only for node kinds that expose one; embedded datasource and physical database/table nodes can use Metadata IDs.",
+      "Require known field relationships for workbook/datasource fixtures; separate unrelated server enrichment from required graph assertions."
+    ],
+    "cleanup": "Remove the test workspace and local lineage artifact; preserve shared remote baseline.",
+    "mode": "local-write",
+    "owners": [
+      "actions/lineage/pull/",
+      "internal/artifact/lineage.go",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "Flow case requires actual indexed input/output relationships; an empty graph is not sufficient.",
+    "go_name": "TestLiveLineageDatasourceGraph",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.lineage.flow-graph",
+    "title": "Capture the known flow dependency graph",
+    "group": "lineage",
+    "capabilities": [
+      "lineage.pull"
+    ],
+    "requires": [
+      "metadata",
+      "lineage-flow"
+    ],
+    "commands": [
+      "tadx catalog lineage pull --kind flow --id <flow> --workspace <ws> --environment <env> --json"
+    ],
+    "assertions": [
+      "Parse the saved graph and compare fixture-required nodes and directed edges with a separately maintained expected graph.",
+      "Resolve the root REST LUID to the right Metadata identity; require every edge endpoint to exist.",
+      "Require REST LUID only for node kinds that expose one; embedded datasource and physical database/table nodes can use Metadata IDs.",
+      "Require known field relationships for workbook/datasource fixtures; separate unrelated server enrichment from required graph assertions."
+    ],
+    "cleanup": "Remove the test workspace and local lineage artifact; preserve shared remote baseline.",
+    "mode": "local-write",
+    "owners": [
+      "actions/lineage/pull/",
+      "internal/artifact/lineage.go",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "Flow case requires actual indexed input/output relationships; an empty graph is not sufficient.",
+    "go_name": "TestLiveLineageFlowGraph",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.lineage.workbook-graph",
+    "title": "Capture the known workbook dependency graph",
+    "group": "lineage",
+    "capabilities": [
+      "lineage.pull"
+    ],
+    "requires": [
+      "metadata",
+      "lineage-workbook"
+    ],
+    "commands": [
+      "tadx catalog lineage pull --kind workbook --id <workbook> --workspace <ws> --environment <env> --fields --json"
+    ],
+    "assertions": [
+      "Parse the saved graph and compare fixture-required nodes and directed edges with a separately maintained expected graph.",
+      "Resolve the root REST LUID to the right Metadata identity; require every edge endpoint to exist.",
+      "Require REST LUID only for node kinds that expose one; embedded datasource and physical database/table nodes can use Metadata IDs.",
+      "Require known field relationships for workbook/datasource fixtures; separate unrelated server enrichment from required graph assertions."
+    ],
+    "cleanup": "Remove the test workspace and local lineage artifact; preserve shared remote baseline.",
+    "mode": "local-write",
+    "owners": [
+      "actions/lineage/pull/",
+      "internal/artifact/lineage.go",
+      "internal/tableau/metadata/"
+    ],
+    "notes": "Flow case requires actual indexed input/output relationships; an empty graph is not sufficient.",
+    "go_name": "TestLiveLineageWorkbookGraph",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.project.create",
+    "title": "Create an owned nested project",
+    "group": "project",
+    "capabilities": [
+      "project.create"
+    ],
+    "requires": [
+      "Disposable parent; selected permission mode supported by target."
+    ],
+    "commands": [
+      "tadx content project create --environment <E> --parent-id <PARENT> --name <UNIQUE_NAME> --description \"Live project fixture\" --content-permissions <SUPPORTED_MODE> --json"
+    ],
+    "assertions": [
+      "Independent REST inventory finds exactly one child under requested parent with requested metadata.",
+      "Returned ID equals authoritative child ID; no unrelated hierarchy changes."
+    ],
+    "cleanup": "Independent API delete exact empty project LUID.",
+    "owners": [
+      "internal/cli/content/project.go",
+      "actions/project",
+      "internal/resources/project",
+      "internal/tableau/project"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveProjectCreate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.project.delete",
+    "title": "Delete an exact empty project",
+    "group": "project",
+    "capabilities": [
+      "project.delete"
+    ],
+    "requires": [
+      "Disposable empty project plus same-name decoy under different parent."
+    ],
+    "commands": [
+      "tadx content project delete --environment <E> --id <PROJECT> --preview --json",
+      "tadx content project delete --environment <E> --id <PROJECT> --json"
+    ],
+    "assertions": [
+      "Preview leaves project present.",
+      "Execution gives authoritative project absence; decoy and parent survive."
+    ],
+    "cleanup": "Independent API cleanup only if owned ID remains after fresh observation.",
+    "owners": [
+      "internal/cli/content/project.go",
+      "actions/project",
+      "internal/resources/project",
+      "internal/tableau/project"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveProjectDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.project.inspect",
+    "title": "Resolve an exact nested project path",
+    "group": "project",
+    "capabilities": [
+      "project.inspect"
+    ],
+    "requires": [
+      "Nested hierarchy and duplicate leaf-name decoy."
+    ],
+    "commands": [
+      "tadx content project inspect --environment <E> --project <NESTED_PATH> --full --json"
+    ],
+    "assertions": [
+      "Returned exact LUID, parent, owner, description, and content permission mode match independent REST oracle."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content/project.go",
+      "actions/project",
+      "internal/resources/project",
+      "internal/tableau/project"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveProjectInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.project.list",
+    "title": "Discover the fixture project hierarchy",
+    "group": "project",
+    "capabilities": [
+      "project.list"
+    ],
+    "requires": [
+      "Nested disposable hierarchy with two direct children and same-name child under different parent."
+    ],
+    "commands": [
+      "tadx content project list --environment <E> --parent-id <PARENT> --all --json"
+    ],
+    "assertions": [
+      "Exact child ID set and parent identities match independent REST hierarchy.",
+      "No same-name decoy from other parent; authoritative project paths preserve hierarchy."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content/project.go",
+      "actions/project",
+      "internal/resources/project",
+      "internal/tableau/project"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveProjectList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.project.move",
+    "title": "Reparent an owned project hierarchy",
+    "group": "project",
+    "capabilities": [
+      "project.move"
+    ],
+    "requires": [
+      "Mutable project containing child project and fixture content; separate destination Q."
+    ],
+    "commands": [
+      "tadx content project move --environment <E> --id <PROJECT> --parent-id <Q> --json"
+    ],
+    "assertions": [
+      "REST confirms same project LUID now under Q; descendant parent links and content LUIDs remain intact.",
+      "Derived paths update; source/destination sibling projects unchanged."
+    ],
+    "cleanup": "Delete child content, then child projects, then moved project by owned IDs.",
+    "owners": [
+      "internal/cli/content/project.go",
+      "actions/project",
+      "internal/resources/project",
+      "internal/tableau/project"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveProjectMove",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.project.update",
+    "title": "Update project metadata and permission mode",
+    "group": "project",
+    "capabilities": [
+      "project.update"
+    ],
+    "requires": [
+      "Per-test empty project; valid target-supported mode different from original."
+    ],
+    "commands": [
+      "tadx content project update --environment <E> --id <PROJECT> --new-name <UPDATED_NAME> --description \"Updated live fixture\" --content-permissions <NEW_MODE> --json"
+    ],
+    "assertions": [
+      "Fresh REST read confirms same LUID with exact name, description, and permission mode.",
+      "Parent and unrelated project remain unchanged."
+    ],
+    "cleanup": "Independent API delete owned project.",
+    "owners": [
+      "internal/cli/content/project.go",
+      "actions/project",
+      "internal/resources/project",
+      "internal/tableau/project"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveProjectUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-definition.publish",
+    "title": "Recreate a portable bundle with explicit datasource mapping",
+    "group": "pulse-bundle",
+    "capabilities": [
+      "pulse.definition.publish"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "managed-pulse-bundle",
+      "workspace",
+      "equivalent-destination-datasource"
+    ],
+    "commands": [
+      "tadx pulse definition publish --workspace <workspace> --artifact <bundle-path> --datasource-map <source-datasource-id>=<destination-datasource-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent exact REST reads verify new definition identity, mapped datasource, all admitted saved business sections, default-metric identity, and every bundled metric specification.",
+      "Source definition and bundle bytes remain unchanged; source subscriptions are not recreated.",
+      "Returned source-to-destination identity mapping matches independently read remote objects."
+    ],
+    "cleanup": "Delete every newly created subscription, variant, and definition by receipt-owned identities; verify absence.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go",
+      "internal/app/pulse_bundle.go",
+      "internal/artifact/pulse_bundle.go"
+    ],
+    "mode": "write",
+    "notes": "Portable baseline can map to a second equivalent datasource on the same site. An explicit cross-target version uses two target profiles, without hard-coded endpoints. Publish is create-only. Reconciliation verifies new object readback; it does not update or deduplicate existing definitions. Do not repeat publish to test a nonexistent no-op.",
+    "go_name": "TestLivePulseDefinitionPublish",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.pulse-definition.pull",
+    "title": "Pull the complete portable definition bundle",
+    "group": "pulse-bundle",
+    "capabilities": [
+      "pulse.definition.pull"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "fixture-definition-with-two-variants",
+      "workspace"
+    ],
+    "commands": [
+      "tadx pulse definition pull --id <definition-id> --workspace <workspace> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Compare the full portable definition document and complete metric LUID set against independent Pulse REST snapshots. Include default marker and complete metric specifications, including periods and included or excluded filters.",
+      "Bundle records source provenance and workspace-relative paths; excludes subscribers, PATs, tokens, metric values, and insights.",
+      "Independent remote snapshots remain unchanged.",
+      "Compare every admitted business section present in the fixture: specification, extension_options, representation_options, insights_options, comparisons, datasource_goals, related_links, certification, name, and description. Normalize documented provider defaults and volatile envelope metadata only."
+    ],
+    "cleanup": "Remove isolated workspace bundle through harness-owned filesystem cleanup.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go",
+      "internal/app/pulse_bundle.go",
+      "internal/artifact/pulse_bundle.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseDefinitionPull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.pulse-definition.create",
+    "title": "Create a definition from the eligible datasource",
+    "group": "pulse-definition",
+    "capabilities": [
+      "pulse.definition.create"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures"
+    ],
+    "commands": [
+      "tadx pulse definition create --name <unique-definition> --datasource-id <datasource-id> --measure-field <measure-id> --date-field <date-id> --dimension <dimension-id> --aggregation SUM --minimum-granularity DAY --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent GET definitions/{returned-id} proves requested measure, date, dimension, aggregation, and datasource persisted.",
+      "Independent definition-scoped metric listing eventually contains Tableau's default metric with matching ownership.",
+      "Receipt separates definition creation from any unavailable default-metric observation."
+    ],
+    "cleanup": "Delete owned subscriptions, variants, and definition through independent Pulse REST; confirm absence.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLivePulseDefinitionCreate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-definition.delete",
+    "title": "Delete an owned definition",
+    "group": "pulse-definition",
+    "capabilities": [
+      "pulse.definition.delete"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "fixture-definition-without-external-followers"
+    ],
+    "commands": [
+      "tadx pulse definition delete --id <definition-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent exact REST GET confirms definition absence.",
+      "A sentinel definition remains readable; receipt does not claim unsupported cascade outcomes."
+    ],
+    "cleanup": "Enumerate retained owned variants/subscriptions through independent REST and remove confirmed residual resources.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLivePulseDefinitionDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-definition.inspect",
+    "title": "Read saved definition configuration",
+    "group": "pulse-definition",
+    "capabilities": [
+      "pulse.definition.inspect"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "fixture-definition"
+    ],
+    "commands": [
+      "tadx pulse definition inspect --id <definition-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Saved measure ID, aggregation, date ID, allowed dimensions, minimum granularity, and formatting match independent GET definitions/{id}.",
+      "Site, datasource, and definition identities match the selected fixture."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseDefinitionInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-definition.list",
+    "title": "Find the fixture definition",
+    "group": "pulse-definition",
+    "capabilities": [
+      "pulse.definition.list"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "fixture-definition"
+    ],
+    "commands": [
+      "tadx pulse definition list --name <definition-name> --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent GET /api/-/pulse/definitions contains the same exact definition LUID and datasource LUID.",
+      "Selected exact-name inventory is complete and excludes a sentinel definition."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseDefinitionList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.follow",
+    "title": "Follow a metric for a fixture user",
+    "group": "pulse-followers",
+    "capabilities": [
+      "pulse.metric.follow"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "fixture-metric",
+      "fixture-user"
+    ],
+    "commands": [
+      "tadx pulse metric follow --id <metric-id> --user-id <user-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Seed no subscription for this metric/user; independent subscription read confirms the returned subscription binds both exact identities.",
+      "Existing sentinel followers remain unchanged."
+    ],
+    "cleanup": "DELETE the created subscription through independent REST; confirm absence.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLivePulseMetricFollow",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.follow-group",
+    "title": "Follow a metric for a fixture group",
+    "group": "pulse-followers",
+    "capabilities": [
+      "pulse.metric.follow"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "fixture-metric",
+      "fixture-group"
+    ],
+    "commands": [
+      "tadx pulse metric follow --id <metric-id> --group-id <group-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent subscription read confirms the returned subscription binds the exact metric and group.",
+      "No per-user fan-out or inferred nested-group coverage is asserted."
+    ],
+    "cleanup": "Delete exact created subscription through REST.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "Group follower is a distinct upstream principal type, not a flag permutation.",
+    "go_name": "TestLivePulseMetricFollowGroup",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.followers",
+    "title": "List exact metric followers",
+    "group": "pulse-followers",
+    "capabilities": [
+      "pulse.metric.followers"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "fixture-metric-with-subscription"
+    ],
+    "commands": [
+      "tadx pulse metric followers --id <metric-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Subscription IDs and follower types and LUIDs equal independent GET subscriptions?metric_id=<id>.",
+      "Follower snapshot describes the selected metric only."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseMetricFollowers",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.unfollow",
+    "title": "Remove one exact subscription",
+    "group": "pulse-followers",
+    "capabilities": [
+      "pulse.metric.unfollow"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "fixture-owned-subscription"
+    ],
+    "commands": [
+      "tadx pulse metric unfollow --subscription-id <subscription-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent metric subscription inventory no longer contains the selected subscription.",
+      "Metric, parent definition, and sentinel follower remain."
+    ],
+    "cleanup": "Delete residual owned subscription through REST.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLivePulseMetricUnfollow",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-subscription.list",
+    "title": "Find the authenticated user's saved subscriptions",
+    "group": "pulse-followers",
+    "capabilities": [
+      "pulse.subscription.list"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "self-subscription",
+      "unrelated-user-subscription"
+    ],
+    "commands": [
+      "tadx pulse subscription list --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent user-filtered GET subscriptions and bounded exact metric/definition reads agree with returned subscription identities and saved configuration.",
+      "Authenticated user's direct fixture subscription appears; unrelated user's direct subscription is absent.",
+      "Coverage of group-derived subscriptions remains explicit rather than universally complete."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseSubscriptionList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.delete",
+    "title": "Delete one saved variant",
+    "group": "pulse-metric",
+    "capabilities": [
+      "pulse.metric.delete"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "fixture-disposable-variant"
+    ],
+    "commands": [
+      "tadx pulse metric delete --id <metric-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Independent GET metrics/{id} confirms absence; its parent definition and sentinel metric remain readable."
+    ],
+    "cleanup": "Remove residual owned variant through REST.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLivePulseMetricDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.fork",
+    "title": "Create a variant preserving the source definition",
+    "group": "pulse-metric",
+    "capabilities": [
+      "pulse.metric.fork"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "consent",
+      "owned-fixtures",
+      "fixture-metric"
+    ],
+    "commands": [
+      "tadx pulse metric fork --id <metric-id> --period LAST_30_DAYS --filter <dimension-id>=<fixture-category> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Choose a timeframe and category combination distinct from the source.",
+      "Independent GET of returned metric proves requested timeframe and filter plus original definition, datasource, and site.",
+      "Independent source metric snapshot remains unchanged; get-or-create outcome is reported truthfully."
+    ],
+    "cleanup": "Delete variant only if the test created it; preserve any pre-existing matching metric.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLivePulseMetricFork",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.inspect",
+    "title": "Read one saved metric specification",
+    "group": "pulse-metric",
+    "capabilities": [
+      "pulse.metric.inspect"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "fixture-metric"
+    ],
+    "commands": [
+      "tadx pulse metric inspect --id <metric-id> --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Timeframe, filter field IDs and values, definition LUID, and datasource LUID match independent GET metrics/{id}.",
+      "No current metric value or generated insight is required."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseMetricInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.pulse-metric.list",
+    "title": "List a definition's saved metric variants",
+    "group": "pulse-metric",
+    "capabilities": [
+      "pulse.metric.list"
+    ],
+    "requires": [
+      "cloud",
+      "pulse",
+      "pulse-datasource",
+      "creator",
+      "owned-fixtures",
+      "fixture-definition-with-two-variants"
+    ],
+    "commands": [
+      "tadx pulse metric list --definition-id <definition-id> --all --environment <env> --config <config> --json"
+    ],
+    "assertions": [
+      "Returned metric LUID set equals independent GET definitions/{id}/metrics.",
+      "Every returned metric belongs to the selected definition and datasource."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/pulse",
+      "actions/pulse",
+      "internal/tableau/pulse",
+      "internal/app/pulse.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLivePulseMetricList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.search.admin-discovery",
+    "title": "Discover known users and groups",
+    "group": "search",
+    "capabilities": [
+      "search.run"
+    ],
+    "requires": [
+      "site-admin",
+      "admin-baseline"
+    ],
+    "commands": [
+      "tadx search <unique-token> --type admin --environment <env> --json"
+    ],
+    "assertions": [
+      "Require exact seeded user/group identities and resource types; exclude a contrasting fixture."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/search/",
+      "internal/tableau/search/",
+      "internal/cli/search.go"
+    ],
+    "notes": "",
+    "go_name": "TestLiveSearchAdminDiscovery",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.search.content-discovery",
+    "title": "Discover known content through live search",
+    "group": "search",
+    "capabilities": [
+      "search.run"
+    ],
+    "requires": [
+      "core",
+      "content-baseline"
+    ],
+    "commands": [
+      "tadx search <unique-token> --type content --environment <env> --json"
+    ],
+    "assertions": [
+      "Require seeded workbook, datasource, flow when supported, and project identities with correct types.",
+      "Compare against independently seeded identity sets; exclude a contrasting unrelated name."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/search/",
+      "internal/tableau/search/",
+      "internal/cli/search.go"
+    ],
+    "notes": "",
+    "go_name": "TestLiveSearchContentDiscovery",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.search.pulse-discovery",
+    "title": "Discover known Pulse definitions and metrics",
+    "group": "search",
+    "capabilities": [
+      "search.run"
+    ],
+    "requires": [
+      "pulse",
+      "pulse-baseline"
+    ],
+    "commands": [
+      "tadx search <unique-token> --type pulse --environment <env> --json"
+    ],
+    "assertions": [
+      "Require exact seeded definition/metric identities and names, compared with independent Pulse API reads."
+    ],
+    "cleanup": "No remote cleanup.",
+    "mode": "read",
+    "owners": [
+      "actions/search/",
+      "internal/tableau/search/",
+      "internal/cli/search.go"
+    ],
+    "notes": "",
+    "go_name": "TestLiveSearchPulseDiscovery",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workbook.delete",
+    "title": "Delete only the selected workbook",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.delete"
+    ],
+    "requires": [
+      "Per-test disposable object; same-name decoy outside its scope."
+    ],
+    "commands": [
+      "tadx content workbook delete --environment <E> --id <WORKBOOK> --preview --json",
+      "tadx content workbook delete --environment <E> --id <WORKBOOK> --json"
+    ],
+    "assertions": [
+      "Direct REST after preview still finds unchanged resource.",
+      "After execution, independent GET returns documented not-found, and decoy still exists.",
+      "Receipt identifies exact deleted resource and confirmed outcome."
+    ],
+    "cleanup": "If object remains, independent API cleanup by owned LUID; no retry on unknown outcome before observation.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveWorkbookDelete",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workbook.inspect",
+    "title": "Resolve exact workbook identity",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.inspect"
+    ],
+    "requires": [
+      "Retained setup-owned fixture N in a nested project path; same-name setup-owned decoy elsewhere.",
+      "Metadata API indexing for the exact fixture workbook LUID."
+    ],
+    "commands": [
+      "tadx content workbook inspect --environment <E> --name <N> --project <NESTED_PATH> --full --json"
+    ],
+    "assertions": [
+      "Identity, project, owner, and resource-specific metadata match direct REST plus authored fixture manifest.",
+      "No accidental match to same-name decoy; upstream metadata identity and coverage states are accurate when available."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveWorkbookInspect",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workbook.list",
+    "title": "Discover only scoped workbook fixtures",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.list"
+    ],
+    "requires": [
+      "Exactly two independently seeded fixture objects of this kind in isolated project P; same-name decoy in separate project Q."
+    ],
+    "commands": [
+      "tadx content workbook list --environment <E> --project-id <P> --limit 1 --json",
+      "tadx content workbook list --environment <E> --project-id <P> --limit 1 --cursor <NEXT> --json"
+    ],
+    "assertions": [
+      "Returned identities equal independent REST project-scoped inventory; no Q decoy.",
+      "Two pages neither repeat nor omit fixture IDs; terminal page has no continuation."
+    ],
+    "cleanup": "None; immutable setup fixtures.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveWorkbookList",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workbook.move",
+    "title": "Move exact workbook between projects",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.move"
+    ],
+    "requires": [
+      "Per-test object in P; destination Q with required permissions; same-name decoy elsewhere."
+    ],
+    "commands": [
+      "tadx content workbook move --environment <E> --id <WORKBOOK> --destination-project-id <Q> --json"
+    ],
+    "assertions": [
+      "Direct REST confirms same LUID now in Q, absent from P inventory.",
+      "Native payload and metadata are preserved; decoy remains unchanged."
+    ],
+    "cleanup": "Independent API delete moved LUID in Q.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveWorkbookMove",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workbook.publish-artifact",
+    "title": "Publish a pulled workbook artifact",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.publish",
+      "workbook.pull"
+    ],
+    "requires": [
+      "Fresh workspace contains a real pulled fixture; destination Q is isolated."
+    ],
+    "commands": [
+      "tadx content workbook publish --environment <E> --workspace <W> --artifact <ARTIFACT> --project-id <Q> --name <UNIQUE_NAME> --json"
+    ],
+    "assertions": [
+      "Direct REST and independent download prove one destination resource with preserved payload.",
+      "Local provenance and source remote fixture remain intact; publication result identifies destination, not source.",
+      "Published dependency references point to expected preprovisioned dependencies."
+    ],
+    "cleanup": "Independent API delete destination LUID; delete W.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "Prepared upstream dependencies remain setup fixtures. This is a distinct source acquisition path, not selector-flag enumeration.",
+    "go_name": "TestLiveWorkbookPublishArtifact",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.publish-large-upload",
+    "title": "Publish a workbook through upload sessions",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.publish"
+    ],
+    "requires": [
+      "Optional large_upload qualification pack explicitly requested.",
+      "Pinned valid native package larger than 64 MiB after ZIP compression; payload includes distinctive independently verifiable data.",
+      "Fresh isolated destination project and unique name; sufficient upload and storage quota."
+    ],
+    "commands": [
+      "tadx content workbook publish --environment <E> --file <LARGE_TWBX> --project-id <Q> --name <UNIQUE_NAME> --json"
+    ],
+    "assertions": [
+      "Independent REST inventory finds exactly one published destination object with returned authoritative LUID.",
+      "Independent download and parsed extract/native manifest confirm complete expected content, including data near the end of the uploaded payload.",
+      "Package is actually larger than runtime direct-upload threshold; no lowered test threshold or internal transport bypass."
+    ],
+    "cleanup": "Independent API deletes owned published LUID after terminal outcome; preserve upload-session/job IDs on unresolved outcome.",
+    "owners": [
+      "internal/tableau/workbook",
+      "actions/workbook",
+      "internal/app/publication.go"
+    ],
+    "mode": "write",
+    "notes": "Separate per-kind upload implementation warrants two cases. Run surgically for uploader, transport, or large-publish changes; exclude routine metadata-only selections.",
+    "go_name": "TestLiveWorkbookPublishLargeUpload",
+    "optional": true,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.publish-native",
+    "title": "Publish a standalone native workbook",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.publish"
+    ],
+    "requires": [
+      "Valid pinned native fixture file; isolated destination project Q; no preexisting test name."
+    ],
+    "commands": [
+      "tadx content workbook publish --environment <E> --file <TWBX> --project-id <Q> --name <UNIQUE_NAME> --json"
+    ],
+    "assertions": [
+      "Direct REST finds exactly one new resource at Q with returned LUID and requested name.",
+      "Independent download contains authored native payload, known fields/data, and connection reference expectations.",
+      "No source object changes; no managed workspace artifact created implicitly."
+    ],
+    "cleanup": "Independent API delete only returned, owned LUID.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveWorkbookPublishNative",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.publish-overwrite",
+    "title": "Overwrite the exact workbook",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.publish"
+    ],
+    "requires": [
+      "Destination object has payload version A; native fixture B has distinguishing schema/data; project-Q name decoy in another project."
+    ],
+    "commands": [
+      "tadx content workbook publish --environment <E> --file <NATIVE_B> --project-id <Q> --name <EXISTING_NAME> --overwrite --json"
+    ],
+    "assertions": [
+      "Independent download proves payload B replaced A at exact destination.",
+      "Authoritative destination LUID and identity agree with receipt; unrelated decoy and source remain unchanged."
+    ],
+    "cleanup": "Delete owned destination and workspace, if any.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveWorkbookPublishOverwrite",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.pull",
+    "title": "Acquire a native workbook artifact",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.pull"
+    ],
+    "requires": [
+      "Known packaged fixture with distinctive extract/embedded payload; fresh isolated workspace W."
+    ],
+    "commands": [
+      "tadx content workbook pull --environment <E> --workspace <W> --id <WORKBOOK> --json"
+    ],
+    "assertions": [
+      "Canonical file opens with native XML/ZIP parser and contains known fixture structure and data.",
+      "Compare payload with independent REST download, normalizing only documented server-generated package metadata.",
+      "Sidecar records exact source LUID, project, target, and clean baseline; reported artifact paths are relative."
+    ],
+    "cleanup": "Delete W; no remote mutation.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveWorkbookPull",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.pull-dependencies",
+    "title": "Acquire direct published datasource dependencies",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.pull"
+    ],
+    "requires": [
+      "Workbook references two direct published datasources; one has a further parent; fresh W."
+    ],
+    "commands": [
+      "tadx content workbook pull --environment <E> --workspace <W> --id <WORKBOOK> --include-pds --json"
+    ],
+    "assertions": [
+      "Native workbook plus both direct published datasource artifacts exist with exact remote IDs.",
+      "No recursive grandparent acquisition; alias and graph edges map to independently seeded relationships.",
+      "Each payload remains native and unmodified."
+    ],
+    "cleanup": "Delete W.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "read",
+    "notes": "",
+    "go_name": "TestLiveWorkbookPullDependencies",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.pull-extract-scope",
+    "title": "Exclude workbook extract content",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.pull"
+    ],
+    "requires": [
+      "Fixture workbook has embedded extract with recognizable rows and package marker; fresh W."
+    ],
+    "commands": [
+      "tadx content workbook pull --environment <E> --workspace <W> --id <WORKBOOK> --include-extract=false --json"
+    ],
+    "assertions": [
+      "Native package/definition remains valid; embedded extract payload is omitted as defined by Tableau download API.",
+      "Independent requested-without-extract download confirms semantics; default pull separately proves extract-preserving path."
+    ],
+    "cleanup": "Delete W.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "read",
+    "notes": "Explicitly protects action forwarding gap identified by offline audit AR-06; this is meaningful data acquisition behavior.",
+    "go_name": "TestLiveWorkbookPullExtractScope",
+    "optional": false,
+    "deadline": "20-minute operation budget plus 2-minute harness margin"
+  },
+  {
+    "id": "live.workbook.schema",
+    "title": "Read embedded and published workbook fields",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.schema"
+    ],
+    "requires": [
+      "Metadata-enabled/indexed fixture workbook with embedded and published datasources; authored field manifest has distinct types, role, formula, and datasource aliases."
+    ],
+    "commands": [
+      "tadx content workbook schema --environment <E> --id <WORKBOOK> --all --descriptions --tags --full --json"
+    ],
+    "assertions": [
+      "Expected embedded and published datasource groups, exact field IDs, formula, types, and roles match fixture manifest.",
+      "Metadata-only identities stay valid without invented REST LUIDs; inherited descriptions and upstream column tags retain correct provenance."
+    ],
+    "cleanup": "None.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "read",
+    "notes": "Bounded Metadata readiness check runs before this test; absence is an explicit missing-capability result, never an empty-data pass.",
+    "go_name": "TestLiveWorkbookSchema",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workbook.update",
+    "title": "Update exact workbook metadata",
+    "group": "workbook",
+    "capabilities": [
+      "workbook.update"
+    ],
+    "requires": [
+      "Per-test mutable object; alternate existing licensed owner U2; oracle account retains read and delete access."
+    ],
+    "commands": [
+      "tadx content workbook update --environment <E> --id <WORKBOOK> --new-name <UPDATED_NAME> --owner-id <U2> --description \"Live fixture description\" --json"
+    ],
+    "assertions": [
+      "Fresh direct REST read confirms requested owner and all supported changed metadata at same LUID.",
+      "Content payload, project, and unrelated fixture remain unchanged."
+    ],
+    "cleanup": "Independent API delete owned resource, retaining account permission after owner transfer.",
+    "owners": [
+      "internal/cli/content",
+      "actions/workbook",
+      "internal/resources/workbook",
+      "internal/tableau/workbook",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "",
+    "go_name": "TestLiveWorkbookUpdate",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workspace.artifact-roundtrip",
+    "title": "Move a real pulled artifact and publish it",
+    "group": "workspace",
+    "capabilities": [
+      "workspace.move",
+      "workspace.status",
+      "workbook.pull",
+      "workbook.publish"
+    ],
+    "requires": [
+      "Two isolated registered workspaces W1 and W2; real pulled workbook artifact; destination Q."
+    ],
+    "commands": [
+      "tadx workspace status --workspace <W1> --json",
+      "tadx workspace artifact move --source <W1> --destination <W2> --artifact <ARTIFACT> --json",
+      "tadx workspace status --workspace <W2> --json",
+      "tadx content workbook publish --environment <E> --workspace <W2> --artifact <ARTIFACT> --project-id <Q> --name <UNIQUE_NAME> --json"
+    ],
+    "assertions": [
+      "Filesystem verifies exact payload and sidecars move, source disappears, identity and hashes persist.",
+      "Fresh publication independently proves moved artifact remains usable and has expected payload.",
+      "Remote source fixture unchanged."
+    ],
+    "cleanup": "Delete published LUID independently; remove both isolated workspaces.",
+    "owners": [
+      "internal/cli/workspace",
+      "internal/workspace",
+      "internal/artifact/move.go",
+      "internal/artifact/workbook.go"
+    ],
+    "mode": "write",
+    "notes": "One representative real artifact proves integration. Full kind/path/conflict matrix belongs offline.",
+    "go_name": "TestLiveWorkspaceArtifactRoundtrip",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  },
+  {
+    "id": "live.workspace.delete-artifact",
+    "title": "Delete local artifact while preserving Tableau content",
+    "group": "workspace",
+    "capabilities": [
+      "workspace.artifact.delete",
+      "workbook.pull"
+    ],
+    "requires": [
+      "Fresh W with real pulled artifact; remote source fixture retained."
+    ],
+    "commands": [
+      "tadx workspace artifact delete --workspace <W> --artifact <ARTIFACT> --preview --json",
+      "tadx workspace artifact delete --workspace <W> --artifact <ARTIFACT> --json"
+    ],
+    "assertions": [
+      "Preview leaves files unchanged; execution removes exact local artifact and sidecars.",
+      "Direct REST confirms source workbook and unrelated artifact remain intact."
+    ],
+    "cleanup": "Delete W.",
+    "owners": [
+      "internal/cli/workspace",
+      "internal/artifact/delete.go"
+    ],
+    "mode": "write",
+    "notes": "Local operation with remote preservation oracle; no extra Tableau mutation.",
+    "go_name": "TestLiveWorkspaceDeleteArtifact",
+    "optional": false,
+    "deadline": "120-second command budget; 5-minute observation budget"
+  }
+]
