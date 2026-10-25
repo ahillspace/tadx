@@ -13,7 +13,7 @@ Download remote artifacts, upload exact local copies, and manage local artifact 
 Activation checks the CLI's version and advertised command capabilities before loading inventory.
 Older and development builds remain usable when their command contracts are compatible.
 Unsupported commands report actionable errors while supported commands remain available.
-Each response is also checked against its expected JSON contract.
+Inventory responses are also checked for required fields.
 Build TADX from the same checkout when developing CLI and extension changes together.
 
 With SSH, WSL, containers, or Codespaces, install TADX on the workspace host.
@@ -33,7 +33,9 @@ Run **TADX: CLI Status and Setup** to inspect the executable, version, compatibi
 Use **Choose TADX Executable** to validate and select an existing installation.
 Use **Install TADX CLI** to install the checksum-pinned release into the normal shared user location.
 Use **Update TADX CLI** to update or repair that installation to the extension's verified release.
-Custom and package-manager installations remain with their owners; guided setup does not replace development builds or downgrade newer releases.
+Guided updates recognize the standard shared user location rather than an installation ownership receipt.
+Preview rejects other paths, linked executables, development builds, and versions newer than the verified release.
+The installer refuses replacement if the approved executable changes after preview.
 
 Setup shows the exact release and destination before confirmation.
 It also refreshes bundled agent Guidance, which is included in the confirmation.
@@ -134,6 +136,7 @@ Partial failures keep confirmed successes and failure details in the operation e
 
 Canceling an invocation does not roll back an accepted operation.
 If an outcome is unknown, check its receipt before retrying.
+An unacknowledged worker launch appears as unknown and retains its operation ID for status checks.
 The extension does not automatically resubmit failed writes.
 After upload completes, use **Refresh Site Cache** to update the cached remote inventory.
 

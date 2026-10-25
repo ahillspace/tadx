@@ -7,10 +7,22 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // All returns the canonical registry sorted by stable capability ID.
 func All() []Definition {
+	source := canonicalRegistry()
+	definitions := make([]Definition, len(source))
+	for index, definition := range source {
+		definitions[index] = clone(definition)
+	}
+	return definitions
+}
+
+// Registry metadata is static. Normalize it once, keep the stored values
+// private, and copy at public boundaries so callers never share mutable data.
+var canonicalRegistry = sync.OnceValue(func() []Definition {
 	source := append(slices.Clone(canonicalDefinitions), metadataDefinitions...)
 	definitions := make([]Definition, len(source))
 	batchSelectors := BatchSelectors()
@@ -20,11 +32,11 @@ func All() []Definition {
 	}
 	slices.SortFunc(definitions, func(left, right Definition) int { return cmp.Compare(left.ID, right.ID) })
 	return definitions
-}
+})
 
 // Lookup finds one capability by an exact, case-sensitive stable ID.
 func Lookup(id string) (Definition, bool) {
-	definitions := All()
+	definitions := canonicalRegistry()
 	index, found := slices.BinarySearchFunc(definitions, id, func(definition Definition, target string) int {
 		return cmp.Compare(definition.ID, target)
 	})

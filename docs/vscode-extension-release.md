@@ -36,7 +36,10 @@ PATH and shell-completion changes are optional and initially unselected.
 Credentials and saved Tableau mutation consent are not changed by these actions.
 
 **Update TADX CLI** updates or repairs the shared user installation to the release verified for this extension.
-It does not replace a custom or package-manager executable, replace a development build, or downgrade a newer release.
+Guided updates recognize regular executables at the canonical shared user location, based on location rather than an ownership receipt.
+Preview rejects other locations, linked executables, development builds, and versions newer than the verified release.
+The installer rechecks the approved executable fingerprint or absence under its replacement lock.
+If another installation changes the target after preview, setup refuses replacement and requires a new preview.
 Update custom installations through their installation owner, then select their executable again.
 Older CLIs remain usable when they provide the required command contracts.
 
@@ -53,7 +56,8 @@ The compatibility check evaluates implementation, preview, and batch support for
 Saved mutation consent and administrator policy remain execution restrictions, not CLI version incompatibilities.
 Unavailable commands fail before launch while supported commands remain usable.
 **Reload Inventory** checks compatibility again after an external update.
-JSON parsing continues to validate each actual response because capability declarations alone cannot prove output compatibility.
+Inventory readers validate required response fields; generic operation replies are parsed as JSON objects and interpreted by status.
+Capability declarations alone cannot prove output compatibility.
 
 [`cli-release.json`](../extensions/vscode/cli-release.json) pins the guided setup version and archive SHA-256 for each supported platform.
 The bootstrapper checks both the release manifest and this independent archive pin before extraction or installation.
@@ -103,9 +107,9 @@ npm run test:released-cli
 npm run test:ui
 npm run test:host
 node scripts/test-host.mjs --version=1.95.3
-npm run release:check -- --tag extension-v0.2.0 --channel stable
-npm run release:package -- --tag extension-v0.2.0 --channel stable
-npm run release:verify -- --tag extension-v0.2.0 --channel stable
+npm run release:check -- --tag extension-v0.2.1 --channel stable
+npm run release:package -- --tag extension-v0.2.1 --channel stable
+npm run release:verify -- --tag extension-v0.2.1 --channel stable
 ```
 
 Use the current manifest version in the release commands.

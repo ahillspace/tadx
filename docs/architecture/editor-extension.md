@@ -64,7 +64,8 @@ Activation and **Reload Inventory** read the CLI version and complete capability
 Compatibility depends on required command behavior rather than a blanket minimum version; compatible older and development CLIs remain usable.
 The client checks each command against the current compatibility report before launch and preserves usable commands when others are unavailable.
 Saved site consent and managed policy remain separate execution restrictions.
-Actual response parsing still validates the JSON contract.
+Inventory readers validate required operation fields, and version/capability discovery validates its metadata.
+Generic mutation replies must be JSON objects; `Operations.operationState` interprets their status rather than applying a complete operation-specific schema.
 
 `Inventory.refresh` preserves the bulk editor's selected environment if it remains configured.
 Otherwise, it selects the CLI default or the sole configured environment.
@@ -96,7 +97,10 @@ Registered workspaces load on selection or expansion.
 Local kinds outside workbook, datasource, and flow remain visible but have no transfer actions.
 
 `Inventory.refresh` cancels superseded requests and rejects late results from older extension refresh generations.
-Repeated loads of one source share an in-flight promise.
+Ordinary loads of one source share its current in-flight promise.
+Forced source reloads start a new read and cancel the previous read for that source.
+Only the latest source read in the current global refresh generation can publish inventory or errors, including when an older client ignores cancellation.
+Disposal invalidates pending completions.
 That mechanism does not pin the separate CLI reads to one SQLite generation.
 `siteInventory` retains resource generation metadata but does not compare generation IDs before combining results.
 Concurrent cache refresh can therefore produce mixed observations without a consistency warning.
@@ -137,7 +141,8 @@ It does not migrate dependencies, credentials, schedules, or cross-site referenc
 
 **CLI Status and Setup** exposes executable selection, installation, and update or repair through native pickers and confirmations.
 The controller owns those interactions; `SetupService` owns the captured setup plan and bounded installer process.
-The service uses the normal shared user installation and refuses automatic replacement of custom or package-manager executables, development builds, or newer releases.
+The service classifies a regular executable at the canonical shared user location as managed; it does not consult installation receipts or package-manager ownership.
+Preview rejects other paths, linked executables, development builds, and versions newer than the selected release.
 Choosing a compatible existing executable remains available.
 
 [`cli-release.json`](../../extensions/vscode/cli-release.json) supplies an exact verified release and archive SHA-256 for the workspace host platform.
@@ -146,7 +151,10 @@ Those installers own GitHub downloads, manifest and independent pin verification
 The extension does not implement a second archive extraction or binary replacement path.
 
 Confirmation names the destination, version, Guidance changes, and optional PATH or completion changes.
-The captured executable fingerprint and resolved destination are checked again before installation.
+The captured executable fingerprint and resolved destination are checked again before the installer starts.
+The immutable plan retains the fingerprint verified with the inspected version, or an explicit absence requirement for a new installation.
+The installer checks that requirement after acquiring its replacement lock and before changing the executable or Guidance.
+A changed target rejects the installation and requires a new preview.
 An explicit acknowledgment covers other TADX commands and detached transfers because the extension cannot prove host-wide inactivity.
 The controller serializes interactive operations, and `TadxClient.withMaintenance` excludes this client's active and new CLI invocations during installation.
 The service filters inherited environment variables, limits time and output, and never claims confirmed rollback after interruption or failed verification.
@@ -174,6 +182,8 @@ There is no automatic status polling or write retry.
 Stopping that subprocess does not prove a detached worker or remote request stopped.
 Timeout, cancellation, output truncation, and malformed responses during execution produce an unknown outcome.
 `TadxError` retains a parsed document when available; `Operations.perform` keeps accepted identities from error envelopes.
+An unacknowledged CLI worker launch is displayed as unknown, with its receipt and recovery warning preserved.
+Explicit unknown effects retain confirmed item evidence; a confirmed rejection remains failed.
 Ordinary errors reach the native notification and output channel.
 
 Controller disposal releases panels, subscriptions, views, and current inventory or operation cancellation controllers.

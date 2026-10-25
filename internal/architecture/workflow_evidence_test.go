@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ahillspace/tadx/internal/architecture"
 	"github.com/ahillspace/tadx/internal/capability"
 )
 
@@ -413,30 +413,16 @@ func workbookPullSelection(t *testing.T, root string) (workflowSelection, []work
 	add("workflow tests", "tests the workbook artifact persistence contract", "internal/artifact/bundle_test.go", "internal/artifact/datasource_composition_test.go", "internal/artifact/datasource_test.go", "internal/artifact/lineage_test.go", "internal/artifact/pull_preview_test.go", "internal/artifact/workbook_internal_test.go", "internal/artifact/workbook_test.go")
 	add("workflow tests", "tests the optional background worker and operation recovery branch", "internal/app/publication_worker_e2e_test.go", "internal/app/publication_batch_worker_e2e_test.go", "internal/app/publication_status_recovery_e2e_test.go", "internal/app/pull_quiet_e2e_test.go")
 	terms := []string{"workbook.pull", "workbookpull", "WorkbookPull", "pullService", "include-pds", "nativeDownload"}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, relative := range allRepositoryGoFiles(t, root) {
+		if !strings.HasSuffix(relative, "_test.go") {
+			continue
 		}
-		if entry.IsDir() {
-			if path != root && ignoredWorkflowEvidenceDirectory(entry.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(entry.Name(), "_test.go") {
-			return nil
-		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		if err != nil {
-			return err
+			t.Fatalf("read workflow test %s: %v", relative, err)
 		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		relative = filepath.ToSlash(relative)
 		if strings.HasPrefix(relative, "internal/architecture/") {
-			return nil
+			continue
 		}
 		for _, term := range terms {
 			if strings.Contains(string(data), term) {
@@ -444,10 +430,6 @@ func workbookPullSelection(t *testing.T, root string) (workflowSelection, []work
 				break
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("scan workflow tests: %v", err)
 	}
 
 	trace := []workflowTraceEdge{
@@ -743,42 +725,16 @@ func renderWorkflowCatalogContext(evidence workflowCatalogEvidence) string {
 	return builder.String()
 }
 
-func ignoredWorkflowEvidenceDirectory(name string) bool {
-	switch name {
-	case ".git", ".tadx-explore", "archived", "jev-evals", "vendor", "workflow-evidence":
-		return true
-	default:
-		return false
-	}
-}
-
 func allRepositoryGoFiles(t *testing.T, root string) []string {
 	t.Helper()
-	var result []string
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if path != root && ignoredWorkflowEvidenceDirectory(entry.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(entry.Name(), ".go") {
-			return nil
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		result = append(result, filepath.ToSlash(relative))
-		return nil
-	})
+	sources, err := architecture.GoSourceFiles(root)
 	if err != nil {
 		t.Fatalf("scan repository Go files: %v", err)
 	}
-	sort.Strings(result)
+	var result []string
+	for _, source := range sources {
+		result = append(result, source.Path)
+	}
 	return result
 }
 
@@ -786,11 +742,16 @@ func packageIndexes(t *testing.T, root string, files []string) (map[string][]str
 	t.Helper()
 	packageFiles := make(map[string][]string)
 	packagePaths := make(map[string]string)
+	sources, err := architecture.GoSourceFiles(root)
+	if err != nil {
+		t.Fatalf("resolve repository modules: %v", err)
+	}
+	for _, source := range sources {
+		packagePaths[source.Path] = source.PackagePath
+	}
 	for _, path := range files {
-		directory := filepath.ToSlash(filepath.Dir(path))
-		packagePath := packageImportPath(directory)
+		packagePath := packagePaths[path]
 		packageFiles[packagePath] = append(packageFiles[packagePath], path)
-		packagePaths[path] = packagePath
 	}
 	for packagePath := range packageFiles {
 		sort.Strings(packageFiles[packagePath])

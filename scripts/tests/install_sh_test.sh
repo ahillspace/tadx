@@ -2,7 +2,7 @@
 
 set -eu
 
-temporary_parent=$(cd -- "${TMPDIR:-/tmp}" && pwd)
+temporary_parent=$(cd -- "${TMPDIR:-/tmp}" && pwd -P)
 test_root=$(mktemp -d "${temporary_parent}/tadx-installer-test.XXXXXXXX")
 cleanup() {
     case "$test_root" in
@@ -72,6 +72,7 @@ printf '%s\n' \
     '  esac' \
     '  shift' \
     'done' \
+    'if [ -n "${TADX_TEST_REPLACE_TARGET:-}" ] && [ "${pattern##*.}" = gz ]; then cp "$TADX_TEST_REPLACE_BINARY" "$TADX_TEST_REPLACE_TARGET"; fi' \
     'cp "${TADX_TEST_RELEASES}/${pattern}" "$destination"' > "${fake_bin}/gh"
 chmod 0755 "${fake_bin}/gh"
 
@@ -169,6 +170,72 @@ fi
 upper_pin=$(printf '%s' "$release_hash" | tr 'a-f' 'A-F')
 sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-sha256 "$upper_pin" --install-dir "${test_root}/pinned-install" --no-modify-path --no-completion >/dev/null
 cmp "${test_root}/pinned-install/tadx" "${test_root}/tadx"
+
+# A second installation can finish during this installer's download, before it takes the replacement lock.
+race_install="${test_root}/race-install"
+mkdir "$race_install"
+sed 's/tadx test 1.2.3/tadx test 9.0.0/' "${test_root}/tadx" > "${test_root}/newer-tadx"
+chmod 0755 "${test_root}/newer-tadx"
+if command -v sha256sum >/dev/null 2>&1; then
+    prior_hash=$(sha256sum "${test_root}/prior-tadx" | awk '{ print $1 }')
+else
+    prior_hash=$(shasum -a 256 "${test_root}/prior-tadx" | awk '{ print $1 }')
+fi
+cp "$TADX_TEST_GUIDANCE_LOG" "${test_root}/race-guidance-before"
+cp "${home_directory}/.profile" "${test_root}/race-profile-before"
+export TADX_TEST_REPLACE_TARGET="${race_install}/tadx"
+export TADX_TEST_REPLACE_BINARY="${test_root}/newer-tadx"
+for expected_current in "$prior_hash" absent; do
+    rm -f "${race_install}/tadx"
+    if [ "$expected_current" != absent ]; then cp "${test_root}/prior-tadx" "${race_install}/tadx"; fi
+    if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-sha256 "$release_hash" --expected-current-sha256 "$expected_current" --install-dir "$race_install" >"${test_root}/race-error" 2>&1; then
+        printf '%s\n' 'Installer replaced an executable created or changed during download.' >&2
+        exit 1
+    fi
+    if ! grep -Fq 'installation target changed after preview' "${test_root}/race-error"; then cat "${test_root}/race-error" >&2; exit 1; fi
+    cmp "${race_install}/tadx" "${test_root}/newer-tadx"
+    [ "$("${race_install}/tadx")" = 'tadx test 9.0.0' ]
+    cmp "$TADX_TEST_GUIDANCE_LOG" "${test_root}/race-guidance-before"
+    cmp "${home_directory}/.profile" "${test_root}/race-profile-before"
+    [ ! -e "${race_install}/.tadx-install.lock" ]
+done
+unset TADX_TEST_REPLACE_TARGET TADX_TEST_REPLACE_BINARY
+
+# A conflicting owner wins over a stale precondition: checking the executable must happen under the lock.
+mkdir "${race_install}/.tadx-install.lock"
+printf '%s %s\n' "$$" "$(uname -n)" > "${race_install}/.tadx-install.lock/owner"
+if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-current-sha256 "$prior_hash" --install-dir "$race_install" --no-modify-path --no-completion >"${test_root}/race-lock-error" 2>&1; then exit 1; fi
+grep -Fq 'Another installer is using this directory' "${test_root}/race-lock-error"
+rm -f "${race_install}/.tadx-install.lock/owner"
+rmdir "${race_install}/.tadx-install.lock"
+
+for invalid_current in '' not-a-digest ABC; do
+    if sh "${repository_root}/scripts/install.sh" --expected-current-sha256 "$invalid_current" --install-dir "$race_install" >"${test_root}/current-invalid" 2>&1; then exit 1; fi
+    grep -Fq -- '--expected-current-sha256 must be' "${test_root}/current-invalid"
+done
+if sh "${repository_root}/scripts/install.sh" uninstall --expected-current-sha256 absent --install-dir "$race_install" >"${test_root}/current-invalid" 2>&1; then exit 1; fi
+grep -Fq 'applies only to installation' "${test_root}/current-invalid"
+cmp "${race_install}/tadx" "${test_root}/newer-tadx"
+
+# Matching existing bytes and explicit absence both allow replacement; uppercase hashes are accepted.
+cp "${test_root}/prior-tadx" "${race_install}/tadx"
+upper_prior_hash=$(printf '%s' "$prior_hash" | tr 'a-f' 'A-F')
+sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-current-sha256 "$upper_prior_hash" --install-dir "$race_install" --no-modify-path --no-completion >/dev/null
+cmp "${race_install}/tadx" "${test_root}/tadx"
+rm "${race_install}/tadx"
+sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-current-sha256 absent --install-dir "$race_install" --no-modify-path --no-completion >/dev/null
+cmp "${race_install}/tadx" "${test_root}/tadx"
+
+# A redirected directory must not satisfy a captured fingerprint through another filesystem location.
+ln -s "$race_install" "${test_root}/redirected-install"
+if [ -L "${test_root}/redirected-install" ]; then
+    if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-current-sha256 "$release_hash" --install-dir "${test_root}/redirected-install" --no-modify-path --no-completion >"${test_root}/redirected-error" 2>&1; then exit 1; fi
+    grep -Fq 'installation directory is redirected by a link' "${test_root}/redirected-error"
+else
+    printf '%s\n' 'Directory link check skipped: this shell copies link targets instead of creating native links.'
+fi
+cmp "${race_install}/tadx" "${test_root}/tadx"
+
 export TADX_TEST_GUIDANCE_FAIL=1
 if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$install_directory" --no-modify-path --no-completion >"${test_root}/guidance-failure" 2>&1; then
     printf '%s\n' 'Guidance failure incorrectly succeeded.' >&2

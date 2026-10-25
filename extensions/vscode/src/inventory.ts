@@ -21,7 +21,8 @@ export class Inventory {
   filter = '';
   private generation = 0;
   private abort = new AbortController();
-  private readonly loading = new Map<string, Promise<void>>();
+  private disposed = false;
+  private readonly loading = new Map<string, { promise: Promise<void>; controller: AbortController }>();
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly client: InventoryClient, selected?: { site?: string; workspace?: string }) {
@@ -34,9 +35,17 @@ export class Inventory {
     return { dispose: () => this.listeners.delete(listener) };
   }
   changed(): void { for (const listener of this.listeners) listener(); }
-  dispose(): void { this.abort.abort(); this.listeners.clear(); }
+  dispose(): void {
+    this.disposed = true;
+    this.generation++;
+    this.abort.abort();
+    this.loading.clear();
+    this.busy = false;
+    this.listeners.clear();
+  }
 
   async refresh(): Promise<void> {
+    if (this.disposed) return;
     const generation = ++this.generation;
     this.abort.abort();
     this.abort = new AbortController();
@@ -81,35 +90,45 @@ export class Inventory {
     await this.loadWorkspace(name);
   }
   loadSite(alias: string, reload = false): Promise<void> {
-    if (!reload && this.sites.has(alias)) return Promise.resolve();
-    return this.load(`site:${alias}`, async signal => {
+    const key = `site:${alias}`;
+    if (!reload && this.sites.has(alias) && !this.loading.has(key)) return Promise.resolve();
+    return this.load(key, reload, async signal => {
       const inventory = await this.client.siteInventory(alias, signal);
       return () => this.sites.set(alias, inventory);
     });
   }
   loadWorkspace(name: string, reload = false): Promise<void> {
-    if (!reload && this.locals.has(name)) return Promise.resolve();
-    return this.load(`workspace:${name}`, async signal => {
+    const key = `workspace:${name}`;
+    if (!reload && this.locals.has(name) && !this.loading.has(key)) return Promise.resolve();
+    return this.load(key, reload, async signal => {
       const inventory = await this.client.workspaceInventory(name, signal);
       return () => this.locals.set(name, inventory);
     });
   }
-  private load(key: string, read: (signal: AbortSignal) => Promise<() => unknown>): Promise<void> {
+  private load(key: string, reload: boolean, read: (signal: AbortSignal) => Promise<() => unknown>): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     const existing = this.loading.get(key);
-    if (existing) return existing;
+    if (existing && !reload) return existing.promise;
+    existing?.controller.abort();
     const generation = this.generation;
-    const pending = read(this.abort.signal).then(commit => {
-      if (generation === this.generation) {
+    const controller = new AbortController();
+    const signal = AbortSignal.any([this.abort.signal, controller.signal]);
+    // Only the latest read for this source may publish, including when an old client ignores cancellation.
+    const current = (): boolean => generation === this.generation && this.loading.get(key)?.promise === pending;
+    const pending = read(signal).then(commit => {
+      if (current()) {
         commit();
         this.errors.delete(key);
       }
     }, error => {
-      if (generation === this.generation) this.errors.set(key, message(error));
+      if (current()) this.errors.set(key, message(error));
     }).finally(() => {
-      if (this.loading.get(key) === pending) this.loading.delete(key);
-      if (generation === this.generation) this.changed();
+      if (current()) {
+        this.loading.delete(key);
+        this.changed();
+      }
     });
-    this.loading.set(key, pending);
+    this.loading.set(key, { promise: pending, controller });
     return pending;
   }
 

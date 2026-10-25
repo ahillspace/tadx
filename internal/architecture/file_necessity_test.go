@@ -11,9 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/architecture"
 )
 
 // This inventory is deliberately opt-in: it is a repository-maintenance audit,
@@ -46,9 +49,8 @@ type fileNecessityEntry struct {
 	confidence     string
 }
 
-// These are the only non-test Go files currently outside the supported runtime
-// dependency closure. Keeping this list explicit makes a new orphan fail the
-// audit instead of silently becoming another unexplained file.
+// File-specific decisions supplement the reviewed tooling entry points below.
+// Files absent both runtime and tooling closures still require explicit review.
 var nonRuntimeProductionFiles = map[string]fileNecessityEntry{
 	"cmd/gencapdocs/main.go": {
 		category:       buildEssential,
@@ -95,14 +97,15 @@ func TestGoFilesHaveResponsibilityClassification(t *testing.T) {
 	root := repositoryRoot(t)
 	files := repositoryGoFiles(t, root)
 	runtimeFiles := runtimeFilesForSupportedTargets(t, root)
-	packages := goListModulePackages(t, root)
+	packages := goListModulePackages(t, root, files)
 	packageConsumers := packageConsumerIndex(packages)
+	toolingFiles := maintainedToolingFiles(t, root)
 	classifications := make([]fileClassification, 0, len(files))
 	counts := make(map[fileNecessityCategory]int)
 	unreviewedFiles := make([]string, 0)
 
-	for path := range files {
-		classification := classifyFile(path, root, runtimeFiles, packageConsumers)
+	for path, source := range files {
+		classification := classifyFile(path, source.PackagePath, root, runtimeFiles, packageConsumers, toolingFiles)
 		classifications = append(classifications, classification)
 		counts[classification.category]++
 		if classification.category == uncertain {
@@ -138,10 +141,55 @@ func TestGoFilesHaveResponsibilityClassification(t *testing.T) {
 	}
 }
 
-func classifyFile(path, root string, runtimeFiles map[string][]string, packageConsumers map[string][]string) fileClassification {
+func TestFileClassificationKeepsUnownedPackagesVisible(t *testing.T) {
+	root := t.TempDir()
+	for _, path := range []string{"tests/live/unowned/orphan.go", "extensions/new-tool/main.go"} {
+		got := classifyFile(path, "example.test/unowned", root, nil, nil, nil)
+		if got.category != uncertain || got.role != "unclassified production source" {
+			t.Fatalf("unowned source %s accepted as %#v", path, got)
+		}
+	}
+	path := "extensions/host/main.go"
+	entry := fileNecessityEntry{category: helpfulNonEssential, role: "qualification tooling", consumers: []string{"host test"}}
+	got := classifyFile(path, "example.test/host", root, nil, nil, map[string]fileNecessityEntry{path: entry})
+	if got.packagePath != "example.test/host" || got.category != helpfulNonEssential || !slices.Equal(got.consumers, entry.consumers) {
+		t.Fatalf("nested tooling classification = %#v", got)
+	}
+}
+
+func TestMaintainedToolingClosureRejectsUnreferencedPackages(t *testing.T) {
+	root := moduleFixture(t)
+	for _, path := range []string{"tests/live/runner/main.go", "tests/live/generate/main.go"} {
+		writeGo(t, root, path, "package main\nimport _ \"example.test/tadx/tests/live/harness\"\nfunc main() {}\n")
+	}
+	writeGo(t, root, "tests/live/harness/check.go", "package harness\n")
+	writeGo(t, root, "tests/live/unowned/orphan.go", "package unowned\n")
+	writeGo(t, root, "extensions/vscode/tests/fixtures/host/go.mod", "module example.test/host\n\ngo 1.26\n")
+	writeGo(t, root, "extensions/vscode/tests/fixtures/host/main.go", "package main\nimport _ \"example.test/host/helper\"\nfunc main() {}\n")
+	writeGo(t, root, "extensions/vscode/tests/fixtures/host/helper/helper.go", "package helper\n")
+	writeGo(t, root, "extensions/vscode/tests/fixtures/host/unowned/orphan.go", "package unowned\n")
+	files := repositoryGoFiles(t, root)
+	tooling := maintainedToolingFiles(t, root)
+	for path, source := range files {
+		got := classifyFile(path, source.PackagePath, root, nil, nil, tooling)
+		want := helpfulNonEssential
+		if strings.Contains(path, "/unowned/") {
+			want = uncertain
+		}
+		if got.category != want {
+			t.Errorf("%s classified %s, want %s", path, got.category, want)
+		}
+	}
+	consumers := packageConsumerIndex(goListModulePackages(t, root, files))
+	if !slices.Equal(consumers["example.test/host/helper"], []string{"example.test/host"}) {
+		t.Fatalf("nested-module consumer identity = %v", consumers)
+	}
+}
+
+func classifyFile(path, packagePath, root string, runtimeFiles map[string][]string, packageConsumers map[string][]string, toolingFiles map[string]fileNecessityEntry) fileClassification {
 	classification := fileClassification{
 		path:        path,
-		packagePath: packagePathForFile(path),
+		packagePath: packagePath,
 		lines:       physicalLineCount(filepath.Join(root, filepath.FromSlash(path))),
 		confidence:  "medium",
 	}
@@ -170,6 +218,15 @@ func classifyFile(path, root string, runtimeFiles map[string][]string, packageCo
 		classification.responsibility = "supports supported TADX user behavior or its platform runtime"
 		classification.reason = "compiled into cmd/tadx for at least one supported release target"
 		classification.confidence = "high"
+		return classification
+	}
+	if entry, ok := toolingFiles[path]; ok {
+		classification.category = entry.category
+		classification.role = entry.role
+		classification.consumers = entry.consumers
+		classification.responsibility = entry.responsibility
+		classification.reason = entry.reason
+		classification.confidence = entry.confidence
 		return classification
 	}
 	classification.category = uncertain
@@ -202,42 +259,17 @@ type goListError struct {
 	Err string
 }
 
-func repositoryGoFiles(t *testing.T, root string) map[string]struct{} {
+func repositoryGoFiles(t *testing.T, root string) map[string]architecture.GoSourceFile {
 	t.Helper()
-	files := make(map[string]struct{})
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if path != root && ignoredInventoryDirectory(entry.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(entry.Name(), ".go") {
-			return nil
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		files[filepath.ToSlash(relative)] = struct{}{}
-		return nil
-	})
+	sources, err := architecture.GoSourceFiles(root)
 	if err != nil {
 		t.Fatalf("scan repository Go files: %v", err)
 	}
-	return files
-}
-
-func ignoredInventoryDirectory(name string) bool {
-	switch name {
-	case ".git", ".tadx-explore", "archived", "jev-evals", "vendor":
-		return true
-	default:
-		return false
+	files := make(map[string]architecture.GoSourceFile, len(sources))
+	for _, source := range sources {
+		files[source.Path] = source
 	}
+	return files
 }
 
 func runtimeFilesForSupportedTargets(t *testing.T, root string) map[string][]string {
@@ -284,9 +316,69 @@ func goListTADXDependencies(t *testing.T, root, goos string) []goListPackage {
 	}, "-deps", "./cmd/tadx")
 }
 
-func goListModulePackages(t *testing.T, root string) []goListPackage {
+// Review concrete consumers, then let the Go dependency graph identify their
+// source. A new sibling package is not accepted merely for living under tests.
+func maintainedToolingFiles(t *testing.T, root string) map[string]fileNecessityEntry {
 	t.Helper()
-	return runGoList(t, root, map[string]string{}, "./...")
+	result := make(map[string]fileNecessityEntry)
+	for _, tooling := range []struct {
+		directory      string
+		entryPoints    []string
+		responsibility string
+		consumer       string
+	}{
+		{".", []string{"./tests/live/runner", "./tests/live/generate"}, "runs and generates the opt-in independent live CLI qualification suite", "go run ./tests/live/runner; go generate ./tests/live"},
+		{"extensions/vscode/tests/fixtures/host", []string{"."}, "supplies a deterministic CLI process for extension host integration tests", "npm run test:host in extensions/vscode"},
+	} {
+		for _, goos := range []string{"windows", "linux", "darwin"} {
+			packages := runGoList(t, filepath.Join(root, tooling.directory), map[string]string{"GOOS": goos, "GOARCH": "amd64", "CGO_ENABLED": "0", "GOWORK": "off"}, append([]string{"-deps"}, tooling.entryPoints...)...)
+			for _, pkg := range packages {
+				for _, name := range append(append([]string{}, pkg.GoFiles...), pkg.CgoFiles...) {
+					relative, err := filepath.Rel(root, filepath.Join(pkg.Dir, name))
+					if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+						continue
+					}
+					path := filepath.ToSlash(relative)
+					entry := result[path]
+					entry.category = helpfulNonEssential
+					entry.role = "qualification tooling"
+					entry.responsibility = tooling.responsibility
+					entry.reason = "compiled dependency of an explicitly maintained qualification entry point"
+					entry.confidence = "high"
+					if !slices.Contains(entry.consumers, tooling.consumer) {
+						entry.consumers = append(entry.consumers, tooling.consumer)
+					}
+					result[path] = entry
+				}
+			}
+		}
+	}
+	return result
+}
+
+func goListModulePackages(t *testing.T, root string, files map[string]architecture.GoSourceFile) []goListPackage {
+	t.Helper()
+	byModule := make(map[string]map[string]bool)
+	for _, source := range files {
+		if byModule[source.ModuleDirectory] == nil {
+			byModule[source.ModuleDirectory] = make(map[string]bool)
+		}
+		directory, err := filepath.Rel(source.ModuleDirectory, filepath.Dir(source.Path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		byModule[source.ModuleDirectory]["./"+filepath.ToSlash(directory)] = true
+	}
+	var result []goListPackage
+	for module, directories := range byModule {
+		var args []string
+		for directory := range directories {
+			args = append(args, directory)
+		}
+		sort.Strings(args)
+		result = append(result, runGoList(t, filepath.Join(root, module), map[string]string{"GOWORK": "off"}, args...)...)
+	}
+	return result
 }
 
 func runGoList(t *testing.T, root string, overrides map[string]string, args ...string) []goListPackage {
@@ -320,9 +412,13 @@ func runGoList(t *testing.T, root string, overrides map[string]string, args ...s
 
 func packageConsumerIndex(packages []goListPackage) map[string][]string {
 	consumers := make(map[string]map[string]struct{})
+	owned := make(map[string]bool, len(packages))
+	for _, pkg := range packages {
+		owned[pkg.ImportPath] = true
+	}
 	for _, pkg := range packages {
 		for _, imported := range append(append(append([]string{}, pkg.Imports...), pkg.TestImports...), pkg.XTestImports...) {
-			if !isTADXImport(imported) || imported == pkg.ImportPath {
+			if !owned[imported] || imported == pkg.ImportPath {
 				continue
 			}
 			if consumers[imported] == nil {
@@ -356,15 +452,7 @@ func physicalLineCount(path string) int {
 	return lines
 }
 
-func packagePathForFile(path string) string {
-	directory := filepath.ToSlash(filepath.Dir(path))
-	if directory == "." {
-		return moduleImportPath
-	}
-	return moduleImportPath + "/" + directory
-}
-
-func productionFileCount(files map[string]struct{}) int {
+func productionFileCount(files map[string]architecture.GoSourceFile) int {
 	count := 0
 	for path := range files {
 		if !strings.HasSuffix(path, "_test.go") {
@@ -374,7 +462,7 @@ func productionFileCount(files map[string]struct{}) int {
 	return count
 }
 
-func testFileCount(files map[string]struct{}) int {
+func testFileCount(files map[string]architecture.GoSourceFile) int {
 	return len(files) - productionFileCount(files)
 }
 

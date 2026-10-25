@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -57,9 +58,45 @@ test('installation requires Guidance and detached-transfer consent and defaults 
     assert.equal(installed.version, release.version);
     assert.equal(installed.executablePath, target);
     assert.ok(calls[0]!.args.includes(release.archiveSha256));
+    const precondition = calls[0]!.args.indexOf(process.platform === 'win32' ? '-ExpectedCurrentSHA256' : '--expected-current-sha256');
+    assert.equal(calls[0]!.args[precondition + 1], 'absent');
     assert.ok(calls[0]!.args.includes(process.platform === 'win32' ? '-NoModifyPath' : '--no-modify-path'));
     assert.ok(calls[0]!.args.includes(process.platform === 'win32' ? '-NoCompletion' : '--no-completion'));
     await assert.rejects(f.service.execute(plan, consent), /new setup preview/);
+  } finally { await f.cleanup(); }
+});
+
+test('update passes the inspected executable fingerprint to the native replacement guard', async () => {
+  let target = '';
+  let guardedHash: string | undefined;
+  const f = await fixture(async (_executable, args) => {
+    if (args[0] === 'version') return { stdout: JSON.stringify({ version: release.version }), stderr: '', exitCode: 0 };
+    const flag = process.platform === 'win32' ? '-ExpectedCurrentSHA256' : '--expected-current-sha256';
+    guardedHash = args[args.indexOf(flag) + 1];
+    await writeFile(target, 'replacement binary');
+    return { stdout: '', stderr: '', exitCode: 0 };
+  });
+  try {
+    target = (await f.service.prepareInstall(release)).executablePath;
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, 'inspected binary');
+    const plan = await f.service.prepareUpdate(target, release);
+    await f.service.execute(plan, consent);
+    assert.equal(guardedHash, createHash('sha256').update('inspected binary').digest('hex'));
+  } finally { await f.cleanup(); }
+});
+
+test('update rejects executable bytes changed while reporting their version', async () => {
+  let target = '';
+  const f = await fixture(async () => {
+    await writeFile(target, 'changed during inspection');
+    return { stdout: JSON.stringify({ version: '0.9.0' }), stderr: '', exitCode: 0 };
+  });
+  try {
+    target = (await f.service.prepareInstall(release)).executablePath;
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, 'original binary');
+    await assert.rejects(f.service.prepareUpdate(target, release), /changed during inspection/);
   } finally { await f.cleanup(); }
 });
 
@@ -143,6 +180,9 @@ test('installer argv preserves exact values and only requested profile changes',
   assert.equal(unix.executable, '/bin/sh');
   assert.ok(unix.args.includes('/home/user/bin $(literal)'));
   assert.ok(unix.args.includes('--expected-sha256'));
+  assert.ok(installerInvocation('win32', 'extension', 'directory', release, consent, 'absent').args.includes('-ExpectedCurrentSHA256'));
+  assert.ok(installerInvocation('linux', 'extension', 'directory', release, consent, 'a'.repeat(64)).args.includes('--expected-current-sha256'));
+  assert.throws(() => installerInvocation('linux', 'extension', 'directory', release, consent, ''), /precondition/);
 });
 
 test('setup environment excludes arbitrary and conventional Tableau secrets but retains GitHub access', () => {

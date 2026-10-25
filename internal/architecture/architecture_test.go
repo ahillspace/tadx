@@ -177,6 +177,46 @@ func TestCheckSourceExportPreservesUnknownPackages(t *testing.T) {
 	})
 }
 
+func TestGoSourceFilesPreserveModuleOwnershipAndIgnoreLocalBuilds(t *testing.T) {
+	root := moduleFixture(t)
+	git := func(args ...string) {
+		t.Helper()
+		command := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	git("init", "--quiet")
+	writeGo(t, root, ".gitignore", "/dist/\nnode_modules/\n")
+	writeGo(t, root, "internal/tool/tool.go", "package tool\n")
+	writeGo(t, root, "extensions/host/go.mod", "module example.test/host\n\ngo 1.26\n")
+	writeGo(t, root, "extensions/host/main.go", "package main\n")
+	writeGo(t, root, "extensions/host/nested/go.mod", "module example.test/nested\n\ngo 1.26\n")
+	writeGo(t, root, "extensions/host/nested/check/check_test.go", "package check\n")
+	writeGo(t, root, "unowned/new.go", "package unowned\n")
+	git("add", ".")
+	want := []architecture.GoSourceFile{
+		{Path: "extensions/host/main.go", PackagePath: "example.test/host", ModuleDirectory: "extensions/host"},
+		{Path: "extensions/host/nested/check/check_test.go", PackagePath: "example.test/nested/check", ModuleDirectory: "extensions/host/nested"},
+		{Path: "internal/tool/tool.go", PackagePath: "example.test/tadx/internal/tool", ModuleDirectory: "."},
+		{Path: "unowned/new.go", PackagePath: "example.test/tadx/unowned", ModuleDirectory: "."},
+	}
+	check := func() {
+		t.Helper()
+		got, err := architecture.GoSourceFiles(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("source ownership = %#v, want %#v", got, want)
+		}
+	}
+	check()
+	writeGo(t, root, "dist/snapshot/invalid.go", "not Go source")
+	writeGo(t, root, "extensions/node_modules/dependency/invalid.go", "not Go source")
+	check()
+}
+
 func TestCheckFollowsExplicitImportsIntoGoExcludedDirectories(t *testing.T) {
 	for _, directory := range []string{"_helper", ".hidden"} {
 		t.Run(directory, func(t *testing.T) {

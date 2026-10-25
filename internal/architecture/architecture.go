@@ -55,6 +55,30 @@ type sourceInventory struct {
 	files      []string
 	modulePath string
 	imports    map[string][]string
+	goFiles    []GoSourceFile
+}
+
+// GoSourceFile identifies maintained Go source and the module that owns it.
+type GoSourceFile struct {
+	Path            string
+	PackagePath     string
+	ModuleDirectory string
+}
+
+// GoSourceFiles uses the same source selection and module boundaries as Check.
+// Nested modules remain visible to maintenance tools without inheriting the
+// parent module's import path or architecture rules.
+func GoSourceFiles(root string) ([]GoSourceFile, error) {
+	inventory, err := inspectSources(root)
+	if err != nil {
+		return nil, err
+	}
+	return inventory.goFiles, nil
+}
+
+type sourceModule struct {
+	directory string
+	path      string
 }
 
 // inspectSources owns both source selection and explicit local-import closure.
@@ -75,7 +99,7 @@ func inspectSources(root string) (*sourceInventory, error) {
 		return nil, err
 	}
 	inventory := &sourceInventory{modulePath: modulePath, imports: make(map[string][]string)}
-	modules := map[string]bool{".": true}
+	modules := map[string]sourceModule{".": {directory: ".", path: modulePath}}
 	queued := make(map[string]bool, len(files))
 	for _, file := range files {
 		queued[file] = true
@@ -86,11 +110,11 @@ func inspectSources(root string) (*sourceInventory, error) {
 		if !strings.HasSuffix(relative, ".go") || strings.HasSuffix(relative, "_test.go") {
 			continue
 		}
-		owned, err := rootModuleDirectory(source, filepath.ToSlash(filepath.Dir(relative)), modules)
+		module, err := moduleForDirectory(source, filepath.ToSlash(filepath.Dir(relative)), modules)
 		if err != nil {
 			return nil, err
 		}
-		if !owned {
+		if module.directory != "." {
 			continue
 		}
 		imports, err := fileImports(source, relative)
@@ -118,6 +142,25 @@ func inspectSources(root string) (*sourceInventory, error) {
 	}
 	slices.Sort(files)
 	inventory.files = files
+	for _, relative := range files {
+		if !strings.HasSuffix(relative, ".go") {
+			continue
+		}
+		directory := filepath.ToSlash(filepath.Dir(relative))
+		module, err := moduleForDirectory(source, directory, modules)
+		if err != nil {
+			return nil, err
+		}
+		packageDirectory, err := filepath.Rel(module.directory, directory)
+		if err != nil {
+			return nil, err
+		}
+		packagePath := module.path
+		if packageDirectory != "." {
+			packagePath += "/" + filepath.ToSlash(packageDirectory)
+		}
+		inventory.goFiles = append(inventory.goFiles, GoSourceFile{Path: relative, PackagePath: packagePath, ModuleDirectory: module.directory})
+	}
 	return inventory, nil
 }
 
@@ -242,33 +285,32 @@ func firstPartyPaths(root string) ([]string, error) {
 }
 
 // Nested modules own their import constraints, not the parent module's layers.
-func rootModuleDirectory(root *os.Root, directory string, modules map[string]bool) (bool, error) {
-	if owned, ok := modules[directory]; ok {
-		return owned, nil
+func moduleForDirectory(root *os.Root, directory string, modules map[string]sourceModule) (sourceModule, error) {
+	if module, ok := modules[directory]; ok {
+		return module, nil
 	}
 	parent := filepath.ToSlash(filepath.Dir(directory))
-	owned, err := rootModuleDirectory(root, parent, modules)
+	module, err := moduleForDirectory(root, parent, modules)
 	if err != nil {
-		return false, err
+		return sourceModule{}, err
 	}
-	if owned {
-		moduleFile := filepath.Join(filepath.FromSlash(directory), "go.mod")
-		info, err := root.Lstat(moduleFile)
-		switch {
-		case err == nil:
-			if !info.Mode().IsRegular() {
-				return false, fmt.Errorf("nested module %s/go.mod must be a regular file", directory)
-			}
-			if _, err := readModulePath(root, moduleFile); err != nil {
-				return false, fmt.Errorf("inspect nested module %s: %w", directory, err)
-			}
-			owned = false
-		case !errors.Is(err, os.ErrNotExist):
-			return false, fmt.Errorf("inspect nested module %s: %w", directory, err)
+	moduleFile := filepath.Join(filepath.FromSlash(directory), "go.mod")
+	info, err := root.Lstat(moduleFile)
+	switch {
+	case err == nil:
+		if !info.Mode().IsRegular() {
+			return sourceModule{}, fmt.Errorf("nested module %s/go.mod must be a regular file", directory)
 		}
+		modulePath, err := readModulePath(root, moduleFile)
+		if err != nil {
+			return sourceModule{}, fmt.Errorf("inspect nested module %s: %w", directory, err)
+		}
+		module = sourceModule{directory: directory, path: modulePath}
+	case !errors.Is(err, os.ErrNotExist):
+		return sourceModule{}, fmt.Errorf("inspect nested module %s: %w", directory, err)
 	}
-	modules[directory] = owned
-	return owned, nil
+	modules[directory] = module
+	return module, nil
 }
 
 // Explicit imports can reach directories omitted by Go's ./... traversal.

@@ -2,7 +2,7 @@
   "name": "tadx",
   "displayName": "TADX Artifact Explorer",
   "description": "Browse Tableau site inventory and local TADX workspaces, then download and upload artifacts.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "ahillspace",
   "private": true,
   "license": "Apache-2.0",
