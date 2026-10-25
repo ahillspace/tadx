@@ -1,0 +1,7 @@
+{
+  "output": { "operation_id": "operation-1", "status": "partial", "items": [
+    { "status": "succeeded", "workbook_luid": "wb-1" }, { "status": "failed" }
+  ] },
+  "error": { "id": "operation.failed", "kind": "operation", "summary": "One item failed.",
+    "phase": "mutation", "outcome": "partial", "retryable": false }
+}

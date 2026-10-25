@@ -133,15 +133,52 @@ sh "${repository_root}/scripts/install.sh" install --version latest --install-di
 assert_policy_preserved
 [ -x "${install_directory}/tadx" ]
 grep -Fq 'agent install --target auto' "$TADX_TEST_GUIDANCE_LOG"
+sed 's/tadx test 1.2.3/tadx test 0.9.0/' "${test_root}/tadx" > "${install_directory}/tadx"
+cp "${install_directory}/tadx" "${test_root}/prior-tadx"
+if cmp -s "${test_root}/prior-tadx" "${test_root}/tadx"; then
+    printf '%s\n' 'Rollback requires distinct prior and release binary bytes.' >&2
+    exit 1
+fi
+[ "$("${install_directory}/tadx")" = 'tadx test 0.9.0' ]
+# A valid published checksum cannot replace the caller's independently supplied pin.
+cp "${home_directory}/.profile" "${test_root}/pin-profile-before"
+cp "$TADX_TEST_GUIDANCE_LOG" "${test_root}/pin-guidance-before"
+wrong_pin='0000000000000000000000000000000000000000000000000000000000000000'
+if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-sha256 "$wrong_pin" --install-dir "$install_directory" >"${test_root}/pin-failure" 2>&1; then
+    printf '%s\n' 'An archive different from the caller pin was installed.' >&2
+    exit 1
+fi
+grep -Fq 'expected SHA-256' "${test_root}/pin-failure"
+cmp "${install_directory}/tadx" "${test_root}/prior-tadx"
+cmp "${home_directory}/.profile" "${test_root}/pin-profile-before"
+cmp "$TADX_TEST_GUIDANCE_LOG" "${test_root}/pin-guidance-before"
+assert_policy_preserved
+for pin_version in latest 1.2.3; do
+    pin_value=$release_hash
+    [ "$pin_version" != 1.2.3 ] || pin_value='not-a-digest'
+    if sh "${repository_root}/scripts/install.sh" --version "$pin_version" --expected-sha256 "$pin_value" --install-dir "$install_directory" >"${test_root}/pin-invalid" 2>&1; then
+        printf '%s\n' 'An invalid or unversioned caller pin was accepted.' >&2
+        exit 1
+    fi
+    cmp "${install_directory}/tadx" "${test_root}/prior-tadx"
+done
+if sh "${repository_root}/scripts/install.sh" --expected-sha256 "$release_hash" --install-dir "$install_directory" >"${test_root}/pin-no-version" 2>&1; then
+    printf '%s\n' 'A caller pin without an explicit version was accepted.' >&2
+    exit 1
+fi
+upper_pin=$(printf '%s' "$release_hash" | tr 'a-f' 'A-F')
+sh "${repository_root}/scripts/install.sh" --version 1.2.3 --expected-sha256 "$upper_pin" --install-dir "${test_root}/pinned-install" --no-modify-path --no-completion >/dev/null
+cmp "${test_root}/pinned-install/tadx" "${test_root}/tadx"
 export TADX_TEST_GUIDANCE_FAIL=1
-if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$install_directory" --no-modify-path --no-completion >/dev/null 2>&1; then
+if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$install_directory" --no-modify-path --no-completion >"${test_root}/guidance-failure" 2>&1; then
     printf '%s\n' 'Guidance failure incorrectly succeeded.' >&2
     exit 1
 fi
 unset TADX_TEST_GUIDANCE_FAIL
+grep -Fq 'Guidance installation failed.' "${test_root}/guidance-failure"
 assert_policy_preserved
-[ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
-[ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
+cmp "${install_directory}/tadx" "${test_root}/prior-tadx"
+[ "$("${install_directory}/tadx")" = 'tadx test 0.9.0' ]
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile")" -eq 1 ]
 grep -Fq 'auth status --hostname github.com' "$TADX_TEST_GH_LOG"
 grep -Fq 'release download' "$TADX_TEST_GH_LOG"

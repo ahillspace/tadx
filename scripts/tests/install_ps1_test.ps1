@@ -38,7 +38,8 @@ try {
 
     $fakeSource = @'
 package main
-import ("os"; "strings"; "os/exec")
+import ("fmt"; "os"; "strings"; "os/exec")
+var fixtureVersion = "1.2.3"
 func main() {
  if len(os.Args)>1 && os.Args[1]=="selfupdate" {
   c:=exec.Command("powershell.exe",os.Args[2:]...)
@@ -50,7 +51,9 @@ func main() {
   f,e:=os.OpenFile(os.Getenv("TADX_TEST_GUIDANCE_LOG"),os.O_APPEND|os.O_CREATE|os.O_WRONLY,0600); if e!=nil {panic(e)}
   _,_=f.WriteString(strings.Join(os.Args[1:]," ")+"\n"); _=f.Close()
   if os.Getenv("TADX_TEST_GUIDANCE_FAIL")=="1" {os.Exit(7)}
+  return
  }
+ fmt.Println("tadx test " + fixtureVersion)
 }
 '@
     $fakeSourcePath = Join-Path $testRoot 'fake.go'
@@ -150,14 +153,49 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     & (Join-Path $installDirectory 'tadx.exe') selfupdate -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion
     Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not update while the old executable remained running.'
     Assert-PolicyPreserved
+    & go build -ldflags '-X main.fixtureVersion=0.9.0' -o (Join-Path $installDirectory 'tadx.exe') $fakeSourcePath
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not build the distinct prior binary.'
     $originalBinaryHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash
+    $releaseBinaryHash = (Get-FileHash -LiteralPath (Join-Path $payloadDirectory 'tadx.exe')).Hash
+    Assert-True -Condition ($originalBinaryHash -cne $releaseBinaryHash) -Message 'Rollback requires distinct prior and release binary bytes.'
+    Assert-True -Condition ((& (Join-Path $installDirectory 'tadx.exe')) -ceq 'tadx test 0.9.0') -Message 'Prior binary fixture has the wrong version.'
+    # A caller pin must still protect against a changed archive with a matching published manifest.
+    $pinProfileBefore = [IO.File]::ReadAllText($completionProfile)
+    $pinGuidanceBefore = [IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG)
+    $pinFailed = $false
+    try { & $installer -Version 1.2.3 -ExpectedSHA256 ('0' * 64) -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile } catch {
+        $pinFailed = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('expected SHA-256')) -Message 'Caller pin failed for a reason other than the archive digest mismatch.'
+    }
+    Assert-True -Condition $pinFailed -Message 'An archive different from the caller pin was installed.'
+    Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -ceq $originalBinaryHash) -Message 'Caller pin failure replaced the prior binary.'
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -ceq $pinProfileBefore) -Message 'Caller pin failure changed the completion profile.'
+    Assert-True -Condition ([IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG) -ceq $pinGuidanceBefore) -Message 'Caller pin failure invoked Guidance installation.'
+    Assert-PolicyPreserved
+    foreach ($pinCase in @(
+        @{ Version = '1.2.3'; ExpectedSHA256 = 'not-a-digest' },
+        @{ Version = 'latest'; ExpectedSHA256 = $hash },
+        @{ ExpectedSHA256 = $hash }
+    )) {
+        $pinFailed = $false
+        try { & $installer @pinCase -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch { $pinFailed = $true }
+        Assert-True -Condition $pinFailed -Message 'An invalid or unversioned caller pin was accepted.'
+        Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -ceq $originalBinaryHash) -Message 'Invalid pin options changed the prior binary.'
+    }
+    $pinnedInstallDirectory = Join-Path $testRoot 'pinned-install'
+    & $installer -Version 1.2.3 -ExpectedSHA256 $hash.ToUpperInvariant() -InstallDir $pinnedInstallDirectory -NoModifyPath -NoCompletion
+    Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $pinnedInstallDirectory 'tadx.exe')).Hash -ceq $releaseBinaryHash) -Message 'A valid caller pin did not install the verified release.'
     $env:TADX_TEST_GUIDANCE_FAIL = '1'
     $failed = $false
-    try { & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch { $failed = $true }
+    try { & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch {
+        $failed = $true
+        Assert-True -Condition ($_.Exception.Message.Contains('Guidance installation failed.')) -Message 'Rollback fixture failed before Guidance installation.'
+    }
     Remove-Item Env:TADX_TEST_GUIDANCE_FAIL
     Assert-True -Condition $failed -Message 'Guidance failure was reported as successful installation.'
     Assert-PolicyPreserved
     Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -eq $originalBinaryHash) -Message 'Guidance failure did not restore the prior binary.'
+    Assert-True -Condition ((& (Join-Path $installDirectory 'tadx.exe')) -ceq 'tadx test 0.9.0') -Message 'Guidance failure retained the release binary.'
     $firstProfile = [IO.File]::ReadAllText($completionProfile)
     $parseTokens = $null
     $parseErrors = $null

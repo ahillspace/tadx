@@ -1044,8 +1044,9 @@ func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
 			defer server.Close()
 
 			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			client.SetPollPolicy(time.Millisecond, 20*time.Millisecond)
-			result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+			// Protocol rejection must not depend on TLS scheduling under suite load.
+			client.SetPollPolicy(time.Millisecond, 5*time.Second)
+			result, err := client.Publish(t.Context(), tableauworkbook.PublishRequest{
 				Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
 			})
 			if err == nil || !strings.Contains(err.Error(), test.errorText) {
