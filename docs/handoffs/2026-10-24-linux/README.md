@@ -4,7 +4,7 @@ The original archive captures the VS Code extension work and related repository 
 These working handoff documents also record the subsequent scope decisions from 2026-10-25.
 Start with [the agent prompt](START-HERE.md), [the context](CONTEXT.md), [requested capabilities](REQUESTED-CAPABILITIES.md), and [the validation record](VALIDATION.md).
 The current build covers repository integration, versioning, CLI compatibility, release packaging, release automation, upgrade guidance, and guided CLI installation and update actions.
-The working source prepares extension `0.2.0`; the [release guide](../../vscode-extension-release.md) owns its versioning, setup, and publication procedures.
+The working source prepares extension `0.2.1`; the [release guide](../../vscode-extension-release.md) owns its versioning, setup, and publication procedures.
 The configuration-page backlog remains deferred to Linux development.
 
 ## Continue through Git

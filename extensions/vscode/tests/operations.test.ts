@@ -144,6 +144,66 @@ test('unknown execution outcome preserves an accepted receipt and avoids automat
   assert.deepEqual(h.operations.entries[0]?.result, receipt);
 });
 
+for (const action of ['download', 'upload'] as const) {
+  test(`${action} preserves unacknowledged worker startup as unknown through the public CLI parser`, async () => {
+    let executions = 0;
+    const receipt = { output: { operation_id: 'worker-unacknowledged', operation: `datasource.${action === 'upload' ? 'publish' : 'pull'}`, status: 'starting' },
+      error: { id: 'operation.worker.start_unknown', kind: 'operation', summary: 'Worker startup was not confirmed. Check this operation before submitting again.',
+        retryable: false, corrective_action: 'Use the returned operation ID to check status. Do not repeat the operation to recover its result.' } };
+    const client = new TadxClient('synthetic-cli', { runner: async (_executable, args) => {
+      if (args.includes('--preview')) return { stdout: JSON.stringify({ status: 'preview' }), stderr: '', exitCode: 0 };
+      executions++;
+      return { stdout: JSON.stringify(receipt), stderr: '', exitCode: 1 };
+    } });
+    const shown: Parameters<OperationUI['display']>[0][] = [];
+    const operations = new Operations(client, { confirm: async () => true, display: result => shown.push(result), changed() {} });
+    await assert.rejects(action === 'upload' ? operations.upload(upload, 'Ops') : operations.download(download), TadxError);
+    assert.equal(executions, 1);
+    assert.equal(operations.entries[0]?.state, 'unknown');
+    assert.equal(operations.entries[0]?.operationId, 'worker-unacknowledged');
+    assert.equal(operations.receipts().length, 1);
+    assert.deepEqual(operations.entries[0]?.result, receipt);
+    assert.match(shown.at(-1)?.summary ?? '', /outcome is unknown/);
+    assert.equal(operations.busy, false);
+  });
+}
+
+for (const scenario of [
+  { name: 'explicit unknown effect without a receipt', document: { error: { outcome: 'unknown' } }, expected: 'unknown' },
+  { name: 'explicit unknown effect with partial evidence', document: { output: { operation_id: 'op-1', status: 'partial', items: [{ status: 'succeeded' }] }, error: { outcome: 'unknown' } }, expected: 'unknown' },
+  { name: 'explicit unknown receipt status', document: { output: { status: 'unknown' }, error: { summary: 'Verification unavailable.' } }, expected: 'unknown' },
+  { name: 'confirmed rejection with a retained requested operation', document: { output: { operation_id: 'op-1', status: 'starting' }, error: { outcome: 'not_attempted' } }, expected: 'failed' },
+  { name: 'ordinary validation rejection', document: { error: { summary: 'The project does not exist.' } }, expected: 'failed' },
+  { name: 'saved failed receipt', document: { output: { operation_id: 'op-1', status: 'failed' }, error: { summary: 'Publication was denied.' } }, expected: 'failed' },
+] as const) {
+  test(`execution classification retains ${scenario.name}`, async () => {
+    const error = new TadxError('The CLI returned an operation error.', 'cli', scenario.document, 1);
+    const h = harness({ download: async () => { throw error; } });
+    await assert.rejects(h.operations.download(download), failure => failure === error);
+    assert.equal(h.operations.entries[0]?.state, scenario.expected);
+    assert.deepEqual(h.operations.entries[0]?.result, scenario.document);
+    assert.equal(h.operations.entries[0]?.summary.includes('outcome is unknown'), scenario.expected === 'unknown');
+  });
+}
+
+test('mixed CLI startup uncertainty keeps earlier receipts and never submits later groups', async () => {
+  const executed: string[] = [];
+  const failure = new TadxError('Worker startup was not confirmed.', 'cli', {
+    output: { operation_id: 'op-datasource', status: 'starting' }, error: { id: 'operation.worker.start_unknown' },
+  }, 1);
+  const h = harness({ download: async request => {
+    executed.push(request.kind);
+    if (request.kind === 'datasource') throw failure;
+    return { operation_id: 'op-workbook', status: 'running' };
+  } });
+  await assert.rejects(h.operations.download({ ...download, items: [...download.items, { kind: 'datasource', id: 'd-1' }, { kind: 'flow', id: 'f-1' }] }), error => error === failure);
+  assert.deepEqual(executed, ['workbook', 'datasource']);
+  assert.deepEqual(h.operations.entries.map(entry => [entry.operationId, entry.state]), [['op-datasource', 'unknown'], ['op-workbook', 'pending']]);
+  assert.equal(h.displayed.at(-1)?.state, 'unknown');
+  assert.match(h.displayed.at(-1)?.summary ?? '', /flow.*not submitted/);
+  assert.match(h.operations.entries[0]?.summary ?? '', /outcome is unknown/);
+});
+
 test('failed status inspection preserves the prior receipt, identity, and state', async () => {
   let inspected: string | undefined;
   const h = harness({ inspectOperation: async operationId => { inspected = operationId; throw new Error('Status service unavailable.'); } });

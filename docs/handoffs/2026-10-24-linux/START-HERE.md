@@ -17,7 +17,7 @@ The completed extension features require Linux verification, not a rebuild from 
 On 2026-10-25, the user authorized repository integration, versioning, compatibility checks, release packaging, release automation, and upgrade guidance here.
 The user also explicitly included guided CLI installation and update buttons in this build.
 Check the current source and validation record for that task's final result.
-The working source prepares extension `0.2.0`, with capability checks, guided CLI setup, and separately dispatched release packaging.
+The working source prepares extension `0.2.1`, with capability checks, guided CLI setup, and separately dispatched release packaging.
 Read the [release and upgrade guide](../../vscode-extension-release.md) before changing versions, release pins, installation behavior, or publication.
 The configuration page remains a deferred feature, with requested actions and additional suggestions separated in [REQUESTED-CAPABILITIES.md](REQUESTED-CAPABILITIES.md).
 Keep individual **Delete Local** actions; bulk deletion is out of scope, and workspace removal or cleanup remains undecided.

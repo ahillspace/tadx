@@ -217,8 +217,6 @@ export class Operations {
     const operationId = findOperationId(result);
     const entry: ActivityEntry = { key: randomUUID(), title, summary: result ? resultSummary(result, summary) : summary,
       state: fallback ?? (result ? operationState(result) : 'failed'), startedAt: new Date().toISOString(), operationId, result };
-    // Error envelopes can include an accepted worker or partial outcomes. Keep both the error and receipt.
-    if (fallback && operationId && result) entry.state = operationState(result) === 'partial' ? 'partial' : fallback;
     this.entries.unshift(entry);
     this.entries.splice(100);
     this.display(entry);
@@ -229,7 +227,17 @@ export class Operations {
 }
 
 function failureState(error: unknown, executing: boolean): ActivityEntry['state'] {
-  return executing && error instanceof TadxError && ['timeout', 'aborted', 'output_limit', 'contract'].includes(error.reason) ? 'unknown' : 'failed';
+  if (!executing || !(error instanceof TadxError)) return 'failed';
+  if (error.details?.outcome === 'unknown') return 'unknown';
+  if (error.details?.outcome === 'not_attempted') return 'failed';
+  if (['timeout', 'aborted', 'output_limit', 'contract'].includes(error.reason)) return 'unknown';
+  if (error.document) {
+    const state = operationState(error.document);
+    if (state === 'partial') return 'partial';
+    if (state === 'unknown' && operationStatus(error.document) !== '') return 'unknown';
+    if (state === 'pending' && findOperationId(error.document)) return 'unknown';
+  }
+  return 'failed';
 }
 
 function downloadGroups(request: DownloadBatchRequest): DownloadRequest[] {
@@ -280,9 +288,7 @@ export function findOperationId(value: unknown, depth = 0): string | undefined {
   return undefined;
 }
 export function operationState(result: OperationResult): ActivityEntry['state'] {
-  const source = object(result.output) ? result.output : result;
-  const nested = object(source.plan) && object(source.result) ? source.result : undefined;
-  const raw = String(source.status ?? nested?.status ?? source.state ?? '').toLowerCase();
+  const raw = operationStatus(result);
   if (raw.includes('partial')) return 'partial';
   if (['interrupted', 'unknown', 'indeterminate'].includes(raw)) return 'unknown';
   if (['failed', 'error', 'canceled', 'cancelled'].includes(raw)) return 'failed';
@@ -290,6 +296,11 @@ export function operationState(result: OperationResult): ActivityEntry['state'] 
   if (['completed', 'complete', 'succeeded', 'success', 'pulled', 'downloaded', 'published', 'moved', 'deleted', 'finished'].includes(raw)) return 'succeeded';
   if ('error' in result) return 'failed';
   return 'unknown';
+}
+function operationStatus(result: OperationResult): string {
+  const source = object(result.output) ? result.output : result;
+  const nested = object(source.plan) && object(source.result) ? source.result : undefined;
+  return String(source.status ?? nested?.status ?? source.state ?? '').toLowerCase();
 }
 function resultSummary(result: OperationResult, fallback: string): string {
   const id = findOperationId(result);

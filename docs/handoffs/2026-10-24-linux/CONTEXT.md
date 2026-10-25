@@ -61,7 +61,7 @@ The 2026-10-25 release work adds these behaviors in the current source:
 - Source-built and pinned-release CLI read-contract suites complement the synthetic parser, browser, and host fixtures.
 - Independent extension versioning and a manual release workflow prepare verified VSIX artifacts for explicitly selected publication.
 
-The prepared extension version is `0.2.0`.
+The prepared extension version is `0.2.1`.
 Use the [release guide](../../vscode-extension-release.md) and current validation record for delivery details and verification limits.
 Adding release automation does not establish that a release has been published.
 

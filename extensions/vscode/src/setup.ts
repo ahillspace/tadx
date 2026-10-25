@@ -115,17 +115,22 @@ export const runSetupCommand: SetupRunner = (executable, args, options) => new P
 });
 
 export function installerInvocation(platform: NodeJS.Platform, extensionPath: string, directory: string,
-  release: VerifiedCliRelease, choices: SetupChoices): { executable: string; args: string[] } {
+  release: VerifiedCliRelease, choices: SetupChoices, expectedCurrentSha256?: string): { executable: string; args: string[] } {
   validateRelease(release);
+  if (expectedCurrentSha256 !== undefined && !/^(?:absent|[a-f0-9]{64})$/.test(expectedCurrentSha256)) {
+    throw new SetupError('The installation target precondition must be absent or an exact SHA-256.');
+  }
   if (platform === 'win32') {
     return { executable: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
       '-File', join(extensionPath, 'dist', 'installers', 'install.ps1'), '-Version', release.version,
       '-ExpectedSHA256', release.archiveSha256, '-InstallDir', directory, '-Target', 'auto',
+      ...(expectedCurrentSha256 !== undefined ? ['-ExpectedCurrentSHA256', expectedCurrentSha256] : []),
       ...(!choices.modifyPath ? ['-NoModifyPath'] : []), ...(!choices.completion ? ['-NoCompletion'] : [])] };
   }
   if (platform !== 'linux' && platform !== 'darwin') throw new SetupError('Guided CLI setup supports Windows, Linux, and macOS hosts.');
   return { executable: '/bin/sh', args: [join(extensionPath, 'dist', 'installers', 'install.sh'),
     '--version', release.version, '--expected-sha256', release.archiveSha256, '--install-dir', directory,
+    ...(expectedCurrentSha256 !== undefined ? ['--expected-current-sha256', expectedCurrentSha256] : []),
     '--target', 'auto', ...(!choices.modifyPath ? ['--no-modify-path'] : []), ...(!choices.completion ? ['--no-completion'] : [])] };
 }
 
@@ -151,9 +156,14 @@ export class SetupService {
   }
 
   async inspect(configuredExecutable: string, signal?: AbortSignal): Promise<CliInstallation> {
+    return (await this.inspectInstallation(configuredExecutable, signal)).installation;
+  }
+
+  private async inspectInstallation(configuredExecutable: string, signal?: AbortSignal): Promise<{ installation: CliInstallation; fingerprint: string }> {
     const candidate = await this.findExecutable(configuredExecutable);
     const path = await realpath(candidate);
     const before = await fingerprint(path);
+    if (before === undefined) throw new SetupError('The selected executable changed during inspection. Inspect it again.');
     const response = await this.run(path, ['version', '--full', '--json'], { environment: this.environment, signal, timeoutMs: 30_000 });
     let document: unknown;
     try { document = JSON.parse(response.stdout); } catch { throw new SetupError('The selected executable did not return TADX version JSON.'); }
@@ -163,7 +173,7 @@ export class SetupService {
     let managed = false;
     try { managed = samePath(candidate, path) && samePath(path, await this.standardTarget()); }
     catch (error) { if (!(error instanceof SetupError)) throw error; }
-    return { executablePath: path, version: document.version, managed };
+    return { installation: { executablePath: path, version: document.version, managed }, fingerprint: before };
   }
 
   async prepareInstall(release: VerifiedCliRelease): Promise<SetupPlan> {
@@ -175,7 +185,7 @@ export class SetupService {
 
   async prepareUpdate(configuredExecutable: string, release: VerifiedCliRelease, signal?: AbortSignal): Promise<SetupPlan> {
     validateRelease(release);
-    const installed = await this.inspect(configuredExecutable, signal);
+    const { installation: installed, fingerprint: inspectedFingerprint } = await this.inspectInstallation(configuredExecutable, signal);
     if (!installed.managed || !samePath(basename(installed.executablePath), this.executableName)) {
       throw new SetupError('This is a custom or package manager installation. Update it through its owner or rebuild its source, then choose that executable.');
     }
@@ -184,7 +194,7 @@ export class SetupService {
     const targetVersion = stableVersion(release.version)!;
     if (compareVersions(installedVersion, targetVersion) > 0) throw new SetupError('The installed CLI is newer than this extension\'s verified release. Keep it if compatible; guided setup does not downgrade it.');
     return this.remember({ action: 'update', executablePath: installed.executablePath, installDirectory: dirname(installed.executablePath),
-      currentVersion: installed.version, release }, await fingerprint(installed.executablePath));
+      currentVersion: installed.version, release }, inspectedFingerprint);
   }
 
   async execute(plan: SetupPlan, choices: SetupChoices, signal?: AbortSignal): Promise<CliInstallation> {
@@ -196,7 +206,7 @@ export class SetupService {
     if (!samePath(plan.executablePath, await this.standardTarget()) || observed.fingerprint !== await fingerprint(plan.executablePath)) {
       throw new SetupError('The installation target changed after preview. Create a new setup preview before continuing.');
     }
-    const command = installerInvocation(process.platform, this.options.extensionPath, plan.installDirectory, plan.release, choices);
+    const command = installerInvocation(process.platform, this.options.extensionPath, plan.installDirectory, plan.release, choices, observed.fingerprint ?? 'absent');
     const script = command.args[process.platform === 'win32' ? command.args.indexOf('-File') + 1 : 0]!;
     const scriptInfo = await lstat(script);
     if (!scriptInfo.isFile() || scriptInfo.isSymbolicLink()) throw new SetupError('The bundled installer is unavailable or redirected. Reinstall the extension.');

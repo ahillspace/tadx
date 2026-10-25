@@ -6,6 +6,8 @@ InstallDir wins over TADX_INSTALL_DIR and defaults to %LOCALAPPDATA%\Programs\ta
 Use NoModifyPath and NoCompletion independently when profile changes are not wanted.
 .PARAMETER ExpectedSHA256
 Also verify the archive against this caller-supplied digest; requires an explicit exact Version.
+.PARAMETER ExpectedCurrentSHA256
+Under the installation lock, require the current executable to match this digest, or require its absence with 'absent'.
 .EXAMPLE
 ./install.ps1 -NoModifyPath -NoCompletion
 #>
@@ -17,6 +19,8 @@ param(
     [string]$Version = '',
 
     [string]$ExpectedSHA256 = '',
+
+    [string]$ExpectedCurrentSHA256 = '',
 
     [string]$InstallDir = '',
 
@@ -423,6 +427,14 @@ if ($PSBoundParameters.ContainsKey('ExpectedSHA256')) {
     $ExpectedSHA256 = $ExpectedSHA256.ToLowerInvariant()
 }
 
+if ($PSBoundParameters.ContainsKey('ExpectedCurrentSHA256')) {
+    if ($Action -ine 'Install') { throw 'ExpectedCurrentSHA256 applies only to installation.' }
+    if ($ExpectedCurrentSHA256 -cne 'absent' -and $ExpectedCurrentSHA256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "ExpectedCurrentSHA256 must be 'absent' or exactly 64 hexadecimal characters."
+    }
+    $ExpectedCurrentSHA256 = $ExpectedCurrentSHA256.ToLowerInvariant()
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = $env:TADX_INSTALL_DIR
 }
@@ -546,6 +558,29 @@ try {
     catch { throw (New-InstallerWriteFailure -Stage 'create the resolved install directory' -Target $InstallDir) }
     Enter-InstallLock -Path $installLock
     $ownsInstallLock = $true
+    if ($PSBoundParameters.ContainsKey('ExpectedCurrentSHA256')) {
+        $directory = Get-Item -Force -LiteralPath $InstallDir
+        while ($null -ne $directory) {
+            if ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw 'The installation directory is redirected by a link. No replacement occurred; create a new setup preview.'
+            }
+            $directory = $directory.Parent
+        }
+        $destination = Join-Path $InstallDir 'tadx.exe'
+        $current = $null
+        try { $current = Get-Item -Force -LiteralPath $destination -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException] { }
+        $actualCurrentSHA256 = 'absent'
+        if ($null -ne $current) {
+            if ($current.PSIsContainer -or ($current.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw 'The installation target must be a regular executable file.'
+            }
+            $actualCurrentSHA256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+        if ($actualCurrentSHA256 -cne $ExpectedCurrentSHA256) {
+            throw 'The installation target changed after preview. No replacement occurred; create a new setup preview.'
+        }
+    }
     Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir
     if (-not $NoModifyPath) {
         Add-UserPath -Directory $InstallDir

@@ -2,6 +2,7 @@
 
 This record captures the CLI architecture audit and the subsequent extension integration refresh on 2026-10-22.
 Resolution notes dated 2026-10-25 record the later authorized extension release and setup work.
+The [PR #35 review](#pr-35-review-on-2026-10-25) records the subsequent independent code review and source architecture audit of the committed branch.
 It separates examined source behavior, documentation repairs, proposed simplifications, and verification limits.
 Start with the [architecture guide](README.md) for the current-system explanation.
 
@@ -302,3 +303,194 @@ They establish consumer behavior for those inputs; real-CLI end-to-end reproduct
 The refresh makes no source, dependency, generated-file, credential, consent, installation, or release changes.
 It does not run broad Go suites, extension unit/browser/host suites, installers, privileged native checks, or live Tableau acceptance.
 See the [extension build validation](../vscode-extension-validation.md) for the earlier fixture-based Windows results and their limits.
+
+## PR #35 review on 2026-10-25
+
+### Baseline and assessment
+
+This review examines `ahillspace/tadx`, branch `feat/vscode-artifact-explorer`, at commit `f90748d1eb6e547bfd05198db56b2f266f52d923` against base `51aa645302d4c410bcfe9885362f18c29f5ed5cd`.
+Reviewers use one clean snapshot of that commit; unrelated dirty files in the active checkout are excluded.
+Source links below identify symbols in that baseline; subsequent documentation corrections do not change the reviewed runtime.
+
+The PR needs corrections before merge.
+Three reproduced extension defects concern installation freshness, forced inventory refresh, and uncertain worker outcomes.
+An opt-in maintenance inventory also fails on the committed repository.
+The previously reported full CLI race timeout and mixed cache-generation limitation remain unresolved.
+
+The principal architecture remains appropriate: the extension consumes CLI contracts, resource actions own operation semantics, and the CLI owns credentials, policy, artifacts, and durable operation records.
+Installers own binary replacement and Guidance deployment.
+The recommended corrections strengthen those existing boundaries rather than introduce another workflow layer.
+This is a partial repository architecture audit with deeper extension and delivery coverage, not exhaustive verification of every CLI operation.
+
+### Current coverage ledger
+
+Here, inspected means source and caller inspection, while reproduced means a bounded fixture demonstrates the stated behavior.
+Neither status establishes live Tableau or native cross-platform acceptance.
+
+| Responsibility and boundary | Evidence and examined paths | Status and limits | Canonical owner |
+| --- | --- | --- | --- |
+| Runtime composition, policy, and output | `app.Run`, `bindManagedPolicy`, CLI mutation guards, `RenderWithOptions`, and `RenderError`; registration, preview exemptions, dispatch, partial envelopes, and deferred output | Representative paths inspected; full binding inventory and redaction audit not repeated | [Runtime](runtime.md), [output](../toon.md) |
+| Credentials and configuration | `CommandSessions.authenticate`, client wiring, setup snapshots, and editor setting selection | Partly inspected; native credential backends, complete login lifecycle, and configuration migrations not traced | [Runtime](runtime.md), [security](../security.md) |
+| Resource operation families | Workbook `Publisher.Plan/Apply/Complete`, search action, and Pulse definition publication; collision checks, uncertain submission, bounds, and retained partial identities | Partly inspected; all provider variants and administration/Catalog operations not re-audited | [Resources and state](resources-and-state.md) |
+| Cache and source contracts | `normalizeScopes`, `PlanScopes`, `cacheHydrator.Hydrate`, cache reads, generation staging, and requested-kind retention | Representative paths inspected; SQLite crash recovery and every collector unexamined | [Resources and state](resources-and-state.md) |
+| Editor trust and presentation | Manifest, `activate`, controller, trees, panel intent validation, webview rendering, and `workspaceFile` | Source inspected for trust, identities, bounded selections, hierarchy, and containment; rendered UI not rerun | [Editor architecture](editor-extension.md) |
+| Editor inventory and operations | `TadxClient`, `Inventory`, `Operations`, workspace provenance, preview/confirmation, mixed groups, cancellation, restoration, and inspection | Source inspected; forced-reload and uncertain-worker defects reproduced; no live transfers | [Editor architecture](editor-extension.md) |
+| CLI setup and installation | `SetupService`, controller setup, both installers, updater entry points, and Guidance receipt ownership | Source inspected; PowerShell replacement race reproduced; POSIX execution and user installation excluded | [Release guide](../vscode-extension-release.md), [delivery](dependencies-and-delivery.md) |
+| Packaging and publication | Build scripts, manifests, lockfile, pins, VSIX allowlist, release verifier, and manual workflow | Source inspected for identity, channel, tag, checksums, artifact reuse, and explicit publishing; no workflow or publisher configuration tested | [Release guide](../vscode-extension-release.md) |
+| Ancillary tooling | Shared source selector, opt-in file inventory, workflow-evidence generator, site allowlist, and generation/release entry points | Partly inspected; file inventory failure reproduced; explore launcher and all generators not re-audited | [Repository structure](../repository-structure.md), [delivery](dependencies-and-delivery.md) |
+| Unexamined and excluded | Full native policy protection, configuration migrations, broad admin/Catalog providers, all platform adapters, archives, dependency trees, and private state | Explicitly outside fresh behavioral coverage; earlier documentation does not count as new verification | Existing runtime, resource, and security owners |
+
+### R1: Installation freshness is checked before the replacement lock
+
+**Priority:** P2 correctness defect; high confidence from a native installer reproduction.
+**Evidence:** [`SetupService.execute`](../../extensions/vscode/src/setup.ts), lines 196-210; [`installerInvocation`](../../extensions/vscode/src/setup.ts), lines 117-131; PowerShell replacement at [`install.ps1`](../../scripts/install.ps1), lines 547-549; shell replacement at [`install.sh`](../../scripts/install.sh), lines 389-406.
+
+The extension checks the captured destination before launching the installer.
+The installer downloads and extracts the archive before obtaining its replacement lock, and receives no expected existing fingerprint or absence precondition.
+Another installation can complete during that interval.
+The first installer then replaces the intervening executable and reports success, including when that executable is newer than the approved release.
+The standalone installer's replacement behavior predates this PR; the new extension promises stronger preview freshness without carrying its precondition across that boundary.
+
+A fixture used the committed `SetupService` and actual PowerShell installer, with inert executables and a fake GitHub downloader.
+It previewed `1.0.0`, replaced the target with `1.1.0` during download, and finished successfully with `1.0.0` installed.
+The fixture did not modify the user's installation or contact GitHub or Tableau.
+
+Proposed correction: send the captured fingerprint or explicit absence to both maintained installers, then validate it while holding their replacement lock.
+Keep archive verification, regular-file/link protection, optional profile changes, Guidance behavior, and partial-outcome reporting.
+Return the fingerprint associated with the inspected version instead of taking a separate observation in `prepareUpdate`.
+The new precondition remains optional for ordinary bootstrap callers.
+
+The intended lock ordering is illustrated below; this is a proposed integration sketch, not an applied or validated patch.
+Existing path and regular-file checks must still precede hashing and replacement.
+
+```powershell
+Enter-InstallLock -Path $installLock
+$ownsInstallLock = $true
+$destination = Join-Path $InstallDir 'tadx.exe'
+$actual = if (Test-Path -LiteralPath $destination) {
+    (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+} else {
+    'absent'
+}
+if ($ExpectedCurrentSHA256 -and $actual -cne $ExpectedCurrentSHA256) {
+    throw 'The installation target changed after preview. Create a new preview.'
+}
+Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir
+```
+
+Verification must cover both installers, an initially absent target, an existing target, and an intervening newer version.
+The replacement must fail before altering the intervening executable or Guidance.
+
+### R2: Forced reload reuses an older read
+
+**Priority:** P2 correctness defect; high confidence from a controlled concurrency reproduction.
+**Evidence:** [`Inventory.loadSite`, `loadWorkspace`, and `load`](../../extensions/vscode/src/inventory.ts), lines 83-103; [`Controller.refreshCache`](../../extensions/vscode/src/controller.ts), especially line 402.
+
+The forced reload flag bypasses stored inventory but is not passed into `load`.
+That helper returns any existing source promise, even when it began before a cache refresh or local mutation completed.
+An explicit refresh can therefore finish while displaying observations acquired before the update.
+The same mechanism affects forced local workspace reloads.
+
+A deferred-read fixture asserted that ordinary and forced calls returned the same promise.
+After simulated cache publication, completing that old read produced only one read, the old artifact name, a `Cached` status, and no error.
+This ordering defect is separate from the previously documented combination of resource lists from different cache generations.
+
+Proposed correction: pass forced-reload intent through to `load` and enqueue a new read after the older request, or supersede it with a per-source generation.
+Keep coalescing ordinary expansions and rejecting work invalidated by a global refresh.
+One possible replacement for the existing-promise branch is:
+
+```typescript
+const generation = this.generation;
+const existing = this.loading.get(key);
+if (existing) {
+  if (!reload) return existing;
+  return existing.then(() => {
+    if (generation !== this.generation) return;
+    return this.load(key, read, false);
+  });
+}
+```
+
+This sketch requires the reload argument to reach `load`; it is not an applied patch.
+Verification must assert a second post-update read, its visible result, ordinary deduplication, and global-refresh cancellation for both site and workspace sources.
+
+### R3: Unacknowledged worker startup is displayed as failed
+
+**Priority:** P2 outcome-contract defect; high confidence from CLI and consumer evidence.
+**Evidence:** [`failureState` and `Operations.record`](../../extensions/vscode/src/operations.ts), lines 231-232 and 220-221; [`TestPublicationWorkerReportsUnknownWhenStartupIsNotAcknowledged`](../../internal/app/publication_worker_e2e_test.go).
+
+The CLI can exit nonzero with `operation.worker.start_unknown`, an operation ID, and `output.status: starting` when worker startup is not acknowledged.
+`TadxClient` retains that document in a CLI error.
+The extension classifies ordinary CLI errors as failed, then forces that state despite the uncertain receipt.
+Activity retains the operation ID but omits its unknown-outcome warning, which can encourage a retry before checking whether work started.
+
+The existing CLI end-to-end fixture passes and establishes the real emitted contract.
+An unchanged client/operation-manager probe using that contract produces `failed`, a retained ID, and no unknown warning.
+
+Proposed correction: project explicit unknown outcomes and uncertain accepted receipts before the generic CLI-error fallback.
+Preserve confirmed partial outcomes, the exact operation ID, and the prohibition on automatic resubmission.
+The additional classification branch can use existing contract helpers:
+
+```typescript
+if (executing && error instanceof TadxError) {
+  const result = error.document;
+  if (error.details?.outcome === 'unknown' ||
+      result && findOperationId(result) &&
+      ['pending', 'unknown'].includes(operationState(result))) {
+    return 'unknown';
+  }
+}
+```
+
+This branch supplements the current timeout/cancellation handling and is not an applied patch.
+Verify single and mixed transfers, startup uncertainty, confirmed rejection, partial completion, retained receipts, and the user-visible recovery warning.
+
+### R4: Opt-in file classification fails on maintained tooling
+
+**Priority:** P2 contributor-tool defect; high confidence from the committed clean snapshot.
+**Evidence:** [`TestGoFilesHaveResponsibilityClassification`, `repositoryGoFiles`, and `nonRuntimeProductionFiles`](../../internal/architecture/file_necessity_test.go), especially lines 52-81, 133-137, and 205-240.
+
+The new classification tool recognizes only three non-runtime production owners.
+It scans the extension's separate host fixture and the maintained live-suite tooling, then rejects those files as unexplained production source.
+Its filesystem walker also differs from the new Git-aware `FirstPartyFiles` selector and does not exclude dependency or build directories.
+
+The documented opt-in command fails in 32.844 seconds on the clean reviewed revision:
+
+```sh
+go test -tags=fileinventory ./internal/architecture -run '^TestGoFilesHaveResponsibilityClassification$' -count=1
+```
+
+The failure names `extensions/vscode/tests/fixtures/host/main.go` and the maintained `tests/live` tooling.
+This is not a failure of the default architecture suite, and neither optional inventory tag was part of the earlier ordinary Go pass.
+Reconcile this tool with maintained source/module ownership and explicitly account for ancillary consumers; do not classify executable test support as orphaned runtime code.
+Verify a clean clone and a checkout with installed extension dependencies, while retaining detection of a genuinely unexplained Go source file.
+
+### Supported simplification
+
+Cache scope closure is duplicated between [`normalizeScopes`](../../actions/cache/refresh.go) and [`PlanScopes`](../../internal/tableau/cache/engine.go).
+[`cacheHydrator.Hydrate`](../../internal/app/cache_group2.go) compares both plans before and after collection, and the provider plans again at execution.
+The checks currently fail closed; no incorrect collection was reproduced.
+
+A dependency-neutral owner for scope dependencies could replace duplicated graph declarations and reconciliation of unchanged inputs.
+Keep boundary-specific validation and the intentional defaults: the public action includes permissions by default, while the provider's empty-input default excludes them.
+Preserve duplicate rejection, canonical ordering, capability enforcement, completion evidence, and partial permission coverage.
+Before implementation, test scope combinations and confirm that one dependency declaration consistently drives preview and collection.
+This recommendation is separate from the PR defects and is not implemented by the audit.
+
+### Validation and documentation reconciliation
+
+Runtime reviewers pass 78 focused extension tests, the real CLI startup-uncertainty E2E, and focused workspace-status Go tests.
+The delivery reviewer passes 12 setup tests and reproduces the installation race with the committed native PowerShell installer.
+Controlled consumer probes reproduce the two runtime defects.
+The opt-in classification command fails as described above.
+No full suite, browser, extension-host, or POSIX installer run is repeated for this review.
+The earlier full CLI race timeout remains a failed gate, not a pass inferred from these focused checks.
+
+The architecture assessment is source-only; its reviewer does not execute tests or validation tools.
+No live Tableau, user CLI installation, credential changes, consent changes, CI dispatch, commit, push, or publication occurs during this review.
+Documentation corrections qualify location-based installation ownership, pre-launch freshness, operation-response validation, forced reload behavior, and uncertain worker classification.
+Existing agent instructions remain consistent with the reviewed boundaries and require no policy change.
+An independent fresh reader successfully traces setup, configuration precedence, recovery, security boundaries, change owners, and validation commands against the clean source snapshot.
+That exercise identifies one missing user-facing recovery qualification, now added to the extension README.
+All 170 local links, including 13 Markdown fragments, resolve across the four changed documents.
+Scoped whitespace, dash, and developer-home-path checks pass.

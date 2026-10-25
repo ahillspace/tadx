@@ -140,9 +140,144 @@ test('partial scan and cache freshness remain visible without claiming remote eq
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
+
+for (const location of ['site', 'workspace'] as const) {
+  test(`forced ${location} reload acquires updated inventory while ordinary loads share its request`, async () => {
+    const old = deferred<SiteInventory | WorkspaceInventory>();
+    const fresh = deferred<SiteInventory | WorkspaceInventory>();
+    const signals: AbortSignal[] = [];
+    const read = async (_source: string, signal?: AbortSignal) => {
+      signals.push(signal!);
+      return signals.length === 1 ? old.promise : fresh.promise;
+    };
+    const inventory = new Inventory(client(location === 'site'
+      ? { siteInventory: read as Client['siteInventory'] }
+      : { workspaceInventory: read as Client['workspaceInventory'] }));
+    inventory.environments = [environment];
+    inventory.workspaces = [workspace];
+    const load = (reload = false) => location === 'site' ? inventory.loadSite('dev', reload) : inventory.loadWorkspace('work', reload);
+    const original = load();
+    // The cache refresh or local mutation finishes while its previous scan is still pending.
+    const reloaded = load(true);
+    assert.equal(signals.length, 2);
+    assert.equal(signals[0]?.aborted, true);
+    assert.equal(load(), reloaded);
+    const updated = location === 'site' ? site('Updated after refresh') : local();
+    updated.artifacts[0]!.name = 'Updated after refresh';
+    fresh.resolve(updated);
+    await reloaded;
+    old.resolve(location === 'site' ? site('Old observation') : local());
+    await original;
+    const rows = inventory.snapshot().artifacts;
+    assert.equal(rows[0]?.name, 'Updated after refresh');
+    assert.deepEqual(inventory.snapshot().errors, []);
+    assert.equal(inventory.selection(rows[0]!.key)?.location, location === 'site' ? 'remote' : 'local');
+  });
+}
+
+test('superseded success cannot clear a current read failure, and a later reload can recover', async () => {
+  const old = deferred<SiteInventory>();
+  const latest = deferred<SiteInventory>();
+  let reads = 0;
+  const inventory = new Inventory(client({ siteInventory: async () => {
+    reads++;
+    return reads === 1 ? old.promise : reads === 2 ? latest.promise : site('Recovered');
+  } }));
+  const original = inventory.loadSite('dev');
+  const reloaded = inventory.loadSite('dev', true);
+  latest.reject(new Error('Current cache read failed.'));
+  await reloaded;
+  old.resolve(site('Old observation'));
+  await original;
+  assert.equal(inventory.sites.has('dev'), false);
+  assert.equal(inventory.errors.get('site:dev'), 'Current cache read failed.');
+  await inventory.loadSite('dev', true);
+  assert.equal(reads, 3);
+  assert.equal(inventory.sites.get('dev')?.artifacts[0]?.name, 'Recovered');
+  assert.deepEqual(inventory.snapshot().errors, []);
+});
+
+test('each forced reload supersedes earlier reads without disturbing another source', async () => {
+  const reads = [deferred<SiteInventory>(), deferred<SiteInventory>(), deferred<SiteInventory>()];
+  const signals: AbortSignal[] = [];
+  const inventory = new Inventory(client({ siteInventory: async (alias, signal) => {
+    if (alias === 'review') return { ...site('Independent source'), environment: alias };
+    signals.push(signal!);
+    return reads[signals.length - 1]!.promise;
+  } }));
+  const first = inventory.loadSite('dev');
+  const second = inventory.loadSite('dev', true);
+  const latest = inventory.loadSite('dev', true);
+  assert.equal(signals.length, 3);
+  assert.equal(signals[0]?.aborted, true);
+  assert.equal(signals[1]?.aborted, true);
+  assert.equal(signals[2]?.aborted, false);
+  await inventory.loadSite('review');
+  reads[2]!.resolve(site('Latest observation'));
+  await latest;
+  reads[1]!.reject(new Error('Superseded read failed late.'));
+  reads[0]!.reject(new Error('First read failed late.'));
+  await Promise.all([first, second]);
+  assert.equal(inventory.sites.get('dev')?.artifacts[0]?.name, 'Latest observation');
+  assert.equal(inventory.sites.get('review')?.artifacts[0]?.name, 'Independent source');
+  assert.deepEqual(inventory.snapshot().errors, []);
+});
+
+test('a global refresh cancels forced source reads and ignores their later completion', async () => {
+  const old = deferred<SiteInventory>();
+  const forced = deferred<SiteInventory>();
+  const signals: AbortSignal[] = [];
+  const inventory = new Inventory(client({ siteInventory: async (_alias, signal) => {
+    signals.push(signal!);
+    return signals.length === 1 ? old.promise : signals.length === 2 ? forced.promise : site('Global refresh');
+  } }));
+  const original = inventory.loadSite('dev');
+  const reloaded = inventory.loadSite('dev', true);
+  assert.equal(signals.length, 2);
+  await inventory.refresh();
+  assert.equal(signals[0]?.aborted, true);
+  assert.equal(signals[1]?.aborted, true);
+  forced.reject(new Error('Canceled source read finished late.'));
+  old.resolve(site('Old observation'));
+  await Promise.all([original, reloaded]);
+  assert.equal(inventory.sites.get('dev')?.artifacts[0]?.name, 'Global refresh');
+  assert.deepEqual(inventory.snapshot().errors, []);
+  assert.equal(inventory.busy, false);
+});
+
+test('disposal cancels reads and prevents late inventory commits or new reads', async () => {
+  const pending = deferred<SiteInventory>();
+  let signal: AbortSignal | undefined;
+  let reads = 0;
+  const inventory = new Inventory(client({ siteInventory: async (_alias, value) => { reads++; signal = value; return pending.promise; } }));
+  const loading = inventory.loadSite('dev');
+  inventory.dispose();
+  assert.equal(signal?.aborted, true);
+  pending.resolve(site('After disposal'));
+  await loading;
+  await inventory.loadSite('dev', true);
+  await inventory.refresh();
+  assert.equal(inventory.sites.size, 0);
+  assert.equal(reads, 1);
+});
+
+test('disposal during source discovery prevents its late results from restarting inventory reads', async () => {
+  const environments = deferred<EnvironmentProfile[]>();
+  let sourceReads = 0;
+  const inventory = new Inventory(client({ environments: async () => environments.promise,
+    siteInventory: async () => { sourceReads++; return site(); }, workspaceInventory: async () => { sourceReads++; return local(); } }));
+  const refreshing = inventory.refresh();
+  inventory.dispose();
+  environments.resolve([environment]);
+  await refreshing;
+  assert.deepEqual(inventory.environments, []);
+  assert.equal(sourceReads, 0);
+  assert.equal(inventory.busy, false);
+});
 
 test('nontransferable local kinds remain inspectable without publishing actions', async () => {
   const scanned = local();

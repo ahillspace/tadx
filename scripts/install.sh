@@ -9,6 +9,8 @@ version=${TADX_VERSION:-latest}
 version_explicit=0
 expected_sha256=''
 expected_sha256_set=0
+expected_current_sha256=''
+expected_current_sha256_set=0
 install_dir=${TADX_INSTALL_DIR:-"${HOME}/.local/bin"}
 modify_path=1
 completion=1
@@ -16,9 +18,10 @@ completion_marker='# tadx-installer-completion'
 targets=''
 
 usage() {
-    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--expected-sha256 HASH] [--target TARGET] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
+    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--expected-sha256 HASH] [--expected-current-sha256 HASH|absent] [--target TARGET] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
     printf '%s\n' '  --version VERSION       install an exact release; default: latest'
     printf '%s\n' '  --expected-sha256 HASH  additionally require this archive digest; requires an explicit exact --version'
+    printf '%s\n' "  --expected-current-sha256 HASH|absent  require this executable state under the installation lock"
     printf '%s\n' '  --target TARGET         install bundled Guidance for one target; repeat for more than one'
     printf '%s\n' '  --install-dir DIRECTORY resolved binary directory; default: $TADX_INSTALL_DIR or $HOME/.local/bin'
     printf '%s\n' '  --no-modify-path        leave shell profiles and PATH unchanged'
@@ -48,6 +51,12 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || fail '--expected-sha256 requires a value.'
             expected_sha256=$2
             expected_sha256_set=1
+            shift 2
+            ;;
+        --expected-current-sha256)
+            [ "$#" -ge 2 ] || fail '--expected-current-sha256 requires a value.'
+            expected_current_sha256=$2
+            expected_current_sha256_set=1
             shift 2
             ;;
         --install-dir)
@@ -86,6 +95,15 @@ if [ "$expected_sha256_set" -eq 1 ]; then
     [ "${#expected_sha256}" -eq 64 ] || fail '--expected-sha256 must contain exactly 64 hexadecimal characters.'
     [ "$version_explicit" -eq 1 ] && [ -n "$version" ] && [ "$version" != latest ] || fail '--expected-sha256 requires an explicit exact --version; latest is not supported.'
     expected_sha256=$(printf '%s' "$expected_sha256" | tr 'A-F' 'a-f')
+fi
+
+if [ "$expected_current_sha256_set" -eq 1 ]; then
+    [ "$action" = install ] || fail '--expected-current-sha256 applies only to installation.'
+    if [ "$expected_current_sha256" != absent ]; then
+        case "$expected_current_sha256" in ''|*[!0-9a-fA-F]*) fail "--expected-current-sha256 must be 'absent' or exactly 64 hexadecimal characters." ;; esac
+        [ "${#expected_current_sha256}" -eq 64 ] || fail "--expected-current-sha256 must be 'absent' or exactly 64 hexadecimal characters."
+        expected_current_sha256=$(printf '%s' "$expected_current_sha256" | tr 'A-F' 'a-f')
+    fi
 fi
 
 case "$install_dir" in
@@ -394,6 +412,25 @@ if ! mkdir "$install_lock" 2>/dev/null; then
 fi
 owns_install_lock=1
 printf '%s\n' "$install_lock_owner" > "${install_lock}/owner"
+if [ "$expected_current_sha256_set" -eq 1 ]; then
+    logical_install_dir=$(CDPATH= cd "$install_dir" && pwd -L)
+    physical_install_dir=$(CDPATH= cd "$install_dir" && pwd -P)
+    [ "$logical_install_dir" = "$physical_install_dir" ] || fail 'The installation directory is redirected by a link. No replacement occurred; create a new setup preview.'
+    current_binary="${install_dir}/tadx"
+    [ ! -L "$current_binary" ] || fail 'The installation target must be a regular executable file.'
+    actual_current_sha256=absent
+    if [ -e "$current_binary" ]; then
+        [ -f "$current_binary" ] || fail 'The installation target must be a regular executable file.'
+        if command -v sha256sum >/dev/null 2>&1; then
+            actual_current_sha256=$(sha256sum "$current_binary" | awk '{ print tolower($1) }')
+        elif command -v shasum >/dev/null 2>&1; then
+            actual_current_sha256=$(shasum -a 256 "$current_binary" | awk '{ print tolower($1) }')
+        else
+            actual_current_sha256=$(openssl dgst -sha256 "$current_binary" | awk '{ print tolower($NF) }')
+        fi
+    fi
+    [ "$actual_current_sha256" = "$expected_current_sha256" ] || fail 'The installation target changed after preview. No replacement occurred; create a new setup preview.'
+fi
 # Unique names keep a planted file or symlink from receiving the binary.
 staged_binary=$(mktemp "${install_dir}/.tadx.new.XXXXXXXX") || fail "Could not stage the release binary in '$install_dir'. No replacement occurred; choose another --install-dir or check directory permissions."
 cp "$binary_paths" "$staged_binary" || { rm -f "$staged_binary"; fail "Could not stage the release binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
