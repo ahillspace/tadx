@@ -3,6 +3,7 @@
 This record captures the CLI architecture audit and the subsequent extension integration refresh on 2026-10-22.
 Resolution notes dated 2026-10-25 record the later authorized extension release and setup work.
 The [PR #35 review](#pr-35-review-on-2026-10-25) records the subsequent independent code review and source architecture audit of the committed branch.
+The [PR #35 corrections](#pr-35-corrections-on-2026-10-25) record the resolved findings and subsequent verification limits.
 It separates examined source behavior, documentation repairs, proposed simplifications, and verification limits.
 Start with the [architecture guide](README.md) for the current-system explanation.
 
@@ -311,6 +312,8 @@ See the [extension build validation](../vscode-extension-validation.md) for the 
 This review examines `ahillspace/tadx`, branch `feat/vscode-artifact-explorer`, at commit `f90748d1eb6e547bfd05198db56b2f266f52d923` against base `51aa645302d4c410bcfe9885362f18c29f5ed5cd`.
 Reviewers use one clean snapshot of that commit; unrelated dirty files in the active checkout are excluded.
 Source links below identify symbols in that baseline; subsequent documentation corrections do not change the reviewed runtime.
+The findings, line references, proposed snippets, and validation in this section describe that historical baseline.
+See the [correction record](#pr-35-corrections-on-2026-10-25) for the implemented behavior and current gate status.
 
 The PR needs corrections before merge.
 Three reproduced extension defects concern installation freshness, forced inventory refresh, and uncertain worker outcomes.
@@ -322,7 +325,7 @@ Installers own binary replacement and Guidance deployment.
 The recommended corrections strengthen those existing boundaries rather than introduce another workflow layer.
 This is a partial repository architecture audit with deeper extension and delivery coverage, not exhaustive verification of every CLI operation.
 
-### Current coverage ledger
+### Review coverage ledger
 
 Here, inspected means source and caller inspection, while reproduced means a bounded fixture demonstrates the stated behavior.
 Neither status establishes live Tableau or native cross-platform acceptance.
@@ -342,6 +345,7 @@ Neither status establishes live Tableau or native cross-platform acceptance.
 
 ### R1: Installation freshness is checked before the replacement lock
 
+**Current status:** resolved in `0cf8f54`; see [PR #35 corrections](#pr-35-corrections-on-2026-10-25).
 **Priority:** P2 correctness defect; high confidence from a native installer reproduction.
 **Evidence:** [`SetupService.execute`](../../extensions/vscode/src/setup.ts), lines 196-210; [`installerInvocation`](../../extensions/vscode/src/setup.ts), lines 117-131; PowerShell replacement at [`install.ps1`](../../scripts/install.ps1), lines 547-549; shell replacement at [`install.sh`](../../scripts/install.sh), lines 389-406.
 
@@ -383,6 +387,8 @@ The replacement must fail before altering the intervening executable or Guidance
 
 ### R2: Forced reload reuses an older read
 
+**Current status:** resolved in `0cf8f54` through per-source supersession; the queue sketch below remains historical.
+See [PR #35 corrections](#pr-35-corrections-on-2026-10-25).
 **Priority:** P2 correctness defect; high confidence from a controlled concurrency reproduction.
 **Evidence:** [`Inventory.loadSite`, `loadWorkspace`, and `load`](../../extensions/vscode/src/inventory.ts), lines 83-103; [`Controller.refreshCache`](../../extensions/vscode/src/controller.ts), especially line 402.
 
@@ -416,6 +422,7 @@ Verification must assert a second post-update read, its visible result, ordinary
 
 ### R3: Unacknowledged worker startup is displayed as failed
 
+**Current status:** resolved in `0cf8f54`; see [PR #35 corrections](#pr-35-corrections-on-2026-10-25).
 **Priority:** P2 outcome-contract defect; high confidence from CLI and consumer evidence.
 **Evidence:** [`failureState` and `Operations.record`](../../extensions/vscode/src/operations.ts), lines 231-232 and 220-221; [`TestPublicationWorkerReportsUnknownWhenStartupIsNotAcknowledged`](../../internal/app/publication_worker_e2e_test.go).
 
@@ -447,6 +454,7 @@ Verify single and mixed transfers, startup uncertainty, confirmed rejection, par
 
 ### R4: Opt-in file classification fails on maintained tooling
 
+**Current status:** resolved in `0cf8f54`; see [PR #35 corrections](#pr-35-corrections-on-2026-10-25).
 **Priority:** P2 contributor-tool defect; high confidence from the committed clean snapshot.
 **Evidence:** [`TestGoFilesHaveResponsibilityClassification`, `repositoryGoFiles`, and `nonRuntimeProductionFiles`](../../internal/architecture/file_necessity_test.go), especially lines 52-81, 133-137, and 205-240.
 
@@ -494,3 +502,40 @@ An independent fresh reader successfully traces setup, configuration precedence,
 That exercise identifies one missing user-facing recovery qualification, now added to the extension README.
 All 170 local links, including 13 Markdown fragments, resolve across the four changed documents.
 Scoped whitespace, dash, and developer-home-path checks pass.
+
+## PR #35 corrections on 2026-10-25
+
+Commit `0cf8f54ff79b572d12b7cedac1f9b05f2bc0e08e` resolves R1-R4 and sets the extension version to `0.2.1`.
+The corrections retain the existing CLI, editor, and installer responsibilities.
+The historical snippets above illustrate review proposals, not the final implementation.
+
+| Finding | Implemented correction and evidence |
+| --- | --- |
+| R1: Installation freshness | [`SetupService`](../../extensions/vscode/src/setup.ts) binds the inspected version to its executable fingerprint and passes that fingerprint or explicit absence to the installer. Both [PowerShell](../../scripts/install.ps1) and [shell](../../scripts/install.sh) installers recheck the precondition under their replacement locks before replacing the binary or installing Guidance. |
+| R2: Forced inventory refresh | [`Inventory.load`](../../extensions/vscode/src/inventory.ts) starts a fresh read and supersedes the previous request for that source. Only the current request can publish inventory or errors, even if the old request ignores cancellation. Ordinary reads still coalesce; global refresh and disposal invalidate outstanding work. |
+| R3: Uncertain worker outcomes | [`failureState`](../../extensions/vscode/src/operations.ts) honors explicit `unknown` and `not_attempted` evidence before generic failure classification. Confirmed partial results and uncertain accepted receipts retain their distinctions and operation identities. Activity preserves recovery guidance without automatic resubmission. |
+| R4: Maintained tooling classification | [`GoSourceFiles`](../../internal/architecture/architecture.go) supplies maintained source and module ownership to the [file inventory](../../internal/architecture/file_necessity_test.go). Explicit tooling entry points contribute their dependency closures, including the separate host-fixture module. Unreferenced production files still require review; directory location alone does not authorize them. |
+
+Measurements also identified repeated capability normalization as a race-gate bottleneck.
+The [registry](../../internal/capability/registry.go) now normalizes static metadata once and retains it privately.
+Public lookups return defensive copies, with [regressions](../../internal/capability/registry_test.go) protecting caller isolation.
+The subsequent complete race run passes under the original 15-minute limit.
+
+Fresh independent runtime and delivery/Go reviewers report no remaining findings in their reviewed scopes.
+Their targeted extension runs pass 94 runtime tests and 14 setup tests.
+The clean-snapshot extension checks pass all 114 tests, TypeScript, lint, build, source/released CLI contracts, seven browser groups, and VSIX verification.
+Native Windows host checks pass ten scenarios each on VS Code `1.143.1` and minimum-supported `1.95.3`.
+PowerShell 5.1 and Git Bash installer fixtures pass, including target-change regressions; PowerShell 7 is unavailable.
+Git Bash skips the directory-symlink assertion because its links are emulated; the Windows junction regression passes.
+
+Full clean-snapshot Go normal and race gates pass on `0cf8f54`, each covering 111 tested packages and 6,424 tests/subtests.
+The normal run takes 257.891 seconds and the race run takes 380.422 seconds, without changing the race timeout or dropping assertions.
+Both retain 37 explicit platform, privilege, and subprocess-helper skips; ten further packages contain no tests.
+The earlier full race timeout remains historical evidence, with its blocker now resolved.
+Formatting, vet, module/generated-file stability, three five-second fuzz targets, four cross-builds, and repository Node fixtures pass.
+The combined opt-in architecture inventory and workflow-evidence package passes 119 tests/subtests with one symlink-privilege skip.
+The final validation checkout remains clean; cross-builds do not establish another platform's runtime behavior.
+Package details and platform limits are recorded in the [extension validation record](../vscode-extension-validation.md).
+No live Tableau acceptance or actual user installation follows from these fixture checks.
+The [mixed cache-generation limitation](#preserve-cache-generation-evidence-in-combined-inventory) remains open.
+The [cache-scope simplification](#supported-simplification) remains unimplemented and separate from R1-R4.

@@ -6,7 +6,25 @@ The results below distinguish the original archive baseline from the later Windo
 They do not establish Linux runtime coverage.
 See the [maintained validation record](../../vscode-extension-validation.md) for regression evidence and review scope.
 
-## Release and setup checks on 2026-10-25
+## Current correction build: 0.2.1
+
+Use extension `0.2.1` from current Git source rather than the earlier packages below.
+Its clean source snapshot is `0cf8f54ff79b572d12b7cedac1f9b05f2bc0e08e`.
+All 114 extension tests, strict TypeScript, lint, actual source/released CLI contracts, seven browser groups, and both ten-check Windows host suites pass.
+The complete normal and race Go suites also pass: 111 tested packages and 6,424 tests/subtests in each run.
+The race run finishes in 380.422 seconds under the unchanged 15-minute limit, resolving the earlier timeout.
+Formatting, vet, module/generated-file stability, fuzzing, four cross-builds, repository Node fixtures, and the repaired opt-in architecture tools also pass.
+Platform and privilege skips remain explicit in the maintained record; they are not counted as passes.
+The four review findings are implemented, and fresh independent code review reports no remaining findings in the corrected scopes.
+Both installer fixture suites pass on available tools; PowerShell 7 remains unavailable, and Git Bash's emulated directory-link assertion is explicitly skipped.
+The Windows native junction fixture passes.
+
+The local package is `extensions/vscode/dist/tadx.vsix`, 63,913 bytes, with SHA-256 `a59ff3a8620d79fd864d6bd1196faa0c3d9c43900a7d82a466309e2afbe30251`.
+The clean release package contains eleven verified files and records `sourceDirty=false`.
+See the [maintained validation record](../../vscode-extension-validation.md#review-corrections-in-extension-021) for exact artifacts, repository gate results, and remaining platform and tooling limits.
+The original offline archive remains historical; transfer the current Git branch for continued work.
+
+## Historical release and setup checks for 0.2.0
 
 The final extension checks use source commit `c10dc23414dddcce5f35017d0e210896c0e32eba` and prepare version `0.2.0`.
 Use current Git source for continued development; the original offline ZIP contains the earlier `0.1.0` baseline.
@@ -36,7 +54,7 @@ The release manifest records dirty source, so this local artifact is not eligibl
 The [maintained record](../../vscode-extension-validation.md#repository-validation-scope) separates staged-source Go checks from final integrated-source checks.
 The complete normal Go suite passes, but the full race command reaches the 15-minute package timeout in `internal/app`.
 Other race packages and the final merged-source delta race checks pass; these results do not replace the failed full race gate.
-Investigate that timeout before treating the branch as ready for a validated push or release.
+That earlier timeout is resolved by the complete `0.2.1` race run recorded above.
 The final merged-source delta suites pass 603 tests and subtests in both normal and race modes, with six native Windows symlink privilege skips.
 Separate configured Hyper runs pass five tests and subtests in both modes, covering the initial Hyper skips.
 Full formatting, vet, module tidy, and generated-file stability checks pass in the clean merged-source checkout.
@@ -63,7 +81,7 @@ Its SHA-256 was checked when the original handoff archive was prepared:
 4e0520fe2a149ca01e341d9cc0dcdf6648c412f091f59b5a0a1889c1ead1df49
 ```
 
-This hash identifies only the archived `0.1.0` package, not the current `0.2.0` build or a fresh Linux build.
+This hash identifies only the archived `0.1.0` package, not the current build or a fresh Linux build.
 Packaging timestamps and toolchains can change the archive bytes.
 The original bundle includes that package for convenience; use current Git source and rebuild for continued development.
 
