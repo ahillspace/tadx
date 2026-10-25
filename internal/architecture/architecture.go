@@ -3,16 +3,21 @@ package architecture
 
 import (
 	"bufio"
+	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"go/build"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Violation is one forbidden production import.
@@ -28,59 +33,285 @@ func (v Violation) String() string {
 
 // Check scans production Go files below root and reports forbidden imports.
 func Check(root string) ([]Violation, error) {
-	modulePath, err := readModulePath(filepath.Join(root, "go.mod"))
+	inventory, err := inspectSources(root)
 	if err != nil {
 		return nil, err
 	}
-
 	var violations []Violation
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() && path != root && ignoredDirectory(entry.Name()) {
-			return filepath.SkipDir
-		}
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			return nil
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		relative = filepath.ToSlash(relative)
-		imports, err := fileImports(path)
-		if err != nil {
-			return fmt.Errorf("parse %s: %w", relative, err)
-		}
+	for relative, imports := range inventory.imports {
 		for _, imported := range imports {
-			if reason := forbiddenReason(relative, imported, modulePath); reason != "" {
+			if reason := forbiddenReason(relative, imported, inventory.modulePath); reason != "" {
 				violations = append(violations, Violation{File: relative, Import: imported, Reason: reason})
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
-	sort.Slice(violations, func(i, j int) bool {
-		if violations[i].File != violations[j].File {
-			return violations[i].File < violations[j].File
-		}
-		if violations[i].Import != violations[j].Import {
-			return violations[i].Import < violations[j].Import
-		}
-		return violations[i].Reason < violations[j].Reason
+	slices.SortFunc(violations, func(left, right Violation) int {
+		return cmp.Or(cmp.Compare(left.File, right.File), cmp.Compare(left.Import, right.Import), cmp.Compare(left.Reason, right.Reason))
 	})
 	return violations, nil
 }
 
-func ignoredDirectory(name string) bool {
-	return name == ".git" || name == "vendor" || name == "archived"
+type sourceInventory struct {
+	files      []string
+	modulePath string
+	imports    map[string][]string
 }
 
-func fileImports(path string) ([]string, error) {
-	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+// inspectSources owns both source selection and explicit local-import closure.
+// Both architecture and first-party content checks consume this same file set.
+func inspectSources(root string) (*sourceInventory, error) {
+	source, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open source root: %w", err)
+	}
+	defer source.Close()
+	modulePath, err := readModulePath(source, "go.mod")
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := firstPartyPaths(root)
+	if err != nil {
+		return nil, err
+	}
+	inventory := &sourceInventory{modulePath: modulePath, imports: make(map[string][]string)}
+	modules := map[string]bool{".": true}
+	queued := make(map[string]bool, len(files))
+	for _, file := range files {
+		queued[file] = true
+	}
+	importsChecked := make(map[string]bool)
+	for index := 0; index < len(files); index++ {
+		relative := files[index]
+		if !strings.HasSuffix(relative, ".go") || strings.HasSuffix(relative, "_test.go") {
+			continue
+		}
+		owned, err := rootModuleDirectory(source, filepath.ToSlash(filepath.Dir(relative)), modules)
+		if err != nil {
+			return nil, err
+		}
+		if !owned {
+			continue
+		}
+		imports, err := fileImports(source, relative)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", relative, err)
+		}
+		inventory.imports[relative] = imports
+		for _, imported := range imports {
+			local, isLocal := localImportPath(imported, modulePath)
+			if !isLocal || importsChecked[local] {
+				continue
+			}
+			importsChecked[local] = true
+			additional, err := importedGoFiles(source, local)
+			if err != nil {
+				return nil, err
+			}
+			for _, file := range additional {
+				if !queued[file] {
+					queued[file] = true
+					files = append(files, file)
+				}
+			}
+		}
+	}
+	slices.Sort(files)
+	inventory.files = files
+	return inventory, nil
+}
+
+func ignoredDirectory(name string) bool {
+	return name == ".git" || name == "vendor" || name == "node_modules" || name == "archived"
+}
+
+// FirstPartyFiles selects repository-relative regular files without traversing
+// ignored local snapshots or third-party dependencies. Git supplies tracked and
+// nonignored untracked paths. Owned Go roots additionally include ignored source
+// files, so an ignore rule cannot hide a compiled import from the gate.
+// Source exports without Git metadata use a filesystem walk that excludes Go's
+// hidden/build directories and the same dependency boundaries.
+// Explicit local imports additionally include their exact target source files.
+func FirstPartyFiles(root string) ([]string, error) {
+	inventory, err := inspectSources(root)
+	if err != nil {
+		return nil, err
+	}
+	return inventory.files, nil
+}
+
+func firstPartyPaths(root string) ([]string, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("resolve source root: %w", err)
+	}
+	paths := make(map[string]bool)
+	walk := func(directory string, goOnly bool) error {
+		return filepath.WalkDir(filepath.Join(root, directory), func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if goOnly && directory == "." && path != root {
+					return filepath.SkipDir
+				}
+				if path != root && (ignoredDirectory(entry.Name()) || strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_")) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if goOnly && !strings.HasSuffix(entry.Name(), ".go") {
+				return nil
+			}
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			paths[filepath.ToSlash(relative)] = true
+			return nil
+		})
+	}
+	_, metadataErr := os.Lstat(filepath.Join(root, ".git"))
+	switch {
+	case metadataErr == nil:
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		command := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--deduplicate", "-z")
+		output, err := command.Output()
+		if err != nil {
+			return nil, fmt.Errorf("select first-party files from Git: %w", err)
+		}
+		goRoots := map[string]bool{".": true}
+		for relative := range strings.SplitSeq(string(output), "\x00") {
+			if relative == "" {
+				continue
+			}
+			excluded := false
+			for part := range strings.SplitSeq(relative, "/") {
+				if ignoredDirectory(part) {
+					excluded = true
+					break
+				}
+			}
+			if excluded {
+				continue
+			}
+			paths[relative] = true
+			if strings.HasSuffix(relative, ".go") {
+				top, _, nested := strings.Cut(relative, "/")
+				if !nested {
+					top = "."
+				}
+				goRoots[top] = true
+			}
+		}
+		for directory := range goRoots {
+			if err := walk(directory, true); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				return nil, fmt.Errorf("scan owned Go source: %w", err)
+			}
+		}
+	case errors.Is(metadataErr, os.ErrNotExist):
+		if err := walk(".", false); err != nil {
+			return nil, fmt.Errorf("scan source export: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("inspect Git ownership metadata: %w", metadataErr)
+	}
+	files := make([]string, 0, len(paths))
+	for relative := range paths {
+		info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(relative)))
+		if errors.Is(err, os.ErrNotExist) {
+			continue // A tracked deletion is absent from the current source tree.
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect first-party file %s: %w", relative, err)
+		}
+		if !info.Mode().IsRegular() {
+			if strings.HasSuffix(relative, ".go") {
+				return nil, fmt.Errorf("Go source %s must be a regular file", relative)
+			}
+			continue
+		}
+		files = append(files, relative)
+	}
+	slices.Sort(files)
+	return files, nil
+}
+
+// Nested modules own their import constraints, not the parent module's layers.
+func rootModuleDirectory(root *os.Root, directory string, modules map[string]bool) (bool, error) {
+	if owned, ok := modules[directory]; ok {
+		return owned, nil
+	}
+	parent := filepath.ToSlash(filepath.Dir(directory))
+	owned, err := rootModuleDirectory(root, parent, modules)
+	if err != nil {
+		return false, err
+	}
+	if owned {
+		moduleFile := filepath.Join(filepath.FromSlash(directory), "go.mod")
+		info, err := root.Lstat(moduleFile)
+		switch {
+		case err == nil:
+			if !info.Mode().IsRegular() {
+				return false, fmt.Errorf("nested module %s/go.mod must be a regular file", directory)
+			}
+			if _, err := readModulePath(root, moduleFile); err != nil {
+				return false, fmt.Errorf("inspect nested module %s: %w", directory, err)
+			}
+			owned = false
+		case !errors.Is(err, os.ErrNotExist):
+			return false, fmt.Errorf("inspect nested module %s: %w", directory, err)
+		}
+	}
+	modules[directory] = owned
+	return owned, nil
+}
+
+// Explicit imports can reach directories omitted by Go's ./... traversal.
+// Follow only that exact package rather than admitting an ignored source tree.
+func importedGoFiles(root *os.Root, directory string) ([]string, error) {
+	if directory == "" {
+		directory = "."
+	}
+	packageDirectory, err := root.Open(filepath.FromSlash(directory))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil // Resolution of missing imports belongs to the Go build.
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open imported package %s: %w", directory, err)
+	}
+	defer packageDirectory.Close()
+	entries, err := packageDirectory.ReadDir(-1)
+	if err != nil {
+		return nil, fmt.Errorf("read imported package %s: %w", directory, err)
+	}
+	var files []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") && !strings.HasSuffix(entry.Name(), "_test.go") {
+			files = append(files, filepath.ToSlash(filepath.Join(directory, entry.Name())))
+		}
+	}
+	return files, nil
+}
+
+func fileImports(root *os.Root, path string) ([]string, error) {
+	info, err := root.Lstat(filepath.FromSlash(path))
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("Go source %s must be a regular file", path)
+	}
+	file, err := root.Open(filepath.FromSlash(path))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, file, parser.ImportsOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +323,7 @@ func fileImports(path string) ([]string, error) {
 		}
 		imports = append(imports, value)
 	}
-	sort.Strings(imports)
+	slices.Sort(imports)
 	return imports, nil
 }
 
@@ -486,8 +717,15 @@ func hasPathPrefix(path, prefix string) bool {
 	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
-func readModulePath(path string) (string, error) {
-	file, err := os.Open(path)
+func readModulePath(root *os.Root, path string) (string, error) {
+	info, err := root.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect go.mod: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("go.mod must be a regular file")
+	}
+	file, err := root.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("open go.mod: %w", err)
 	}

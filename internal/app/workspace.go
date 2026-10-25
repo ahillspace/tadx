@@ -382,7 +382,13 @@ func statusArtifact(item artifact.Item) workspaceaction.StatusArtifact {
 	if len(item.Warnings) > 0 {
 		diagnostic = item.Warnings[0]
 	}
-	return workspaceaction.StatusArtifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State, Reason: item.Reason, Diagnostic: diagnostic, CanonicalPath: item.CanonicalPath, BaselineFingerprint: item.BaselineFingerprint, CurrentFingerprint: item.CurrentFingerprint}
+	return workspaceaction.StatusArtifact{
+		Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State,
+		Reason: item.Reason, Diagnostic: diagnostic, CanonicalPath: item.CanonicalPath,
+		SourceServerOrigin: item.ServerOrigin, SourceSiteLUID: item.SiteLUID,
+		SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite,
+		BaselineFingerprint: item.BaselineFingerprint, CurrentFingerprint: item.CurrentFingerprint,
+	}
 }
 func moveArtifact(item artifact.Item) workspaceaction.MoveArtifact {
 	return workspaceaction.MoveArtifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State, ServerOrigin: item.ServerOrigin, SiteLUID: item.SiteLUID, BaselineFingerprint: item.BaselineFingerprint, CurrentFingerprint: item.CurrentFingerprint, Warnings: append([]string(nil), item.Warnings...)}

@@ -1,0 +1,370 @@
+{
+  "name": "tadx",
+  "displayName": "TADX Artifact Explorer",
+  "description": "Browse Tableau site inventory and local TADX workspaces, then download and upload artifacts.",
+  "version": "0.2.0",
+  "publisher": "ahillspace",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahillspace/tadx.git",
+    "directory": "extensions/vscode"
+  },
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=22.15.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "tableau",
+    "tadx",
+    "artifacts"
+  ],
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "TADX runs a local executable and manages workspace files. Trust the workspace to enable it."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "TADX requires a filesystem and a Node extension host."
+    }
+  },
+  "activationEvents": [
+    "onView:tadx.sites",
+    "onView:tadx.workspaces",
+    "onView:tadx.activity"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tadx",
+          "title": "TADX",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "tadx": [
+        {
+          "id": "tadx.sites",
+          "name": "Sites"
+        },
+        {
+          "id": "tadx.workspaces",
+          "name": "Local workspaces"
+        },
+        {
+          "id": "tadx.activity",
+          "name": "Activity"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tadx.refresh",
+        "title": "Reload Inventory",
+        "category": "TADX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tadx.refreshCache",
+        "title": "Refresh Site Cache",
+        "category": "TADX",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "tadx.chooseWorkspace",
+        "title": "Choose Workspace",
+        "category": "TADX",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "tadx.filter",
+        "title": "Filter Artifacts",
+        "category": "TADX",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "tadx.openInventory",
+        "title": "Bulk Actions",
+        "category": "TADX",
+        "icon": "$(table)"
+      },
+      {
+        "command": "tadx.openWorkspaceBulkActions",
+        "title": "Bulk Actions",
+        "category": "TADX",
+        "icon": "$(table)"
+      },
+      {
+        "command": "tadx.openArtifact",
+        "title": "Open Artifact Details",
+        "category": "TADX"
+      },
+      {
+        "command": "tadx.download",
+        "title": "Download",
+        "category": "TADX",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "tadx.upload",
+        "title": "Upload",
+        "category": "TADX",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "tadx.openRemote",
+        "title": "Open in Tableau",
+        "category": "TADX",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "tadx.openPayload",
+        "title": "Open Local Artifact",
+        "category": "TADX",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "tadx.openMetadata",
+        "title": "Open Artifact Metadata",
+        "category": "TADX"
+      },
+      {
+        "command": "tadx.reveal",
+        "title": "Reveal in Explorer",
+        "category": "TADX"
+      },
+      {
+        "command": "tadx.move",
+        "title": "Move Local Artifact",
+        "category": "TADX"
+      },
+      {
+        "command": "tadx.delete",
+        "title": "Delete Local Artifact",
+        "category": "TADX"
+      },
+      {
+        "command": "tadx.inspectOperation",
+        "title": "Check Operation",
+        "category": "TADX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tadx.showOutput",
+        "title": "Show Output",
+        "category": "TADX"
+      },
+      {
+        "command": "tadx.cliStatus",
+        "title": "CLI Status and Setup",
+        "category": "TADX",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "tadx.installCli",
+        "title": "Install TADX CLI",
+        "category": "TADX",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "tadx.updateCli",
+        "title": "Update TADX CLI",
+        "category": "TADX",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "tadx.chooseExecutable",
+        "title": "Choose TADX Executable",
+        "category": "TADX",
+        "icon": "$(folder-opened)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "tadx.openWorkspaceBulkActions",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "tadx.chooseWorkspace",
+          "when": "view == tadx.workspaces",
+          "group": "navigation@1"
+        },
+        {
+          "command": "tadx.refresh",
+          "when": "view == tadx.sites || view == tadx.workspaces",
+          "group": "navigation@2"
+        },
+        {
+          "command": "tadx.filter",
+          "when": "view == tadx.sites || view == tadx.workspaces",
+          "group": "1_inventory@1"
+        },
+        {
+          "command": "tadx.openInventory",
+          "when": "view == tadx.sites",
+          "group": "1_inventory@2"
+        },
+        {
+          "command": "tadx.openWorkspaceBulkActions",
+          "when": "view == tadx.workspaces",
+          "group": "1_inventory@2"
+        },
+        {
+          "command": "tadx.refreshCache",
+          "when": "view == tadx.sites",
+          "group": "2_cache"
+        },
+        {
+          "command": "tadx.showOutput",
+          "when": "view == tadx.activity",
+          "group": "navigation"
+        },
+        {
+          "command": "tadx.cliStatus",
+          "when": "view == tadx.sites",
+          "group": "3_setup"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tadx.refreshCache",
+          "when": "viewItem == site",
+          "group": "inline@1"
+        },
+        {
+          "command": "tadx.openInventory",
+          "when": "viewItem == site",
+          "group": "1_bulk"
+        },
+        {
+          "command": "tadx.openWorkspaceBulkActions",
+          "when": "viewItem == workspace",
+          "group": "1_bulk"
+        },
+        {
+          "command": "tadx.download",
+          "when": "viewItem =~ /^remoteArtifact/",
+          "group": "inline@1"
+        },
+        {
+          "command": "tadx.upload",
+          "when": "viewItem == localArtifact",
+          "group": "inline@1"
+        },
+        {
+          "command": "tadx.openRemote",
+          "when": "viewItem == remoteArtifactWithUrl",
+          "group": "1_open"
+        },
+        {
+          "command": "tadx.openPayload",
+          "when": "viewItem == localArtifact || viewItem == localOtherArtifact",
+          "group": "1_open@1"
+        },
+        {
+          "command": "tadx.openMetadata",
+          "when": "viewItem == localArtifact || viewItem == localOtherArtifact",
+          "group": "1_open@2"
+        },
+        {
+          "command": "tadx.reveal",
+          "when": "viewItem == localArtifact || viewItem == localOtherArtifact",
+          "group": "1_open@3"
+        },
+        {
+          "command": "tadx.move",
+          "when": "viewItem == localArtifact || viewItem == localOtherArtifact",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "tadx.delete",
+          "when": "viewItem == localArtifact || viewItem == localOtherArtifact",
+          "group": "2_manage@2"
+        },
+        {
+          "command": "tadx.inspectOperation",
+          "when": "viewItem == operation",
+          "group": "inline"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "tadx.sites",
+        "contents": "Expand configured Tableau sites to browse cached projects and artifacts.\n[Reload inventory](command:tadx.refresh)\nConfigure an environment with TADX if no sites appear."
+      },
+      {
+        "view": "tadx.workspaces",
+        "contents": "Browse registered TADX workspaces.\n[Reload inventory](command:tadx.refresh)\nTADX workspaces are separate from VS Code workspace folders."
+      },
+      {
+        "view": "tadx.activity",
+        "contents": "Downloads and uploads appear here.\n[Bulk Actions](command:tadx.openInventory)"
+      }
+    ],
+    "configuration": {
+      "title": "TADX",
+      "properties": {
+        "tadx.executablePath": {
+          "type": "string",
+          "default": "tadx",
+          "scope": "machine",
+          "description": "Installed TADX executable on the extension host. Use an executable path, without shell arguments."
+        },
+        "tadx.commandTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 5,
+          "maximum": 1200,
+          "scope": "machine",
+          "description": "Maximum duration of a CLI invocation. Detached operations continue independently."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:host": "npm run build && node scripts/test-host.mjs",
+    "test:ui": "node tests/panels-browser.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package --no-dependencies --out dist/tadx.vsix --baseContentUrl https://github.com/ahillspace/tadx/blob/HEAD/extensions/vscode",
+    "test:cli": "node scripts/test-cli.mjs",
+    "release:check": "node scripts/release.mjs check",
+    "release:package": "node scripts/release.mjs package",
+    "release:verify": "node scripts/release.mjs verify",
+    "test:released-cli": "node scripts/test-release-cli.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.19.0",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "playwright": "^1.64.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "yauzl": "^3.4.0"
+  }
+}

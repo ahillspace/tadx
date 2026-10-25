@@ -6,6 +6,9 @@ repository='ahillspace/tadx'
 path_marker='# tadx-installer-path'
 action='install'
 version=${TADX_VERSION:-latest}
+version_explicit=0
+expected_sha256=''
+expected_sha256_set=0
 install_dir=${TADX_INSTALL_DIR:-"${HOME}/.local/bin"}
 modify_path=1
 completion=1
@@ -13,8 +16,9 @@ completion_marker='# tadx-installer-completion'
 targets=''
 
 usage() {
-    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--target TARGET] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
+    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--expected-sha256 HASH] [--target TARGET] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
     printf '%s\n' '  --version VERSION       install an exact release; default: latest'
+    printf '%s\n' '  --expected-sha256 HASH  additionally require this archive digest; requires an explicit exact --version'
     printf '%s\n' '  --target TARGET         install bundled Guidance for one target; repeat for more than one'
     printf '%s\n' '  --install-dir DIRECTORY resolved binary directory; default: $TADX_INSTALL_DIR or $HOME/.local/bin'
     printf '%s\n' '  --no-modify-path        leave shell profiles and PATH unchanged'
@@ -37,6 +41,13 @@ while [ "$#" -gt 0 ]; do
         --version)
             [ "$#" -ge 2 ] || fail '--version requires a value.'
             version=$2
+            version_explicit=1
+            shift 2
+            ;;
+        --expected-sha256)
+            [ "$#" -ge 2 ] || fail '--expected-sha256 requires a value.'
+            expected_sha256=$2
+            expected_sha256_set=1
             shift 2
             ;;
         --install-dir)
@@ -68,6 +79,14 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+if [ "$expected_sha256_set" -eq 1 ]; then
+    [ "$action" = install ] || fail '--expected-sha256 applies only to installation.'
+    case "$expected_sha256" in ''|*[!0-9a-fA-F]*) fail '--expected-sha256 must contain exactly 64 hexadecimal characters.' ;; esac
+    [ "${#expected_sha256}" -eq 64 ] || fail '--expected-sha256 must contain exactly 64 hexadecimal characters.'
+    [ "$version_explicit" -eq 1 ] && [ -n "$version" ] && [ "$version" != latest ] || fail '--expected-sha256 requires an explicit exact --version; latest is not supported.'
+    expected_sha256=$(printf '%s' "$expected_sha256" | tr 'A-F' 'a-f')
+fi
 
 case "$install_dir" in
     /*) ;;
@@ -325,6 +344,9 @@ else
 fi
 
 [ "$actual_hash" = "$expected_hash" ] || fail "Checksum verification failed for $asset_name. The archive was not installed."
+if [ "$expected_sha256_set" -eq 1 ]; then
+    [ "$actual_hash" = "$expected_sha256" ] || fail "The archive does not match the expected SHA-256 for $asset_name. The archive was not installed."
+fi
 
 extract_directory="${temporary_directory}/extract"
 mkdir "$extract_directory"

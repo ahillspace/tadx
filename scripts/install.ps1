@@ -4,6 +4,8 @@ Installs or removes the TADX executable and bundled agent Guidance.
 .DESCRIPTION
 InstallDir wins over TADX_INSTALL_DIR and defaults to %LOCALAPPDATA%\Programs\tadx\bin.
 Use NoModifyPath and NoCompletion independently when profile changes are not wanted.
+.PARAMETER ExpectedSHA256
+Also verify the archive against this caller-supplied digest; requires an explicit exact Version.
 .EXAMPLE
 ./install.ps1 -NoModifyPath -NoCompletion
 #>
@@ -13,6 +15,8 @@ param(
     [string]$Action = 'Install',
 
     [string]$Version = '',
+
+    [string]$ExpectedSHA256 = '',
 
     [string]$InstallDir = '',
 
@@ -175,7 +179,8 @@ function Assert-ArchiveChecksum {
     param(
         [Parameter(Mandatory = $true)][string]$ArchivePath,
         [Parameter(Mandatory = $true)][string]$AssetName,
-        [Parameter(Mandatory = $true)][object[]]$Entries
+        [Parameter(Mandatory = $true)][object[]]$Entries,
+        [string]$ExpectedHash = ''
     )
 
     $matches = @($Entries | Where-Object { $_.File -ceq $AssetName })
@@ -186,6 +191,9 @@ function Assert-ArchiveChecksum {
     $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArchivePath).Hash.ToLowerInvariant()
     if ($actual -cne $matches[0].Hash) {
         throw "Checksum verification failed for $AssetName. The archive was not installed."
+    }
+    if ($ExpectedHash -and $actual -cne $ExpectedHash) {
+        throw "The archive does not match the expected SHA-256 for $AssetName. The archive was not installed."
     }
 }
 
@@ -406,6 +414,15 @@ function Set-ManagedCompletion {
     [IO.File]::WriteAllText($profilePath, $updated, $profileContent.Encoding)
 }
 
+if ($PSBoundParameters.ContainsKey('ExpectedSHA256')) {
+    if ($Action -ine 'Install') { throw 'ExpectedSHA256 applies only to installation.' }
+    if ($ExpectedSHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'ExpectedSHA256 must contain exactly 64 hexadecimal characters.' }
+    if (-not $PSBoundParameters.ContainsKey('Version') -or [string]::IsNullOrWhiteSpace($Version) -or $Version -ieq 'latest') {
+        throw 'ExpectedSHA256 requires an explicit exact -Version; latest is not supported.'
+    }
+    $ExpectedSHA256 = $ExpectedSHA256.ToLowerInvariant()
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = $env:TADX_INSTALL_DIR
 }
@@ -513,7 +530,7 @@ try {
         }
         throw "The release asset $assetName for version $resolvedVersion could not be retrieved (bounded transport failure). It was not verified or installed."
     }
-    Assert-ArchiveChecksum -ArchivePath $archivePath -AssetName $assetName -Entries $entries
+    Assert-ArchiveChecksum -ArchivePath $archivePath -AssetName $assetName -Entries $entries -ExpectedHash $ExpectedSHA256
     if ((Get-Item -LiteralPath $archivePath).Length -gt 268435456) {
         throw 'The release archive exceeds its byte limit.'
     }

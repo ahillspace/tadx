@@ -2,7 +2,11 @@
 
 TADX is one Go module and one CLI binary with a runtime scoped to each command.
 It has no resident service and does not call or proxy Tableau MCP.
-The [architecture diagram](architecture/index.html) shows command flow and dependency wiring.
+The optional [VS Code extension](../extensions/vscode/README.md) is a separate TypeScript package in `extensions/vscode`.
+It consumes the installed CLI through JSON commands and has an independent build, test suite, version, and VSIX artifact.
+The [editor architecture](architecture/editor-extension.md) owns its component, state, and operation contracts.
+The [architecture guide](architecture/README.md) connects runtime, resources, state, dependencies, and delivery.
+The [architecture diagram](architecture/index.html) summarizes command flow and dependency wiring.
 The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](architecture/tadx-architecture.excalidraw) accompany the diagram.
 
 ## Package responsibilities
@@ -31,6 +35,35 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `internal/output`, `internal/toon` | Bounded output projections, redaction, and TOON encoding |
 | `internal/capability` | Typed capability facts, validation, and command bindings |
 | `internal/architecture` | Automated import-boundary checks |
+| `extensions/vscode` | Native VS Code inventory navigation, editor views, and explicit CLI operations |
+
+## Shared support packages
+
+These packages own focused mechanisms used across the resource and service boundaries above.
+They do not form a second operation framework.
+
+| Package | Responsibility |
+| --- | --- |
+| `internal/managedpolicy` | Protected machine policy discovery, parsing, native protection checks, installation, and capability permissions |
+| `internal/identity` | Exact selector validation and deterministic ambiguity handling |
+| `internal/readsource` | Explicit live/cache source selection and provenance |
+| `internal/paging` | Bounded collection, logical result windows, continuation, and partial Metadata API traversal |
+| `internal/batchspec` | Bounded batch-file parsing and shared per-item options |
+| `internal/contentbatch` | Ordered selected content operations and preserved per-item outcomes |
+| `internal/pathspec` | Workspace-relative, portable path validation |
+| `internal/pulsecontract` | Standard-library-only Pulse authoring contract and capability schema values |
+| `internal/errs`, `internal/cli/clierr` | Structured failures and CLI argument-error translation |
+| `internal/commandhint` | Shell-appropriate contextual follow-up commands |
+| `internal/lastcommand` | Bounded persisted result snapshots without execution instructions |
+| `internal/lock`, `internal/fsreplace` | Native coordination, atomic replacement, and platform durability mechanics |
+| `internal/agent`, `internal/agenttarget` | Embedded operating Guidance installation, ownership, migration, and supported host roots |
+| `internal/update`, `internal/version` | Installed-executable updates and bounded release metadata |
+| `internal/guidancenotice`, `internal/releasenotice` | Optional process-level Guidance and release notices |
+| `scripts` | Embedded bootstrap installers; adjacent Node.js and shell files support site packaging and validation |
+| `cmd/gencapdocs` | Generated capability Markdown, JSON, and HTML data |
+
+The [resource guide](architecture/resources-and-state.md) maps operation families to actions, adapters, providers, and state owners.
+The [dependency and delivery guide](architecture/dependencies-and-delivery.md) distinguishes runtime libraries, test-only modules, native tools, and publishing workflows.
 
 ## Dependency boundaries
 
@@ -47,6 +80,10 @@ Shared value types in `internal/value` depend only on the standard library.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.
+Its shared first-party inventory separates maintained source from ignored local snapshots and dependency trees.
+Git-owned and nonignored files establish source ownership; ignored Go files inside owned roots and explicitly imported local packages still receive checks.
+Source exports without Git metadata use the documented filesystem fallback.
+Malformed ownership metadata and unsupported nonregular Go source fail instead of silently removing enforcement.
 Additional external-import rules keep Cobra out of action, adapter, client, and foundation layers and HTTP out of actions, adapters, and CLI plumbing.
 These boundaries constrain package dependencies; they do not require an adapter or forwarding interface for every operation.
 
