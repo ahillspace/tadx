@@ -26,7 +26,7 @@ The status picker identifies the executable, version, compatibility, and workspa
 Reload the window when requested to apply that path.
 
 **Install TADX CLI** installs the verified release into the normal shared user location.
-The default location is `%LOCALAPPDATA%\Programs\tadx\bin` on Windows or `~/.local/bin` on Linux and macOS.
+The default location is the user's local program directory on Windows or `~/.local/bin` on Linux and macOS.
 The same installation can serve the extension, terminals, and coding agents.
 On SSH, WSL, and container sessions, installation applies to the workspace host.
 
@@ -63,7 +63,7 @@ Guided setup does not resolve an arbitrary latest release at confirmation time.
 The initial policy selects CLI `1.0.0`.
 The Windows amd64 archive has passed the extension's actual CLI read-contract tests.
 Other platform hashes come from the same release checksum manifest; those hashes do not establish native runtime coverage.
-The manual workflow tests the pinned release on its Linux and Windows runners before publication.
+The manual workflow tests the pinned release on its Linux, Windows, and macOS runners before publication.
 Live Tableau transfers require separate acceptance evidence.
 
 To change the policy, review the official release assets, update their pins, and run both source-built and pinned-release contract tests.
@@ -131,7 +131,7 @@ The workflow supports three actions:
 - **github-and-marketplace** publishes that same package to GitHub and the Marketplace.
 
 The workflow validates current and minimum VS Code hosts, browser scenarios, source and released CLI contracts, and the maintained installer fixtures.
-Linux and Windows checks are gates; an unavailable or failed check is not a pass.
+Linux, Windows, and macOS checks are gates; an unavailable or failed check is not a pass.
 Publishing consumes the package produced by those gates without rebuilding it.
 Existing releases and assets are not overwritten.
 

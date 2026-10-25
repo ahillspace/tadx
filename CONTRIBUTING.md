@@ -92,6 +92,10 @@ Use manual CI for native platform coverage or privileged policy fixtures that re
 The [native policy workflow](.github/workflows/native-policy.yml) retains those checks for manual CI and releases.
 Do not elevate an ordinary development session to hide privilege-related skips.
 
+For focused qualification against a real Tableau site, use the [selectable live CLI suite](tests/live/README.md).
+It requires an explicit target, candidate executable, prepared selection, and existing write authorization.
+Ordinary local checks do not run the live contracts.
+
 ## Keep changes maintainable
 
 For changes to the VS Code extension, run the package checks and host tests in the [extension contributor instructions](extensions/vscode/README.md#develop-and-validate).

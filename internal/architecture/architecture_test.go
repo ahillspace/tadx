@@ -36,7 +36,7 @@ func TestFirstPartyFilesDoNotContainDeveloperHomePaths(t *testing.T) {
 		regexp.MustCompile(`/` + `home/[^/\s]+`),
 	}
 	excludedDirectories := map[string]bool{
-		".git": true, ".agents": true, ".tadx-explore": true, "agent-review": true, "archived": true,
+		".git": true, ".agents": true, ".tadx-explore": true, ".tadx-live": true, "agent-review": true, "archived": true,
 		"Tableau API Documentation": true,
 	}
 	textExtensions := map[string]bool{

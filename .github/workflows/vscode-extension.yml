@@ -85,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -111,6 +111,7 @@ jobs:
         working-directory: .
         run: go test ./internal/update ./internal/cli/update ./actions/update
       - name: Check the bundled shell installer
+        if: runner.os != 'Windows'
         working-directory: .
         shell: bash
         run: |
@@ -127,12 +128,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check the native host fixture
         working-directory: extensions/vscode/tests/fixtures/host
-        shell: pwsh
+        shell: bash
         run: |
-          $files = gofmt -l .
-          if ($files) { $files; exit 1 }
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then printf '%s\n' "$files"; exit 1; fi
           go vet ./...
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
       - name: Test current and minimum VS Code on Linux
@@ -148,6 +148,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/test-host.mjs --version=1.95.3
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test current and minimum VS Code on macOS
+        if: runner.os == 'macOS'
+        run: |
+          npm run test:host
+          node scripts/test-host.mjs --version=1.95.3
 
   package:
     name: Package one verified VSIX
