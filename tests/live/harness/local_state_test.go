@@ -36,7 +36,7 @@ func assertLocalStateFile(t *testing.T, path, wanted string) {
 func TestLocalCleanupRemovesOnlyOwnedWorkspaceAndHome(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
-	for _, name := range []string{"workspace", "home"} {
+	for _, name := range []string{"workspace", "destination-workspace", "home"} {
 		localStateFile(t, filepath.Join(root, name, "nested", "state.json"), "disposable")
 	}
 	kept := map[string]string{"journal.json": "ownership", "evidence.json": "commands", "config.yaml": "target", "neighbor/keep.txt": "neighbor"}
@@ -48,7 +48,7 @@ func TestLocalCleanupRemovesOnlyOwnedWorkspaceAndHome(t *testing.T) {
 	if err := c.cleanLocalState(); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"workspace", "home"} {
+	for _, name := range []string{"workspace", "destination-workspace", "home"} {
 		if _, err := os.Lstat(filepath.Join(root, name)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("owned %s was not removed: %v", name, err)
 		}
@@ -74,7 +74,7 @@ func TestLocalCleanupIsIdempotentWhenOwnedDirectoriesAreAbsent(t *testing.T) {
 }
 
 func TestLocalCleanupRefusesSubstitutedFile(t *testing.T) {
-	for _, name := range []string{"workspace", "home"} {
+	for _, name := range []string{"workspace", "destination-workspace", "home"} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			substitute := filepath.Join(root, name)
@@ -101,7 +101,7 @@ func makeLocalStateSymlink(t *testing.T, target, link string) {
 }
 
 func TestLocalCleanupRefusesOwnedDirectorySymlinkWithoutTouchingTarget(t *testing.T) {
-	for _, name := range []string{"workspace", "home"} {
+	for _, name := range []string{"workspace", "destination-workspace", "home"} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			outside := t.TempDir()

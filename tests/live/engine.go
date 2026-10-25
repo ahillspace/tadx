@@ -264,7 +264,7 @@ func Setup(ctx context.Context, p harness.Profile, binary, state string, plan Pl
 		return m, err
 	}
 	defer unlock()
-	if err = guardLocalWorkers(ctx, p, binary, state); err != nil {
+	if err = guardTargetWorkers(ctx, p, binary, state); err != nil {
 		return m, err
 	}
 	// Actor identity is established independently before candidate transfers.
@@ -342,6 +342,9 @@ func Setup(ctx context.Context, p harness.Profile, binary, state string, plan Pl
 	}
 	c, err := harness.NewCase(ctx, p, binary, dir, "live.setup.root", run, "", target, fixtureCapabilities(nil))
 	if err != nil {
+		return m, err
+	}
+	if err = requireTargetRecoveryEvidence(p, state, filepath.Join(dir, "journal.json")); err != nil {
 		return m, err
 	}
 	c.ActorUserID = actorID
@@ -675,7 +678,7 @@ func VerifySetup(ctx context.Context, p harness.Profile, binary, state string, p
 		return m, err
 	}
 	defer unlock()
-	if err = guardLocalWorkers(ctx, p, binary, state); err != nil {
+	if err = guardTargetWorkers(ctx, p, binary, state); err != nil {
 		return m, err
 	}
 	api, err := harness.NewClient(ctx, resolved)
@@ -798,7 +801,7 @@ func Run(ctx context.Context, p harness.Profile, binary, state string, plan Plan
 		return report, err
 	}
 	defer unlock()
-	if err = guardLocalWorkers(ctx, p, binary, state); err != nil {
+	if err = guardTargetWorkers(ctx, p, binary, state); err != nil {
 		return report, err
 	}
 	api, err := harness.NewClient(ctx, resolved)
@@ -815,6 +818,9 @@ func Run(ctx context.Context, p harness.Profile, binary, state string, plan Plan
 		dir := filepath.Join(state, "runs", report.RunID, strings.TrimPrefix(spec.ID, "live."))
 		result := Result{ID: spec.ID, RunID: report.RunID, Started: time.Now().UTC(), Cleanup: "not-attempted"}
 		c, caseErr := harness.NewCase(ctx, resolved, binary, dir, spec.ID, report.RunID, m.RootProject.ID, m.TargetFingerprint, profileFixtureCapabilities([]Spec{spec}, resolved))
+		if caseErr == nil {
+			caseErr = requireTargetRecoveryEvidence(p, state, filepath.Join(dir, "journal.json"))
+		}
 		if caseErr == nil {
 			c.ActorUserID = m.ActorUserID
 			c.BindAPI(api)
@@ -897,7 +903,7 @@ func Cleanup(ctx context.Context, p harness.Profile, binary, state, run string) 
 		return err
 	}
 	defer unlock()
-	if err = guardLocalWorkers(ctx, p, binary, state); err != nil {
+	if err = guardTargetWorkers(ctx, p, binary, state); err != nil {
 		return err
 	}
 	api, err := harness.NewClient(ctx, resolved)
@@ -953,7 +959,10 @@ func Cleanup(ctx context.Context, p harness.Profile, binary, state, run string) 
 		}
 	}
 	if len(failures) == 0 && run == m.SetupRun {
-		return os.Remove(filepath.Join(state, "manifest.json"))
+		if err := os.Remove(filepath.Join(state, "manifest.json")); err != nil {
+			return err
+		}
+		return finishTargetState(p, state)
 	}
 	return errors.Join(failures...)
 }

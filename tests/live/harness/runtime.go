@@ -382,7 +382,7 @@ func (c *Case) cleanLocalState() error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"workspace", "home"} {
+	for _, name := range []string{"workspace", "destination-workspace", "home"} {
 		path := filepath.Join(root, name)
 		info, err := os.Lstat(path)
 		if errors.Is(err, os.ErrNotExist) {
@@ -392,7 +392,7 @@ func (c *Case) cleanLocalState() error {
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("local cleanup refuses a substituted workspace or home")
+			return errors.New("local cleanup refuses a substituted workspace or home directory")
 		}
 		resolved, err := filepath.EvalSymlinks(path)
 		if err != nil {
@@ -409,13 +409,30 @@ func (c *Case) cleanLocalState() error {
 	return nil
 }
 
-func AcquireTargetLock(target string) (func() error, error) {
+func targetCoordinationDir() (string, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	dir := filepath.Join(cache, "tadx-live", "locks")
 	if err = os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// TargetStateRegistryPath shares the lock's user-wide namespace across checkouts.
+func TargetStateRegistryPath(target string) (string, error) {
+	dir, err := targetCoordinationDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, target+".states.json"), nil
+}
+
+func AcquireTargetLock(target string) (func() error, error) {
+	dir, err := targetCoordinationDir()
+	if err != nil {
 		return nil, err
 	}
 	path := filepath.Join(dir, target+".lock")

@@ -130,6 +130,8 @@ The runner waits for the candidate process, then checks that known local transfe
 It does not run two sessions using that PAT concurrently.
 An active or unobserved worker prevents verifier authentication and cleanup, preserving its operation and resource journal.
 Same-target phases use a target lock, including phases started from another checkout.
+A registry in your operating system's user cache records each target's state directories and ownership journals before remote operations.
+Every phase checks registered worker evidence before authentication, including evidence from other checkouts.
 
 Configure only the inputs required by your selection:
 
@@ -243,7 +245,7 @@ The state tree contains the setup manifest and one directory per run:
 ```
 
 The runner writes JUnit output for selected results.
-Successful cleanup removes each case's workspace and test home while retaining its journal, command evidence, and nonsecret configuration.
+Successful cleanup removes each case's source workspace, destination workspace, and test home while retaining its journal, command evidence, and nonsecret configuration.
 Nonpassing results remain visible as nonpassing entries, including prerequisite and observation limits.
 Command evidence is bounded and redacts resolved PAT and session material.
 A candidate credential leak fails the case even after evidence redaction.
@@ -278,6 +280,9 @@ Ambiguous names, unknown mutation acceptance, active jobs, and unobserved worker
 Cleanup does not guess that an unseen mutation failed or clear a lock whose owner might still be active.
 
 Do not remove local state while a worker or remote job can still reference it.
+Missing or invalid registered recovery evidence blocks authentication for that target across checkouts.
+Restore the original state and journals before retrying recovery; removing the registry does not establish that workers stopped.
+Successful setup cleanup removes its state registration after verifying all dependent journals.
 If authorization or setup validation blocks recovery, preserve the journal and resolve that blocker before retrying cleanup.
 No broad site reset, name-prefix sweep, or production-data deletion command is part of this workflow.
 

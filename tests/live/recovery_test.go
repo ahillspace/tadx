@@ -39,6 +39,146 @@ func TestGuardLocalWorkersAllowsFreshStateWithoutAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTargetWorkerGuardFindsInterruptedWorkerInAnotherState(t *testing.T) {
+	isolateTargetRegistry(t)
+	state, profile, manifest := recoveryFixture(t)
+	lockTarget := harness.Fingerprint(profile.ServerURL, profile.SiteContentURL, "")
+	unlock, err := harness.AcquireTargetLock(lockTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", state); err != nil {
+		t.Fatal(err)
+	}
+	recoveryJournal(t, state, manifest, false, true)
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err = harness.AcquireTargetLock(lockTarget)
+	if err != nil {
+		t.Fatalf("interrupted worker must not leave an unrecoverable process lock: %v", err)
+	}
+	defer unlock()
+	fresh := t.TempDir()
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", fresh); harness.ErrorStatus(err) != harness.InconclusiveStatus {
+		t.Fatalf("another state authenticated despite unresolved transfer: %v", err)
+	}
+}
+
+func isolateTargetRegistry(t *testing.T) {
+	t.Helper()
+	cache := t.TempDir()
+	t.Setenv("LOCALAPPDATA", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+}
+
+func TestTargetWorkerGuardRetainsMissingOrCorruptRecoveryEvidence(t *testing.T) {
+	for _, damage := range []string{"missing-state", "missing-manifest", "missing-journal", "corrupt-manifest", "corrupt-journal", "other-target"} {
+		t.Run(damage, func(t *testing.T) {
+			isolateTargetRegistry(t)
+			state, profile, manifest := recoveryFixture(t)
+			var journalPath string
+			if damage == "missing-journal" {
+				journalPath = recoveryJournal(t, state, manifest, false, true)
+			}
+			if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", state); err != nil {
+				if damage != "missing-journal" {
+					t.Fatal(err)
+				}
+			}
+			switch damage {
+			case "missing-state":
+				if err := os.RemoveAll(state); err != nil {
+					t.Fatal(err)
+				}
+			case "missing-manifest":
+				if err := os.Remove(filepath.Join(state, "manifest.json")); err != nil {
+					t.Fatal(err)
+				}
+			case "missing-journal":
+				if err := os.Remove(journalPath); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt-manifest":
+				if err := os.WriteFile(filepath.Join(state, "manifest.json"), []byte("invalid"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt-journal":
+				path := recoveryJournal(t, state, manifest, false, false)
+				if err := os.WriteFile(path, []byte("invalid"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "other-target":
+				manifest.TargetFingerprint = "different-target"
+				if err := harness.WriteJSON(filepath.Join(state, "manifest.json"), manifest); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", t.TempDir()); err == nil {
+				t.Fatalf("registered %s recovery evidence did not prevent authentication", damage)
+			}
+		})
+	}
+}
+
+func TestTargetWorkerGuardForgetsOnlyVerifiedCleanedStates(t *testing.T) {
+	isolateTargetRegistry(t)
+	state, profile, manifest := recoveryFixture(t)
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", state); err != nil {
+		t.Fatal(err)
+	}
+	recoveryJournal(t, state, manifest, true, false)
+	if err := os.Remove(filepath.Join(state, "manifest.json")); err != nil {
+		t.Fatal(err)
+	}
+	fresh := t.TempDir()
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", fresh); err != nil {
+		t.Fatalf("completed cleanup prevented another state: %v", err)
+	}
+	if err := os.RemoveAll(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", fresh); err != nil {
+		t.Fatalf("removed completed state remained registered: %v", err)
+	}
+}
+
+func TestTargetWorkerRegistryRejectsCorruption(t *testing.T) {
+	for _, document := range []string{"invalid", "{}", "null", `{"version":2,"target":"target"}`, `{"version":1,"target":"another-target"}`, `{"version":1,"target":"target"}`, `{"version":1,"target":"target","states":null}`, `{"version":1,"target":"target","states":[{"path":"relative"}]}`} {
+		t.Run(document, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "registry.json")
+			if err := os.WriteFile(path, []byte(document), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadTargetStates(path, "target"); err == nil {
+				t.Fatal("invalid shared recovery registry was accepted")
+			}
+		})
+	}
+}
+
+func TestFreshRegistrationRequiresEvidenceBeforeRemoteWork(t *testing.T) {
+	isolateTargetRegistry(t)
+	_, profile, _ := recoveryFixture(t)
+	fresh := t.TempDir()
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", fresh); err != nil {
+		t.Fatal(err)
+	}
+	journalPath := filepath.Join(fresh, "runs", "run", "case", "journal.json")
+	if err := harness.WriteJSON(journalPath, harness.Journal{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireTargetRecoveryEvidence(profile, fresh, journalPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(journalPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := guardTargetWorkers(t.Context(), profile, "candidate-must-not-run", t.TempDir()); harness.ErrorStatus(err) != harness.InconclusiveStatus {
+		t.Fatalf("missing required recovery evidence allowed authentication: %v", err)
+	}
+}
 func TestGuardLocalWorkersSkipsCleanedJournalDespiteCatalogDrift(t *testing.T) {
 	state, p, m := recoveryFixture(t)
 	recoveryJournal(t, state, m, true, false)

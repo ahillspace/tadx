@@ -86,6 +86,7 @@ func (c *Case) command(ctx context.Context, interactive bool, args ...string) (C
 		actual = append(actual, "--config", c.ConfigPath)
 	}
 	cmd := exec.CommandContext(ctx, c.Binary, actual...)
+	cmd.WaitDelay = time.Second
 	cmd.Dir = c.RunDir
 	cmd.Env = append(os.Environ(), "TADX_FEEDBACK_MODE=test")
 	cmd.Env = append(cmd.Env, c.ExtraEnv...)
@@ -129,7 +130,7 @@ func (c *Case) command(ctx context.Context, interactive bool, args ...string) (C
 			parseErr = errors.New("candidate output has trailing content")
 		}
 	}
-	capturedAcceptance := false
+	capturedOperation := false
 	if c.Journal != nil {
 		var capture func(any) error
 		capture = func(v any) error {
@@ -141,11 +142,10 @@ func (c *Case) command(ctx context.Context, interactive bool, args ...string) (C
 						switch k {
 						case "operation_id":
 							if nativeTransfer {
-								capturedAcceptance = true
 								recordErr = c.AcceptOperation(id)
+								capturedOperation = true
 							}
 						case "tableau_job_id", "job_id":
-							capturedAcceptance = true
 							recordErr = c.AcceptJob(id)
 						}
 						if recordErr != nil {
@@ -168,7 +168,7 @@ func (c *Case) command(ctx context.Context, interactive bool, args ...string) (C
 		if captureErr := capture(r.Value); captureErr != nil {
 			return r, fmt.Errorf("save confirmed acceptance identity: %w", captureErr)
 		}
-		if nativeTransfer && !stdout.exceeded && !stderr.exceeded && ((err == nil && parseErr == nil) || capturedAcceptance) {
+		if nativeTransfer && capturedOperation && parseErr == nil && !stdout.exceeded && !stderr.exceeded && !errors.Is(err, exec.ErrWaitDelay) {
 			c.Journal.TransferPending = false
 			if saveErr := c.Journal.save(); saveErr != nil {
 				return r, saveErr
@@ -189,6 +189,9 @@ func (c *Case) command(ctx context.Context, interactive bool, args ...string) (C
 	}
 	if stdout.exceeded || stderr.exceeded {
 		return r, errors.New("candidate output exceeded bounded evidence limit")
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return r, Inconclusive("candidate evidence pipes remained open after process exit; retain unresolved worker state")
 	}
 	if ctx.Err() != nil {
 		return r, Inconclusive("candidate deadline elapsed; observe accepted identities before retrying")

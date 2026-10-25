@@ -41,8 +41,11 @@ func ValidateNative(kind string, n Native) (NativeEvidence, error) {
 		var total uint64
 		for _, member := range archive.File {
 			name := strings.ReplaceAll(member.Name, "\\", "/")
+			if member.FileInfo().IsDir() {
+				name = strings.TrimSuffix(name, "/")
+			}
 			clean := path.Clean(name)
-			if name != clean || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") || strings.Contains(clean, ":") {
+			if name != clean || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") || strings.Contains(clean, ":") {
 				return evidence, errors.New("native ZIP contains unsafe member path")
 			}
 			if member.Mode()&os.ModeSymlink != 0 {
@@ -201,7 +204,7 @@ func hasXMLAttribute(attributes []xml.Attr, name, value string) bool {
 	return false
 }
 
-// CompareNative compares logical XML or JSON content and every embedded extract.
+// CompareNative compares logical XML or JSON content and every embedded payload.
 // ZIP order, compression, and XML indentation do not affect the comparison.
 func CompareNative(kind string, a, b []byte) error {
 	ext := map[string]string{"workbook": ".twb", "datasource": ".tds", "flow": ".tfl"}[kind]
@@ -219,6 +222,12 @@ func CompareNative(kind string, a, b []byte) error {
 	if len(left.Extracts) != len(right.Extracts) {
 		return errors.New("native artifacts differ in embedded extract count")
 	}
+	if (left.Document == "") != (right.Document == "") {
+		return errors.New("native artifacts differ in primary document presence")
+	}
+	if len(left.Payloads) != len(right.Payloads) {
+		return errors.New("native artifacts differ in embedded payload inventory")
+	}
 	if left.Document != "" && right.Document != "" {
 		x, err := canonicalDocument(kind, left.Payloads[left.Document])
 		if err != nil {
@@ -232,9 +241,19 @@ func CompareNative(kind string, a, b []byte) error {
 			return errors.New("native artifact documents differ")
 		}
 	}
-	for index, name := range left.Extracts {
-		if !bytes.Equal(left.Payloads[name], right.Payloads[right.Extracts[index]]) {
-			return errors.New("native artifact extract payloads differ; use authored Hyper row oracle for server-rewritten extracts")
+	for _, name := range left.Members {
+		if name == left.Document {
+			continue
+		}
+		payload, exists := right.Payloads[name]
+		if !exists || name == right.Document {
+			return errors.New("native artifacts differ in embedded payload inventory")
+		}
+		if !bytes.Equal(left.Payloads[name], payload) {
+			if strings.EqualFold(path.Ext(name), ".hyper") {
+				return errors.New("native artifact extract payloads differ; use authored Hyper row oracle for server-rewritten extracts")
+			}
+			return errors.New("native artifact embedded payloads differ")
 		}
 	}
 	return nil

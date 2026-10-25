@@ -89,6 +89,67 @@ func TestNativeCompareIgnoresSerializationButDetectsChangedFormulaAndRows(t *tes
 	}
 }
 
+func TestNativeZIPAcceptsSafeDirectoriesAndRejectsUnsafeDirectories(t *testing.T) {
+	for _, directory := range []string{"Data/", "Data/Extracts/", "../", "Data/../", "/Data/", "C:/Data/", "Data//"} {
+		t.Run(directory, func(t *testing.T) {
+			data := nativeZIP(t, map[string]string{"flow": `{"nodes":{"input":{"file":"Data/input.csv"}}}`, directory: "", "Data/input.csv": "Sales\n1\n"})
+			_, err := ValidateNative("flow", Native{Bytes: data, Filename: "fixture.tflx"})
+			wantValid := directory == "Data/" || directory == "Data/Extracts/"
+			if (err == nil) != wantValid {
+				t.Fatalf("directory validity=%t: %v", wantValid, err)
+			}
+		})
+	}
+}
+
+func TestNativeCompareRequiresEveryEmbeddedPayload(t *testing.T) {
+	const flow = `{"nodes":{"input":{"file":"Data/input.csv"}}}`
+	left := nativeZIP(t, map[string]string{"flow": flow, "Data/input.csv": "Sales\n1\n"})
+	for name, files := range map[string]map[string]string{
+		"changed CSV": {"flow": flow, "Data/input.csv": "Sales\n999\n"},
+		"missing CSV": {"flow": flow},
+		"renamed CSV": {"flow": flow, "Data/renamed.csv": "Sales\n1\n"},
+		"extra CSV":   {"flow": flow, "Data/input.csv": "Sales\n1\n", "Data/extra.csv": "Sales\n2\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := CompareNative("flow", left, nativeZIP(t, files)); err == nil {
+				t.Fatal("different embedded payload passed native comparison")
+			}
+		})
+	}
+}
+
+func TestNativeCompareIgnoresArchiveOrderAndCompression(t *testing.T) {
+	files := []struct{ name, content string }{
+		{"flow", `{"nodes":{"input":{"file":"Data/input.csv"}}}`},
+		{"Data/input.csv", "Sales\n1\n"},
+	}
+	archive := func(method uint16, reverse bool) []byte {
+		var buffer bytes.Buffer
+		writer := zip.NewWriter(&buffer)
+		for index := range len(files) {
+			if reverse {
+				index = len(files) - index - 1
+			}
+			file := files[index]
+			member, err := writer.CreateHeader(&zip.FileHeader{Name: file.name, Method: method})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := member.Write([]byte(file.content)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buffer.Bytes()
+	}
+	if err := CompareNative("flow", archive(zip.Store, false), archive(zip.Deflate, true)); err != nil {
+		t.Fatalf("archive serialization changed native equality: %v", err)
+	}
+}
+
 func TestNativeManifestRejectsMissingAuthoredMarkers(t *testing.T) {
 	data := []byte(`<workbook><datasources><datasource><column name="[Sales]"/></datasource></datasources><worksheets><worksheet name="Sales by region"/></worksheets></workbook>`)
 	good := Binding{Path: "fixture.twb", Expected: map[string]any{"columns": []string{"[Sales]"}, "worksheets": []string{"Sales by region"}, "extract_count": 0}}

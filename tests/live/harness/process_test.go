@@ -4,15 +4,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestMain serves a real candidate subprocess protocol without a shell wrapper.
 func TestMain(m *testing.M) {
 	if os.Getenv("TADX_LIVE_TEST_CHILD") == "1" {
+		if os.Getenv("TADX_LIVE_TEST_OUTPUT_MODE") == "hold-pipes" {
+			time.Sleep(20 * time.Second)
+			os.Exit(0)
+		}
+		if os.Getenv("TADX_LIVE_TEST_OUTPUT_MODE") == "inherited-pipes" {
+			child := exec.Command(os.Args[0])
+			child.Env = append(os.Environ(), "TADX_LIVE_TEST_OUTPUT_MODE=hold-pipes")
+			child.Stdout, child.Stderr = os.Stdout, os.Stderr
+			if err := child.Start(); err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
+			if err := os.WriteFile(os.Getenv("TADX_LIVE_TEST_PIPE_PID"), []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
+				_ = child.Process.Kill()
+				os.Exit(1)
+			}
+			_ = child.Process.Release()
+		}
 		if os.Getenv("TADX_LIVE_TEST_OUTPUT_MODE") == "large" {
 			fmt.Fprint(os.Stdout, `{"payload":"`+strings.Repeat("x", maxCommandOutput+1024)+`"}`)
 		} else {
@@ -76,6 +96,100 @@ func TestEarlierAcceptanceCannotResolveLaterUnknownTransfer(t *testing.T) {
 	}
 	if !j.TransferPending {
 		t.Fatal("earlier receipt cleared a new unknown transfer")
+	}
+}
+
+func TestNativeTransferRequiresItsDurableLocalOperationReceipt(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		response string
+		exit     int
+		wantJobs int
+		wantOps  int
+		wantErr  bool
+	}{
+		{name: "remote-job-only failure", response: `{"tableau_job_id":"remote-job"}`, exit: 7, wantJobs: 1, wantErr: true},
+		{name: "remote-job-only success", response: `{"job_id":"remote-job"}`, wantJobs: 1},
+		{name: "empty success", response: `{}`},
+		{name: "trailing acceptance", response: `{"operation_id":"first-worker"} {"operation_id":"unknown-worker"}`, wantOps: 1, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := helperCase(t, test.response, test.exit)
+			c.Journal = testJournal(t)
+			_, commandErr := c.Command(t.Context(), "content", "workbook", "publish", "--no-wait", "--json")
+			if (commandErr != nil) != test.wantErr {
+				t.Fatalf("unexpected candidate outcome: %v", commandErr)
+			}
+			journal, err := LoadJournal(c.Journal.path, c.Journal.Target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !journal.TransferPending || len(journal.Operations) != test.wantOps {
+				t.Fatal("unidentifiable native worker lost its durable pending guard")
+			}
+			if len(journal.Jobs) != test.wantJobs || (test.wantJobs != 0 && journal.Jobs[0] != "remote-job") {
+				t.Fatal("confirmed remote job receipt was discarded")
+			}
+			if err := c.GuardWorkerStopped(t.Context()); ErrorStatus(err) != InconclusiveStatus {
+				t.Fatalf("unidentifiable worker allowed verifier authentication: %v", err)
+			}
+		})
+	}
+}
+
+func TestSynchronousNativeCompletionPreservesItsOperationReceipt(t *testing.T) {
+	c := helperCase(t, `{"status":"succeeded","operation_id":"completed-worker","tableau_job_id":"remote-job"}`, 0)
+	c.Journal = testJournal(t)
+	if _, err := c.Command(t.Context(), "content", "workbook", "publish", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := LoadJournal(c.Journal.path, c.Journal.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.TransferPending || len(journal.Operations) != 1 || journal.Operations[0] != "completed-worker" || len(journal.Jobs) != 1 {
+		t.Fatal("synchronous completion did not preserve its accepted local and remote identities")
+	}
+}
+
+func TestCandidateDescendantCannotHoldEvidencePipesIndefinitely(t *testing.T) {
+	c := helperCase(t, `{"operation_id":"pipe-worker"}`, 0)
+	c.Journal = testJournal(t)
+	c.ExtraEnv = []string{"GORACE=atexit_sleep_ms=0"}
+	pidFile := filepath.Join(t.TempDir(), "descendant.pid")
+	t.Setenv("TADX_LIVE_TEST_PIPE_PID", pidFile)
+	t.Setenv("TADX_LIVE_TEST_OUTPUT_MODE", "inherited-pipes")
+	t.Cleanup(func() {
+		data, err := os.ReadFile(pidFile)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		pid, err := strconv.Atoi(string(data))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		process, err := os.FindProcess(pid)
+		if err == nil {
+			_ = process.Kill()
+			_ = process.Release()
+		}
+	})
+	started := time.Now()
+	_, err := c.Command(t.Context(), "content", "workbook", "publish", "--json")
+	if err == nil {
+		t.Fatal("inherited evidence pipes returned a successful candidate outcome")
+	}
+	if elapsed := time.Since(started); elapsed > 10*time.Second {
+		t.Fatalf("descendant held evidence pipes beyond bounded drain time: %s", elapsed)
+	}
+	journal, err := LoadJournal(c.Journal.path, c.Journal.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !journal.TransferPending || len(journal.Operations) != 1 {
+		t.Fatal("unresolved descendant lost its pending guard or confirmed operation identity")
 	}
 }
 
