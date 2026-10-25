@@ -1,13 +1,92 @@
 # VS Code extension validation
 
-Validation date: 2026-10-22.
+Initial build record: 2026-10-22.
+Latest release and setup validation: 2026-10-25.
 Native validation host: Windows x64.
 
 The extension is implemented in `extensions/vscode` and produces an independent VSIX package.
 The [implementation plan](vscode-extension-plan.md) records the architecture and accepted scope.
 The [extension guide](../extensions/vscode/README.md) covers installation, operation, and development.
 
-## Completed checks
+## Release and setup checks on 2026-10-25
+
+The final extension checks use source commit `c10dc23414dddcce5f35017d0e210896c0e32eba` and prepare extension version `0.2.0`.
+They cover independent versioning, capability-based CLI compatibility, guided CLI setup, and the manual release path.
+The configuration-page backlog remains unimplemented.
+
+| Check | Result |
+| --- | --- |
+| Strict TypeScript, ESLint, unit and contract tests, bundle | Passed; 96 tests passed. |
+| Actual webview browser scenarios | Seven groups passed. |
+| Current stable native VS Code host | Ten checks passed on Windows, version `1.143.1`. |
+| Minimum supported native VS Code host | Ten checks passed on Windows, version `1.95.3`. |
+| Source-built Go CLI adapter contracts | Passed against isolated local fixtures. |
+| Checksum-pinned CLI `1.0.0` adapter contracts | Passed with the Windows amd64 release archive. |
+| Guided setup service fixtures | Passed; no actual user installation or update occurred. |
+| Git Bash installer fixtures | Passed, including independent archive-pin rejection. |
+| Windows PowerShell 5.1 installer fixtures | Passed, including independent archive-pin rejection. |
+| PowerShell 7 installer fixtures | Not run; PowerShell 7 is unavailable. |
+| Repository Node fixtures | Twenty passed; one Windows file-symlink privilege check skipped. |
+| Local and versioned VSIX construction | Passed; both packages contain eleven expected files. |
+| Versioned release artifact verification | Passed for `extension-v0.2.0`, stable channel; package contents match the bundle, media, and maintained installers. |
+
+The actual CLI adapter suites verify version and capability discovery, environment and workspace reads, cached inventory, and mutation-status output.
+They use isolated configuration and local fixtures without Tableau credentials or network calls to Tableau.
+The published CLI archive is checked against the reviewed checksum pin before execution.
+Other platform archive hashes identify release assets; they do not establish native execution coverage.
+
+Setup tests cover immutable plans, exact versions and archive pins, target freshness, shared-installation ownership, optional profile changes, environment filtering, and bounded subprocess behavior.
+They preserve unknown outcomes after interruption and verify that development, newer, or custom executables are not automatically replaced.
+Synthetic installer fixtures and service tests do not establish an actual end-user installation or upgrade.
+
+The Activity parser now accepts a retained failure from successful inspection of the exact requested operation.
+Identity, response-shape, and command-failure regressions remain enforced.
+The [architecture review](architecture/review.md#extension-findings) records that resolution and the capability/delivery fixes separately from the still-open cache-generation consistency finding.
+
+### Packaged artifacts
+
+| Artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| `extensions/vscode/dist/tadx.vsix` | 62,716 | `04ef068c4fc154ef7f835d66117c9c29fa5dc5dc0163fccd2cd42040ac682b41` |
+| `extensions/vscode/dist/release/tadx-0.2.0.vsix` | 62,754 | `90bf9f201f7d915c9ab0ceafdfb8ed595da021892e7a8b7aa58fabb0f1393c8f` |
+
+These hashes identify the recorded packages; fresh builds can differ because packaging metadata changes.
+The release manifest records `sourceDirty=true` because the checkout contains additional working-tree changes.
+This is a local validation artifact and cannot pass the clean-source publication gate.
+No release tag, GitHub release, Marketplace publication, or hosted workflow dispatch results from these checks.
+
+### Repository validation scope
+
+Before integration, an isolated checkout of the staged source passes the complete Go test suite, Go vet, module checks, and generated-file consistency checks.
+The full race command fails at its configured 15-minute package timeout in `internal/app`.
+The active test, `TestReadDiscoveryWithoutPublicCursorsThroughCLI`, had run for four seconds when the package deadline expired; that observation does not identify it as the cause.
+Other packages in the race run complete successfully, and the log contains no race-detector report.
+The full race gate remains failed and requires investigation before a validated push or release.
+All three documented fuzz targets pass five-second runs.
+Cross-compilation passes for Windows amd64, Linux amd64, macOS amd64, and macOS arm64.
+Cross-compilation does not establish native behavior on those targets.
+
+The final merged-source checkout at `c10dc23414dddcce5f35017d0e210896c0e32eba` passes formatting, full Go vet, module tidy stability, generation, and capability-document stability checks.
+Its normal and race delta Go suites each pass 603 tests and subtests across six tested packages.
+Six native Windows symlink checks are skipped because the required privilege is unavailable.
+Two Hyper parent tests initially skip without configured Python support.
+Separate runs with the installed `tableauhyperapi` package pass five tests and subtests in both normal and race modes, covering those initial Hyper skips.
+The isolated merged-source checkout remains clean after validation.
+The `tests/live/...` package checks run without the `livecli` build tag and do not execute live Tableau qualification cases.
+The delta suites do not constitute a complete merged-source test rerun.
+
+### Remaining acceptance limits
+
+Native extension runtime validation remains Windows-only.
+Linux, macOS, SSH, WSL, and container hosts, live Tableau transfers, and real guided installation or update remain untested.
+The manual release workflow is prepared but has not been dispatched.
+No GitHub push, publication, credential persistence, or Tableau mutation-consent change is part of these validation runs.
+
+`npm audit` reports two high-severity development-dependency findings associated with the MSAL advisory documented in the [release guide](vscode-extension-release.md#current-toolchain-advisory).
+Those tooling dependencies are excluded from the VSIX runtime package.
+The audit is not clean; retain the advisory and supported-update limitation instead of treating it as resolved.
+
+## Historical build checks through 2026-10-24
 
 | Check | Result |
 | --- | --- |
@@ -48,18 +127,20 @@ Behavioral tests also caught and corrected mutable requests after preview and ca
 Browser testing corrected control labels, pagination focus, selection-limit controls, duplicate paths, and theme handling.
 The final focused review found no remaining concrete defects in the reviewed scope.
 The subsequent [architecture refresh](architecture/review.md#extension-findings) identifies a status-inspection contract defect, mixed-cache observation limits, and compatibility-test gaps.
-Those later findings remain recommendations and qualify the earlier fixture-based validation; this record does not claim they are fixed.
+Those findings qualified the original fixture-based validation.
+The 2026-10-25 release work resolves the inspection parser and compatibility/delivery gaps; the cache-generation observation limit remains open.
 
 ## Repository-wide check limits
 
-The initial `go vet ./...` and `go test -count=1 ./...` commands include ignored historical fixtures under `workflow-evidence`.
-Those fixtures import deleted action packages, so the commands do not pass for this working tree.
+The initial `go vet ./...` and `go test -count=1 ./...` commands included ignored historical fixtures under `workflow-evidence`.
+Those fixtures imported deleted action packages, so the original working-tree commands did not pass.
 Maintained-package vet checks pass.
 The broad test run also exposed an architecture traversal timeout and a workbook protocol test with a 20 ms timing ceiling.
 The current architecture suite passes without changes from this extension task.
 The protocol test now uses a five-second ceiling while preserving protocol assertions and neighboring timeout tests.
 Its package and 30 repeated runs pass.
-The complete broad command was not repeated after those focused corrections.
+The complete broad command was not repeated at that historical stage.
+The later release checks use isolated source checkouts; their results appear in the [2026-10-25 validation scope](#repository-validation-scope).
 
 The extension's tooling-only Go module boundary excludes installed Node dependency sources from root CLI package discovery.
 Unrelated working-tree changes remain outside this extension review.
