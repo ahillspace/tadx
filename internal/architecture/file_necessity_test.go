@@ -186,6 +186,16 @@ func TestMaintainedToolingClosureRejectsUnreferencedPackages(t *testing.T) {
 	}
 }
 
+func TestMaintainedToolingOmitsAbsentLocalLiveSuite(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "extensions/vscode/tests/fixtures/host/go.mod", "module example.test/host\n\ngo 1.26\n")
+	writeGo(t, root, "extensions/vscode/tests/fixtures/host/main.go", "package main\nfunc main() {}\n")
+	tooling := maintainedToolingFiles(t, root)
+	if _, ok := tooling["extensions/vscode/tests/fixtures/host/main.go"]; !ok || len(tooling) != 1 {
+		t.Fatalf("clone without the local live suite classified tooling %v", tooling)
+	}
+}
+
 func classifyFile(path, packagePath, root string, runtimeFiles map[string][]string, packageConsumers map[string][]string, toolingFiles map[string]fileNecessityEntry) fileClassification {
 	classification := fileClassification{
 		path:        path,
@@ -318,23 +328,35 @@ func goListTADXDependencies(t *testing.T, root, goos string) []goListPackage {
 
 // Review concrete consumers, then let the Go dependency graph identify their
 // source. A new sibling package is not accepted merely for living under tests.
+// A localRoot names maintainer-local, Git-ignored tooling that clones omit.
 func maintainedToolingFiles(t *testing.T, root string) map[string]fileNecessityEntry {
 	t.Helper()
+	// go list reports symlink-resolved package directories, such as macOS /private/var.
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolve repository root: %v", err)
+	}
 	result := make(map[string]fileNecessityEntry)
 	for _, tooling := range []struct {
 		directory      string
 		entryPoints    []string
+		localRoot      string
 		responsibility string
 		consumer       string
 	}{
-		{".", []string{"./tests/live/runner", "./tests/live/generate"}, "runs and generates the opt-in independent live CLI qualification suite", "go run ./tests/live/runner; go generate ./tests/live"},
-		{"extensions/vscode/tests/fixtures/host", []string{"."}, "supplies a deterministic CLI process for extension host integration tests", "npm run test:host in extensions/vscode"},
+		{".", []string{"./tests/live/runner", "./tests/live/generate"}, "tests/live", "runs and generates the opt-in independent live CLI qualification suite", "go run ./tests/live/runner; go generate ./tests/live"},
+		{"extensions/vscode/tests/fixtures/host", []string{"."}, "", "supplies a deterministic CLI process for extension host integration tests", "npm run test:host in extensions/vscode"},
 	} {
+		if tooling.localRoot != "" {
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(tooling.localRoot))); errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+		}
 		for _, goos := range []string{"windows", "linux", "darwin"} {
 			packages := runGoList(t, filepath.Join(root, tooling.directory), map[string]string{"GOOS": goos, "GOARCH": "amd64", "CGO_ENABLED": "0", "GOWORK": "off"}, append([]string{"-deps"}, tooling.entryPoints...)...)
 			for _, pkg := range packages {
 				for _, name := range append(append([]string{}, pkg.GoFiles...), pkg.CgoFiles...) {
-					relative, err := filepath.Rel(root, filepath.Join(pkg.Dir, name))
+					relative, err := filepath.Rel(resolvedRoot, filepath.Join(pkg.Dir, name))
 					if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 						continue
 					}
