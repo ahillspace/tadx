@@ -156,4 +156,4 @@ These development dependencies are excluded from the VSIX runtime package.
 The current dependency ranges do not offer a patched compatible MSAL release, and `npm audit fix` does not resolve the report.
 Retain this verification limit until an upstream-compatible update is available; do not force an untested major dependency override or report a clean audit.
 
-Configuration-page features remain in the [Linux handoff backlog](handoffs/2026-10-24-linux/REQUESTED-CAPABILITIES.md).
+Configuration-page features remain deferred.

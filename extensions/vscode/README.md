@@ -45,7 +45,7 @@ Cancellation or failed verification can leave partial installation state; inspec
 
 The [release and upgrade guide](../../docs/vscode-extension-release.md) explains shared installation ownership, compatibility, extension updates, and publishing.
 Setup does not change Tableau credentials, saved mutation consent, environments, or workspace registrations.
-The configuration page remains in the [Linux handoff backlog](../../docs/handoffs/2026-10-24-linux/REQUESTED-CAPABILITIES.md).
+The configuration page remains deferred.
 
 ## Browse inventory
 

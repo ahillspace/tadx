@@ -92,9 +92,9 @@ Use manual CI for native platform coverage or privileged policy fixtures that re
 The [native policy workflow](.github/workflows/native-policy.yml) retains those checks for manual CI and releases.
 Do not elevate an ordinary development session to hide privilege-related skips.
 
-For focused qualification against a real Tableau site, use the [selectable live CLI suite](tests/live/README.md).
-It requires an explicit target, candidate executable, prepared selection, and existing write authorization.
-Ordinary local checks do not run the live contracts.
+Live Tableau qualification suites and their site-specific fixtures remain local and Git-ignored.
+Keep the suite under `tests/live/` and its profiles, artifacts, and execution evidence under `.tadx-live/`.
+Never commit these directories, including with `git add --force`.
 
 ## Keep changes maintainable
 
