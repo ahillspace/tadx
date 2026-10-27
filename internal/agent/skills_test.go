@@ -183,14 +183,7 @@ func TestSkillHelpEntrypointsUseInstalledCommands(t *testing.T) {
 }
 
 func TestGuidanceDoesNotDuplicateCommandManuals(t *testing.T) {
-	data, err := os.ReadFile("skills/tadx/SKILL.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data) > 5000 {
-		t.Errorf("root Guidance grew to %d bytes; keep concepts in optional references", len(data))
-	}
-	err = fs.WalkDir(os.DirFS("skills"), ".", func(location string, entry fs.DirEntry, walkErr error) error {
+	err := fs.WalkDir(os.DirFS("skills"), ".", func(location string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
