@@ -22,7 +22,7 @@ Node.js runs repository maintenance scripts, extension development tools, and th
 | `github.com/zalando/go-keyring` | Native credential storage for explicitly approved PAT persistence | [`internal/auth/credentials.go`](../../internal/auth/credentials.go) |
 | `golang.org/x/sys` | Native locks, filesystem replacement, process handling, and managed-policy protection | [`internal/lock`](../../internal/lock), [`internal/fsreplace`](../../internal/fsreplace), [`internal/managedpolicy`](../../internal/managedpolicy), [`internal/operationrun/launch_windows.go`](../../internal/operationrun/launch_windows.go) |
 | `golang.org/x/term` | Terminal input without echo and terminal-aware policy installation | [`internal/app/auth_prompt.go`](../../internal/app/auth_prompt.go), [`internal/managedpolicy/elevation_unix.go`](../../internal/managedpolicy/elevation_unix.go) |
-| `github.com/mattn/go-isatty` | Terminal detection for progress and optional release notices | [`internal/cli/progress/progress.go`](../../internal/cli/progress/progress.go), [`internal/releasenotice/notice.go`](../../internal/releasenotice/notice.go) |
+| `github.com/mattn/go-isatty` | Terminal detection for progress | [`internal/cli/progress/progress.go`](../../internal/cli/progress/progress.go) |
 | `github.com/vektah/gqlparser/v2` | Test-time validation of Metadata API queries against retained schemas | [`internal/tableau/metadata/lineage_client_test.go`](../../internal/tableau/metadata/lineage_client_test.go), [`internal/tableau/metadataassets/client_test.go`](../../internal/tableau/metadataassets/client_test.go) |
 
 The GraphQL parser is a direct module dependency because tests import it.
