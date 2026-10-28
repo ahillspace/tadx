@@ -59,11 +59,13 @@ type WorkbookMetadata struct {
 
 // PublishedDatasourceRef is one direct published-datasource reference recorded
 // on a workbook artifact. The LUID is authoritative; Name and SourceSite are
-// labels. LocalArtifactPath is set only when the dependency was acquired as a
-// sibling datasource artifact.
+// labels. ContentURL is the source-site URL the workbook file references.
+// LocalArtifactPath is set only when the dependency was acquired as a sibling
+// datasource artifact.
 type PublishedDatasourceRef struct {
 	LUID              string `json:"luid"`
 	Name              string `json:"name,omitempty"`
+	ContentURL        string `json:"content_url,omitempty"`
 	SourceSite        string `json:"source_site,omitempty"`
 	LocalArtifactPath string `json:"local_artifact_path,omitempty"`
 }
@@ -101,19 +103,18 @@ type WorkbookPullResult struct {
 
 // WorkbookArtifact is the current canonical payload used for publish.
 type WorkbookArtifact struct {
-	Path                     string
-	PayloadPath              string
-	Filename                 string
-	Size                     int64
-	Name                     string
-	TableauID                string
-	Fingerprint              string
-	SourceEnvironment        string
-	SourceSite               string
-	SourceProjectName        string
-	SourceProjectID          string
-	Portability              string
-	PublishedDatasourceCount int
+	Path              string
+	PayloadPath       string
+	Filename          string
+	Size              int64
+	Name              string
+	TableauID         string
+	Fingerprint       string
+	SourceEnvironment string
+	SourceSite        string
+	SourceProjectName string
+	SourceProjectID   string
+	Datasources       []WorkbookDatasource
 }
 
 // WorkbookManager owns workbook artifact storage.
@@ -368,7 +369,11 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("fingerprint canonical workbook: %w", err)
 	}
-	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint, SourceEnvironment: metadata.SourceEnvironment, SourceSite: metadata.SourceSite, SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID, Portability: metadata.Portability, PublishedDatasourceCount: len(metadata.PublishedDatasources)}, nil
+	datasources, err := readWorkbookDatasourceFile(canonical)
+	if err != nil {
+		return WorkbookArtifact{}, fmt.Errorf("read canonical workbook datasources: %w", err)
+	}
+	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint, SourceEnvironment: metadata.SourceEnvironment, SourceSite: metadata.SourceSite, SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID, Datasources: datasources}, nil
 }
 
 // ReadMetadata parses and validates one workbook artifact's recorded provenance
@@ -1150,7 +1155,11 @@ func workbookView(metadata WorkbookMetadata) string {
 	if len(metadata.PublishedDatasources) > 0 {
 		view += "\n## Published datasource references\n\n"
 		for _, reference := range metadata.PublishedDatasources {
-			view += fmt.Sprintf("- `%s` %s (source site `%s`)", reference.LUID, reference.Name, reference.SourceSite)
+			view += fmt.Sprintf("- `%s` %s", reference.LUID, reference.Name)
+			if reference.ContentURL != "" {
+				view += fmt.Sprintf(", content URL `%s`", reference.ContentURL)
+			}
+			view += fmt.Sprintf(" (source site `%s`)", reference.SourceSite)
 			if reference.LocalArtifactPath != "" {
 				view += fmt.Sprintf(" -> `%s`", reference.LocalArtifactPath)
 			}

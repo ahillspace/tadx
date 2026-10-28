@@ -105,3 +105,14 @@ func TestReadNativePackageUsesOnlyTopLevelDefinition(t *testing.T) {
 		})
 	}
 }
+
+func TestReadNativeDatasourceReportsItsContentURL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Sales.tds")
+	if err := os.WriteFile(path, []byte(`<datasource><repository-location id='SalesMargin' path='/datasources' revision='1.0' /></datasource>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	native, err := ReadNative(context.Background(), path, "datasource")
+	if err != nil || native.ContentURL != "SalesMargin" || native.CompositionStatus != CompositionStatusOrdinary {
+		t.Fatalf("native=%#v err=%v", native, err)
+	}
+}

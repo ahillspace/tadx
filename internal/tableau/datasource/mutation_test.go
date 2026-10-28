@@ -68,7 +68,7 @@ func TestClientPublishesComposedDatasourceWithExactParentReferences(t *testing.T
 			t.Fatalf("body = %s", text)
 		}
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-new" name="Sales"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
+		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-new" name="Sales" contentUrl="Sales_1"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
 	}))
 	defer server.Close()
 	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
@@ -80,7 +80,7 @@ func TestClientPublishesComposedDatasourceWithExactParentReferences(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.DatasourceLUID != "ds-new" || result.Status != "succeeded" {
+	if result.DatasourceLUID != "ds-new" || result.Status != "succeeded" || result.ContentURL != "Sales_1" {
 		t.Fatalf("result = %#v", result)
 	}
 }
@@ -282,7 +282,7 @@ func TestClientPollsAsyncDatasourcePublishToTerminalSuccess(t *testing.T) {
 		}
 		polls++
 		writer.Header().Set("X-Tableau-Request-Id", "poll-request")
-		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishDatasource" progress="100" finishCode="0"><publishDatasourceJob><datasource id="ds-new" name="Sales"><project id="project-1"/></datasource></publishDatasourceJob></job></tsResponse>`)
+		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishDatasource" progress="100" finishCode="0"><publishDatasourceJob><datasource id="ds-new" name="Sales" contentUrl="Sales"><project id="project-1"/></datasource></publishDatasourceJob></job></tsResponse>`)
 	}))
 	defer server.Close()
 	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
@@ -295,7 +295,7 @@ func TestClientPollsAsyncDatasourcePublishToTerminalSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "succeeded" || result.DatasourceLUID != "ds-new" || result.DatasourceName != "Sales" || result.ProjectLUID != "project-1" || result.JobID != "job-1" || result.TableauRequestID != "poll-request" || polls != 1 {
+	if result.Status != "succeeded" || result.DatasourceLUID != "ds-new" || result.DatasourceName != "Sales" || result.ProjectLUID != "project-1" || result.ContentURL != "Sales" || result.JobID != "job-1" || result.TableauRequestID != "poll-request" || polls != 1 {
 		t.Fatalf("result = %#v, polls = %d", result, polls)
 	}
 }

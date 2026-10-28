@@ -1588,7 +1588,7 @@ Move one exact published datasource to one exact project on the same site, or pr
 
 ### `datasource.publish`
 
-Publish one local datasource, or up to 100 repeated managed datasource artifacts sequentially, including explicit immediate-parent references for composed artifacts, or preview the operations.
+Publish one local datasource, or up to 100 repeated managed datasource artifacts sequentially, including explicit immediate-parent references for composed artifacts, or preview the operations; results report the content URL Tableau assigned and the workbook binding to use when Tableau suffixed it.
 
 - Surface: tadx content datasource publish
 - Operation type: deliver
@@ -3127,12 +3127,12 @@ Move one exact workbook to one exact project on the same site, or preview the op
 
 ### `workbook.publish`
 
-Publish one local workbook, or up to 100 repeated managed workbook artifacts sequentially, to one explicit target or preview the operations.
+Publish one local workbook, or up to 100 repeated managed workbook artifacts sequentially, to one explicit target with optional exact published datasource bindings, or preview the operations.
 
 - Surface: tadx content workbook publish
 - Operation type: deliver
 - Owner: cli
-- Selectors: Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed workbook directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing workbook
+- Selectors: Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed workbook directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing workbook; repeatable --datasource-binding &lt;exact source name or content URL&gt;=&lt;target datasource LUID&gt;
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -3144,9 +3144,9 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts seq
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; collision/overwrite explicit; no fuzzy target
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID and each datasource binding; collision/overwrite explicit; no fuzzy target; only a temporary upload copy is rebound; unmapped references are left to Tableau, and its datasource-not-found rejection lists exact candidates
 - Artifact effect: Read / publish
-- Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB
+- Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB; datasource exact GET and bounded list for bindings and candidates
 - Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture
 - Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md; standalone workbook check not admitted
 - Blocker ID: None
@@ -3173,9 +3173,9 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 - Raw capable: No
 - Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
 - Artifact effect: Create / update workbook, lineage sidecar, and optional datasource siblings
-- Upstream operation: Workbook content GET; Metadata GraphQL POST; datasource exact/content GET
+- Upstream operation: Workbook content GET; Metadata GraphQL POST for lineage; datasource contentUrl-filtered list and content GET
 - Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture
-- Validation or blocker: Contract-verified; published-datasource traversal captured live; lineage schema and hermetic tests recorded in docs/evidence/lineage-metadata-contract.md; remaining exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
+- Validation or blocker: Contract-verified; published datasources detected from the downloaded workbook and resolved by exact content URL; lineage schema and hermetic tests recorded in docs/evidence/lineage-metadata-contract.md; remaining exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
 - Command binding: `tadx content workbook pull`
 

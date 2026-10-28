@@ -13,14 +13,14 @@ type nativeWorkbookArtifactReader struct{}
 
 func (nativeWorkbookArtifactReader) ReadWorkbook(ctx context.Context, path string) (workbookops.PublishArtifact, error) {
 	item, err := artifact.ReadNative(ctx, path, "workbook")
-	return workbookops.PublishArtifact{Path: filepath.ToSlash(item.Path), PayloadPath: item.Path, Filename: item.Filename, Name: item.Name, Size: item.Size, Fingerprint: item.Fingerprint, Portability: artifact.PortabilityUnknown}, err
+	return workbookops.PublishArtifact{Path: filepath.ToSlash(item.Path), PayloadPath: item.Path, Filename: item.Filename, Name: item.Name, Size: item.Size, Fingerprint: item.Fingerprint, Datasources: publishDatasources(item.Datasources)}, err
 }
 
 type nativeDatasourceArtifactReader struct{}
 
 func (nativeDatasourceArtifactReader) ReadDatasource(ctx context.Context, path string) (datasourceops.PublishArtifact, error) {
 	item, err := artifact.ReadNative(ctx, path, "datasource")
-	return datasourceops.PublishArtifact{Path: filepath.ToSlash(item.Path), PayloadPath: item.Path, Filename: item.Filename, Name: item.Name, Size: item.Size, Fingerprint: item.Fingerprint, CompositionStatus: item.CompositionStatus, ParentDataSourceURLs: item.ParentDataSourceURLs}, err
+	return datasourceops.PublishArtifact{Path: filepath.ToSlash(item.Path), PayloadPath: item.Path, Filename: item.Filename, Name: item.Name, Size: item.Size, Fingerprint: item.Fingerprint, CompositionStatus: item.CompositionStatus, ParentDataSourceURLs: item.ParentDataSourceURLs, ContentURL: item.ContentURL}, err
 }
 
 type nativeFlowArtifactReader struct{}

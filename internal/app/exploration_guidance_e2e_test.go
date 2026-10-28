@@ -15,7 +15,7 @@ func TestExplorationPublishAndSearchGuidance(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"workbook dependencies", []string{"content", "workbook", "publish", "--help"}, []string{"Publish missing referenced datasources first", "does not publish dependencies or rebind"}},
+		{"workbook dependencies", []string{"content", "workbook", "publish", "--help"}, []string{"Publish missing datasources first", "binds them by content URL", "--datasource-binding <source=luid>"}},
 		{"admin search scope", []string{"search", "--help"}, []string{"--type admin includes users and groups", "--type user or --type group"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

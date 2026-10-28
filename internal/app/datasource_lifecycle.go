@@ -198,7 +198,7 @@ type datasourceArtifactReader struct {
 
 func (r datasourceArtifactReader) ReadDatasource(ctx context.Context, path string) (datasourceops.PublishArtifact, error) {
 	item, err := r.manager.Read(ctx, path)
-	return datasourceops.PublishArtifact{Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Size: item.Size, CompositionStatus: item.CompositionStatus, ParentDataSourceURLs: append([]string(nil), item.ParentDataSourceURLs...)}, err
+	return datasourceops.PublishArtifact{Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Size: item.Size, CompositionStatus: item.CompositionStatus, ParentDataSourceURLs: append([]string(nil), item.ParentDataSourceURLs...), ContentURL: item.ContentURL}, err
 }
 
 type datasourcePublishAdapter struct {
@@ -279,7 +279,7 @@ type preparedDatasourcePublish struct {
 func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourceops.PublishResult, error) {
 	progress.SetLabel(ctx, "Uploading and submitting datasource")
 	result, err := p.prepared.Commit(ctx)
-	return datasourceops.PublishResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
+	return datasourceops.PublishResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, ContentURL: result.ContentURL, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
 }
 
 func (a datasourceMutationAdapter) DeleteDatasource(ctx context.Context, luid string) (datasourceops.DeleteResult, error) {

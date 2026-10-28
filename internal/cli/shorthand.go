@@ -48,7 +48,7 @@ var flagLongAliases = map[string]string{
 	"clear-cache-max-concurrency": "ccm", "clear-default-workspace": "cdw",
 	"clear-pat-name-env": "cpn", "clear-pat-secret-env": "cps", "clear-site": "cst",
 	"config": "cfg", "content-permissions": "cpm", "create": "new", "currency": "cur",
-	"cursor": "csr", "datasource-id": "did", "datasource-map": "dsm", "date-field": "dtf",
+	"cursor": "csr", "datasource-binding": "dsb", "datasource-id": "did", "datasource-map": "dsm", "date-field": "dtf",
 	"days": "day", "default-for": "dft", "default-workspace": "dws", "definition-id": "dfi",
 	"depth": "dep", "description": "dsc", "destination": "dst", "destination-project": "dpj",
 	"destination-project-id": "dpi", "dimension": "dim", "direction": "dir", "domain": "dom",

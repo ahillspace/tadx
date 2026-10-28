@@ -280,3 +280,66 @@ func TestPublishPublishSourceDefaultRequiresRecordedLUIDToRemainExact(t *testing
 		t.Fatalf("error = %#v", err)
 	}
 }
+
+func TestPublishPublishReportsTableauSuffixedContentURLWithBinding(t *testing.T) {
+	artifact := publishComposedArtifact()
+	artifact.ContentURL = "SalesMargin"
+	resolver := &publishPublishResolver{project: datasourceops.Project{LUID: "project-1", Path: "Analytics"}}
+	publisher := &publishOutcomePublisher{result: datasourceops.PublishResult{Status: "succeeded", DatasourceLUID: "ds-new", DatasourceName: "Sales", ProjectLUID: "project-1", ContentURL: "SalesMargin_17932075825460"}}
+	out, err := datasourceops.NewPublish(&publishPublishArtifactReader{artifact: artifact}, resolver, publisher).Execute(context.Background(), datasourceops.PublishInput{ArtifactPath: artifact.Path, Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeCreate}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Result == nil || out.Result.ContentURL != "SalesMargin_17932075825460" || out.Result.RenamedFrom != "SalesMargin" || out.Result.Verification != "confirmed" {
+		t.Fatalf("result = %#v", out.Result)
+	}
+	want := "Tableau assigned content URL SalesMargin_17932075825460 because SalesMargin is already taken on this site. Workbooks that reference SalesMargin need --datasource-binding SalesMargin=ds-new when published here."
+	if !reflect.DeepEqual(out.Help, []string{want}) {
+		t.Fatalf("help = %#v", out.Help)
+	}
+	var compact bytes.Buffer
+	if err := output.Render(&compact, out); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"content_url: SalesMargin_17932075825460", "renamed_from: SalesMargin"} {
+		if !strings.Contains(compact.String(), field) {
+			t.Fatalf("compact output missing %q:\n%s", field, compact.String())
+		}
+	}
+}
+
+func TestPublishPublishReportsAssignedContentURLWithoutInferringRenames(t *testing.T) {
+	for _, test := range []struct {
+		name, file, assigned string
+	}{
+		{"unchanged", "SalesMargin", "SalesMargin"},
+		{"different prefix", "SalesMargin", "SalesMarginX_1"},
+		{"non-digit suffix", "SalesMargin", "SalesMargin_v2"},
+		{"never published", "", "Sales_1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			artifact := publishComposedArtifact()
+			artifact.ContentURL = test.file
+			resolver := &publishPublishResolver{project: datasourceops.Project{LUID: "project-1", Path: "Analytics"}}
+			publisher := &publishOutcomePublisher{result: datasourceops.PublishResult{Status: "succeeded", DatasourceLUID: "ds-new", DatasourceName: "Sales", ProjectLUID: "project-1", ContentURL: test.assigned}}
+			out, err := datasourceops.NewPublish(&publishPublishArtifactReader{artifact: artifact}, resolver, publisher).Execute(context.Background(), datasourceops.PublishInput{ArtifactPath: artifact.Path, Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeCreate}, false)
+			if err != nil || out.Result == nil || out.Result.ContentURL != test.assigned || out.Result.RenamedFrom != "" || len(out.Help) != 0 {
+				t.Fatalf("output = %#v, err = %v", out, err)
+			}
+		})
+	}
+}
+
+func TestPublishPublishReadsAssignedContentURLFromResolvedCompletion(t *testing.T) {
+	artifact := publishComposedArtifact()
+	artifact.ContentURL = "Sales"
+	resolver := &publishPublishResolver{
+		project:    datasourceops.Project{LUID: "project-1", Path: "Analytics"},
+		completion: datasourceops.Record{LUID: "ds-new", Name: "Sales", ProjectLUID: "project-1", ContentURL: "Sales_2"},
+	}
+	publisher := &publishOutcomePublisher{result: datasourceops.PublishResult{Status: "succeeded", JobID: "job-1"}}
+	out, err := datasourceops.NewPublish(&publishPublishArtifactReader{artifact: artifact}, resolver, publisher).Execute(context.Background(), datasourceops.PublishInput{ArtifactPath: artifact.Path, Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeCreate, AsJob: true}, false)
+	if err != nil || out.Result == nil || out.Result.ContentURL != "Sales_2" || out.Result.RenamedFrom != "Sales" || len(out.Help) != 1 || !strings.Contains(out.Help[0], "--datasource-binding Sales=ds-new") {
+		t.Fatalf("output = %#v, err = %v", out, err)
+	}
+}

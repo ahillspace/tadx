@@ -17,8 +17,8 @@ artifact:
   baseline_fingerprint: "sha256:abc"
   portability: source-site-bound
   published_datasource_count: 1
-  published_datasources[1]{luid,name,source_site,local_artifact_path,canonical_path,baseline_fingerprint}:
-    ds-1,Sales,marketing,artifacts/datasource/Sales,artifacts/datasource/Sales/Sales.tdsx,"sha256:def"
+  published_datasources[1]{luid,name,content_url,source_site,local_artifact_path,canonical_path,baseline_fingerprint}:
+    ds-1,Sales,Sales,marketing,artifacts/datasource/Sales,artifacts/datasource/Sales/Sales.tdsx,"sha256:def"
   dependencies_acquired: true
   lineage_path: artifacts/workbook/Finance/lineage.json
   lineage_status: complete

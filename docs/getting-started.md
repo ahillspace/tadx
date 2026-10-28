@@ -169,7 +169,11 @@ If an older configuration contains `catalog_max_concurrency`, rename that key to
 A workbook can reference independently published datasources, even when its file is a packaged `.twbx`.
 Before publishing, confirm those datasources exist at the destination and the workbook references identify them correctly.
 Publish missing referenced datasources first, then the workbook.
-Workbook publication does not publish dependencies automatically or rebind references to a different site.
+Workbook publication does not publish dependencies automatically.
+Tableau binds each reference by its datasource content URL on the destination site.
+Datasource publish reports the `content_url` Tableau assigned, and `renamed_from` when Tableau added a suffix because the original URL was taken.
+Map a reference whose destination URL differs with `--datasource-binding <source name or content URL>=<target LUID>`; only the upload copy is rebound.
+A workbook preview lists each binding, warns about references that will likely fail, and suggests exact candidates.
 Pulling with `--include-pds` saves direct datasource dependencies as separate artifacts; it does not make the workbook self-contained.
 
 ### Check mutation consent

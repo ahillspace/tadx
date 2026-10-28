@@ -41,7 +41,11 @@ type PublishRequest struct {
 	AsJob                                                         bool
 	Accepted                                                      func(context.Context, string, string) (PublishResult, error)
 }
-type PublishResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, JobID, TableauRequestID, ReceiptPath string }
+type PublishResult struct {
+	Status, DatasourceLUID, DatasourceName, ProjectLUID, JobID, TableauRequestID, ReceiptPath string
+	// ContentURL is the content URL Tableau assigned when its response reports one.
+	ContentURL string
+}
 type MutationResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, OwnerLUID, TableauRequestID string }
 
 // UpdateRequest contains only explicit datasource metadata changes.
@@ -356,7 +360,7 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 	if ds.ID == "" || ds.Name != p.name || ds.Project.ID != p.project {
 		return PublishResult{Status: "unknown", DatasourceLUID: ds.ID, DatasourceName: ds.Name, ProjectLUID: ds.Project.ID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, errors.New("datasource publish response omitted or changed authoritative identity"), false)
 	}
-	return PublishResult{Status: "succeeded", DatasourceLUID: ds.ID, DatasourceName: ds.Name, ProjectLUID: ds.Project.ID, TableauRequestID: response.TableauRequestID}, nil
+	return PublishResult{Status: "succeeded", DatasourceLUID: ds.ID, DatasourceName: ds.Name, ProjectLUID: ds.Project.ID, ContentURL: ds.ContentURL, TableauRequestID: response.TableauRequestID}, nil
 }
 
 func validateAcceptedDatasourceJob(job datasourceJobXML) error {
@@ -448,7 +452,7 @@ func (c *Client) pollDatasourceJob(ctx context.Context, jobID, acceptedRequestID
 			if datasource.Project.ID != "" && datasource.Project.ID != expectedProject {
 				return PublishResult{Status: "unknown", DatasourceLUID: datasource.ID, DatasourceName: datasource.Name, ProjectLUID: datasource.Project.ID, JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("successful Tableau datasource publish job returned project LUID %q, expected %q", datasource.Project.ID, expectedProject), false)
 			}
-			return PublishResult{Status: "succeeded", DatasourceLUID: datasource.ID, DatasourceName: expectedName, ProjectLUID: expectedProject, JobID: jobID, TableauRequestID: requestID}, nil
+			return PublishResult{Status: "succeeded", DatasourceLUID: datasource.ID, DatasourceName: expectedName, ProjectLUID: expectedProject, ContentURL: datasource.ContentURL, JobID: jobID, TableauRequestID: requestID}, nil
 		case progress == 100 && (finishCode == 1 || finishCode == 2):
 			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau datasource publish job %s failed with finish code %d", jobID, finishCode)
 		case progress == 100:

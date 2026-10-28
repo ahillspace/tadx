@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -21,82 +20,10 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableaumetadata "github.com/ahillspace/tadx/internal/tableau/metadata"
 )
 
 const maxLiveEvidenceBytes = 4 * 1024 * 1024
-
-func TestLiveWorkbookPublishedDatasourceContract(t *testing.T) {
-	workbookLUID := strings.TrimSpace(os.Getenv("TADX_LIVE_PDS_WORKBOOK_LUID"))
-	if workbookLUID == "" {
-		t.Skip("set TADX_LIVE_PDS_WORKBOOK_LUID to run the live published-datasource contract test")
-	}
-
-	configPath := strings.TrimSpace(os.Getenv("TADX_LIVE_CONFIG"))
-	if configPath == "" {
-		var err error
-		configPath, err = config.UserConfigPath()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	configuration, err := config.Load(configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	environment, err := configuration.ResolveEnvironment(strings.TrimSpace(os.Getenv("TADX_LIVE_ENVIRONMENT")))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	capture := &metadataEvidenceTransport{base: http.DefaultTransport}
-	httpClient := &http.Client{Transport: capture, Timeout: 2 * time.Minute}
-	transport := tableau.NewTransport(httpClient, "", func() string { return "pds-live-contract" })
-	if err := transport.NegotiateAPIVersion(t.Context(), environment.URL); err != nil {
-		t.Fatal(err)
-	}
-	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
-	session, err := provider.Authenticate(context.Background(), coreauth.Target{
-		Environment:       environment.Alias,
-		ServerURL:         environment.URL,
-		SiteContentURL:    environment.SiteContentURL,
-		PATNameVariable:   environment.Auth.PATNameEnv,
-		PATSecretVariable: environment.Auth.PATSecretEnv,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	references, err := tableaumetadata.NewClient(transport, session, environment.URL).DirectPublishedDatasources(context.Background(), workbookLUID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(references) == 0 {
-		t.Fatalf("workbook %q returned no direct published datasource references", workbookLUID)
-	}
-
-	datasources := tableaudatasource.NewClient(transport, session, environment.URL)
-	luids := make([]string, 0, len(references))
-	for _, reference := range references {
-		item, getErr := datasources.Get(context.Background(), reference.LUID)
-		if getErr != nil {
-			t.Fatalf("Metadata LUID %q was not accepted by the REST datasource endpoint: %v", reference.LUID, getErr)
-		}
-		if item.LUID != reference.LUID {
-			t.Fatalf("REST datasource LUID = %q, Metadata LUID = %q", item.LUID, reference.LUID)
-		}
-		luids = append(luids, evidenceIdentifier(reference.LUID))
-	}
-	sort.Strings(luids)
-
-	evidence, err := capture.JSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("verified Metadata published datasource LUIDs through REST: %s", strings.Join(luids, ", "))
-	t.Logf("redacted Metadata API request and response capture:\n%s", evidence)
-}
 
 func TestLiveLineageContract(t *testing.T) {
 	kind := tableaumetadata.ResourceKind(strings.TrimSpace(os.Getenv("TADX_LIVE_LINEAGE_KIND")))
@@ -104,9 +31,6 @@ func TestLiveLineageContract(t *testing.T) {
 		kind = tableaumetadata.KindWorkbook
 	}
 	rootLUID := strings.TrimSpace(os.Getenv("TADX_LIVE_LINEAGE_LUID"))
-	if rootLUID == "" && kind == tableaumetadata.KindWorkbook {
-		rootLUID = strings.TrimSpace(os.Getenv("TADX_LIVE_PDS_WORKBOOK_LUID"))
-	}
 	if rootLUID == "" {
 		t.Skip("set TADX_LIVE_LINEAGE_LUID and optional TADX_LIVE_LINEAGE_KIND to run the live lineage contract test")
 	}

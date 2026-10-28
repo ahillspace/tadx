@@ -30,7 +30,7 @@ func (workbookDependencyPullReader) CaptureWorkbookLineage(context.Context, work
 	}, nil
 }
 
-func (workbookDependencyPullReader) PublishedDatasources(context.Context, string) ([]workbookops.PublishedDatasource, error) {
+func (workbookDependencyPullReader) PublishedDatasources(context.Context, workbookops.Download) ([]workbookops.PublishedDatasource, error) {
 	return []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales"}}, nil
 }
 

@@ -24,6 +24,8 @@ func applyHelpValues(root *cobra.Command) {
 			choices("enabled", "true", "false")
 		case "content workbook pull":
 			choices("include-extract", "true", "false")
+		case "content workbook publish":
+			value("datasource-binding", "source=luid")
 		case "search":
 			types, _ := searchaction.Types("")
 			choices("type", append(types, "content", "admin", "pulse")...)

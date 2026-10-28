@@ -163,7 +163,7 @@ func TestClientResolvesDatasourceContentURLsToClassicLUIDsInOneBatch(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != 1 || resolved["alpha"] != "ds-a" || resolved["beta"] != "ds-b" {
+	if requests != 1 || resolved["alpha"].LUID != "ds-a" || resolved["alpha"].Name != "Alpha" || resolved["beta"].LUID != "ds-b" || resolved["beta"].ContentURL != "beta" {
 		t.Fatalf("requests=%d resolved=%v", requests, resolved)
 	}
 }

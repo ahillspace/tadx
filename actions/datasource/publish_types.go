@@ -40,6 +40,9 @@ type PublishArtifact struct {
 	Size                                                                                                                         int64
 	CompositionStatus                                                                                                            string
 	ParentDataSourceURLs                                                                                                         []string
+	// ContentURL is the datasource file's own repository location, which
+	// workbooks published from the same source reference.
+	ContentURL string
 }
 
 type PublishTarget struct {
@@ -67,6 +70,7 @@ type PublishPlan struct {
 	Substeps             []string      `json:"substeps"`
 	AsJob                bool          `json:"-"`
 	request              PublishRequest
+	contentURL           string
 }
 
 // PublishCompactPlan keeps only the fields needed to understand the publish decision.
@@ -97,6 +101,8 @@ type PublishResult struct {
 	DatasourceLUID   string `json:"datasource_luid,omitempty"`
 	DatasourceName   string `json:"datasource_name,omitempty"`
 	ProjectLUID      string `json:"project_luid,omitempty"`
+	ContentURL       string `json:"content_url,omitempty"`
+	RenamedFrom      string `json:"renamed_from,omitempty"`
 	JobID            string `json:"tableau_job_id,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 	ReceiptPath      string `json:"receipt_path,omitempty"`
@@ -122,6 +128,8 @@ type PublishCompactPublishResult struct {
 	DatasourceLUID string `json:"datasource_luid,omitempty"`
 	DatasourceName string `json:"datasource_name,omitempty"`
 	ProjectLUID    string `json:"project_luid,omitempty"`
+	ContentURL     string `json:"content_url,omitempty"`
+	RenamedFrom    string `json:"renamed_from,omitempty"`
 	JobID          string `json:"tableau_job_id,omitempty"`
 	ReceiptPath    string `json:"receipt_path,omitempty"`
 	Verification   string `json:"verification,omitempty"`
@@ -166,6 +174,8 @@ func (o PublishOutput) CompactOutput() any {
 			DatasourceLUID: o.Result.DatasourceLUID,
 			DatasourceName: o.Result.DatasourceName,
 			ProjectLUID:    o.Result.ProjectLUID,
+			ContentURL:     o.Result.ContentURL,
+			RenamedFrom:    o.Result.RenamedFrom,
 			JobID:          o.Result.JobID,
 			ReceiptPath:    o.Result.ReceiptPath,
 			Verification:   o.Result.Verification,

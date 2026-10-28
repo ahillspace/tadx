@@ -173,6 +173,7 @@ for (const scenario of [
   { name: 'explicit unknown effect with partial evidence', document: { output: { operation_id: 'op-1', status: 'partial', items: [{ status: 'succeeded' }] }, error: { outcome: 'unknown' } }, expected: 'unknown' },
   { name: 'explicit unknown receipt status', document: { output: { status: 'unknown' }, error: { summary: 'Verification unavailable.' } }, expected: 'unknown' },
   { name: 'confirmed rejection with a retained requested operation', document: { output: { operation_id: 'op-1', status: 'starting' }, error: { outcome: 'not_attempted' } }, expected: 'failed' },
+  { name: 'definitive Tableau rejection with a retained requested operation', document: { output: { operation_id: 'op-1', status: 'starting' }, error: { outcome: 'not_applied' } }, expected: 'failed' },
   { name: 'ordinary validation rejection', document: { error: { summary: 'The project does not exist.' } }, expected: 'failed' },
   { name: 'saved failed receipt', document: { output: { operation_id: 'op-1', status: 'failed' }, error: { summary: 'Publication was denied.' } }, expected: 'failed' },
 ] as const) {

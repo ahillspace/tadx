@@ -153,12 +153,26 @@ func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOut
 			return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
 		}
 		result.DatasourceLUID, result.DatasourceName, result.ProjectLUID = resolved.LUID, resolved.Name, resolved.ProjectLUID
+		if result.ContentURL == "" {
+			result.ContentURL = resolved.ContentURL
+		}
 	} else if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
 		result.Verification = "destination_mismatch"
 		return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
 	}
 	result.Verification = "confirmed"
+	if suffixedContentURL(plan.contentURL, result.ContentURL) {
+		result.RenamedFrom = plan.contentURL
+		out.Help = []string{fmt.Sprintf("Tableau assigned content URL %s because %s is already taken on this site. Workbooks that reference %s need --datasource-binding %s=%s when published here.", result.ContentURL, plan.contentURL, plan.contentURL, plan.contentURL, result.DatasourceLUID)}
+	}
 	return out, nil
+}
+
+// suffixedContentURL reports whether Tableau assigned the file's content URL
+// followed by its _<digits> collision suffix.
+func suffixedContentURL(file, assigned string) bool {
+	suffix, ok := strings.CutPrefix(assigned, file+"_")
+	return file != "" && ok && suffix != "" && strings.Trim(suffix, "0123456789") == ""
 }
 
 func publishUnknownOutcomeError(plan PublishPlan, input PublishInput, result PublishResult, cause error) error {
@@ -227,7 +241,7 @@ func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, 
 		return PublishPlan{}, err
 	}
 	req := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Mode: input.Mode, ParentDataSourceURLs: parents, AsJob: input.AsJob}
-	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "automatically monitor an accepted job"}, AsJob: input.AsJob, request: req}, nil
+	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "automatically monitor an accepted job"}, AsJob: input.AsJob, request: req, contentURL: artifact.ContentURL}, nil
 }
 
 func (a *Publisher) resolveProject(ctx context.Context, input PublishInput, artifact PublishArtifact) (Project, error) {

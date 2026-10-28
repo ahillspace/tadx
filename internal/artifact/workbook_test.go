@@ -1,12 +1,14 @@
 package artifact_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -253,7 +255,7 @@ func TestWorkbookManagerReadExposesSourceProvenance(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native"),
+		Workspace: workspace, Filename: "Finance.twbx", Content: workbookPackage(t, "Finance.twb", "<workbook><datasources><datasource caption='Sales' name='sqlproxy.1'><connection class='sqlproxy' dbname='Sales_1' /></datasource></datasources></workbook>"),
 		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -263,7 +265,7 @@ func TestWorkbookManagerReadExposesSourceProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workbook.SourceEnvironment != "production" || workbook.SourceSite != "marketing" || workbook.SourceProjectName != "Department/Ops" || workbook.SourceProjectID != "project-1" {
+	if workbook.SourceEnvironment != "production" || workbook.SourceSite != "marketing" || workbook.SourceProjectName != "Department/Ops" || workbook.SourceProjectID != "project-1" || !reflect.DeepEqual(workbook.Datasources, []artifact.WorkbookDatasource{{Caption: "Sales", ContentURL: "Sales_1"}}) {
 		t.Fatalf("workbook = %#v", workbook)
 	}
 	metadata, err := manager.ReadMetadata(context.Background(), result.ArtifactPath)
@@ -540,8 +542,12 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			manager := artifact.NewWorkbookManager(time.Now)
+			native := []byte("<workbook />")
+			if test.extension == ".twbx" {
+				native = workbookPackage(t, "Book.twb", "<workbook />")
+			}
 			result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-				Workspace: createWorkspace(t), Filename: test.filename, Content: []byte("native-package"),
+				Workspace: createWorkspace(t), Filename: test.filename, Content: native,
 				Metadata: validMetadata(test.workbook, "wb-1"),
 			})
 			if err != nil {
@@ -566,7 +572,7 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			if string(content) != "native-package" || workbook.Filename != payloadName {
+			if !bytes.Equal(content, native) || workbook.Filename != payloadName {
 				t.Fatalf("workbook = %#v", workbook)
 			}
 		})
@@ -1035,4 +1041,21 @@ func validMetadata(name, tableauID string) artifact.WorkbookMetadata {
 		SourceProjectName:  "Ops",
 		SourceProjectID:    "project-1",
 	}
+}
+
+func workbookPackage(t *testing.T, definitionName, definition string) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	archive := zip.NewWriter(&data)
+	writer, err := archive.Create(definitionName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte(definition)); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
 }

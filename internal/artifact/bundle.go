@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -231,7 +232,8 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	metadata.CompositionStatus, metadata.ParentDataSourceURLs = classifyDatasourcePackage(filename, input.Content)
+	definition := readDatasourceDefinition(filename, bytes.NewReader(input.Content), int64(len(input.Content)))
+	metadata.CompositionStatus, metadata.ParentDataSourceURLs = definition.CompositionStatus, definition.ParentDataSourceURLs
 	metadata.sourceSitePresent = true
 	if err := validateDatasourceMetadata(metadata); err != nil {
 		return preparedDirectory{}, DatasourcePullResult{}, err

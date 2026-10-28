@@ -4,6 +4,7 @@ package content
 import (
 	"context"
 	"errors"
+	"fmt"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectops "github.com/ahillspace/tadx/actions/project"
@@ -218,7 +219,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 		short = "Publish workbook artifacts sequentially."
 	}
 	var input workbookops.PublishInput
-	var artifacts []string
+	var artifacts, bindings []string
 	var projectID, projectPath string
 	var preview bool
 	command := &cobra.Command{
@@ -239,6 +240,10 @@ func newPublish(deps Dependencies) *cobra.Command {
 				return clierr.Usage("workbook.publish", errors.New("choose a destination with --project-id or --project"))
 			}
 			input.ProjectLUID, input.ProjectPath = projectID, projectPath
+			input.DatasourceBindings, err = datasourceBindings(bindings)
+			if err != nil {
+				return clierr.Usage("workbook.publish", err)
+			}
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -260,10 +265,25 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding workbook")
+	command.Flags().StringArrayVar(&bindings, "datasource-binding", nil, "bind a workbook published data source, by exact caption or content URL, to a destination data source LUID as <source>=<luid>; repeatable")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	command.Flags().Bool("no-wait", false, "start publication in the background and return a check-status command without polling")
 	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
+}
+
+// datasourceBindings splits at the last equals sign because captions may
+// contain one and LUIDs never do.
+func datasourceBindings(values []string) ([]workbookops.DatasourceBinding, error) {
+	var bindings []workbookops.DatasourceBinding
+	for _, value := range values {
+		index := strings.LastIndex(value, "=")
+		if index <= 0 || index == len(value)-1 {
+			return nil, fmt.Errorf("--datasource-binding %q must use <source name or content URL>=<target LUID>", value)
+		}
+		bindings = append(bindings, workbookops.DatasourceBinding{Source: value[:index], TargetLUID: value[index+1:]})
+	}
+	return bindings, nil
 }
 
 func managedArtifactFlagHelp(kind, exampleName string) string {

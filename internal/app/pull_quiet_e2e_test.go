@@ -27,11 +27,17 @@ func TestRoutinePullKeepsOptionalEnrichmentDiagnosticsFullOnly(t *testing.T) {
 				case r.URL.Path == "/api/3.29/sites/site-1/"+kind+"s/item-1/content":
 					ext := map[string]string{"workbook": "twb", "datasource": "tds", "flow": "tfl"}[kind]
 					w.Header().Set("Content-Disposition", `attachment; filename="Example.`+ext+`"`)
-					_, _ = io.WriteString(w, "<"+kind+"/>")
+					content := "<" + kind + "/>"
+					if kind == "workbook" {
+						// The published datasource reference forces a datasource
+						// lookup, which this fixture denies.
+						content = `<workbook><datasources><datasource caption='Sales' name='sqlproxy.1'><connection class='sqlproxy' dbname='Sales' /></datasource></datasources></workbook>`
+					}
+					_, _ = io.WriteString(w, content)
 				case r.URL.Path == "/api/3.29/sites/site-1/"+kind+"s/item-1":
 					_, _ = fmt.Fprintf(w, `<tsResponse><%s id="item-1" name="Example" fileType="tfl"><project id="project-1" name="Shared"/></%s></tsResponse>`, kind, kind)
 				default:
-					http.Error(w, "metadata unavailable", http.StatusForbidden)
+					http.Error(w, "enrichment unavailable", http.StatusForbidden)
 				}
 			}))
 			defer server.Close()

@@ -68,10 +68,11 @@ type ListRequest struct {
 
 const maxContentURLResolveBatch = 25
 
-// ResolveContentURLs maps native-search datasource content URLs to classic
-// REST LUIDs in bounded batches. Search-service datasource LUIDs are not
-// authoritative for classic lifecycle operations.
-func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]string, error) {
+// ResolveContentURLs maps datasource content URLs to their classic REST
+// records in bounded batches. Native search and workbook files both identify
+// published datasources by content URL; only the REST LUID is authoritative
+// for lifecycle operations.
+func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]Datasource, error) {
 	if len(contentURLs) == 0 || len(contentURLs) > maxPageSize {
 		return nil, fmt.Errorf("datasource content URL resolution requires between 1 and %d values", maxPageSize)
 	}
@@ -89,7 +90,7 @@ func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (
 		unique = append(unique, value)
 	}
 	sort.Strings(unique)
-	resolved := make(map[string]string, len(unique))
+	resolved := make(map[string]Datasource, len(unique))
 	for start := 0; start < len(unique); start += maxContentURLResolveBatch {
 		end := start + maxContentURLResolveBatch
 		if end > len(unique) {
@@ -114,12 +115,12 @@ func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (
 			if _, duplicate := resolved[item.ContentURL]; duplicate {
 				return nil, fmt.Errorf("datasource content URL %q resolved ambiguously", item.ContentURL)
 			}
-			resolved[item.ContentURL] = item.LUID
+			resolved[item.ContentURL] = item
 		}
 	}
 	for _, value := range unique {
-		if resolved[value] == "" {
-			return nil, fmt.Errorf("datasource content URL %q did not resolve to a classic REST LUID", value)
+		if _, ok := resolved[value]; !ok {
+			return nil, fmt.Errorf("datasource content URL %q did not resolve to a datasource on this site", value)
 		}
 	}
 	return resolved, nil

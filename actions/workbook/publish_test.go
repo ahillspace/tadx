@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,10 +25,14 @@ func (r publishArtifactReader) ReadWorkbook(context.Context, string) (workbookop
 }
 
 type publishResolver struct {
-	project      workbookops.Project
-	existing     []workbookops.Record
-	projectErr   error
-	collisionErr error
+	project       workbookops.Project
+	existing      []workbookops.Record
+	projectErr    error
+	collisionErr  error
+	datasources   map[string]value.Datasource
+	datasourceErr error
+	site          []value.Datasource
+	listErr       error
 }
 
 func (r publishResolver) ResolveProject(context.Context, identity.Selector) (workbookops.Project, error) {
@@ -263,37 +268,6 @@ func TestPublishApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) 
 	payload := errs.Structure(err).Error
 	if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
 		t.Fatalf("structured error = %#v", payload)
-	}
-}
-
-func TestPublishPlanWarnsWhenSourceBoundWorkbookTargetsDifferentSite(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}},
-		&publishPublisher{},
-	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "staging", Site: "analytics", ProjectSelector: identity.Selector{LUID: "project-1"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	joined := strings.Join(plan.Warnings, " ")
-	if !strings.Contains(joined, "published datasource") || !strings.Contains(joined, "marketing") {
-		t.Fatalf("warnings = %#v", plan.Warnings)
-	}
-}
-
-func TestPublishPlanDoesNotWarnWhenTargetMatchesSource(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}, existing: []workbookops.Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}},
-		&publishPublisher{},
-	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Warnings) != 0 {
-		t.Fatalf("unexpected warnings = %#v", plan.Warnings)
 	}
 }
 

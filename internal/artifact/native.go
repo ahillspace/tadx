@@ -18,12 +18,17 @@ import (
 
 const maxNativeBytes int64 = 1 << 30
 
+var nativePrimaryExtensions = map[string]string{"workbook": ".twb", "datasource": ".tds", "flow": ".tfl"}
+
 // Native is a read-only native payload, not a manufactured managed artifact.
 type Native struct {
 	Path, Filename, Name, Fingerprint string
 	Size                              int64
 	CompositionStatus                 string
 	ParentDataSourceURLs              []string
+	// ContentURL is a datasource definition's own repository location.
+	ContentURL  string
+	Datasources []WorkbookDatasource
 }
 
 // ReadNative validates bounded native structure and fingerprints the original file.
@@ -34,7 +39,7 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	}
 	extension := strings.ToLower(filepath.Ext(path))
 	isHyper := kind == "datasource" && extension == ".hyper"
-	primary := map[string]string{"workbook": ".twb", "datasource": ".tds", "flow": ".tfl"}[kind]
+	primary := nativePrimaryExtensions[kind]
 	if primary == "" || (!isHyper && extension != primary && extension != primary+"x") {
 		return Native{}, fmt.Errorf("unsupported native %s file extension", kind)
 	}
@@ -62,17 +67,9 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 			if len(archive.File) > 10000 {
 				return Native{}, errors.New("native package exceeds 10000 entries")
 			}
-			var selected *zip.File
-			for _, entry := range archive.File {
-				if !topLevelPackageEntry(entry.Name) {
-					continue
-				}
-				if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
-					if selected != nil {
-						return Native{}, errors.New("native package has ambiguous top-level primary definitions")
-					}
-					selected = entry
-				}
+			selected, selectErr := primaryPackageEntry(archive, kind)
+			if selectErr != nil {
+				return Native{}, selectErr
 			}
 			if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
 				return Native{}, errors.New("native package requires one top-level primary definition no larger than 16 MiB")
@@ -161,14 +158,33 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	if isHyper {
 		result.CompositionStatus = "ordinary"
 	} else if kind == "datasource" {
-		result.CompositionStatus, result.ParentDataSourceURLs = classifyDatasourcePackage("definition.tds", definition)
+		parsed := readDatasourceDefinition("definition.tds", bytes.NewReader(definition), int64(len(definition)))
+		result.CompositionStatus, result.ParentDataSourceURLs, result.ContentURL = parsed.CompositionStatus, parsed.ParentDataSourceURLs, parsed.ContentURL
+	} else if kind == "workbook" {
+		if result.Datasources, err = walkWorkbookDefinition(ctx, bytes.NewReader(definition), nil, nil); err != nil {
+			return Native{}, err
+		}
 	}
 	return result, nil
 }
 
-// topLevelPackageEntry reports whether a package entry sits at the archive root.
-// Tableau packages keep their primary definition there; nested definitions are
-// ordinary package content and neither satisfy nor block primary selection.
-func topLevelPackageEntry(name string) bool {
-	return name != "" && !strings.ContainsAny(name, `/\`)
+// primaryPackageEntry selects the one primary definition at a package's root,
+// or nil when there is none. Tableau packages keep their primary definition
+// there; nested definitions are ordinary package content and neither satisfy
+// nor block primary selection.
+func primaryPackageEntry(archive *zip.Reader, kind string) (*zip.File, error) {
+	primary := nativePrimaryExtensions[kind]
+	var selected *zip.File
+	for _, entry := range archive.File {
+		if entry.Name == "" || strings.ContainsAny(entry.Name, `/\`) {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
+			if selected != nil {
+				return nil, errors.New("native package has ambiguous top-level primary definitions")
+			}
+			selected = entry
+		}
+	}
+	return selected, nil
 }

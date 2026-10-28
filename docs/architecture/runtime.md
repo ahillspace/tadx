@@ -214,7 +214,8 @@ Clients must distinguish a failed inspection from an inspected operation that fa
 
 [`errs.Error`](../../internal/errs/errs.go) separates failure kind from operation phase and known mutation outcome.
 Phases identify validation, setup, submission, verification, or persistence.
-Outcomes distinguish `not_attempted`, `confirmed`, and `unknown`.
+Outcomes distinguish `not_attempted`, `not_applied`, `confirmed`, and `unknown`.
+`not_applied` means Tableau received the request and definitively rejected it without applying a change.
 The error can preserve confirmed completed items, a failed item, missing prerequisites, upstream details, and accepted job identity.
 `ExitCode` returns zero for success, two for usage errors, and one for other failures.
 

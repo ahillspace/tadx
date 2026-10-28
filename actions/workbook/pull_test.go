@@ -9,6 +9,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,8 +29,10 @@ type pullReader struct {
 	datasourceDownloadErr   error
 	resolveCalls            int
 	downloadCalls           int
+	includeRequests         []*bool
 	lineageRequests         []workbookops.LineageRequest
 	referenceCalls          int
+	detectedDownloads       []workbookops.Download
 	datasourceCalls         []string
 }
 
@@ -38,8 +41,9 @@ func (r *pullReader) ResolveWorkbook(context.Context, identity.Selector) (workbo
 	return r.workbook, r.resolveErr
 }
 
-func (r *pullReader) DownloadWorkbook(context.Context, string, *bool) (workbookops.Download, error) {
+func (r *pullReader) DownloadWorkbook(_ context.Context, _ string, include *bool) (workbookops.Download, error) {
 	r.downloadCalls++
+	r.includeRequests = append(r.includeRequests, include)
 	return r.download, r.downloadErr
 }
 
@@ -55,8 +59,9 @@ func (r *pullReader) CaptureWorkbookLineage(_ context.Context, request workbooko
 	return r.lineage, r.lineageErr
 }
 
-func (r *pullReader) PublishedDatasources(context.Context, string) ([]workbookops.PublishedDatasource, error) {
+func (r *pullReader) PublishedDatasources(_ context.Context, download workbookops.Download) ([]workbookops.PublishedDatasource, error) {
 	r.referenceCalls++
+	r.detectedDownloads = append(r.detectedDownloads, download)
 	return r.publishedDatasources, r.publishedDatasourcesErr
 }
 
@@ -258,9 +263,9 @@ func TestPullActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T)
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
 		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
 		publishedDatasources: []workbookops.PublishedDatasource{
-			{LUID: "ds-2", Name: "Inventory"},
-			{LUID: "ds-1", Name: "Sales"},
-			{LUID: "ds-1", Name: "Sales"},
+			{LUID: "ds-2", Name: "Inventory", ContentURL: "Inventory"},
+			{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"},
+			{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"},
 		},
 		datasourceDownloads: map[string]workbookops.DatasourceDownload{
 			"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-sales")},
@@ -294,8 +299,11 @@ func TestPullActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T)
 	if result.Artifact.Portability != "source-site-bound" || !result.Artifact.DependenciesAcquired {
 		t.Fatalf("artifact result = %#v", result.Artifact)
 	}
-	if len(result.Artifact.PublishedDatasources) != 2 || result.Artifact.PublishedDatasources[0].LUID != "ds-1" || result.Artifact.PublishedDatasources[0].LocalArtifactPath != "artifacts/datasource/Sales-ds1" {
+	if len(result.Artifact.PublishedDatasources) != 2 || result.Artifact.PublishedDatasources[0].LUID != "ds-1" || result.Artifact.PublishedDatasources[0].ContentURL != "Sales" || result.Artifact.PublishedDatasources[0].LocalArtifactPath != "artifacts/datasource/Sales-ds1" {
 		t.Fatalf("references = %#v", result.Artifact.PublishedDatasources)
+	}
+	if r.downloadCalls != 1 || len(r.detectedDownloads) != 1 || string(r.detectedDownloads[0].Content) != "native-workbook" {
+		t.Fatalf("detection did not read the downloaded workbook: downloads=%d detected=%#v", r.downloadCalls, r.detectedDownloads)
 	}
 	if !w.input.DependenciesAcquired || len(w.input.PublishedDatasources) != 2 {
 		t.Fatalf("workbook artifact input = %#v", w.input)
@@ -306,7 +314,7 @@ func TestPullActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *
 	r := &pullReader{
 		workbook:                workbookops.Record{LUID: "wb-1", Name: "Finance"},
 		download:                workbookops.Download{Filename: "Finance.twbx", Content: []byte("native")},
-		publishedDatasourcesErr: errors.New("metadata indexing incomplete"),
+		publishedDatasourcesErr: errors.New("datasource lookup denied"),
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
@@ -314,7 +322,7 @@ func TestPullActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Artifact.Portability != "unknown" || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "portability remains unknown") || strings.Contains(result.Warnings[0], "metadata indexing incomplete") {
+	if result.Artifact.Portability != "unknown" || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "portability remains unknown") || strings.Contains(result.Warnings[0], "datasource lookup denied") || strings.Contains(strings.ToLower(result.Warnings[0]), "metadata") {
 		t.Fatalf("result = %#v", result)
 	}
 	if w.calls != 1 || w.input.Portability != "unknown" {
@@ -340,6 +348,55 @@ func TestPullActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testi
 	}
 	if w.calls != 0 || len(w.datasourceInputs) != 0 {
 		t.Fatalf("local writes occurred: workbook=%d datasources=%d", w.calls, len(w.datasourceInputs))
+	}
+}
+
+type pullPreviewWriter struct {
+	pullWriter
+	references []workbookops.PublishedDatasource
+	calls      int
+}
+
+func (w *pullPreviewWriter) PreviewWorkbook(_ context.Context, input workbookops.PullInput, item workbookops.Record, references []workbookops.PublishedDatasource) (value.AcquisitionPlan, error) {
+	w.calls++
+	w.references = references
+	return value.AcquisitionPlan{Status: "preview", Operation: "workbook.pull"}, nil
+}
+
+func TestPullPreviewDetectsPublishedDatasourcesFromTheWorkbookWithoutExtracts(t *testing.T) {
+	r := &pullReader{
+		workbook:             workbookops.Record{LUID: "wb-1", Name: "Finance"},
+		download:             workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		publishedDatasources: []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"}},
+	}
+	w := &pullPreviewWriter{}
+	include := true
+	output, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true, IncludeExtract: &include, Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.Status != "preview" || w.calls != 1 || w.pullWriter.calls != 0 || w.bundleCalls != 0 {
+		t.Fatalf("preview output=%#v previews=%d writes=%d bundles=%d", output, w.calls, w.pullWriter.calls, w.bundleCalls)
+	}
+	if r.downloadCalls != 1 || r.includeRequests[0] == nil || *r.includeRequests[0] || len(r.detectedDownloads) != 1 || string(r.detectedDownloads[0].Content) != "native-workbook" {
+		t.Fatalf("preview download=%d include=%v detected=%#v", r.downloadCalls, r.includeRequests, r.detectedDownloads)
+	}
+	if len(w.references) != 1 || w.references[0] != (workbookops.PublishedDatasource{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"}) || len(r.datasourceCalls) != 0 {
+		t.Fatalf("preview references=%#v datasource downloads=%v", w.references, r.datasourceCalls)
+	}
+
+	r.publishedDatasourcesErr = errors.New("datasource lookup denied")
+	_, err = workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true, Preview: true})
+	if payload := errs.Structure(err).Error; payload.ID != "workbook.pull.references" || strings.Contains(strings.ToLower(payload.CorrectiveAction), "metadata") {
+		t.Fatalf("preview detection error = %#v", payload)
+	}
+
+	r.downloadCalls, r.referenceCalls = 0, 0
+	if _, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, Preview: true}); err != nil {
+		t.Fatal(err)
+	}
+	if r.downloadCalls != 0 || r.referenceCalls != 0 {
+		t.Fatalf("preview without --include-pds downloaded=%d detected=%d", r.downloadCalls, r.referenceCalls)
 	}
 }
 
@@ -441,7 +498,7 @@ func TestPullActionGoldenOutput(t *testing.T) {
 		context.Background(), &pullReader{
 			workbook:             workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
 			download:             workbookops.Download{Filename: "Finance.twbx", Content: []byte("native"), TableauRequestID: "request-1"},
-			publishedDatasources: []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales"}},
+			publishedDatasources: []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"}},
 			datasourceDownloads: map[string]workbookops.DatasourceDownload{
 				"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "datasource-project", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-datasource")},
 			},
