@@ -80,7 +80,7 @@ func TestWorkbookPublishBindsPublishedDatasourcesThroughCLI(t *testing.T) {
 	if exit := app.Run(context.Background(), append(publish, "--preview"), &preview, options); exit != 0 {
 		t.Fatalf("preview exit = %d, output = %s", exit, preview.String())
 	}
-	for _, want := range []string{"left to Tableau SalesMargin", "SalesMargin_1", "ds-name", "no data source on this site has that URL; this publish will likely fail"} {
+	for _, want := range []string{"datasource_bindings[1]{datasource,content_url,origin,target_content_url,target_luid}:\n    Sales & Margin,SalesMargin,workbook,SalesMargin,\"\"\n", "SalesMargin_1", "ds-name", "no data source on this site has that URL; this publish will likely fail"} {
 		if !strings.Contains(preview.String(), want) {
 			t.Fatalf("preview missing %q:\n%s", want, preview.String())
 		}
@@ -103,7 +103,7 @@ func TestWorkbookPublishBindsPublishedDatasourcesThroughCLI(t *testing.T) {
 	if exit := app.Run(context.Background(), append(publish, "--dsb", "Sales & Margin=ds-name"), &bound, options); exit != 0 {
 		t.Fatalf("bound publish exit = %d, output = %s", exit, bound.String())
 	}
-	if !strings.Contains(bound.String(), "workbook_luid: wb-2") || !strings.Contains(bound.String(), "mapped to SalesMargin_1 ds-name (--datasource-binding)") {
+	if !strings.Contains(bound.String(), "workbook_luid: wb-2") || !strings.Contains(bound.String(), "datasource_bindings[1]{datasource,content_url,origin,target_content_url,target_luid}:\n  Sales & Margin,SalesMargin,explicit,SalesMargin_1,ds-name\n") {
 		t.Fatalf("bound publish output:\n%s", bound.String())
 	}
 	target, err := url.Parse(server.URL)

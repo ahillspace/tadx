@@ -79,7 +79,7 @@ An incomplete graph or permission-restricted response cannot establish the absen
 The composition root supplies these dependencies through [`app`](../../internal/app/app.go) and its content wiring.
 
 1. Validate the request and resolve the authoritative workbook.
-2. For `--preview`, inspect the local acquisition destination and requested dependency discovery without downloading or saving native content.
+2. For `--preview`, inspect the local acquisition destination and requested dependency discovery without saving native content; with `--include-pds`, download the workbook without extracts to detect its published datasources.
 3. Download the native workbook and attempt automatic asset lineage with direction `both` and depth one.
 4. Detect direct published datasource parents from the downloaded workbook file, resolve them by exact content URL, and record portability.
 5. If `--include-pds` is requested, download each dependency and verify its authoritative LUID.

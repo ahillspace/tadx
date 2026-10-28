@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -568,27 +567,24 @@ func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *
 
 func (r pullReader) PublishedDatasources(ctx context.Context, download workbookops.Download) ([]workbookops.PublishedDatasource, error) {
 	progress.SetLabel(ctx, "Reading workbook dependencies")
-	references, err := artifact.ReadWorkbookDatasources(download.Filename, download.Content)
+	references, err := artifact.ReadWorkbookDatasources(ctx, download.Filename, download.Content)
 	if err != nil {
 		return nil, err
 	}
-	var urls []string
-	for _, reference := range references {
-		if !slices.Contains(urls, reference.ContentURL) {
-			urls = append(urls, reference.ContentURL)
-		}
-	}
-	if len(urls) == 0 {
+	if len(references) == 0 {
 		return nil, nil
+	}
+	urls := make([]string, len(references))
+	for index, reference := range references {
+		urls[index] = reference.ContentURL
 	}
 	resolved, err := r.contentURLs.ResolveContentURLs(ctx, urls)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]workbookops.PublishedDatasource, len(urls))
-	for index, url := range urls {
-		item := resolved[url]
-		result[index] = workbookops.PublishedDatasource{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL}
+	result := make([]workbookops.PublishedDatasource, 0, len(resolved))
+	for _, item := range resolved {
+		result = append(result, workbookops.PublishedDatasource{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL})
 	}
 	return result, nil
 }

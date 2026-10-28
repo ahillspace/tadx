@@ -369,7 +369,7 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("fingerprint canonical workbook: %w", err)
 	}
-	datasources, err := readWorkbookDatasourceFile(canonical)
+	datasources, err := readWorkbookDatasourceFile(ctx, canonical)
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("read canonical workbook datasources: %w", err)
 	}

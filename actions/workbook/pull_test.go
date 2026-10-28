@@ -258,13 +258,12 @@ func TestPullActionPreservesPartialWorkbookLineageWhenCaptureFails(t *testing.T)
 	}
 }
 
-func TestPullActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T) {
+func TestPullActionAcquiresPublishedDatasourcesInLUIDOrderWhenRequested(t *testing.T) {
 	r := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
 		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
 		publishedDatasources: []workbookops.PublishedDatasource{
 			{LUID: "ds-2", Name: "Inventory", ContentURL: "Inventory"},
-			{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"},
 			{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"},
 		},
 		datasourceDownloads: map[string]workbookops.DatasourceDownload{

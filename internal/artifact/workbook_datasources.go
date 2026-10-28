@@ -44,11 +44,11 @@ type RewrittenWorkbook struct {
 
 // ReadWorkbookDatasources reports the live published datasource connections in
 // a downloaded .twb or .twbx payload.
-func ReadWorkbookDatasources(filename string, content []byte) ([]WorkbookDatasource, error) {
-	return readWorkbookDatasources(bytes.NewReader(content), int64(len(content)), filename)
+func ReadWorkbookDatasources(ctx context.Context, filename string, content []byte) ([]WorkbookDatasource, error) {
+	return readWorkbookDatasources(ctx, bytes.NewReader(content), int64(len(content)), filename)
 }
 
-func readWorkbookDatasourceFile(path string) ([]WorkbookDatasource, error) {
+func readWorkbookDatasourceFile(ctx context.Context, path string) ([]WorkbookDatasource, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -58,13 +58,13 @@ func readWorkbookDatasourceFile(path string) ([]WorkbookDatasource, error) {
 	if err != nil {
 		return nil, err
 	}
-	return readWorkbookDatasources(file, info.Size(), path)
+	return readWorkbookDatasources(ctx, file, info.Size(), path)
 }
 
-func readWorkbookDatasources(source io.ReaderAt, size int64, filename string) ([]WorkbookDatasource, error) {
+func readWorkbookDatasources(ctx context.Context, source io.ReaderAt, size int64, filename string) ([]WorkbookDatasource, error) {
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".twb":
-		return walkWorkbookDefinition(context.Background(), io.NewSectionReader(source, 0, size), nil, nil)
+		return walkWorkbookDefinition(ctx, io.NewSectionReader(source, 0, size), nil, nil)
 	case ".twbx":
 		archive, err := zip.NewReader(source, size)
 		if err != nil {
@@ -82,7 +82,7 @@ func readWorkbookDatasources(source io.ReaderAt, size int64, filename string) ([
 			return nil, errors.New("workbook definition could not be read")
 		}
 		defer stream.Close()
-		return walkWorkbookDefinition(context.Background(), stream, nil, nil)
+		return walkWorkbookDefinition(ctx, stream, nil, nil)
 	}
 	return nil, errors.New("workbook datasources require a .twb or .twbx file")
 }

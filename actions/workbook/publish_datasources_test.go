@@ -76,23 +76,15 @@ func TestPublishPlanMapsDatasourceBindingsOntoTheUploadCopy(t *testing.T) {
 		t.Fatalf("upload rewrite = %#v, want %#v", publisher.input.DatasourceContentURLs, want)
 	}
 	wantPlan := []workbookops.PublishDatasourceBinding{
-		{Datasource: "Sales & Margin", ContentURL: "SalesMargin", Binding: "mapped to SalesMargin_1 ds-name (--datasource-binding)"},
-		{Datasource: "Orders", ContentURL: "Orders", Binding: "left to Tableau Orders"},
-		{Datasource: "Returns", ContentURL: "Returns", Binding: "left to Tableau Returns"},
+		{Datasource: "Sales & Margin", ContentURL: "SalesMargin", Origin: "explicit", TargetContentURL: "SalesMargin_1", TargetLUID: "ds-name"},
+		{Datasource: "Orders", ContentURL: "Orders", Origin: "workbook", TargetContentURL: "Orders"},
+		{Datasource: "Returns", ContentURL: "Returns", Origin: "workbook", TargetContentURL: "Returns"},
 	}
 	if !reflect.DeepEqual(out.Plan.DatasourceBindings, wantPlan) || len(out.Plan.Warnings) != 0 || len(out.Plan.DatasourceCandidates) != 0 {
 		t.Fatalf("plan bindings = %#v warnings = %#v candidates = %#v", out.Plan.DatasourceBindings, out.Plan.Warnings, out.Plan.DatasourceCandidates)
 	}
-	wantResult := []workbookops.PublishDatasourceBinding{
-		wantPlan[0],
-		{Datasource: "Orders", ContentURL: "Orders", Binding: "bound by Tableau to Orders (the workbook's own URL)"},
-		{Datasource: "Returns", ContentURL: "Returns", Binding: "bound by Tableau to Returns (the workbook's own URL)"},
-	}
-	if out.Result == nil || !reflect.DeepEqual(out.Result.DatasourceBindings, wantResult) {
-		t.Fatalf("result = %#v", out.Result)
-	}
 	compact := out.CompactOutput().(workbookops.PublishCompactResult)
-	if !reflect.DeepEqual(compact.DatasourceBindings, wantResult) {
+	if compact.Status != "succeeded" || !reflect.DeepEqual(compact.DatasourceBindings, wantPlan) {
 		t.Fatalf("compact bindings = %#v", compact.DatasourceBindings)
 	}
 }
@@ -107,7 +99,7 @@ func TestPublishPlanWithoutBindingsLeavesEveryReferenceToTableau(t *testing.T) {
 	if _, err := action.Apply(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
-	if publisher.input.DatasourceContentURLs != nil || len(plan.DatasourceBindings) != 3 || plan.DatasourceBindings[0].Binding != "left to Tableau SalesMargin" {
+	if publisher.input.DatasourceContentURLs != nil || len(plan.DatasourceBindings) != 3 || plan.DatasourceBindings[0] != (workbookops.PublishDatasourceBinding{Datasource: "Sales & Margin", ContentURL: "SalesMargin", Origin: "workbook", TargetContentURL: "SalesMargin"}) {
 		t.Fatalf("request = %#v bindings = %#v", publisher.input, plan.DatasourceBindings)
 	}
 }
@@ -205,14 +197,15 @@ func TestPublishApplyExplainsUnmappedDatasourceRejection(t *testing.T) {
 		t.Fatalf("summary = %q", structured.Summary)
 	}
 	remap := commandhint.Target("production", "default", "content", "workbook", "publish", "--artifact", "artifacts/workbook/Finance", "--project-id", "project-1", "--name", "Finance", "--datasource-binding", "SalesMargin=ds-name")
-	list := commandhint.Environment("production", "content", "datasource", "list")
+	byProject := commandhint.Environment("production", "content", "datasource", "list", "--project-name", "<leaf>")
+	all := commandhint.Environment("production", "content", "datasource", "list", "--all")
 	want := strings.Join([]string{
 		"This can happen when there are naming conflicts on the Tableau Site and should be resolved by using --datasource-binding <source name or content URL>=<target LUID>, where the source name or content URL are the data sources in your workbook and the LUID is the LUID of the published data source on the Tableau Site. Here are the data sources that need mapping along with suggested candidates found by searching the Tableau Site:",
 		"- Sales & Margin (content URL SalesMargin):",
 		`  - "Sales & Margin", content URL SalesMargin_1, LUID ds-name, project "Finance", owner user-1, updated 2026-01-02T03:04:05Z. Remap: ` + remap,
 		"  - \"Archive\", content URL SalesMargin_12, LUID ds-suffix, project \"Archive\", owner user-2, updated 2025-12-01T00:00:00Z. Remap: " + strings.Replace(remap, "SalesMargin=ds-name", "SalesMargin=ds-suffix", 1),
 		"- Returns (content URL Returns):",
-		"  No candidates found. Publish the data source if it does not exist yet. If you already published it, find it with " + list + " --project-name <project> (or --all); there is no partial-name filter, and --name matches exact names only.",
+		"  No candidates found. Publish the data source if it does not exist yet. If you already published it, find it with " + byProject + " or " + all + "; there is no partial-name filter, and --name matches exact names only.",
 		"Candidates match by exact name, or by the workbook's content URL followed by _<digits>. Always check a candidate before remapping.",
 	}, "\n")
 	if structured.CorrectiveAction != want {

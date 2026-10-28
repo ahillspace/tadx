@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -161,18 +162,11 @@ func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOut
 		return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
 	}
 	result.Verification = "confirmed"
-	if suffixedContentURL(plan.contentURL, result.ContentURL) {
+	if value.SuffixedContentURL(plan.contentURL, result.ContentURL) {
 		result.RenamedFrom = plan.contentURL
 		out.Help = []string{fmt.Sprintf("Tableau assigned content URL %s because %s is already taken on this site. Workbooks that reference %s need --datasource-binding %s=%s when published here.", result.ContentURL, plan.contentURL, plan.contentURL, plan.contentURL, result.DatasourceLUID)}
 	}
 	return out, nil
-}
-
-// suffixedContentURL reports whether Tableau assigned the file's content URL
-// followed by its _<digits> collision suffix.
-func suffixedContentURL(file, assigned string) bool {
-	suffix, ok := strings.CutPrefix(assigned, file+"_")
-	return file != "" && ok && suffix != "" && strings.Trim(suffix, "0123456789") == ""
 }
 
 func publishUnknownOutcomeError(plan PublishPlan, input PublishInput, result PublishResult, cause error) error {

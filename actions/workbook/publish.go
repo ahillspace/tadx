@@ -282,7 +282,6 @@ func (a *Publisher) Complete(ctx context.Context, output PublishOutput) (Publish
 		return output, nil
 	}
 	result, plan := output.Result, output.Plan
-	result.DatasourceBindings = confirmedDatasourceBindings(plan)
 	if result.WorkbookLUID == "" {
 		matches, err := a.resolver.FindWorkbooks(ctx, plan.WorkbookName, plan.Target.ProjectLUID)
 		if err == nil && len(matches) == 1 && matches[0].LUID != "" && matches[0].Name == plan.WorkbookName && matches[0].ProjectLUID == plan.Target.ProjectLUID {

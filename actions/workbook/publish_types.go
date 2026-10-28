@@ -56,7 +56,12 @@ type PublishDatasource struct {
 type PublishDatasourceBinding struct {
 	Datasource string `json:"datasource"`
 	ContentURL string `json:"content_url"`
-	Binding    string `json:"binding"`
+	// Origin is "explicit" when --datasource-binding selected the target, and
+	// "workbook" when Tableau binds the workbook's own content URL.
+	Origin           string `json:"origin"`
+	TargetContentURL string `json:"target_content_url"`
+	// TargetLUID is known only for explicit bindings.
+	TargetLUID string `json:"target_luid"`
 }
 
 // PublishDatasourceCandidate is one destination datasource that an unmapped
@@ -169,9 +174,6 @@ type PublishResult struct {
 	ReceiptPath        string                   `json:"receipt_path,omitempty"`
 	Verification       string                   `json:"verification,omitempty"`
 	ValidationWarnings []PublishValidationIssue `json:"validation_warnings,omitempty"`
-	// DatasourceBindings reports how Tableau bound each published datasource
-	// reference once publication succeeded.
-	DatasourceBindings []PublishDatasourceBinding `json:"datasource_bindings,omitempty"`
 }
 
 // PublishOutput keeps the result attached to the exact previewed plan.
@@ -236,8 +238,7 @@ type PublishCompactResult struct {
 	ArtifactPath    string   `json:"artifact_path,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
 	WarningsOmitted int      `json:"warnings_omitted,omitempty"`
-	// DatasourceBindings reports the confirmed bindings, or the planned ones
-	// while publication is still pending.
+	// DatasourceBindings reports how every published datasource reference binds.
 	DatasourceBindings []PublishDatasourceBinding   `json:"datasource_bindings,omitempty"`
 	Plan               *PublishCompactPlan          `json:"plan,omitempty"`
 	Result             *PublishCompactPublishResult `json:"result,omitempty"`
@@ -269,17 +270,16 @@ type PublishFullPlan struct {
 
 // PublishFullPublishResult includes bounded validation and request diagnostics.
 type PublishFullPublishResult struct {
-	Status                    string                     `json:"status"`
-	WorkbookLUID              string                     `json:"workbook_luid,omitempty"`
-	WorkbookName              string                     `json:"workbook_name,omitempty"`
-	ProjectLUID               string                     `json:"project_luid,omitempty"`
-	JobID                     string                     `json:"tableau_job_id,omitempty"`
-	TableauRequestID          string                     `json:"tableau_request_id,omitempty"`
-	ReceiptPath               string                     `json:"receipt_path,omitempty"`
-	Verification              string                     `json:"verification,omitempty"`
-	ValidationWarnings        []PublishValidationIssue   `json:"validation_warnings,omitempty"`
-	ValidationWarningsOmitted int                        `json:"validation_warnings_omitted,omitempty"`
-	DatasourceBindings        []PublishDatasourceBinding `json:"datasource_bindings,omitempty"`
+	Status                    string                   `json:"status"`
+	WorkbookLUID              string                   `json:"workbook_luid,omitempty"`
+	WorkbookName              string                   `json:"workbook_name,omitempty"`
+	ProjectLUID               string                   `json:"project_luid,omitempty"`
+	JobID                     string                   `json:"tableau_job_id,omitempty"`
+	TableauRequestID          string                   `json:"tableau_request_id,omitempty"`
+	ReceiptPath               string                   `json:"receipt_path,omitempty"`
+	Verification              string                   `json:"verification,omitempty"`
+	ValidationWarnings        []PublishValidationIssue `json:"validation_warnings,omitempty"`
+	ValidationWarningsOmitted int                      `json:"validation_warnings_omitted,omitempty"`
 }
 
 // PublishFullResult is the bounded expanded projection.
@@ -320,9 +320,6 @@ func (o PublishOutput) CompactOutput() any {
 		compact.Warnings = warnings
 		compact.WarningsOmitted = omitted
 		compact.DatasourceBindings = o.Plan.DatasourceBindings
-		if o.Result.DatasourceBindings != nil {
-			compact.DatasourceBindings = o.Result.DatasourceBindings
-		}
 		compact.Plan = nil
 	}
 	return compact
@@ -347,7 +344,6 @@ func (o PublishOutput) FullOutput() any {
 			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
 			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, TableauRequestID: o.Result.TableauRequestID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
 			ValidationWarnings: validationWarnings, ValidationWarningsOmitted: validationWarningsOmitted,
-			DatasourceBindings: o.Result.DatasourceBindings,
 		}
 	}
 	return full

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -66,7 +65,7 @@ func datasourceBindingUsage(message string) error {
 // site, returning the upload rewrite and how every reference will bind.
 func (a *Publisher) readDatasourceBindings(ctx context.Context, input PublishInput, datasources []PublishDatasource, bindings []DatasourceBinding) (map[string]string, []PublishDatasourceBinding, error) {
 	var contentURLs map[string]string
-	mapped := make(map[string]string, len(bindings))
+	targetLUIDs := make(map[string]string, len(bindings))
 	for _, binding := range bindings {
 		target, err := a.resolver.ReadDatasource(ctx, binding.TargetLUID)
 		if err == nil && target.ContentURL == "" {
@@ -81,30 +80,17 @@ func (a *Publisher) readDatasourceBindings(ctx context.Context, input PublishInp
 			contentURLs = make(map[string]string, len(bindings))
 		}
 		contentURLs[binding.Source] = target.ContentURL
-		mapped[binding.Source] = fmt.Sprintf("mapped to %s %s (--datasource-binding)", target.ContentURL, binding.TargetLUID)
+		targetLUIDs[binding.Source] = binding.TargetLUID
 	}
 	var display []PublishDatasourceBinding
 	for _, datasource := range datasources {
-		binding, ok := mapped[datasource.ContentURL]
-		if !ok {
-			binding = "left to Tableau " + datasource.ContentURL
+		row := PublishDatasourceBinding{Datasource: datasource.Caption, ContentURL: datasource.ContentURL, Origin: "workbook", TargetContentURL: datasource.ContentURL}
+		if targetLUID, ok := targetLUIDs[datasource.ContentURL]; ok {
+			row.Origin, row.TargetContentURL, row.TargetLUID = "explicit", contentURLs[datasource.ContentURL], targetLUID
 		}
-		display = append(display, PublishDatasourceBinding{Datasource: datasource.Caption, ContentURL: datasource.ContentURL, Binding: binding})
+		display = append(display, row)
 	}
 	return contentURLs, display, nil
-}
-
-// confirmedDatasourceBindings reports how Tableau bound each reference after a
-// successful publication.
-func confirmedDatasourceBindings(plan PublishPlan) []PublishDatasourceBinding {
-	var confirmed []PublishDatasourceBinding
-	for _, binding := range plan.DatasourceBindings {
-		if !slices.ContainsFunc(plan.bindings, func(mapped DatasourceBinding) bool { return mapped.Source == binding.ContentURL }) {
-			binding.Binding = "bound by Tableau to " + binding.ContentURL + " (the workbook's own URL)"
-		}
-		confirmed = append(confirmed, binding)
-	}
-	return confirmed
 }
 
 // unmappedDatasourceReference is one distinct workbook content URL left to Tableau.
@@ -134,10 +120,9 @@ func (a *Publisher) findDatasourceCandidates(ctx context.Context, plan PublishPl
 	}
 	var candidates []PublishDatasourceCandidate
 	for _, reference := range references {
-		suffixed := regexp.MustCompile("^" + regexp.QuoteMeta(reference.contentURL) + `_\d+$`)
 		var matches []value.Datasource
 		for _, item := range items {
-			if item.ContentURL == reference.contentURL || (reference.caption != "" && item.Name == reference.caption) || suffixed.MatchString(item.ContentURL) {
+			if item.ContentURL == reference.contentURL || (reference.caption != "" && item.Name == reference.caption) || value.SuffixedContentURL(reference.contentURL, item.ContentURL) {
 				matches = append(matches, item)
 			}
 		}
@@ -272,7 +257,7 @@ func unmappedDatasourceError(plan PublishPlan, unmapped []unmappedDatasourceRefe
 			lines = append(lines, fmt.Sprintf("  - %q, content URL %s, LUID %s, project %q, owner %s, updated %s. Remap: %s", candidate.Name, candidate.ContentURL, candidate.LUID, candidate.Project, candidate.OwnerLUID, candidate.UpdatedAt, candidate.Command))
 		}
 		if !found {
-			lines = append(lines, "  No candidates found. Publish the data source if it does not exist yet. If you already published it, find it with "+commandhint.Environment(plan.Target.Environment, "content", "datasource", "list")+" --project-name <project> (or --all); there is no partial-name filter, and --name matches exact names only.")
+			lines = append(lines, "  No candidates found. Publish the data source if it does not exist yet. If you already published it, find it with "+commandhint.Environment(plan.Target.Environment, "content", "datasource", "list", "--project-name", "<leaf>")+" or "+commandhint.Environment(plan.Target.Environment, "content", "datasource", "list", "--all")+"; there is no partial-name filter, and --name matches exact names only.")
 		}
 	}
 	lines = append(lines, datasourceCandidateRule)

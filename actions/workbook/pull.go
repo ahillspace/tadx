@@ -23,7 +23,7 @@ type PullReader interface {
 	DownloadWorkbook(context.Context, string, *bool) (Download, error)
 	CaptureWorkbookLineage(context.Context, LineageRequest) (LineageCapture, error)
 	// PublishedDatasources resolves the published datasources the downloaded
-	// workbook file references.
+	// workbook file references, returning each once with its authoritative LUID.
 	PublishedDatasources(context.Context, Download) ([]PublishedDatasource, error)
 	DownloadPublishedDatasource(context.Context, string) (DatasourceDownload, error)
 }
@@ -61,12 +61,10 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 				return PullOutput{}, pullDownloadError(workbook, input, download, err)
 			}
 			references, err = reader.PublishedDatasources(ctx, download)
-			if err == nil {
-				references, err = pullNormalizePublishedDatasources(references)
-			}
 			if err != nil {
 				return PullOutput{}, pullReferencesError(workbook, input, err)
 			}
+			sort.Slice(references, func(left, right int) bool { return references[left].LUID < references[right].LUID })
 		}
 		previewer, ok := writer.(interface {
 			PreviewWorkbook(context.Context, PullInput, Record, []PublishedDatasource) (value.AcquisitionPlan, error)
@@ -96,10 +94,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 		warnings = append(warnings, "Published datasource detection was incomplete; workbook portability remains unknown. "+pullReferencesAdvice)
 		references = nil
 	} else {
-		references, err = pullNormalizePublishedDatasources(references)
-		if err != nil {
-			return PullOutput{}, pullReferencesError(workbook, input, err)
-		}
+		sort.Slice(references, func(left, right int) bool { return references[left].LUID < references[right].LUID })
 		portability = "portable"
 		if len(references) > 0 {
 			portability = "source-site-bound"
@@ -384,34 +379,6 @@ func pullDownloadError(workbook Record, input PullInput, download Download, err 
 func pullReferencesError(workbook Record, input PullInput, err error) error {
 	retryable, correctiveAction := errs.CompleteRetryAdvice(err, pullReferencesAdvice)
 	return &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
-}
-
-func pullNormalizePublishedDatasources(input []PublishedDatasource) ([]PublishedDatasource, error) {
-	byLUID := make(map[string]PublishedDatasource, len(input))
-	for _, item := range input {
-		item.LUID = strings.TrimSpace(item.LUID)
-		item.Name = strings.TrimSpace(item.Name)
-		item.ContentURL = strings.TrimSpace(item.ContentURL)
-		if item.LUID == "" {
-			return nil, errors.New("published datasource reference requires an authoritative LUID")
-		}
-		if existing, ok := byLUID[item.LUID]; ok {
-			if existing.Name != "" && item.Name != "" && existing.Name != item.Name {
-				return nil, fmt.Errorf("published datasource %q returned conflicting names %q and %q", item.LUID, existing.Name, item.Name)
-			}
-			if existing.Name == "" {
-				byLUID[item.LUID] = item
-			}
-			continue
-		}
-		byLUID[item.LUID] = item
-	}
-	result := make([]PublishedDatasource, 0, len(byLUID))
-	for _, item := range byLUID {
-		result = append(result, item)
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].LUID < result[right].LUID })
-	return result, nil
 }
 
 // ValidatePullInput checks caller-controlled arguments before dependency setup.
