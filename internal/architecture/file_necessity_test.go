@@ -143,7 +143,7 @@ func TestGoFilesHaveResponsibilityClassification(t *testing.T) {
 
 func TestFileClassificationKeepsUnownedPackagesVisible(t *testing.T) {
 	root := t.TempDir()
-	for _, path := range []string{"tests/live/unowned/orphan.go", "extensions/new-tool/main.go"} {
+	for _, path := range []string{"tests/fixtures/unowned/orphan.go", "extensions/new-tool/main.go"} {
 		got := classifyFile(path, "example.test/unowned", root, nil, nil, nil)
 		if got.category != uncertain || got.role != "unclassified production source" {
 			t.Fatalf("unowned source %s accepted as %#v", path, got)
@@ -159,11 +159,6 @@ func TestFileClassificationKeepsUnownedPackagesVisible(t *testing.T) {
 
 func TestMaintainedToolingClosureRejectsUnreferencedPackages(t *testing.T) {
 	root := moduleFixture(t)
-	for _, path := range []string{"tests/live/runner/main.go", "tests/live/generate/main.go"} {
-		writeGo(t, root, path, "package main\nimport _ \"example.test/tadx/tests/live/harness\"\nfunc main() {}\n")
-	}
-	writeGo(t, root, "tests/live/harness/check.go", "package harness\n")
-	writeGo(t, root, "tests/live/unowned/orphan.go", "package unowned\n")
 	writeGo(t, root, "extensions/vscode/tests/fixtures/host/go.mod", "module example.test/host\n\ngo 1.26\n")
 	writeGo(t, root, "extensions/vscode/tests/fixtures/host/main.go", "package main\nimport _ \"example.test/host/helper\"\nfunc main() {}\n")
 	writeGo(t, root, "extensions/vscode/tests/fixtures/host/helper/helper.go", "package helper\n")
@@ -183,16 +178,6 @@ func TestMaintainedToolingClosureRejectsUnreferencedPackages(t *testing.T) {
 	consumers := packageConsumerIndex(goListModulePackages(t, root, files))
 	if !slices.Equal(consumers["example.test/host/helper"], []string{"example.test/host"}) {
 		t.Fatalf("nested-module consumer identity = %v", consumers)
-	}
-}
-
-func TestMaintainedToolingOmitsAbsentLocalLiveSuite(t *testing.T) {
-	root := moduleFixture(t)
-	writeGo(t, root, "extensions/vscode/tests/fixtures/host/go.mod", "module example.test/host\n\ngo 1.26\n")
-	writeGo(t, root, "extensions/vscode/tests/fixtures/host/main.go", "package main\nfunc main() {}\n")
-	tooling := maintainedToolingFiles(t, root)
-	if _, ok := tooling["extensions/vscode/tests/fixtures/host/main.go"]; !ok || len(tooling) != 1 {
-		t.Fatalf("clone without the local live suite classified tooling %v", tooling)
 	}
 }
 
@@ -328,7 +313,6 @@ func goListTADXDependencies(t *testing.T, root, goos string) []goListPackage {
 
 // Review concrete consumers, then let the Go dependency graph identify their
 // source. A new sibling package is not accepted merely for living under tests.
-// A localRoot names maintainer-local, Git-ignored tooling that clones omit.
 func maintainedToolingFiles(t *testing.T, root string) map[string]fileNecessityEntry {
 	t.Helper()
 	// go list reports symlink-resolved package directories, such as macOS /private/var.
@@ -340,18 +324,11 @@ func maintainedToolingFiles(t *testing.T, root string) map[string]fileNecessityE
 	for _, tooling := range []struct {
 		directory      string
 		entryPoints    []string
-		localRoot      string
 		responsibility string
 		consumer       string
 	}{
-		{".", []string{"./tests/live/runner", "./tests/live/generate"}, "tests/live", "runs and generates the opt-in independent live CLI qualification suite", "go run ./tests/live/runner; go generate ./tests/live"},
-		{"extensions/vscode/tests/fixtures/host", []string{"."}, "", "supplies a deterministic CLI process for extension host integration tests", "npm run test:host in extensions/vscode"},
+		{"extensions/vscode/tests/fixtures/host", []string{"."}, "supplies a deterministic CLI process for extension host integration tests", "npm run test:host in extensions/vscode"},
 	} {
-		if tooling.localRoot != "" {
-			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(tooling.localRoot))); errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-		}
 		for _, goos := range []string{"windows", "linux", "darwin"} {
 			packages := runGoList(t, filepath.Join(root, tooling.directory), map[string]string{"GOOS": goos, "GOARCH": "amd64", "CGO_ENABLED": "0", "GOWORK": "off"}, append([]string{"-deps"}, tooling.entryPoints...)...)
 			for _, pkg := range packages {

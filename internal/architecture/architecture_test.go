@@ -36,7 +36,7 @@ func TestFirstPartyFilesDoNotContainDeveloperHomePaths(t *testing.T) {
 		regexp.MustCompile(`/` + `home/[^/\s]+`),
 	}
 	excludedDirectories := map[string]bool{
-		".git": true, ".agents": true, ".tadx-explore": true, ".tadx-live": true, "agent-review": true, "archived": true,
+		".git": true, ".agents": true, ".tadx-explore": true, "agent-review": true, "archived": true,
 		"Tableau API Documentation": true,
 	}
 	textExtensions := map[string]bool{
@@ -325,6 +325,21 @@ var _ = unapproved.Value
 		"internal/mystery/source.go imports example.test/tadx/internal/unapproved: unrecognized packages must not import local packages",
 		"internal/resources/workbook/adapter.go imports example.test/tadx/internal/unapproved: resource adapters must not import unapproved local packages",
 		"internal/tableau/workbook/client.go imports example.test/tadx/internal/unapproved: Tableau clients must not import unapproved local packages",
+	})
+}
+
+func TestCheckRejectsProductionImportsOfTestSupport(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/app/app.go", `package app
+import _ "example.test/tadx/tests/fixtures"
+`)
+	writeGo(t, root, "tests/fixtures/source.go", "package fixtures\n")
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"internal/app/app.go imports example.test/tadx/tests/fixtures: the composition root must not import unapproved local packages",
 	})
 }
 

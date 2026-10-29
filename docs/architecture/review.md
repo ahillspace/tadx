@@ -459,7 +459,7 @@ Verify single and mixed transfers, startup uncertainty, confirmed rejection, par
 **Evidence:** [`TestGoFilesHaveResponsibilityClassification`, `repositoryGoFiles`, and `nonRuntimeProductionFiles`](../../internal/architecture/file_necessity_test.go), especially lines 52-81, 133-137, and 205-240.
 
 The new classification tool recognizes only three non-runtime production owners.
-It scans the extension's separate host fixture and the maintained live-suite tooling, then rejects those files as unexplained production source.
+It scans the extension's separate host fixture, then rejects those files as unexplained production source.
 Its filesystem walker also differs from the new Git-aware `FirstPartyFiles` selector and does not exclude dependency or build directories.
 
 The documented opt-in command fails in 32.844 seconds on the clean reviewed revision:
@@ -468,7 +468,7 @@ The documented opt-in command fails in 32.844 seconds on the clean reviewed revi
 go test -tags=fileinventory ./internal/architecture -run '^TestGoFilesHaveResponsibilityClassification$' -count=1
 ```
 
-The failure names `extensions/vscode/tests/fixtures/host/main.go` and the maintained `tests/live` tooling.
+The failure names `extensions/vscode/tests/fixtures/host/main.go`.
 This is not a failure of the default architecture suite, and neither optional inventory tag was part of the earlier ordinary Go pass.
 Reconcile this tool with maintained source/module ownership and explicitly account for ancillary consumers; do not classify executable test support as orphaned runtime code.
 Verify a clean clone and a checkout with installed extension dependencies, while retaining detection of a genuinely unexplained Go source file.

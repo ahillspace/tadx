@@ -165,7 +165,7 @@ func inspectSources(root string) (*sourceInventory, error) {
 }
 
 func ignoredDirectory(name string) bool {
-	return name == ".git" || name == "vendor" || name == "node_modules" || name == "archived" || name == ".tadx-live"
+	return name == ".git" || name == "vendor" || name == "node_modules" || name == "archived"
 }
 
 // FirstPartyFiles selects repository-relative regular files without traversing
@@ -449,11 +449,6 @@ func localImportPath(imported, modulePath string) (string, bool) {
 }
 
 func localImportAllowed(file, imported string) bool {
-	// Live qualification owns an independent remote oracle. Only credential
-	// resolution and non-secret target/consent loading reuse production code.
-	if hasPathPrefix(file, "tests/live") {
-		return matchesPrefix(imported, "tests/live") || matchesExact(imported, "internal/auth", "internal/config")
-	}
 	// The native updater implements only the update action's runtime port.
 	// It may reuse release metadata and embedded installers, never Tableau wiring.
 	if hasPathPrefix(file, "internal/update") {

@@ -39,7 +39,7 @@ Forced-reload regressions reject superseded data and errors, including clients t
 Operation regressions preserve unknown startup outcomes, receipts, warnings, confirmed partial evidence, and explicit rejection states.
 Both full Go runs report 37 explicit skips: 30 Windows symlink-privilege checks, four administrator-only policy fixtures, two POSIX-permission cases, and one intentional subprocess helper.
 Ten additional packages contain no tests.
-Configured Python support runs the local Hyper fixtures successfully; no `livecli` tag or live Tableau target is enabled.
+Configured Python support runs the local Hyper fixtures successfully; no live Tableau target is enabled.
 The registry performance correction resolves the earlier cumulative race timeout without increasing its limit or weakening assertions.
 The review and correction details remain in the [architecture review record](architecture/review.md#pr-35-review-on-2026-10-25).
 
@@ -120,7 +120,6 @@ Six native Windows symlink checks are skipped because the required privilege is 
 Two Hyper parent tests initially skip without configured Python support.
 Separate runs with the installed `tableauhyperapi` package pass five tests and subtests in both normal and race modes, covering those initial Hyper skips.
 The isolated merged-source checkout remains clean after validation.
-The `tests/live/...` package checks run without the `livecli` build tag and do not execute live Tableau qualification cases.
 The delta suites do not constitute a complete merged-source test rerun.
 
 ### Remaining acceptance limits

@@ -92,10 +92,7 @@ Use manual CI for native platform coverage or privileged policy fixtures that re
 The [native policy workflow](.github/workflows/native-policy.yml) retains those checks for manual CI and releases.
 Do not elevate an ordinary development session to hide privilege-related skips.
 
-The independent live CLI qualification suite and its site-specific fixtures remain local and Git-ignored.
-Keep the suite under `tests/live/` and its profiles, artifacts, and execution evidence under `.tadx-live/`.
-Never commit these directories, including with `git add --force`.
-The tracked contract tests behind the `live` and `livekeyring` build tags are separate, and ordinary local checks do not run them.
+Ordinary local checks do not run the tracked contract tests behind the `live` and `livekeyring` build tags.
 
 ## Keep changes maintainable
 
