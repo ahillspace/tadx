@@ -289,3 +289,49 @@ func TestClientReportsUnknownWhenDatasourcePublishReturnsAJob(t *testing.T) {
 		t.Fatalf("result = %#v, requests = %d, error = %v", result, requests, err)
 	}
 }
+
+func TestPreparedDatasourcePublishKeepsSnapshotUntilCommitOrClose(t *testing.T) {
+	content := `<datasource/>`
+	path, fingerprint := publishFixture(t, content)
+	publishes := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		publishes++
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-new" name="Sales"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
+	}))
+	defer server.Close()
+	snapshots := func() int {
+		matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".tadx-datasource-publish-snapshot-*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(matches)
+	}
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	request := tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1", Filename: "Sales.tds", ContentPath: path, ContentSize: int64(len(content)), ExpectedFingerprint: fingerprint, Mode: tableaudatasource.PublishCreate}
+
+	prepared, err := client.Prepare(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshots() != 1 {
+		t.Fatal("prepared publish released its snapshot before Commit")
+	}
+	if _, err := prepared.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots() != 0 || prepared.Close() != nil {
+		t.Fatal("Commit did not release the snapshot")
+	}
+
+	abandoned, err := client.Prepare(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := abandoned.Close(); err != nil || snapshots() != 0 {
+		t.Fatalf("Close() error = %v, snapshots = %d", err, snapshots())
+	}
+	if _, err := abandoned.Commit(context.Background()); err == nil || publishes != 1 {
+		t.Fatalf("Commit after Close error = %v, publishes = %d", err, publishes)
+	}
+}

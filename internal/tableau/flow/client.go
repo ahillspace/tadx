@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,10 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -193,40 +189,35 @@ func (c *RESTClient) Prepare(ctx context.Context, input PublishRequest) (Prepare
 	if err != nil {
 		return nil, err
 	}
-	open := true
-	closeSource := func() error {
-		if !open {
-			return nil
+	prepared := false
+	defer func() {
+		if !prepared {
+			_ = source.close()
 		}
-		open = false
-		return source.close()
-	}
-	defer func() { _ = closeSource() }()
-
-	var uploadSessionID string
-	var content []byte
-	if source.size > c.uploadThreshold {
-		uploadSessionID, err = c.upload(ctx, input.Filename, source.reader, source.size, orderedUpload)
-	} else {
-		content, err = readExact(source.reader, source.size)
-	}
+	}()
+	payload, err := publishPayload(input.Name, input.ProjectLUID)
 	if err != nil {
-		return nil, errors.Join(err, closeSource())
+		return nil, err
 	}
-	inputBody, contentType, err := publishBody(input.Name, input.ProjectLUID, input.Filename, content, uploadSessionID == "")
-	if err != nil {
-		return nil, errors.Join(err, closeSource())
-	}
-	if err := closeSource(); err != nil {
-		return nil, fmt.Errorf("remove flow publish snapshot: %w", err)
-	}
+	parts := []tableau.MultipartPart{tableau.RequestPayloadPart(payload)}
 	query := url.Values{"overwrite": {strconv.FormatBool(input.Overwrite)}}
-	if uploadSessionID != "" {
+	if source.size > c.uploadThreshold {
+		uploadSessionID, err := c.upload(ctx, input.Filename, source, orderedUpload)
+		if err != nil {
+			return nil, err
+		}
 		query.Set("uploadSessionId", uploadSessionID)
 		query.Set("flowType", extension)
+	} else {
+		parts = append(parts, tableau.FilePart("tableau_flow", input.Filename, source.content, 0, source.size))
 	}
+	body, err := tableau.NewMultipartBody(parts...)
+	if err != nil {
+		return nil, err
+	}
+	prepared = true
 	return &preparedPublish{
-		client: c, query: query, body: inputBody, contentType: contentType,
+		client: c, query: query, body: body, release: source.close,
 		expectedName: input.Name, expectedProjectLUID: input.ProjectLUID,
 	}, nil
 }
@@ -311,28 +302,30 @@ func (c *RESTClient) Delete(ctx context.Context, flowLUID string) (MutationResul
 type preparedPublish struct {
 	client              *RESTClient
 	query               url.Values
-	body                []byte
-	contentType         string
+	body                *tableau.MultipartBody
+	release             func() error
 	expectedName        string
 	expectedProjectLUID string
 	mu                  sync.Mutex
-	committed           bool
+	done                bool
 }
 
-// Commit sends the final publish request exactly one time.
+// Commit sends the final publish request exactly one time, then releases the
+// publish snapshot. A snapshot cleanup failure never changes the publish result.
 func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	if p == nil || p.client == nil {
 		return PublishResult{}, errors.New("flow publish is not prepared")
 	}
 	p.mu.Lock()
-	if p.committed {
+	if p.done {
 		p.mu.Unlock()
-		return PublishResult{}, errors.New("prepared flow publish was already committed")
+		return PublishResult{}, errors.New("prepared flow publish was already committed or closed")
 	}
-	p.committed = true
+	p.done = true
 	p.mu.Unlock()
+	defer func() { _ = p.release() }()
 
-	response, err := p.client.do(ctx, http.MethodPost, p.client.sitePath("flows"), p.query, p.body, p.contentType, "flow.publish", metadataResponseLimit)
+	response, err := p.client.doMultipart(ctx, http.MethodPost, p.client.sitePath("flows"), p.query, p.body, "flow.publish")
 	if err != nil {
 		if isUncertain(err) {
 			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err)}, err
@@ -355,7 +348,21 @@ func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	return PublishResult{Status: "succeeded", FlowLUID: envelope.Flow.ID, FlowName: envelope.Flow.Name, ProjectLUID: envelope.Flow.Project.ID, TableauRequestID: response.TableauRequestID}, nil
 }
 
-func (c *RESTClient) upload(ctx context.Context, filename string, content io.Reader, size int64, ordered bool) (string, error) {
+// Close releases the publish snapshot when Commit never runs.
+func (p *preparedPublish) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.done {
+		return nil
+	}
+	p.done = true
+	return p.release()
+}
+
+func (c *RESTClient) upload(ctx context.Context, filename string, source publishSource, ordered bool) (string, error) {
 	response, err := c.do(ctx, http.MethodPost, c.sitePath("fileUploads"), nil, nil, "", "flow.upload.initiate", metadataResponseLimit)
 	if err != nil {
 		return "", err
@@ -370,23 +377,18 @@ func (c *RESTClient) upload(ctx context.Context, filename string, content io.Rea
 	if initiated.Upload.SessionID == "" {
 		return "", tableau.NewProtocolError("flow.upload.initiate", response, errors.New("initiate flow upload response omitted upload session ID"), false)
 	}
-	remaining := size
-	for sequence := 1; remaining > 0; sequence++ {
-		blockSize := min(remaining, c.uploadChunkSize)
-		block, err := readBlock(content, blockSize)
+	for sequence, offset := 1, int64(0); offset < source.size; sequence++ {
+		blockSize := min(source.size-offset, c.uploadChunkSize)
+		body, err := tableau.NewMultipartBody(tableau.RequestPayloadPart(nil), tableau.FilePart("tableau_file", filename, source.content, offset, blockSize))
 		if err != nil {
 			return "", err
 		}
-		remaining -= blockSize
-		body, contentType, err := appendBody(filename, block)
-		if err != nil {
-			return "", err
-		}
+		offset += blockSize
 		query := url.Values{}
 		if ordered {
 			query.Set("sequenceID", strconv.Itoa(sequence))
 		}
-		response, err := c.do(ctx, http.MethodPut, c.sitePath("fileUploads", initiated.Upload.SessionID), query, body, contentType, "flow.upload.append", metadataResponseLimit)
+		response, err := c.doMultipart(ctx, http.MethodPut, c.sitePath("fileUploads", initiated.Upload.SessionID), query, body, "flow.upload.append")
 		if err != nil {
 			return "", err
 		}
@@ -411,6 +413,16 @@ func (c *RESTClient) do(ctx context.Context, method, path string, query url.Valu
 	return c.transport.Do(ctx, c.session, tableau.Request{
 		Method: method, ServerURL: c.serverURL, Path: path, Query: query, Body: body,
 		ContentType: contentType, Accept: "application/xml", Operation: operation, MaxResponseBytes: responseLimit,
+	})
+}
+
+func (c *RESTClient) doMultipart(ctx context.Context, method, path string, query url.Values, body *tableau.MultipartBody, operation string) (tableau.Response, error) {
+	if err := c.validate(); err != nil {
+		return tableau.Response{}, err
+	}
+	return c.transport.Do(ctx, c.session, tableau.Request{
+		Method: method, ServerURL: c.serverURL, Path: path, Query: query, Multipart: body,
+		Accept: "application/xml", Operation: operation, MaxResponseBytes: metadataResponseLimit,
 	})
 }
 
@@ -502,10 +514,11 @@ func validatePublishRequest(input PublishRequest) (string, error) {
 	return extension, nil
 }
 
+// publishSource is the fingerprint-verified snapshot every publish request reads.
 type publishSource struct {
-	reader io.ReadSeeker
-	size   int64
-	close  func() error
+	content *os.File
+	size    int64
+	close   func() error
 }
 
 func snapshotPublishContent(ctx context.Context, input PublishRequest) (publishSource, error) {
@@ -535,10 +548,7 @@ func snapshotPublishContent(ctx context.Context, input PublishRequest) (publishS
 	if written != input.ContentSize || "sha256:"+hex.EncodeToString(digest.Sum(nil)) != input.ExpectedFingerprint {
 		return publishSource{}, errors.Join(errors.New("flow publish payload changed after planning"), cleanup())
 	}
-	if _, err := snapshot.Seek(0, io.SeekStart); err != nil {
-		return publishSource{}, errors.Join(fmt.Errorf("rewind flow publish snapshot: %w", err), cleanup())
-	}
-	return publishSource{reader: snapshot, size: written, close: cleanup}, nil
+	return publishSource{content: snapshot, size: written, close: cleanup}, nil
 }
 
 func copyWithContext(ctx context.Context, destination io.Writer, source io.Reader) (int64, error) {
@@ -568,31 +578,6 @@ func copyWithContext(ctx context.Context, destination io.Writer, source io.Reade
 	}
 }
 
-func readExact(reader io.Reader, size int64) ([]byte, error) {
-	if size < 0 || size > defaultUploadThreshold {
-		return nil, errors.New("invalid flow publish block size")
-	}
-	content, err := io.ReadAll(io.LimitReader(reader, size+1))
-	if err != nil {
-		return nil, fmt.Errorf("read flow publish payload: %w", err)
-	}
-	if int64(len(content)) != size {
-		return nil, fmt.Errorf("read %d flow publish bytes, expected %d", len(content), size)
-	}
-	return content, nil
-}
-
-func readBlock(reader io.Reader, size int64) ([]byte, error) {
-	if size <= 0 || size > defaultUploadChunkSize {
-		return nil, errors.New("invalid flow upload block size")
-	}
-	content := make([]byte, int(size))
-	if _, err := io.ReadFull(reader, content); err != nil {
-		return nil, fmt.Errorf("read flow upload block: %w", err)
-	}
-	return content, nil
-}
-
 func validateUploadBlockCount(size, chunkSize int64) error {
 	if size <= 0 || chunkSize <= 0 {
 		return errors.New("invalid flow publish payload size")
@@ -607,8 +592,8 @@ func validateUploadBlockCount(size, chunkSize int64) error {
 	return nil
 }
 
-func publishBody(name, projectLUID, filename string, content []byte, includeFile bool) ([]byte, string, error) {
-	requestXML, err := xml.Marshal(struct {
+func publishPayload(name, projectLUID string) ([]byte, error) {
+	return xml.Marshal(struct {
 		XMLName xml.Name `xml:"tsRequest"`
 		Flow    struct {
 			Name    string `xml:"name,attr"`
@@ -624,59 +609,6 @@ func publishBody(name, projectLUID, filename string, content []byte, includeFile
 	}{Name: name, Project: struct {
 		ID string `xml:"id,attr"`
 	}{ID: projectLUID}}})
-	if err != nil {
-		return nil, "", err
-	}
-	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
-	requestPart, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`name="request_payload"`}, "Content-Type": {"text/xml"}})
-	if err != nil {
-		return nil, "", err
-	}
-	if _, err := requestPart.Write(requestXML); err != nil {
-		return nil, "", err
-	}
-	if includeFile {
-		flowPart, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {multipartDisposition("tableau_flow", filename)}, "Content-Type": {"application/octet-stream"}})
-		if err != nil {
-			return nil, "", err
-		}
-		if _, err := flowPart.Write(content); err != nil {
-			return nil, "", err
-		}
-	}
-	if err := writer.Close(); err != nil {
-		return nil, "", err
-	}
-	return buffer.Bytes(), "multipart/mixed; boundary=" + writer.Boundary(), nil
-}
-
-func appendBody(filename string, content []byte) ([]byte, string, error) {
-	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
-	requestPart, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`name="request_payload"`}, "Content-Type": {"text/xml"}})
-	if err != nil {
-		return nil, "", err
-	}
-	if _, err := requestPart.Write(nil); err != nil {
-		return nil, "", err
-	}
-	filePart, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {multipartDisposition("tableau_file", filename)}, "Content-Type": {"application/octet-stream"}})
-	if err != nil {
-		return nil, "", err
-	}
-	if _, err := filePart.Write(content); err != nil {
-		return nil, "", err
-	}
-	if err := writer.Close(); err != nil {
-		return nil, "", err
-	}
-	return buffer.Bytes(), "multipart/mixed; boundary=" + writer.Boundary(), nil
-}
-
-func multipartDisposition(name, filename string) string {
-	formatted := mime.FormatMediaType("form-data", map[string]string{"filename": filepath.Base(filename)})
-	return fmt.Sprintf(`name="%s"; %s`, name, strings.TrimPrefix(formatted, "form-data; "))
 }
 
 func moveBody(projectLUID string) ([]byte, error) {

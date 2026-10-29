@@ -46,6 +46,7 @@ func (r publishResolver) FindWorkbooks(context.Context, string, string) ([]workb
 
 type publishPublisher struct {
 	calls     int
+	closes    int
 	input     workbookops.PublishRequest
 	result    workbookops.PublishResult
 	err       error
@@ -104,6 +105,11 @@ func (p *publishPublisher) Prepare(_ context.Context, input workbookops.PublishR
 func (p *publishPublisher) Commit(context.Context) (workbookops.PublishResult, error) {
 	p.calls++
 	return p.result, p.err
+}
+
+func (p *publishPublisher) Close() error {
+	p.closes++
+	return nil
 }
 
 func TestPublishPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
@@ -252,6 +258,9 @@ func TestPublishApplyRevalidatesOverwriteTargetAfterPublishPreparation(t *testin
 	}
 	if p.calls != 0 || r.findCall != 3 {
 		t.Fatalf("commit calls = %d, collision reads = %d", p.calls, r.findCall)
+	}
+	if p.closes != 1 {
+		t.Fatalf("prepared publish closes = %d, want the abandoned upload released", p.closes)
 	}
 }
 

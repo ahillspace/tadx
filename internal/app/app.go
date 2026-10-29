@@ -852,6 +852,8 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookops.Publish
 	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID, ValidationWarnings: warnings}, err
 }
 
+func (a preparedPublishAdapter) Close() error { return a.prepared.Close() }
+
 type registrySource struct{ runtime *runtimeDependencies }
 
 func (s registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {

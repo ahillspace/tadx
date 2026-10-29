@@ -82,8 +82,10 @@ type PublishResult struct {
 }
 
 // PreparedPublish separates upload preparation from the final publish mutation.
+// It holds the publish snapshot until Commit or Close releases it.
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
+	Close() error
 }
 
 // MutationResult is one exact move or delete result.

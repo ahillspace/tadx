@@ -32,9 +32,11 @@ type DatasourceReader interface {
 	FindDatasourcesByName(context.Context, []string) ([]value.Datasource, error)
 }
 
-// PreparedPublish is ready for the final consequential remote mutation.
+// PreparedPublish is ready for the final consequential remote mutation. Close
+// releases the prepared upload content when Commit never runs.
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
+	Close() error
 }
 
 // PublishPreparer prepares the publish content before the final target revalidation.
@@ -186,6 +188,7 @@ func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult,
 	if prepared == nil {
 		return PublishResult{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindRuntime, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation returned no commit operation.", Retryable: new(false), CorrectiveAction: "Review the publish configuration before retrying."}
 	}
+	defer func() { _ = prepared.Close() }()
 	ctx = beginProjectResolution(ctx, a.resolver)
 	if plan.request.Overwrite {
 		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {

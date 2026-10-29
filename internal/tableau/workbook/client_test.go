@@ -979,3 +979,54 @@ func TestClientDecodesAndValidatesWorkbookDownloadFilename(t *testing.T) {
 		})
 	}
 }
+
+func TestPreparedPublishKeepsSnapshotUntilCommitOrClose(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "Finance.twbx")
+	content := []byte("workbook")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	publishes := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		publishes++
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
+	}))
+	defer server.Close()
+	snapshots := func() int {
+		matches, err := filepath.Glob(filepath.Join(directory, ".tadx-publish-snapshot-*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(matches)
+	}
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	request := tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", ContentPath: path, ContentSize: int64(len(content)), ExpectedFingerprint: "sha256:" + hex.EncodeToString(digest[:])}
+
+	prepared, err := client.Prepare(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshots() != 1 {
+		t.Fatal("prepared publish released its snapshot before Commit")
+	}
+	if _, err := prepared.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots() != 0 || prepared.Close() != nil {
+		t.Fatal("Commit did not release the snapshot")
+	}
+
+	abandoned, err := client.Prepare(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := abandoned.Close(); err != nil || snapshots() != 0 {
+		t.Fatalf("Close() error = %v, snapshots = %d", err, snapshots())
+	}
+	if _, err := abandoned.Commit(context.Background()); err == nil || publishes != 1 {
+		t.Fatalf("Commit after Close error = %v, publishes = %d", err, publishes)
+	}
+}
