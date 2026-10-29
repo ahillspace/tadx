@@ -80,12 +80,12 @@ type FlowMetadata struct {
 
 // FlowPull describes one complete native flow artifact replacement.
 type FlowPull struct {
-	Workspace string
-	Filename  string
-	Content   []byte
-	Metadata  FlowMetadata
-	Lineage   LineageDocument
-	Overwrite bool
+	Workspace   string
+	Filename    string
+	PayloadPath string
+	Metadata    FlowMetadata
+	Lineage     LineageDocument
+	Overwrite   bool
 }
 
 // FlowPullResult identifies one materialized flow artifact.
@@ -200,7 +200,11 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResul
 	input.Metadata.CanonicalPayload = filename
 	input.Metadata.LineageSidecar = "lineage.json"
 	input.Metadata.LineageComplete = input.Lineage.Complete
-	input.Metadata.LocalBaselineFingerprint = fingerprint(input.Content)
+	baseline, err := fingerprintFile(ctx, input.PayloadPath)
+	if err != nil {
+		return FlowPullResult{}, fmt.Errorf("fingerprint downloaded flow: %w", err)
+	}
+	input.Metadata.LocalBaselineFingerprint = baseline
 	input.Lineage = normalizedLineage(input.Lineage)
 	metadataData, err := json.MarshalIndent(input.Metadata, "", "  ")
 	if err != nil {
@@ -220,7 +224,10 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResul
 		return FlowPullResult{}, err
 	}
 	defer func() { _ = os.RemoveAll(staging) }()
-	files := map[string][]byte{filename: input.Content, "metadata.json": metadataData, "lineage.json": lineageData, "view.md": []byte(flowView(input.Metadata, input.Lineage))}
+	if err := stagePayload(staging, filename, input.PayloadPath, m.operations); err != nil {
+		return FlowPullResult{}, err
+	}
+	files := map[string][]byte{"metadata.json": metadataData, "lineage.json": lineageData, "view.md": []byte(flowView(input.Metadata, input.Lineage))}
 	if err := writeStagedArtifact(staging, files, m.operations); err != nil {
 		return FlowPullResult{}, err
 	}

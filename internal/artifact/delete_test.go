@@ -14,7 +14,7 @@ import (
 func TestDeleteRevalidatesExactFingerprint(t *testing.T) {
 	root := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
-	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", Content: []byte("payload"), Metadata: validMetadata("Finance", "wb-1")})
+	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("payload")), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestDeleteRevalidatesExactFingerprint(t *testing.T) {
 func TestDeleteRemovesOnlyExactManagedArtifact(t *testing.T) {
 	root := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
-	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", Content: []byte("payload"), Metadata: validMetadata("Finance", "wb-1")})
+	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("payload")), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}

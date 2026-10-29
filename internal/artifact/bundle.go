@@ -1,7 +1,6 @@
 package artifact
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -226,13 +225,19 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 		}
 		warnings = append(warnings, "clean datasource artifact refreshed from Tableau")
 	}
-	baseline := fingerprint(input.Content)
+	baseline, err := fingerprintFile(ctx, input.PayloadPath)
+	if err != nil {
+		return preparedDirectory{}, DatasourcePullResult{}, fmt.Errorf("fingerprint downloaded datasource: %w", err)
+	}
+	definition, err := readDatasourceFile(filename, input.PayloadPath)
+	if err != nil {
+		return preparedDirectory{}, DatasourcePullResult{}, fmt.Errorf("read downloaded datasource: %w", err)
+	}
 	metadata := input.Metadata
 	metadata.Kind = "datasource"
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	definition := readDatasourceDefinition(filename, bytes.NewReader(input.Content), int64(len(input.Content)))
 	metadata.CompositionStatus, metadata.ParentDataSourceURLs = definition.CompositionStatus, definition.ParentDataSourceURLs
 	metadata.sourceSitePresent = true
 	if err := validateDatasourceMetadata(metadata); err != nil {
@@ -246,7 +251,11 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 	if err != nil {
 		return preparedDirectory{}, DatasourcePullResult{}, fmt.Errorf("create datasource artifact staging directory: %w", err)
 	}
-	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "view.md": []byte(datasourceView(metadata))}, operations); err != nil {
+	if err := stagePayload(staging, filename, input.PayloadPath, operations); err != nil {
+		_ = operations.removeAll(staging)
+		return preparedDirectory{}, DatasourcePullResult{}, err
+	}
+	if err := writeStagedArtifact(staging, map[string][]byte{"metadata.json": metadataBytes, "view.md": []byte(datasourceView(metadata))}, operations); err != nil {
 		_ = operations.removeAll(staging)
 		return preparedDirectory{}, DatasourcePullResult{}, err
 	}
@@ -340,7 +349,10 @@ func (m *WorkbookBundleManager) prepareWorkbook(ctx context.Context, workspace, 
 			warnings = append(warnings, "clean workbook artifact refreshed from Tableau")
 		}
 	}
-	baseline := fingerprint(input.Content)
+	baseline, err := fingerprintFile(ctx, input.PayloadPath)
+	if err != nil {
+		return preparedDirectory{}, WorkbookPullResult{}, fmt.Errorf("fingerprint downloaded workbook: %w", err)
+	}
 	metadata := input.Metadata
 	metadata.Kind = "workbook"
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
@@ -366,7 +378,11 @@ func (m *WorkbookBundleManager) prepareWorkbook(ctx context.Context, workspace, 
 	if err != nil {
 		return preparedDirectory{}, WorkbookPullResult{}, fmt.Errorf("create artifact staging directory: %w", err)
 	}
-	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(workbookView(metadata))}, operations); err != nil {
+	if err := stagePayload(staging, filename, input.PayloadPath, operations); err != nil {
+		_ = operations.removeAll(staging)
+		return preparedDirectory{}, WorkbookPullResult{}, err
+	}
+	if err := writeStagedArtifact(staging, map[string][]byte{"metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(workbookView(metadata))}, operations); err != nil {
 		_ = operations.removeAll(staging)
 		return preparedDirectory{}, WorkbookPullResult{}, err
 	}

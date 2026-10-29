@@ -12,14 +12,17 @@ import (
 	"time"
 )
 
-type workbookDependencyPullReader struct{}
+// workbookDependencyPullReader writes its downloads into dir, the way the
+// app streams pulled content into workspace download staging.
+type workbookDependencyPullReader struct{ dir string }
 
 func (workbookDependencyPullReader) ResolveWorkbook(context.Context, identity.Selector) (workbookops.Record, error) {
 	return workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Analytics"}, nil
 }
 
-func (workbookDependencyPullReader) DownloadWorkbook(context.Context, string, *bool) (workbookops.Download, error) {
-	return workbookops.Download{Filename: "Finance.twb", Content: []byte(`<workbook/>`)}, nil
+func (reader workbookDependencyPullReader) DownloadWorkbook(context.Context, string, *bool) (workbookops.Download, error) {
+	path, err := reader.write("Finance.twb", `<workbook/>`)
+	return workbookops.Download{Filename: "Finance.twb", Path: path}, err
 }
 
 func (workbookDependencyPullReader) CaptureWorkbookLineage(context.Context, workbookops.LineageRequest) (workbookops.LineageCapture, error) {
@@ -34,11 +37,17 @@ func (workbookDependencyPullReader) PublishedDatasources(context.Context, workbo
 	return []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales"}}, nil
 }
 
-func (workbookDependencyPullReader) DownloadPublishedDatasource(context.Context, string) (workbookops.DatasourceDownload, error) {
+func (reader workbookDependencyPullReader) DownloadPublishedDatasource(context.Context, string) (workbookops.DatasourceDownload, error) {
+	path, err := reader.write("Sales.tds", `<datasource><connection class="sqlserver"/></datasource>`)
 	return workbookops.DatasourceDownload{
 		LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Analytics",
-		Filename: "Sales.tds", Content: []byte(`<datasource><connection class="sqlserver"/></datasource>`),
-	}, nil
+		Filename: "Sales.tds", Path: path,
+	}, err
+}
+
+func (reader workbookDependencyPullReader) write(name, content string) (string, error) {
+	path := filepath.Join(reader.dir, name)
+	return path, os.WriteFile(path, []byte(content), 0o600)
 }
 
 type datasourcePublishPreviewDependency struct{}
@@ -62,7 +71,7 @@ func TestWorkbookPullDependencyArtifactPassesDatasourcePublishPreflight(t *testi
 	}
 	now := func() time.Time { return time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) }
 	manager := artifact.NewDatasourceManager(now)
-	pulled, err := workbookops.Pull(context.Background(), workbookDependencyPullReader{}, artifactWriter{
+	pulled, err := workbookops.Pull(context.Background(), workbookDependencyPullReader{dir: t.TempDir()}, artifactWriter{
 		workbooks: artifact.NewWorkbookManager(now),
 		bundles:   artifact.NewWorkbookBundleManager(now),
 	}, workbookops.PullInput{

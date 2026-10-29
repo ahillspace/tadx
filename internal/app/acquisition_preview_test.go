@@ -36,7 +36,7 @@ func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.
 		t.Fatal(err)
 	}
 	input := workbookops.PullInput{Preview: true, Workspace: root, WorkspaceName: "work", Environment: "source", Site: "source-site", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", LUID: "wb-1", IncludePDS: true, Overwrite: true}
-	actionReader, actionWriter := workbookPreviewReader{t: t}, artifactWriter{}
+	actionReader, actionWriter := workbookPreviewReader{workbookDependencyPullReader: workbookDependencyPullReader{dir: t.TempDir()}, t: t}, artifactWriter{}
 	preview, err := workbookops.Pull(context.Background(), actionReader, actionWriter, input)
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.
 	if _, err := os.Stat(filepath.Join(root, "artifacts")); !os.IsNotExist(err) {
 		t.Fatalf("preview created artifacts: %v", err)
 	}
-	dependency, err := artifact.NewDatasourceManager(nil).Pull(context.Background(), artifact.DatasourcePull{Workspace: root, Filename: "Sales.tds", Content: []byte("<datasource/>"), Metadata: artifact.DatasourceMetadata{Name: "Sales", TableauID: "ds-1", SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: "Analytics", SourceProjectID: "project-1"}, Lineage: artifact.LineageDocument{Direction: "both", Depth: 1}})
+	dependency, err := artifact.NewDatasourceManager(nil).Pull(context.Background(), artifact.DatasourcePull{Workspace: root, Filename: "Sales.tds", PayloadPath: payloadFile(t, []byte("<datasource/>")), Metadata: artifact.DatasourceMetadata{Name: "Sales", TableauID: "ds-1", SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: "Analytics", SourceProjectID: "project-1"}, Lineage: artifact.LineageDocument{Direction: "both", Depth: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}

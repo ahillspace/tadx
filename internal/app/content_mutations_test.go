@@ -6,6 +6,7 @@ import (
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"io"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/identity"
@@ -47,7 +48,7 @@ func (c *contentMutationWorkbookClient) List(context.Context, int, int) (tableau
 func (c *contentMutationWorkbookClient) ListProjects(context.Context, int, int) (tableauworkbook.ProjectPage, error) {
 	return tableauworkbook.ProjectPage{}, nil
 }
-func (c *contentMutationWorkbookClient) Download(context.Context, string, *bool) (tableauworkbook.Download, error) {
+func (c *contentMutationWorkbookClient) Download(context.Context, string, *bool, io.Writer) (tableauworkbook.Download, error) {
 	return tableauworkbook.Download{}, nil
 }
 func (c *contentMutationWorkbookClient) Prepare(context.Context, tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error) {
@@ -67,7 +68,7 @@ func (c *contentMutationDatasourceClient) Get(context.Context, string) (tableaud
 func (c *contentMutationDatasourceClient) List(context.Context, tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
 	return tableaudatasource.Page{}, nil
 }
-func (c *contentMutationDatasourceClient) Download(context.Context, string, *bool) (tableaudatasource.Download, error) {
+func (c *contentMutationDatasourceClient) Download(context.Context, string, *bool, io.Writer) (tableaudatasource.Download, error) {
 	return tableaudatasource.Download{}, nil
 }
 func (c *contentMutationDatasourceClient) Prepare(context.Context, tableaudatasource.PublishRequest) (tableaudatasource.PreparedPublish, error) {
@@ -97,7 +98,7 @@ func (c *contentMutationFlowClient) List(context.Context, tableauflow.ListReques
 func (c *contentMutationFlowClient) Get(context.Context, string) (tableauflow.Flow, error) {
 	return c.flow, nil
 }
-func (c *contentMutationFlowClient) Download(context.Context, string) (tableauflow.Download, error) {
+func (c *contentMutationFlowClient) Download(context.Context, string, io.Writer) (tableauflow.Download, error) {
 	return tableauflow.Download{}, nil
 }
 func (c *contentMutationFlowClient) Prepare(context.Context, tableauflow.PublishRequest) (tableauflow.PreparedPublish, error) {

@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -90,12 +91,11 @@ type Download struct {
 
 // Client reads published datasource metadata and native content.
 type Client struct {
-	transport        *tableau.Transport
-	session          auth.Session
-	serverURL        string
-	maxDownloadBytes int64
-	uploadThreshold  int64
-	uploadChunkSize  int64
+	transport       *tableau.Transport
+	session         auth.Session
+	serverURL       string
+	uploadThreshold int64
+	uploadChunkSize int64
 }
 
 // NewClient creates an authenticated datasource REST client.
@@ -111,14 +111,6 @@ func (c *Client) SetUploadThreshold(limit int64) {
 func (c *Client) SetUploadChunkSize(limit int64) {
 	if c != nil && limit > 0 && limit <= defaultUploadChunkSize {
 		c.uploadChunkSize = limit
-	}
-}
-
-// SetMaxDownloadBytes bounds the buffered native datasource download below the shared transport ceiling.
-// Zero keeps the shared 256 MiB limit.
-func (c *Client) SetMaxDownloadBytes(limit int64) {
-	if limit > 0 {
-		c.maxDownloadBytes = limit
 	}
 }
 
@@ -199,8 +191,9 @@ func (c *Client) Get(ctx context.Context, datasourceLUID string) (Datasource, er
 	return result, nil
 }
 
-// Download preserves the native TDS or TDSX bytes and filename.
-func (c *Client) Download(ctx context.Context, datasourceLUID string, includeExtract *bool) (Download, error) {
+// Download streams the native TDS or TDSX bytes unchanged into destination
+// and returns the filename. On error destination may hold a partial body.
+func (c *Client) Download(ctx context.Context, datasourceLUID string, includeExtract *bool, destination io.Writer) (Download, error) {
 	if datasourceLUID == "" {
 		return Download{}, errors.New("datasource LUID is required")
 	}
@@ -211,7 +204,10 @@ func (c *Client) Download(ctx context.Context, datasourceLUID string, includeExt
 	if includeExtract != nil {
 		query.Set("includeExtract", strconv.FormatBool(*includeExtract))
 	}
-	response, err := c.do(ctx, c.sitePath("datasources", datasourceLUID, "content"), "datasource.pull", c.maxDownloadBytes, query)
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{
+		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("datasources", datasourceLUID, "content"), Query: query,
+		Accept: "application/xml", Operation: "datasource.pull", MaxResponseBytes: maxListResponseBytes, ResponseBody: destination,
+	})
 	if err != nil {
 		return Download{}, err
 	}
@@ -229,7 +225,6 @@ func (c *Client) Download(ctx context.Context, datasourceLUID string, includeExt
 	return Download{
 		Filename:         filename,
 		ContentType:      response.Header.Get("Content-Type"),
-		Content:          response.Body,
 		TableauRequestID: response.TableauRequestID,
 	}, nil
 }

@@ -6,6 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"hash"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,8 +20,6 @@ import (
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
-
-const liveDatasourceDownloadLimit = 256 * 1024 * 1024
 
 // TestLiveDatasourceListContract exercises the published datasource list, pagination,
 // and name-filter surface introduced for lineage.pull --kind published_datasource.
@@ -130,7 +130,6 @@ func TestLiveDatasourceDownloadContract(t *testing.T) {
 
 	environment, session, transport := liveDatasourceConnection(t)
 	client := tableaudatasource.NewClient(transport, session, environment.URL)
-	client.SetMaxDownloadBytes(liveDatasourceDownloadLimit)
 	ctx := context.Background()
 
 	item, err := client.Get(ctx, datasourceLUID)
@@ -148,7 +147,9 @@ func TestLiveDatasourceDownloadContract(t *testing.T) {
 	withExtract := true
 	withoutExtract := false
 	for _, include := range []*bool{nil, &withoutExtract, &withExtract} {
-		download, downloadErr := client.Download(ctx, datasourceLUID, include)
+		digest := sha256.New()
+		counter := &liveByteCounter{}
+		download, downloadErr := client.Download(ctx, datasourceLUID, include, io.MultiWriter(digest, counter))
 		if downloadErr != nil {
 			t.Fatalf("download includeExtract=%s failed: %v", describeIncludeExtract(include), downloadErr)
 		}
@@ -156,13 +157,13 @@ func TestLiveDatasourceDownloadContract(t *testing.T) {
 		if extension != ".tds" && extension != ".tdsx" {
 			t.Fatalf("datasource download returned unsupported extension %q", extension)
 		}
-		if len(download.Content) == 0 {
+		if counter.bytes == 0 {
 			t.Fatalf("datasource download includeExtract=%s returned no content", describeIncludeExtract(include))
 		}
 		t.Logf(
 			"sanitized datasource download evidence: luid=%s includeExtract=%s extension=%s content_type=%s bytes=%d content_sha256=%s request_id=%s",
 			hashLiveDatasourceID(item.LUID), describeIncludeExtract(include), extension, download.ContentType,
-			len(download.Content), fingerprintLiveDatasource(download.Content), hashLiveDatasourceID(download.TableauRequestID),
+			counter.bytes, fingerprintLiveDatasource(digest), hashLiveDatasourceID(download.TableauRequestID),
 		)
 	}
 }
@@ -229,7 +230,13 @@ func hashLiveDatasourceID(value string) string {
 	return fmt.Sprintf("sha256:%x", sum[:8])
 }
 
-func fingerprintLiveDatasource(content []byte) string {
-	sum := sha256.Sum256(content)
-	return fmt.Sprintf("sha256:%x", sum[:8])
+func fingerprintLiveDatasource(digest hash.Hash) string {
+	return fmt.Sprintf("sha256:%x", digest.Sum(nil)[:8])
+}
+
+type liveByteCounter struct{ bytes int64 }
+
+func (c *liveByteCounter) Write(data []byte) (int, error) {
+	c.bytes += int64(len(data))
+	return len(data), nil
 }

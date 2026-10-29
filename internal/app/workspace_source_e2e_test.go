@@ -36,9 +36,9 @@ func TestWorkspaceStatusFullJSONPreservesArtifactSourceIdentity(t *testing.T) {
 	manager := artifact.NewWorkbookManager(nil)
 	for _, source := range sources {
 		_, err := manager.Pull(t.Context(), artifact.WorkbookPull{
-			Workspace: workspaceRoot,
-			Filename:  "Inventory.twb",
-			Content:   []byte("<workbook/>"),
+			Workspace:   workspaceRoot,
+			Filename:    "Inventory.twb",
+			PayloadPath: payloadFile(t, []byte("<workbook/>")),
 			Metadata: artifact.WorkbookMetadata{
 				Name:               "Inventory",
 				TableauID:          "workbook-1",

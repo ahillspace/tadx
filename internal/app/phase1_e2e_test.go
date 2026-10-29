@@ -330,7 +330,7 @@ func TestWorkbookArtifactCreatedByE2EIsReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := artifact.NewWorkbookManager(time.Now)
-	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Book.twb", Content: []byte("book"), Metadata: artifact.WorkbookMetadata{Name: "Book", TableauID: "wb", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Ops", SourceProjectID: "project-1"}})
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Book.twb", PayloadPath: payloadFile(t, []byte("book")), Metadata: artifact.WorkbookMetadata{Name: "Book", TableauID: "wb", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Ops", SourceProjectID: "project-1"}})
 	if err != nil || result.ArtifactPath == "" {
 		t.Fatalf("artifact result = %#v, error = %v", result, err)
 	}

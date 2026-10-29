@@ -1,7 +1,6 @@
 package artifact
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -51,12 +50,12 @@ type DatasourceMetadata struct {
 
 // DatasourcePull describes one complete datasource artifact replacement.
 type DatasourcePull struct {
-	Workspace string
-	Filename  string
-	Content   []byte
-	Metadata  DatasourceMetadata
-	Lineage   LineageDocument
-	Overwrite bool
+	Workspace   string
+	Filename    string
+	PayloadPath string
+	Metadata    DatasourceMetadata
+	Lineage     LineageDocument
+	Overwrite   bool
 }
 
 // DatasourcePullResult identifies the materialized datasource artifact.
@@ -201,13 +200,19 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (_ D
 		}
 	}
 
-	baseline := fingerprint(input.Content)
+	baseline, err := fingerprintFile(ctx, input.PayloadPath)
+	if err != nil {
+		return DatasourcePullResult{}, fmt.Errorf("fingerprint downloaded datasource: %w", err)
+	}
+	definition, err := readDatasourceFile(filename, input.PayloadPath)
+	if err != nil {
+		return DatasourcePullResult{}, fmt.Errorf("read downloaded datasource: %w", err)
+	}
 	metadata := input.Metadata
 	metadata.Kind = "datasource"
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	definition := readDatasourceDefinition(filename, bytes.NewReader(input.Content), int64(len(input.Content)))
 	metadata.CompositionStatus, metadata.ParentDataSourceURLs = definition.CompositionStatus, definition.ParentDataSourceURLs
 	metadata.LineageSidecar = "lineage.json"
 	if input.Lineage.Depth == 0 {
@@ -239,8 +244,10 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (_ D
 		return DatasourcePullResult{}, fmt.Errorf("create datasource artifact staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
+	if err := stagePayload(staging, filename, input.PayloadPath, operations); err != nil {
+		return DatasourcePullResult{}, err
+	}
 	files := map[string][]byte{
-		filename:        input.Content,
 		"metadata.json": metadataBytes,
 		"lineage.json":  lineageBytes,
 		"view.md":       []byte(datasourceView(metadata)),

@@ -3,6 +3,7 @@ package workbook_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -86,7 +87,7 @@ func (c client) ListProjects(_ context.Context, page, _ int) (tableauworkbook.Pr
 	return c.projectPages[page], nil
 }
 
-func (client) Download(context.Context, string, *bool) (tableauworkbook.Download, error) {
+func (client) Download(context.Context, string, *bool, io.Writer) (tableauworkbook.Download, error) {
 	return tableauworkbook.Download{}, nil
 }
 

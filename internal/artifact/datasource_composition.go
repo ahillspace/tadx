@@ -94,14 +94,21 @@ func readDatasourceDefinition(filename string, source io.ReaderAt, size int64) d
 // readDatasourceContentURL reports the repository location recorded in one
 // datasource file, or empty when the file records none.
 func readDatasourceContentURL(path string) (string, error) {
+	definition, err := readDatasourceFile(path, path)
+	return definition.ContentURL, err
+}
+
+// readDatasourceFile reads the definition of the datasource file at path,
+// using filename to choose between TDS and TDSX handling.
+func readDatasourceFile(filename, path string) (datasourceDefinition, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return datasourceDefinition{}, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return "", err
+		return datasourceDefinition{}, err
 	}
-	return readDatasourceDefinition(path, file, info.Size()).ContentURL, nil
+	return readDatasourceDefinition(filename, file, info.Size()), nil
 }

@@ -157,6 +157,8 @@ A renewal failure is reported after the original rejection, and no other failure
 It rejects authenticated cleartext requests, cross-origin redirects, and HTTPS downgrade redirects.
 It attaches the session through `Session.Authorize`, adds a command correlation ID, and sanitizes request IDs and upstream diagnostics.
 It buffers ordinary request bodies and response bodies; the shared response ceiling is 256 MiB, and callers can request smaller bounds.
+Content downloads set `Request.ResponseBody`, so a successful body streams to that writer under the stall watchdog without a size ceiling, while an error body is still buffered under the caller's bound and decoded.
+The rejected attempt of a session renewal writes nothing, so the replayed download writes one complete body.
 Multipart uploads instead stream from a fingerprint-verified snapshot copy of the artifact through [`MultipartBody`](../../internal/tableau/multipart.go), which buffers only part framing, sends an exact `Content-Length`, and can reopen the body when the HTTP client replays a request.
 These are implementation limits, not a promise that every command accepts content of that size.
 

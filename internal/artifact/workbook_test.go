@@ -20,7 +20,7 @@ func TestWorkbookManagerWritesCanonicalArtifactAndProvenance(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(func() time.Time { return time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC) })
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native-package"),
+		Workspace: workspace, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("native-package")),
 		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -63,7 +63,7 @@ func TestWorkbookManagerPersistsBoundedLineageBesideUnchangedNativePayload(t *te
 	}
 	native := []byte("native-package-must-not-change")
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twbx", Content: native, Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twbx", PayloadPath: payloadFile(t, native), Metadata: validMetadata("Finance", "wb-1"),
 		Lineage: lineage, LineageCountsKnown: true,
 	})
 	if err != nil {
@@ -102,7 +102,7 @@ func TestWorkbookManagerPersistsBoundedLineageBesideUnchangedNativePayload(t *te
 func TestWorkbookManagerPersistsUnavailableLineageWithoutClaimingZeroCounts(t *testing.T) {
 	workspace := createWorkspace(t)
 	result, err := artifact.NewWorkbookManager(time.Now).Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("native"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("native")), Metadata: validMetadata("Finance", "wb-1"),
 		Lineage: artifact.LineageDocument{Complete: false, Direction: "both", Depth: 1, Nodes: []artifact.LineageNode{}, Edges: []artifact.LineageEdge{}},
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func TestWorkbookManagerRecordsPublishedDatasourcePortability(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native"),
+		Workspace: workspace, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("native")),
 		Metadata: artifact.WorkbookMetadata{
 			Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1",
 			Portability:          "source-site-bound",
@@ -172,7 +172,7 @@ func TestWorkbookManagerPersistsExplicitUnknownPortability(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native"),
+		Workspace: workspace, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("native")),
 		Metadata: artifact.WorkbookMetadata{
 			Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1",
 			Portability: artifact.PortabilityUnknown,
@@ -243,7 +243,7 @@ func TestWorkbookManagerRejectsInvalidPortabilityContract(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			metadata := artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1"}
 			test.mutate(&metadata)
-			_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v"), Metadata: metadata})
+			_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("v")), Metadata: metadata})
 			if err == nil || !strings.Contains(err.Error(), test.contains) {
 				t.Fatalf("error = %v", err)
 			}
@@ -255,7 +255,7 @@ func TestWorkbookManagerReadExposesSourceProvenance(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twbx", Content: workbookPackage(t, "Finance.twb", "<workbook><datasources><datasource caption='Sales' name='sqlproxy.1'><connection class='sqlproxy' dbname='Sales_1' /></datasource></datasources></workbook>"),
+		Workspace: workspace, Filename: "Finance.twbx", PayloadPath: payloadFile(t, workbookPackage(t, "Finance.twb", "<workbook><datasources><datasource caption='Sales' name='sqlproxy.1'><connection class='sqlproxy' dbname='Sales_1' /></datasource></datasources></workbook>")),
 		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -284,7 +284,7 @@ func TestWorkbookManagerPreservesEmptyDefaultSiteProvenance(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("native-workbook"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("native-workbook")),
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
@@ -323,7 +323,7 @@ func TestWorkbookManagerStoresSameNameWorkbooksByTableauIdentity(t *testing.T) {
 	firstMetadata.SourceProjectName = "ProjectA"
 	firstMetadata.SourceProjectID = "project-a"
 	first, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("project-a"), Metadata: firstMetadata,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("project-a")), Metadata: firstMetadata,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +332,7 @@ func TestWorkbookManagerStoresSameNameWorkbooksByTableauIdentity(t *testing.T) {
 	secondMetadata.SourceProjectName = "ProjectB"
 	secondMetadata.SourceProjectID = "project-b"
 	second, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("project-b"), Metadata: secondMetadata,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("project-b")), Metadata: secondMetadata,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +377,7 @@ func TestWorkbookManagerScopesWorkbookIdentityToServerAndSite(t *testing.T) {
 		metadata.SourceServerOrigin = test.serverOrigin
 		metadata.SourceSiteLUID = test.siteLUID
 		result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-			Workspace: workspace, Filename: "Finance.twb", Content: []byte(test.name), Metadata: metadata,
+			Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte(test.name)), Metadata: metadata,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -406,7 +406,7 @@ func TestWorkbookManagerNormalizesServerOriginBeforeIdentityMatching(t *testing.
 	firstMetadata := validMetadata("Finance", "wb-1")
 	firstMetadata.SourceServerOrigin = "HTTPS://TABLEAU.EXAMPLE.COM:443/tableau"
 	first, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("first"), Metadata: firstMetadata,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("first")), Metadata: firstMetadata,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -414,7 +414,7 @@ func TestWorkbookManagerNormalizesServerOriginBeforeIdentityMatching(t *testing.
 	secondMetadata := validMetadata("Finance", "wb-1")
 	secondMetadata.SourceServerOrigin = "https://tableau.example.com/other-path"
 	second, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("second"), Metadata: secondMetadata,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("second")), Metadata: secondMetadata,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -450,7 +450,7 @@ func TestWorkbookManagerIdentityPathsCannotCollideWithWorkbookNames(t *testing.T
 	for _, input := range inputs {
 		metadata := validMetadata(input.name, input.id)
 		result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-			Workspace: workspace, Filename: input.name + ".twb", Content: []byte(input.id), Metadata: metadata,
+			Workspace: workspace, Filename: input.name + ".twb", PayloadPath: payloadFile(t, []byte(input.id)), Metadata: metadata,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -488,7 +488,7 @@ func TestWorkbookManagerRejectsIncompleteProvenanceBeforeStaging(t *testing.T) {
 			test.modify(&metadata)
 			manager := artifact.NewWorkbookManager(time.Now)
 			_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-				Workspace: workspace, Filename: "Finance.twb", Content: []byte("native-workbook"), Metadata: metadata,
+				Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("native-workbook")), Metadata: metadata,
 			})
 			if err == nil || !strings.Contains(err.Error(), test.field) {
 				t.Fatalf("Pull() error = %v", err)
@@ -513,7 +513,7 @@ func TestWorkbookManagerRejectsOversizedMetadataBeforeStaging(t *testing.T) {
 	metadata.SourceEnvironment = strings.Repeat("x", 64*1024)
 	manager := artifact.NewWorkbookManager(time.Now)
 	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("native-workbook"), Metadata: metadata,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("native-workbook")), Metadata: metadata,
 	})
 	if err == nil || !strings.Contains(err.Error(), "65536-byte limit") {
 		t.Fatalf("Pull() error = %v", err)
@@ -547,7 +547,7 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 				native = workbookPackage(t, "Book.twb", "<workbook />")
 			}
 			result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-				Workspace: createWorkspace(t), Filename: test.filename, Content: native,
+				Workspace: createWorkspace(t), Filename: test.filename, PayloadPath: payloadFile(t, native),
 				Metadata: validMetadata(test.workbook, "wb-1"),
 			})
 			if err != nil {
@@ -583,7 +583,7 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	first, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote-v1")),
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
@@ -594,7 +594,7 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 		t.Fatal(err)
 	}
 	_, err = manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v2"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote-v2")),
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "dirty") {
@@ -605,7 +605,7 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 		t.Fatalf("dirty payload changed to %q", unchanged)
 	}
 	overwritten, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v2"), Overwrite: true,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote-v2")), Overwrite: true,
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
@@ -623,11 +623,11 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 func TestWorkbookManagerCleanRepullWarnsAndReplaces(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
-	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v1"), Metadata: validMetadata("Finance", "wb-1")})
+	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("v1")), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v2"), Metadata: validMetadata("Finance", "wb-1")})
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("v2")), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +649,7 @@ func TestWorkbookManagerPreservesUnmanagedNamePath(t *testing.T) {
 
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 		Metadata:  validMetadata("Finance", "wb-1"),
 		Overwrite: true,
 	})
@@ -669,7 +669,7 @@ func TestWorkbookManagerRejectsIncompleteIdentityMatchWithoutReplacingFiles(t *t
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v1"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote-v1")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -697,7 +697,7 @@ func TestWorkbookManagerRejectsIncompleteIdentityMatchWithoutReplacingFiles(t *t
 	}
 
 	_, err = manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v2"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote-v2")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "source_project_id") {
 		t.Fatalf("Pull() error = %v", err)
@@ -713,7 +713,7 @@ func TestWorkbookManagerRejectsOversizedMetadata(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -730,7 +730,7 @@ func TestWorkbookManagerRejectsNonregularCanonicalPayload(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -765,7 +765,7 @@ func TestWorkbookManagerRejectsArtifactRootOutsideWorkspaceBeforeWriting(t *test
 
 	manager := artifact.NewWorkbookManager(time.Now)
 	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || (!strings.Contains(err.Error(), "escapes workspace") && !strings.Contains(err.Error(), "must not be a symbolic link")) {
@@ -796,7 +796,7 @@ func TestWorkbookManagerRejectsTargetOutsideArtifactRootWithoutChangingIt(t *tes
 
 	manager := artifact.NewWorkbookManager(time.Now)
 	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Overwrite: true,
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Overwrite: true,
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "escapes artifact root") {
@@ -812,7 +812,7 @@ func TestWorkbookManagerRejectsEscapingCanonicalPayload(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -849,7 +849,7 @@ func TestWorkbookManagerRejectsCanonicalPayloadSymlink(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -875,7 +875,7 @@ func TestWorkbookManagerRejectsUnsupportedCanonicalPayload(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -925,7 +925,7 @@ func TestWorkbookManagerRejectsIncompleteMetadataBeforeReadingPayload(t *testing
 			workspace := createWorkspace(t)
 			manager := artifact.NewWorkbookManager(time.Now)
 			result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-				Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+				Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 				Metadata: artifact.WorkbookMetadata{Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 			})
 			if err != nil {
@@ -959,7 +959,7 @@ func TestWorkbookManagerRejectsNoncanonicalFileSelector(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")),
 		Metadata: artifact.WorkbookMetadata{Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
@@ -985,7 +985,7 @@ func TestWorkbookManagerAcceptsHardLinkToCanonicalPayload(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1007,7 +1007,7 @@ func TestWorkbookManagerRejectsSymlinkSelectorToCanonicalPayload(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -116,9 +116,9 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedOutcomesUnderOneOperation(
 	manager := artifact.NewWorkbookManager(nil)
 	for _, item := range []struct{ id, name string }{{"source-a", "First"}, {"source-b", "Second"}} {
 		if _, err := manager.Pull(t.Context(), artifact.WorkbookPull{
-			Workspace: workspace,
-			Filename:  item.name + ".twb",
-			Content:   []byte("<workbook/>"),
+			Workspace:   workspace,
+			Filename:    item.name + ".twb",
+			PayloadPath: payloadFile(t, []byte("<workbook/>")),
 			Metadata: artifact.WorkbookMetadata{
 				Kind: "workbook", Name: item.name, TableauID: item.id,
 				SourceServerOrigin: server.URL, SourceSiteLUID: "site-1",

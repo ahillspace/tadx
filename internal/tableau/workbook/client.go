@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -80,7 +81,6 @@ type ProjectPage struct {
 type Download struct {
 	Filename         string
 	ContentType      string
-	Content          []byte
 	TableauRequestID string
 }
 
@@ -169,12 +169,11 @@ type PreparedPublish struct {
 
 // Client is the first released REST client family.
 type Client struct {
-	transport        *tableau.Transport
-	session          auth.Session
-	serverURL        string
-	uploadThreshold  int
-	uploadChunkSize  int
-	maxDownloadBytes int64
+	transport       *tableau.Transport
+	session         auth.Session
+	serverURL       string
+	uploadThreshold int
+	uploadChunkSize int
 }
 
 // NewClient creates an authenticated workbook REST client.
@@ -288,19 +287,6 @@ func (c *Client) SetUploadChunkSize(bytes int) {
 	}
 }
 
-// SetMaxDownloadBytes bounds the buffered workbook download below the shared
-// transport ceiling. Zero keeps the default 256 MiB limit.
-//
-// The download is fully buffered because Download.Content is a []byte consumed
-// by internal/artifact and internal/app; a true streaming download (a bounded
-// temp file exposed as an io.ReadCloser, validated from disk, with a streaming
-// request body in the transport) would ripple those contracts and is deferred.
-func (c *Client) SetMaxDownloadBytes(limit int64) {
-	if limit > 0 {
-		c.maxDownloadBytes = limit
-	}
-}
-
 // List returns one classic REST workbook page.
 func (c *Client) List(ctx context.Context, pageNumber, pageSize int) (WorkbookPage, error) {
 	return c.ListWorkbooks(ctx, ListRequest{PageNumber: pageNumber, PageSize: pageSize})
@@ -397,13 +383,9 @@ func (c *Client) ListProjects(ctx context.Context, pageNumber, pageSize int) (Pr
 	return ProjectPage{Page: page, Items: items}, nil
 }
 
-// Download preserves the native TWB or TWBX bytes and filename.
-//
-// The response is buffered into Download.Content ([]byte) up to the configured
-// cap (see SetMaxDownloadBytes). Streaming to a bounded temp file would require
-// changing Download.Content's type, which ripples into internal/artifact and
-// internal/app, so it is intentionally out of scope here.
-func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtract *bool) (Download, error) {
+// Download streams the native TWB or TWBX bytes unchanged into destination
+// and returns the filename. On error destination may hold a partial body.
+func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtract *bool, destination io.Writer) (Download, error) {
 	if c == nil || c.transport == nil || c.session == nil {
 		return Download{}, errors.New("authenticated workbook client is not configured")
 	}
@@ -413,7 +395,7 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 	}
 	response, err := c.transport.Do(ctx, c.session, tableau.Request{
 		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("workbooks", workbookLUID, "content"),
-		Query: query, Accept: "application/xml", Operation: "workbook.pull", MaxResponseBytes: c.maxDownloadBytes,
+		Query: query, Accept: "application/xml", Operation: "workbook.pull", MaxResponseBytes: metadataResponseLimit, ResponseBody: destination,
 	})
 	if err != nil {
 		return Download{}, err
@@ -429,7 +411,7 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 	if extension != ".twb" && extension != ".twbx" {
 		return Download{}, tableau.NewProtocolError("workbook.pull", response, fmt.Errorf("workbook download returned unsupported filename %q", filename), true)
 	}
-	return Download{Filename: filename, ContentType: response.Header.Get("Content-Type"), Content: response.Body, TableauRequestID: response.TableauRequestID}, nil
+	return Download{Filename: filename, ContentType: response.Header.Get("Content-Type"), TableauRequestID: response.TableauRequestID}, nil
 }
 
 // Publish uploads a workbook and publishes it with one synchronous request.

@@ -16,7 +16,7 @@ import (
 func TestInventoryReportsBoundedInvalidMetadataReason(t *testing.T) {
 	workspaceRoot := createWorkspace(t)
 	created, err := artifact.NewWorkbookManager(time.Now).Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspaceRoot, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspaceRoot, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestInventoryReturnsRelativeBoundedArtifactState(t *testing.T) {
 	workspaceRoot := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspaceRoot, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: workspaceRoot, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,14 +79,14 @@ func TestInventoryStateCountsCoverWholeWorkspaceAcrossPages(t *testing.T) {
 	workspaceRoot := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	clean, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspaceRoot, Filename: "Alpha.twb", Content: []byte("remote"), Metadata: validMetadata("Alpha", "wb-1"),
+		Workspace: workspaceRoot, Filename: "Alpha.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Alpha", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = clean
 	dirty, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: workspaceRoot, Filename: "Beta.twb", Content: []byte("remote"), Metadata: validMetadata("Beta", "wb-2"),
+		Workspace: workspaceRoot, Filename: "Beta.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Beta", "wb-2"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestInventoryRejectsUnboundedLimit(t *testing.T) {
 func TestInventoryReportsMissingCanonicalPayload(t *testing.T) {
 	workspaceRoot := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
-	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspaceRoot, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1")})
+	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspaceRoot, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +137,9 @@ func TestInventoryReportsMissingCanonicalPayload(t *testing.T) {
 func TestInventoryRecognizesManagedFlowArtifact(t *testing.T) {
 	workspaceRoot := createWorkspace(t)
 	_, err := artifact.NewFlowManager(time.Now).Pull(context.Background(), artifact.FlowPull{
-		Workspace: workspaceRoot,
-		Filename:  "Pipeline.tflx",
-		Content:   []byte("flow"),
+		Workspace:   workspaceRoot,
+		Filename:    "Pipeline.tflx",
+		PayloadPath: payloadFile(t, []byte("flow")),
 		Metadata: artifact.FlowMetadata{
 			Name: "Pipeline", TableauID: "flow-1", SourceServerOrigin: "https://tableau.example.test", SourceSiteLUID: "site-1",
 			SourceEnvironment: "development", SourceSite: "test-site", SourceProjectName: "Ops", SourceProjectID: "project-1",
@@ -166,7 +166,7 @@ func TestWorkbookManagerHonorsWorkspaceLock(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, pullErr := artifact.NewWorkbookManager(time.Now).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspaceRoot, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1")})
+		_, pullErr := artifact.NewWorkbookManager(time.Now).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspaceRoot, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validMetadata("Finance", "wb-1")})
 		done <- pullErr
 	}()
 	select {

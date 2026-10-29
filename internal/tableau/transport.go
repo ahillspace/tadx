@@ -48,6 +48,10 @@ type Request struct {
 	ContentType string
 	// MaxResponseBytes bounds the buffered body. Zero uses the shared 256 MiB limit.
 	MaxResponseBytes int64
+	// ResponseBody receives a successful response body as it arrives instead
+	// of buffering it, so package downloads have no size limit. Error bodies
+	// are still buffered under MaxResponseBytes and decoded as UpstreamError.
+	ResponseBody io.Writer
 }
 
 // Response is a fully read successful Tableau REST response.
@@ -445,6 +449,26 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 	defer response.Body.Close()
 	watchdog.enter(stallReadingResponse)
 	requestID := sanitizeDiagnostic(tableauRequestID(response.Header), effectiveSecrets)
+	redactionSecrets := append([]string(nil), effectiveSecrets...)
+	result := Response{
+		StatusCode: response.StatusCode, Header: response.Header.Clone(), TableauRequestID: requestID,
+		redact: func(value string) string { return sanitizeDiagnostic(value, redactionSecrets) },
+	}
+	success := response.StatusCode >= 200 && response.StatusCode < 300
+	if success && input.ResponseBody != nil {
+		destination := &destinationWriter{Writer: input.ResponseBody}
+		if _, err := io.Copy(destination, progressBody{ReadCloser: response.Body, watchdog: watchdog}); err != nil {
+			if destination.err != nil {
+				return Response{}, request.Header, fmt.Errorf("write Tableau %s response: %w", input.Operation, destination.err)
+			}
+			if stall := watchdog.expired(); stall != nil {
+				err = stall
+			}
+			retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
+			return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+		}
+		return result, request.Header, nil
+	}
 	body, err := io.ReadAll(io.LimitReader(progressBody{ReadCloser: response.Body, watchdog: watchdog}, maxResponseBytes+1))
 	if err != nil {
 		if stall := watchdog.expired(); stall != nil {
@@ -454,14 +478,10 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	if int64(len(body)) > maxResponseBytes {
-		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Reduce the response size or use a bounded streaming workflow."}
+		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Narrow the request with filters or paging; content downloads stream to disk without this limit."}
 	}
-	redactionSecrets := append([]string(nil), effectiveSecrets...)
-	result := Response{
-		StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: body, TableauRequestID: requestID,
-		redact: func(value string) string { return sanitizeDiagnostic(value, redactionSecrets) },
-	}
-	if response.StatusCode >= 200 && response.StatusCode < 300 {
+	if success {
+		result.Body = body
 		return result, request.Header, nil
 	}
 	code, summary, detail := parseError(body, effectiveSecrets)
@@ -588,6 +608,21 @@ func (w *stallWatchdog) stop() {
 
 // progressBody reports each successful read to the stall watchdog. Reaching the
 // end of a request body moves the watchdog to waiting for response headers.
+// destinationWriter records a failure writing a streamed response, so a full
+// disk is not reported as a Tableau read failure.
+type destinationWriter struct {
+	io.Writer
+	err error
+}
+
+func (w *destinationWriter) Write(data []byte) (int, error) {
+	n, err := w.Writer.Write(data)
+	if err != nil {
+		w.err = err
+	}
+	return n, err
+}
+
 type progressBody struct {
 	io.ReadCloser
 	watchdog *stallWatchdog

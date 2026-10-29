@@ -73,7 +73,7 @@ func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullI
 		}
 	}
 	warnings = append(warnings, lineage.Warnings...)
-	result, err := writer.WriteFlow(ctx, PullArtifact{Workspace: input.Workspace, Filename: download.Filename, Content: download.Content, Name: flow.Name, TableauID: flow.LUID, Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: flow.ProjectPath, ProjectID: flow.ProjectLUID, FileType: flow.FileType, Lineage: lineage, Overwrite: input.Overwrite})
+	result, err := writer.WriteFlow(ctx, PullArtifact{Workspace: input.Workspace, Filename: download.Filename, Path: download.Path, Name: flow.Name, TableauID: flow.LUID, Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: flow.ProjectPath, ProjectID: flow.ProjectLUID, FileType: flow.FileType, Lineage: lineage, Overwrite: input.Overwrite})
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the workspace and artifact target, then pull again.")
 		return PullOutput{}, &errs.Error{ID: "flow.pull.write", Kind: errs.KindOperation, Operation: "flow.pull", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}

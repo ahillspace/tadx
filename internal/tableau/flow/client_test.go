@@ -168,7 +168,7 @@ func TestClientRejectsMismatchedExactFlowIdentity(t *testing.T) {
 	}
 }
 
-func TestClientDownloadsUnchangedNativeFlowWithinBound(t *testing.T) {
+func TestClientStreamsUnchangedNativeFlow(t *testing.T) {
 	want := []byte("native\x00flow\r\nbytes")
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/3.29/sites/site-1/flows/flow-1/content" {
@@ -181,29 +181,13 @@ func TestClientDownloadsUnchangedNativeFlowWithinBound(t *testing.T) {
 	defer server.Close()
 
 	client := tableauflow.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetMaxDownloadBytes(int64(len(want)))
-	download, err := client.Download(context.Background(), "flow-1")
+	var content bytes.Buffer
+	download, err := client.Download(context.Background(), "flow-1", &content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if download.Filename != "Daily.tflx" || !bytes.Equal(download.Content, want) || download.TableauRequestID != "download-request" {
+	if download.Filename != "Daily.tflx" || !bytes.Equal(content.Bytes(), want) || download.TableauRequestID != "download-request" {
 		t.Fatalf("download = %#v", download)
-	}
-}
-
-func TestClientBoundsFlowDownload(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Disposition", `attachment; filename="Daily.tfl"`)
-		writer.Header().Set("X-Tableau-Request-Id", "download-request")
-		_, _ = io.WriteString(writer, "12345")
-	}))
-	defer server.Close()
-
-	client := tableauflow.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetMaxDownloadBytes(4)
-	_, err := client.Download(context.Background(), "flow-1")
-	if err == nil || tableau.RequestID(err) != "download-request" {
-		t.Fatalf("Download() error = %v, request ID = %q", err, tableau.RequestID(err))
 	}
 }
 
@@ -489,7 +473,7 @@ func TestClientDecodesFormEncodedFlowDownloadFilename(t *testing.T) {
 	defer server.Close()
 
 	client := tableauflow.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	download, err := client.Download(context.Background(), "flow-1")
+	download, err := client.Download(context.Background(), "flow-1", io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

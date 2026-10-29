@@ -16,8 +16,6 @@ import (
 	"strings"
 )
 
-const maxNativeBytes int64 = 1 << 30
-
 var nativePrimaryExtensions = map[string]string{"workbook": ".twb", "datasource": ".tds", "flow": ".tfl"}
 
 // Native is a read-only native payload, not a manufactured managed artifact.
@@ -49,8 +47,8 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxNativeBytes {
-		return Native{}, errors.New("native file must be a nonempty regular file no larger than 1 GiB")
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		return Native{}, errors.New("native file must be a nonempty regular file")
 	}
 	var definition []byte
 	if !isHyper {
@@ -129,19 +127,15 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 		return Native{}, errors.New("native file fingerprint failed")
 	}
 	hash := sha256.New()
-	reader := io.LimitReader(file, maxNativeBytes+1)
 	buffer := make([]byte, 1024*1024)
 	var size int64
 	for {
 		if err := ctx.Err(); err != nil {
 			return Native{}, err
 		}
-		n, readErr := reader.Read(buffer)
+		n, readErr := file.Read(buffer)
 		size += int64(n)
 		hash.Write(buffer[:n])
-		if size > maxNativeBytes {
-			return Native{}, errors.New("native file exceeds 1 GiB")
-		}
 		if readErr == io.EOF {
 			break
 		}

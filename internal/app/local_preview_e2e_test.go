@@ -40,7 +40,7 @@ func TestWorkspaceLocalPreviewsPreserveState(t *testing.T) {
 	if _, err := manager.SetDefault(t.Context(), "source"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := artifact.NewWorkbookManager(nil).Pull(t.Context(), artifact.WorkbookPull{Workspace: source, Filename: "Sales.twb", Content: []byte("<workbook/>"), Metadata: artifact.WorkbookMetadata{Name: "Sales", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.test", SourceSiteLUID: "site-1", SourceEnvironment: "example", SourceSite: "example", SourceProjectName: "Analytics", SourceProjectID: "project-1"}})
+	_, err := artifact.NewWorkbookManager(nil).Pull(t.Context(), artifact.WorkbookPull{Workspace: source, Filename: "Sales.twb", PayloadPath: payloadFile(t, []byte("<workbook/>")), Metadata: artifact.WorkbookMetadata{Name: "Sales", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.test", SourceSiteLUID: "site-1", SourceEnvironment: "example", SourceSite: "example", SourceProjectName: "Analytics", SourceProjectID: "project-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -109,7 +109,7 @@ func pullAssertGolden(t *testing.T, name string, value any, full bool) {
 	}
 }
 func (pullReader) DownloadFlow(context.Context, string) (flowpull.PullDownload, error) {
-	return flowpull.PullDownload{Filename: "Daily.tflx", Content: []byte("native\x00flow")}, nil
+	return flowpull.PullDownload{Filename: "Daily.tflx", Path: "native\x00flow"}, nil
 }
 func (pullReader) CaptureLineage(context.Context, flowpull.PullLineageRequest) (flowpull.PullLineage, error) {
 	return flowpull.PullLineage{Complete: true, Nodes: []flowpull.PullLineageNode{{MetadataID: "m-1", Kind: "flow", RESTLUID: "f-1"}}}, nil
@@ -134,7 +134,7 @@ func TestPullActionPullsNativeFlowWithBoundedLineage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(w.input.Content) != "native\x00flow" || w.input.Filename != "Daily.tflx" {
+	if w.input.Path != "native\x00flow" || w.input.Filename != "Daily.tflx" {
 		t.Fatalf("artifact input = %#v", w.input)
 	}
 	compact := output.CompactOutput().(flowpull.PullCompactResult)

@@ -23,10 +23,10 @@ func TestDatasourceManagerPullPreservesNativePayloadAndRecordsProvenance(t *test
 			content := []byte("native" + extension + "\x00payload")
 			metadata := validDatasourceMetadata("Finance", "ds-"+extension)
 			result, err := manager.Pull(context.Background(), DatasourcePull{
-				Workspace: workspace,
-				Filename:  "Finance" + extension,
-				Content:   content,
-				Metadata:  metadata,
+				Workspace:   workspace,
+				Filename:    "Finance" + extension,
+				PayloadPath: payloadFile(t, content),
+				Metadata:    metadata,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -79,13 +79,13 @@ func TestDatasourceManagerUsesNormalizedSourceIdentityForRefresh(t *testing.T) {
 	manager := NewDatasourceManager(time.Now)
 	first := validDatasourceMetadata("Finance", "ds-1")
 	first.SourceServerOrigin = " HTTPS://TABLEAU.EXAMPLE.COM:443/path?ignored=yes "
-	initial, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("v1"), Metadata: first})
+	initial, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("v1")), Metadata: first})
 	if err != nil {
 		t.Fatal(err)
 	}
 	refresh := validDatasourceMetadata("Finance Renamed", "ds-1")
 	refresh.SourceServerOrigin = "https://tableau.example.com"
-	updated, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Renamed.tds", Content: []byte("v2"), Metadata: refresh})
+	updated, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Renamed.tds", PayloadPath: payloadFile(t, []byte("v2")), Metadata: refresh})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestDatasourceManagerPersistsCompositionReferencesAndLineageSidecar(t *test
 	manager := NewDatasourceManager(time.Now)
 	lineage := LineageDocument{Complete: true, Direction: "both", Depth: 1, Nodes: []LineageNode{{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"}}}
 	content := []byte(`<datasource><repository-location id="Sales" path="/datasources" revision="1.0"/><relation datasource-url="parent-b"/><relation datasource-url="parent-a"/></datasource>`)
-	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Sales.tds", Content: content, Metadata: validDatasourceMetadata("Sales", "ds-1"), Lineage: lineage})
+	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Sales.tds", PayloadPath: payloadFile(t, content), Metadata: validDatasourceMetadata("Sales", "ds-1"), Lineage: lineage})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,11 +139,11 @@ func TestDatasourceManagerKeepsSameLUIDFromDifferentSitesDistinct(t *testing.T) 
 	second := validDatasourceMetadata("Finance", "ds-1")
 	second.SourceSiteLUID = "site-2"
 
-	one, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("one"), Metadata: first})
+	one, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("one")), Metadata: first})
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("two"), Metadata: second})
+	two, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("two")), Metadata: second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestDatasourceManagerKeepsSameLUIDFromDifferentSitesDistinct(t *testing.T) 
 func TestDatasourceManagerProtectsDirtyRefreshUnlessOverwrite(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewDatasourceManager(time.Now)
-	input := DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("remote-v1"), Metadata: validDatasourceMetadata("Finance", "ds-1")}
+	input := DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("remote-v1")), Metadata: validDatasourceMetadata("Finance", "ds-1")}
 	first, err := manager.Pull(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestDatasourceManagerProtectsDirtyRefreshUnlessOverwrite(t *testing.T) {
 	if err := os.WriteFile(first.CanonicalPath, []byte("local edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	input.Content = []byte("remote-v2")
+	input.PayloadPath = payloadFile(t, []byte("remote-v2"))
 	if _, err := manager.Pull(context.Background(), input); err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Fatalf("dirty refresh error = %v", err)
 	}
@@ -188,7 +188,7 @@ func TestDatasourceManagerProtectsDirtyRefreshUnlessOverwrite(t *testing.T) {
 func TestDatasourceManagerRestoresPreviousArtifactWhenReplacementInstallFails(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewDatasourceManager(time.Now)
-	input := DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("v1"), Metadata: validDatasourceMetadata("Finance", "ds-1")}
+	input := DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("v1")), Metadata: validDatasourceMetadata("Finance", "ds-1")}
 	first, err := manager.Pull(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestDatasourceManagerRestoresPreviousArtifactWhenReplacementInstallFails(t 
 		}
 		return realRename(oldPath, newPath)
 	}
-	input.Content = []byte("v2")
+	input.PayloadPath = payloadFile(t, []byte("v2"))
 	_, err = manager.Pull(context.Background(), input)
 	if err == nil || !strings.Contains(err.Error(), "injected install failure") {
 		t.Fatalf("replacement error = %v", err)
@@ -222,10 +222,10 @@ func TestDatasourceManagerHonorsWorkspaceLock(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		_, pullErr := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{
-			Workspace: workspace,
-			Filename:  "Finance.tds",
-			Content:   []byte("remote"),
-			Metadata:  validDatasourceMetadata("Finance", "ds-1"),
+			Workspace:   workspace,
+			Filename:    "Finance.tds",
+			PayloadPath: payloadFile(t, []byte("remote")),
+			Metadata:    validDatasourceMetadata("Finance", "ds-1"),
 		})
 		done <- pullErr
 	}()
@@ -252,7 +252,7 @@ func TestDatasourceManagerHonorsWorkspaceLock(t *testing.T) {
 func TestDatasourceManagerRejectsOversizedMetadata(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewDatasourceManager(time.Now)
-	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("remote"), Metadata: validDatasourceMetadata("Finance", "ds-1")})
+	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validDatasourceMetadata("Finance", "ds-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,10 +281,10 @@ func TestDatasourceManagerRejectsSymlinkedArtifactRoot(t *testing.T) {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	_, err := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{
-		Workspace: workspace,
-		Filename:  "Finance.tds",
-		Content:   []byte("remote"),
-		Metadata:  validDatasourceMetadata("Finance", "ds-1"),
+		Workspace:   workspace,
+		Filename:    "Finance.tds",
+		PayloadPath: payloadFile(t, []byte("remote")),
+		Metadata:    validDatasourceMetadata("Finance", "ds-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
 		t.Fatalf("Pull error = %v", err)
@@ -297,7 +297,7 @@ func TestDatasourceManagerRejectsSymlinkedArtifactRoot(t *testing.T) {
 func TestDatasourceManagerRejectsSymlinkedCanonicalPayload(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewDatasourceManager(time.Now)
-	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", Content: []byte("remote"), Metadata: validDatasourceMetadata("Finance", "ds-1")})
+	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tds", PayloadPath: payloadFile(t, []byte("remote")), Metadata: validDatasourceMetadata("Finance", "ds-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,10 +320,10 @@ func TestDatasourceManagerRejectsIncompleteMetadata(t *testing.T) {
 	metadata := validDatasourceMetadata("Finance", "ds-1")
 	metadata.SourceProjectID = ""
 	_, err := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{
-		Workspace: createDatasourceWorkspace(t),
-		Filename:  "Finance.tds",
-		Content:   []byte("remote"),
-		Metadata:  metadata,
+		Workspace:   createDatasourceWorkspace(t),
+		Filename:    "Finance.tds",
+		PayloadPath: payloadFile(t, []byte("remote")),
+		Metadata:    metadata,
 	})
 	if err == nil || !strings.Contains(err.Error(), "source_project_id") {
 		t.Fatalf("Pull error = %v", err)
@@ -349,5 +349,52 @@ func validDatasourceMetadata(name, tableauID string) DatasourceMetadata {
 		SourceSite:         "primary",
 		SourceProjectName:  "Department/Ops",
 		SourceProjectID:    "project-1",
+	}
+}
+
+func TestDatasourceManagerInstallsTheDownloadedPayloadByRename(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	download := filepath.Join(workspace, ".tadx", "tmp", "pull", "payload")
+	if err := os.MkdirAll(filepath.Dir(download), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(download, []byte("native-package"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	downloaded, err := os.Stat(download)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tdsx", PayloadPath: download, Metadata: validDatasourceMetadata("Finance", "ds-1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.Stat(result.CanonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(downloaded, installed) {
+		t.Fatal("the downloaded payload was copied instead of renamed into the artifact")
+	}
+	if _, err := os.Stat(download); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("downloaded payload still present: %v", err)
+	}
+	if result.BaselineFingerprint != fingerprint([]byte("native-package")) {
+		t.Fatalf("baseline = %q", result.BaselineFingerprint)
+	}
+}
+
+func TestDatasourceManagerLeavesNoStagingWhenThePayloadCannotBeRead(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	_, err := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tdsx", PayloadPath: filepath.Join(workspace, "missing"), Metadata: validDatasourceMetadata("Finance", "ds-1")})
+	if err == nil || !strings.Contains(err.Error(), "fingerprint downloaded datasource") {
+		t.Fatalf("error = %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(workspace, "artifacts", "datasource"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		t.Fatalf("unexpected entry %q after a failed pull", entry.Name())
 	}
 }

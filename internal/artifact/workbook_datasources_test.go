@@ -87,21 +87,21 @@ const (
 
 func TestReadWorkbookDatasourcesReturnsLivePublishedConnections(t *testing.T) {
 	want := []WorkbookDatasource{{Caption: "Sales & Margin", ContentURL: "SalesMargin"}, {Caption: "Orders", ContentURL: "Orders"}}
-	got, err := ReadWorkbookDatasources(context.Background(), "Sales.twb", []byte(workbookDatasourceFixture))
+	got, err := ReadWorkbookDatasources(context.Background(), "Sales.twb", payloadFile(t, []byte(workbookDatasourceFixture)))
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("twb datasources=%#v err=%v", got, err)
 	}
 	packaged := workbookPackageFixture(t, workbookDatasourceFixture)
-	got, err = ReadWorkbookDatasources(context.Background(), "Sales.twbx", packaged)
+	got, err = ReadWorkbookDatasources(context.Background(), "Sales.twbx", payloadFile(t, packaged))
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("twbx datasources=%#v err=%v", got, err)
 	}
-	got, err = ReadWorkbookDatasources(context.Background(), "Embedded.twb", []byte("<workbook><datasources><datasource name='Parameters'/></datasources></workbook>"))
+	got, err = ReadWorkbookDatasources(context.Background(), "Embedded.twb", payloadFile(t, []byte("<workbook><datasources><datasource name='Parameters'/></datasources></workbook>")))
 	if err != nil || len(got) != 0 {
 		t.Fatalf("embedded datasources=%#v err=%v", got, err)
 	}
 	for name, content := range map[string][]byte{"Broken.twb": []byte("<workbook><datasources>"), "Broken.twbx": []byte("not a zip"), "Book.tds": []byte("<workbook/>")} {
-		if _, err := ReadWorkbookDatasources(context.Background(), name, content); err == nil {
+		if _, err := ReadWorkbookDatasources(context.Background(), name, payloadFile(t, content)); err == nil {
 			t.Fatalf("%s was accepted", name)
 		}
 	}
@@ -112,7 +112,7 @@ func TestReadWorkbookDatasourcesStopsWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	for name, content := range map[string][]byte{"Large.twb": []byte(large), "Large.twbx": workbookPackageFixture(t, large)} {
-		if _, err := ReadWorkbookDatasources(ctx, name, content); err != context.Canceled {
+		if _, err := ReadWorkbookDatasources(ctx, name, payloadFile(t, content)); err != context.Canceled {
 			t.Fatalf("%s cancel=%v", name, err)
 		}
 	}

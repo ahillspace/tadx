@@ -84,7 +84,7 @@ const (
 type WorkbookPull struct {
 	Workspace          string
 	Filename           string
-	Content            []byte
+	PayloadPath        string
 	Metadata           WorkbookMetadata
 	Lineage            LineageDocument
 	LineageCountsKnown bool
@@ -222,7 +222,10 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (_ Workb
 			warnings = append(warnings, "clean workbook artifact refreshed from Tableau")
 		}
 	}
-	baseline := fingerprint(input.Content)
+	baseline, err := fingerprintFile(ctx, input.PayloadPath)
+	if err != nil {
+		return WorkbookPullResult{}, fmt.Errorf("fingerprint downloaded workbook: %w", err)
+	}
 	metadata := input.Metadata
 	metadata.Kind = "workbook"
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
@@ -251,7 +254,10 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (_ Workb
 		return WorkbookPullResult{}, fmt.Errorf("create artifact staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
-	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(view)}, operations); err != nil {
+	if err := stagePayload(staging, filename, input.PayloadPath, operations); err != nil {
+		return WorkbookPullResult{}, err
+	}
+	if err := writeStagedArtifact(staging, map[string][]byte{"metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(view)}, operations); err != nil {
 		return WorkbookPullResult{}, err
 	}
 	replacementWarnings, err := replaceDirectoryWithOperations(staging, target, operations)
@@ -369,7 +375,7 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("fingerprint canonical workbook: %w", err)
 	}
-	datasources, err := readWorkbookDatasourceFile(ctx, canonical)
+	datasources, err := ReadWorkbookDatasources(ctx, canonical, canonical)
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("read canonical workbook datasources: %w", err)
 	}
@@ -938,6 +944,17 @@ func writeFileSync(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return file.Close()
+}
+
+// stagePayload moves a downloaded payload into the staging directory, so a
+// package of any size is installed by rename instead of being copied. The
+// payload must already be durable and on the workspace filesystem.
+func stagePayload(staging, filename, payloadPath string, operations directoryOperations) error {
+	operations = operations.withDefaults()
+	if err := operations.rename(payloadPath, filepath.Join(staging, filename)); err != nil {
+		return fmt.Errorf("move downloaded %s into artifact staging: %w", filename, err)
+	}
+	return nil
 }
 
 // writeStagedArtifact writes each staged file durably and then flushes the

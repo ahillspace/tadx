@@ -14,7 +14,7 @@ import (
 func TestDeleteRejectsMetadataChangeThatMakesArtifactDirty(t *testing.T) {
 	root := createMoveTestWorkspace(t, "delete-revalidate")
 	created, err := NewWorkbookManager(time.Now).Pull(context.Background(), WorkbookPull{
-		Workspace: root, Filename: "Finance.twbx", Content: []byte("payload"), Metadata: moveTestMetadata(),
+		Workspace: root, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("payload")), Metadata: moveTestMetadata(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestMoveRejectsSidecarChangeAtAtomicCommit(t *testing.T) {
 	source := createMoveTestWorkspace(t, "move-source")
 	destination := createMoveTestWorkspace(t, "move-destination")
 	created, err := NewWorkbookManager(time.Now).Pull(context.Background(), WorkbookPull{
-		Workspace: source, Filename: "Finance.twbx", Content: []byte("payload"), Metadata: moveTestMetadata(),
+		Workspace: source, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("payload")), Metadata: moveTestMetadata(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestMoveKeepsInstalledDestinationWhenSourceTombstoneCleanupPartiallyFails(t
 	source := createMoveTestWorkspace(t, "source")
 	destination := createMoveTestWorkspace(t, "destination")
 	created, err := NewWorkbookManager(time.Now).Pull(context.Background(), WorkbookPull{
-		Workspace: source, Filename: "Finance.twbx", Content: []byte("payload"), Metadata: moveTestMetadata(),
+		Workspace: source, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("payload")), Metadata: moveTestMetadata(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestMoveKeepsInstalledDestinationWhenSourceTombstoneCleanupPartiallyFails(t
 func TestDeleteDoesNotRestorePartiallyCleanedTombstone(t *testing.T) {
 	root := createMoveTestWorkspace(t, "delete")
 	created, err := NewWorkbookManager(time.Now).Pull(context.Background(), WorkbookPull{
-		Workspace: root, Filename: "Finance.twbx", Content: []byte("payload"), Metadata: moveTestMetadata(),
+		Workspace: root, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("payload")), Metadata: moveTestMetadata(),
 	})
 	if err != nil {
 		t.Fatal(err)

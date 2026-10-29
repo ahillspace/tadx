@@ -74,7 +74,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 	}
 	warnings = append(warnings, lineage.Warnings...)
 	result, err := writer.WriteDatasource(ctx, PullArtifact{
-		Workspace: input.Workspace, Filename: download.Filename, Content: download.Content,
+		Workspace: input.Workspace, Filename: download.Filename, Path: download.Path,
 		Name: item.Name, TableauID: item.LUID, Environment: input.Environment, Site: input.Site,
 		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: item.ProjectPath,
 		ProjectID: item.ProjectLUID, Lineage: lineage, Overwrite: input.Overwrite,
