@@ -25,16 +25,15 @@ The implementation uses these captured sections:
 - Job queries at lines 36548 through 36643.
 
 Contract tests use local HTTP servers and parse the multipart publish and append bodies.
-They assert methods, paths, headers, payload identities, exact uploaded bytes, ordered multi-block sequence IDs, pagination, response parsing, validation warnings and errors, terminal jobs, and in-flight polling timeouts.
+They assert methods, paths, headers, payload identities, exact uploaded bytes, ordered multi-block sequence IDs, pagination, response parsing, validation warnings and errors, and unknown outcomes for job-shaped publish responses.
 The local contract tests do not claim live Tableau deployment verification.
 The separate live records below cover one successful workbook round trip and one cross-site rejection.
 
-The Query Job endpoint is documented as administrator-only while workbook publish can be available to non-administrator publishers.
-Publication selects its lifecycle automatically: verified administrator monitoring uses accepted asynchronous jobs, while unavailable monitoring prerequisites retain synchronous publication.
+Workbook publication is synchronous for every user: TADX never sends `asJob` and reads no site role.
+Tableau's Cancel Job endpoint does not support publish jobs, and a live check of a pending `PublishWorkbook` job returned `404018`, so an asynchronous publish adds no capability.
+If Tableau nevertheless returns a job for a publish, TADX reports the outcome as unknown rather than failed, because the write may have been accepted.
 There is no user-facing job-mode option.
-When Tableau accepts an asynchronous publish but observation becomes unavailable or is interrupted, the mutation outcome remains unknown rather than failed.
-Active jobs do not fail merely because ten minutes elapsed.
-The error retains the job and request IDs and does not advise an automatic retry.
+The error message names the job, the error retains the request ID, and it does not advise an automatic retry.
 The capture disagrees on a 1,000-block versus 10,000-block upload limit.
 TADX applies the conservative 1,000-block limit.
 
@@ -79,13 +78,15 @@ Content URLs are unique per site, and Tableau appends `_<digits>` when a publish
 A repeatable `--datasource-binding <source name or content URL>=<target LUID>` flag maps one workbook reference to an exact target datasource.
 TADX reads the target by REST LUID and rewrites only a temporary upload copy: the live and cached `sqlproxy` `dbname`, the connection server, port, and channel when the target host differs, and the datasource repository location.
 The source workbook file is never changed.
-References without a binding are left to Tableau, and a `400011` rejection is reported as not applied with exact candidates from one bounded datasource listing of the target site.
-A candidate has the reference's exact name, its exact content URL, or that content URL followed by `_<digits>`.
+References without a binding are left to Tableau.
+On a `400011` rejection, TADX sends one exact `contentUrl:in:[...]` datasource request for the distinct unbound content URLs, in batches of at most 25.
+If every URL exists on the site, Tableau's rejection is returned unchanged.
+Otherwise the rejection is reported as not applied and lists only the missing references.
+Exact `name:in:[...]` requests for their captions, 25 names per request, supply candidates with the same name, each with a remap command.
+Captions containing a comma are not searched, because Tableau name filters cannot contain a comma.
+Neither request pages the site, so the cost is bounded by the workbook's references rather than site size.
 
-Site administrators publish through an asynchronous `PublishWorkbook` job, and Tableau reports a missing published datasource only as a failed job.
-A live Tableau Cloud run on 2026-10-28 returned `progress="100"` with `finishCode="1"` and an empty `<statusNotes/>`, so the job carries no reason or error code.
-For a failed job, TADX runs the same bounded candidate listing and reports the same explanation as not applied only when one or more unbound content URLs have no datasource on the site.
-Without that evidence it keeps the failed-job monitoring error.
+A live Tableau Cloud run on 2026-10-28 showed why publication avoids asynchronous jobs: a failed `PublishWorkbook` job for a missing published datasource returned `progress="100"` with `finishCode="1"` and an empty `<statusNotes/>`, so the job carried no reason or error code.
 The same run confirmed that a datasource published under a collided name received a `_<digits>` content URL and that a workbook published with `--datasource-binding` to that datasource was bound to it on pull.
 
 ## Workbook published datasource detection

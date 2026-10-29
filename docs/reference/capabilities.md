@@ -3144,9 +3144,9 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts in 
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID and each datasource binding; collision/overwrite explicit; no fuzzy target; only a temporary upload copy is rebound; unmapped references are left to Tableau, and its datasource-not-found rejection lists exact candidates
+- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID and each datasource binding; collision/overwrite explicit; no fuzzy target; only a temporary upload copy is rebound; unmapped references are left to Tableau, and its datasource-not-found rejection lists the missing references with exact-name candidates
 - Artifact effect: Read / publish
-- Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB; datasource exact GET and bounded list for bindings and candidates
+- Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB; datasource exact GET for bindings; exact contentUrl and name in-filter datasource lists after a datasource-not-found rejection
 - Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture
 - Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md; standalone workbook check not admitted
 - Blocker ID: None

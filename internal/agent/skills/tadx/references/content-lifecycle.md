@@ -12,7 +12,7 @@ Publishing those datasources elsewhere does not itself rebind the workbook to th
 Tableau binds each reference by its datasource content URL on the destination site, not by name or LUID.
 When that URL is already taken, Tableau assigns a suffixed URL such as `Sales_1`; datasource publish reports it and the workbook binding to use.
 Workbook publish leaves every reference to Tableau unless an explicit binding maps it to an exact destination datasource.
-A preview warns about references that will likely fail and lists exact candidates; check a candidate before mapping to it.
+When Tableau rejects a publish because a referenced datasource is missing, the error lists each missing reference and exact same-name candidates; check a candidate before mapping to it.
 Inspect dependency and portability metadata before promising a cross-site working copy; do not treat downloaded files as proof that every connection will work at the destination.
 
 Flows can also reference published datasources, files, and databases.

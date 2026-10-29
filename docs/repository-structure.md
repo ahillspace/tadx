@@ -89,7 +89,7 @@ These boundaries constrain package dependencies; they do not require an adapter 
 
 ## Runtime and local state
 
-`internal/app` resolves the configuration, workspace, authentication, and clients needed for one invocation, including supported sequential batches.
+`internal/app` resolves the configuration, workspace, authentication, and clients needed for one invocation, including supported batches, whose items run in parallel.
 Mutation validation uses fresh state at the relevant validation boundaries.
 Tableau LUIDs provide authoritative remote identity; ambiguous name and project selectors fail deterministically.
 Configuration stores credential references, while approved persistent PATs reside only in the native OS credential store.
@@ -104,7 +104,7 @@ Persisted artifact paths are relative to the workspace and use forward slashes.
 Workbook, datasource, and flow publish and pull can hand execution to a detached instance of the same binary.
 This is a per-operation worker, not a resident service.
 The default foreground wait ends at completion or the shared 20-minute invocation limit; `--no-wait` returns after durable handoff with one status command for the single operation or batch.
-Publication receipts retain accepted Tableau job identities, while download workers save native files and metadata without inventing remote job IDs.
+Publication receipts retain synchronous publish results, job receipts retain accepted Tableau job identities, and download workers save native files and metadata without inventing remote job IDs.
 Local operation records live outside the source checkout and are inspected through `tadx job inspect --operation-id`.
 Active transfers can hold the shared PAT lease; returning the terminal does not promise concurrent remote access with that credential.
 
