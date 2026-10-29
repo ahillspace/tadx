@@ -16,7 +16,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -238,7 +237,6 @@ func (duplicateContentError) CacheDuplicateContent() bool { return true }
 type Store struct {
 	root         string
 	now          func() time.Time
-	initMu       sync.Mutex
 	relativePath string
 	targetErr    error
 }
@@ -259,8 +257,6 @@ func (s *Store) open(ctx context.Context, refresh ...bool) (*sql.DB, error) {
 	if s.targetErr != nil {
 		return nil, s.targetErr
 	}
-	s.initMu.Lock()
-	defer s.initMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -278,13 +274,9 @@ func (s *Store) open(ctx context.Context, refresh ...bool) (*sql.DB, error) {
 	if dirInfo.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("cache directory must not be a symlink")
 	}
-	preExisted := true
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		preExisted = false
-	} else if err != nil {
+	if info, err := os.Lstat(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("inspect cache database: %w", err)
-	} else if !info.Mode().IsRegular() {
+	} else if err == nil && !info.Mode().IsRegular() {
 		return nil, errors.New("cache database must be a regular file")
 	}
 	dsn, err := cacheDSN(path)
@@ -297,22 +289,9 @@ func (s *Store) open(ctx context.Context, refresh ...bool) (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
-	if err := ensureSchema(ctx, db); err != nil {
+	if err := ensureSchema(ctx, db, path); err != nil {
 		db.Close()
-		// A file we created this call could hold a partially-initialized schema;
-		// remove it so the next open re-initializes rather than wedging. Only our
-		// own newly-created file is removed, never a pre-existing database.
-		if !preExisted {
-			removeDatabaseFiles(path)
-		}
 		return nil, err
-	}
-	if !preExisted {
-		if err := restrictDatabasePermissions(path); err != nil {
-			db.Close()
-			removeDatabaseFiles(path)
-			return nil, err
-		}
 	}
 	if err := validateSchema(ctx, db); err != nil {
 		var rebuild schemaRebuildRequired
@@ -357,12 +336,6 @@ func restrictDatabasePermissions(path string) error {
 		}
 	}
 	return nil
-}
-
-func removeDatabaseFiles(path string) {
-	for _, p := range []string{path, path + "-wal", path + "-shm"} {
-		_ = os.Remove(p)
-	}
 }
 
 func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {

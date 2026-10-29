@@ -94,7 +94,7 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (_ Lineage
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return LineagePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	handle, err := lockWorkspace(workspace)
+	handle, err := lockWorkspace(ctx, workspace)
 	if err != nil {
 		return LineagePullResult{}, err
 	}

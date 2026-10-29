@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/ahillspace/tadx/internal/lock"
 )
 
 // SQL table names and signatures retain their established storage contract.
@@ -55,7 +57,12 @@ func resourceDDL(table, columns, key string) string {
 // re-initializes rather than wedging on a half-built database. A brand-new
 // database's rows are never partially visible because the whole schema commits
 // atomically.
-func ensureSchema(ctx context.Context, db *sql.DB) error {
+//
+// Initializers take an advisory lock beside the database file rather than
+// relying on SQLite's own locking: switching a fresh database to WAL fails at
+// once with SQLITE_BUSY, without waiting, while another connection holds the
+// initialization transaction.
+func ensureSchema(ctx context.Context, db *sql.DB, path string) error {
 	var userVersion int
 	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&userVersion); err != nil {
 		return fmt.Errorf("read cache schema version: %w", err)
@@ -66,6 +73,17 @@ func ensureSchema(ctx context.Context, db *sql.DB) error {
 	if userVersion != 0 {
 		return nil
 	}
+	handle, err := lock.AcquireContext(ctx, path+".init.lock")
+	if err != nil {
+		return fmt.Errorf("lock cache for initialization: %w", err)
+	}
+	defer func() { _ = handle.Release() }()
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&userVersion); err != nil {
+		return fmt.Errorf("read cache schema version: %w", err)
+	}
+	if userVersion != 0 {
+		return nil
+	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -73,6 +91,9 @@ func ensureSchema(ctx context.Context, db *sql.DB) error {
 	defer conn.Close()
 	if _, err := conn.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
 		return fmt.Errorf("enable cache WAL: %w", err)
+	}
+	if err := restrictDatabasePermissions(path); err != nil {
+		return err
 	}
 	// BEGIN IMMEDIATE takes the write lock up front so two processes cannot both
 	// run the DDL; the loser blocks (busy_timeout) and then observes the winner's

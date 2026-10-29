@@ -160,7 +160,7 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (_ Workb
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	handle, err := lockWorkspace(workspace)
+	handle, err := lockWorkspace(ctx, workspace)
 	if err != nil {
 		return WorkbookPullResult{}, err
 	}

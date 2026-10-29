@@ -588,6 +588,11 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/artifact") {
 			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/pathspec")
 		}
+		// The cache serializes first-time SQLite schema initialization across
+		// Store instances and tadx processes with the leaf lock package.
+		if hasPathPrefix(file, "internal/cache") {
+			return matchesExact(imported, "internal/lock")
+		}
 		// The config package owns the user-configuration read-modify-write
 		// critical section and serializes it against other tadx processes via
 		// the leaf lock package so concurrent env/workspace updates cannot lose
