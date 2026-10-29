@@ -72,7 +72,8 @@ Reuse sessions only for the same server, site, and actual credential identity; r
 Preserve selection-order batch results and per-item failures.
 Keep local input and artifact prerequisite validation before authentication, with one owner for each unchanged fact; then validate remote state.
 Reuse a project index within one validation phase, but obtain fresh evidence for a separate pre-write phase.
-Do not introduce persisted sessions, generic retries, or implicit remote-to-cache fallback as shortcuts.
+Persist sessions only beside their stored PAT in the native credential store, keyed to its exact target, PAT identity, and sign-in epoch.
+Resend a request only after Tableau rejects its session; do not introduce generic retries or implicit remote-to-cache fallback as shortcuts.
 
 ## Preserve output and safety contracts
 

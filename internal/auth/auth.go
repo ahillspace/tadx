@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // TableauAuthHeader is the Tableau session authorization header.
@@ -37,6 +38,11 @@ type Session interface {
 	Authorize(*http.Request)
 	SiteLUID() string
 	UserLUID() string
+	// Renew signs in again after Tableau rejects the session carried by the
+	// rejected request headers. When the session has already replaced that
+	// token, Renew returns nil without signing in, so concurrent rejections
+	// cause one sign-in.
+	Renew(ctx context.Context, rejected http.Header) error
 }
 
 // LookupEnv reads one environment variable.
@@ -143,12 +149,38 @@ func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session,
 	if err != nil {
 		return nil, err
 	}
-	return signIn(ctx, target, credentials, p.signer)
+	response, err := signIn(ctx, target, credentials, p.signer)
+	if err != nil {
+		return nil, err
+	}
+	return newSession(response, &providerRenewal{target: target, credentials: credentials, signer: p.signer}), nil
 }
 
-func signIn(ctx context.Context, target Target, credentials PATCredentials, signer Signer) (Session, error) {
+// providerRenewal signs a provider session in again with the PAT it was issued for.
+type providerRenewal struct {
+	mu          sync.Mutex
+	target      Target
+	credentials PATCredentials
+	signer      Signer
+}
+
+func (r *providerRenewal) renew(ctx context.Context, current *session, rejected string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current.currentToken() != rejected {
+		return nil
+	}
+	response, err := signIn(ctx, r.target, r.credentials, r.signer)
+	if err != nil {
+		return err
+	}
+	return current.replace(response)
+}
+
+// signIn exchanges a PAT for a session and validates the returned identity.
+func signIn(ctx context.Context, target Target, credentials PATCredentials, signer Signer) (SignInResponse, error) {
 	if signer == nil {
-		return nil, errors.New("PAT sign-in client is not configured")
+		return SignInResponse{}, errors.New("PAT sign-in client is not configured")
 	}
 	name := credentials.Name
 	secret := credentials.Secret
@@ -160,30 +192,64 @@ func signIn(ctx context.Context, target Target, credentials PATCredentials, sign
 		Operation:      target.Operation,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sign in: %w", redactError(err, name, secret))
+		return SignInResponse{}, fmt.Errorf("sign in: %w", redactError(err, name, secret))
 	}
 	if response.Token == "" {
-		return nil, errors.New("sign in returned an empty session token")
+		return SignInResponse{}, errors.New("sign in returned an empty session token")
 	}
 	if response.SiteLUID == "" {
-		return nil, errors.New("sign in returned an empty site LUID")
+		return SignInResponse{}, errors.New("sign in returned an empty site LUID")
 	}
 	if response.UserLUID == "" {
-		return nil, errors.New("sign in returned an empty user LUID")
+		return SignInResponse{}, errors.New("sign in returned an empty user LUID")
 	}
-	return &session{token: response.Token, siteLUID: response.SiteLUID, userLUID: response.UserLUID}, nil
+	return response, nil
 }
 
+// session holds one site's token, which renewal replaces in place so every
+// client sharing the session sends the current token.
 type session struct {
+	mu       sync.RWMutex
 	token    string
 	siteLUID string
 	userLUID string
+	renewal  renewal
+}
+
+// renewal signs a session in again after Tableau rejects its token.
+type renewal interface {
+	renew(ctx context.Context, current *session, rejected string) error
+}
+
+func newSession(response SignInResponse, renewal renewal) *session {
+	return &session{token: response.Token, siteLUID: response.SiteLUID, userLUID: response.UserLUID, renewal: renewal}
 }
 
 func (s *session) Authorize(request *http.Request) {
 	if request != nil {
-		request.Header.Set(TableauAuthHeader, s.token)
+		request.Header.Set(TableauAuthHeader, s.currentToken())
 	}
+}
+
+func (s *session) Renew(ctx context.Context, rejected http.Header) error {
+	return s.renewal.renew(ctx, s, rejected.Get(TableauAuthHeader))
+}
+
+func (s *session) currentToken() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.token
+}
+
+// replace installs a new sign-in, which must keep the session's site and user.
+func (s *session) replace(response SignInResponse) error {
+	if response.SiteLUID != s.siteLUID || response.UserLUID != s.userLUID {
+		return errors.New("signing in again returned a different site or user")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.token = response.Token
+	return nil
 }
 
 func (s *session) SiteLUID() string { return s.siteLUID }

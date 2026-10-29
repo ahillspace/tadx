@@ -21,12 +21,16 @@ import (
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type session struct{}
 
-func (session) Authorize(request *http.Request) { request.Header.Set("X-Tableau-Auth", "token") }
-func (session) SiteLUID() string                { return "site-1" }
-func (session) UserLUID() string                { return "user-1" }
-func (session) String() string                  { return "session" }
+func (session) Authorize(request *http.Request)          { request.Header.Set("X-Tableau-Auth", "token") }
+func (session) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (session) SiteLUID() string                         { return "site-1" }
+func (session) UserLUID() string                         { return "user-1" }
+func (session) String() string                           { return "session" }
 
 func TestClientUpdatesOnlyExplicitWorkbookFields(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -75,9 +79,10 @@ type tokenSession string
 func (s tokenSession) Authorize(request *http.Request) {
 	request.Header.Set("X-Tableau-Auth", string(s))
 }
-func (tokenSession) SiteLUID() string { return "site-1" }
-func (tokenSession) UserLUID() string { return "user-1" }
-func (tokenSession) String() string   { return "session" }
+func (tokenSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (tokenSession) SiteLUID() string                         { return "site-1" }
+func (tokenSession) UserLUID() string                         { return "user-1" }
+func (tokenSession) String() string                           { return "session" }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

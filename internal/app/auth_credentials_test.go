@@ -18,6 +18,7 @@ type fakePATStore struct {
 	records   map[coreauth.CredentialReference]coreauth.PATCredentials
 	deleted   []coreauth.CredentialReference
 	deleteErr error
+	sessions  map[coreauth.CredentialReference]coreauth.SavedSession
 }
 
 func (s *fakePATStore) StorePAT(_ context.Context, _ coreauth.CredentialTarget, name, secret string) (coreauth.CredentialReference, error) {
@@ -33,6 +34,7 @@ func (s *fakePATStore) ReplacePAT(_ context.Context, reference coreauth.Credenti
 		s.records = make(map[coreauth.CredentialReference]coreauth.PATCredentials)
 	}
 	s.records[reference] = coreauth.PATCredentials{Name: name, Secret: secret, Source: coreauth.CredentialSourceOSKeyring}
+	delete(s.sessions, reference)
 	return nil
 }
 
@@ -52,7 +54,24 @@ func (s *fakePATStore) DeletePAT(_ context.Context, reference coreauth.Credentia
 		return &coreauth.CredentialStoreError{Kind: coreauth.CredentialStoreNotFound, Operation: "delete"}
 	}
 	delete(s.records, reference)
+	delete(s.sessions, reference)
 	s.deleted = append(s.deleted, reference)
+	return nil
+}
+
+func (s *fakePATStore) LoadSession(_ context.Context, reference coreauth.CredentialReference, _ coreauth.CredentialTarget) (coreauth.SavedSession, error) {
+	saved, ok := s.sessions[reference]
+	if !ok {
+		return coreauth.SavedSession{}, &coreauth.CredentialStoreError{Kind: coreauth.CredentialStoreNotFound, Operation: "session load"}
+	}
+	return saved, nil
+}
+
+func (s *fakePATStore) SaveSession(_ context.Context, reference coreauth.CredentialReference, _ coreauth.CredentialTarget, saved coreauth.SavedSession) error {
+	if s.sessions == nil {
+		s.sessions = make(map[coreauth.CredentialReference]coreauth.SavedSession)
+	}
+	s.sessions[reference] = saved
 	return nil
 }
 

@@ -47,6 +47,7 @@ Tableau LUIDs are authoritative, ambiguous selectors fail, and resolution is nev
 Tableau authentication uses PATs only.
 PATs can persist only after explicit user approval in the native OS credential store.
 Configuration stores only an opaque credential reference.
+A stored PAT's session token persists only beside that PAT in the native OS credential store.
 PATs and session tokens never appear in configuration values, output, logs, artifacts, caches, fixtures, or diagnostics.
 Persist and render artifact paths relative to the resolved workspace with forward slashes.
 Never put a developer username, home directory, checkout path, private site name, or unrelated local project name in tracked files or fixtures.

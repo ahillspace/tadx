@@ -113,8 +113,21 @@ It resolves each source tuple once and coordinates authenticated use by actual P
 
 The coordination lock spans sites because another sign-in with the same PAT can invalidate earlier sessions.
 Session reuse additionally requires the exact site.
-`authenticate` reads the shared numeric sign-in epoch, invalidates earlier cached site sessions before a new sign-in, and advances the epoch after success.
+`authenticate` reads the shared numeric sign-in epoch, signs in when the command's session for the site is older than the epoch, and advances the epoch after success.
+A command keeps one session per PAT and site and refreshes it in place, so every client holding it sends the new token.
 The epoch and lock names retain opaque credential-derived identity, not an authenticating credential.
+
+A session signed in with a stored PAT is saved beside that PAT in the native credential store, in its own entry for the same credential reference.
+The saved record holds the target fingerprint, the opaque PAT identity digest, the sign-in epoch, the token, and the site and user LUIDs.
+A later command reuses it only when the target, the digest, and the epoch all match, so a replaced PAT for the same site or a newer sign-in with the same PAT for another site signs in instead.
+`ReplacePAT` and `DeletePAT` also remove the saved session.
+Sessions from environment-variable PATs are never saved.
+Saving or loading a session never fails a command; any store failure signs in.
+`SignIn`, used by `tadx auth check`, always signs in and saves the new session, because the check exists to validate the PAT.
+
+`Session.Renew` signs in again after Tableau rejects a session, whether it expired, was superseded by a sign-in outside TADX, or was never valid.
+Renewal compares the rejected token with the current one, so concurrent rejections sign in once and a request rejected with an already-renewed token resends without signing in.
+It reacquires the PAT lock if the command suspended it, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
 
 `Suspend` releases PAT locks while retaining command-local credentials and sessions.
 Later authentication checks the epoch before reusing those sessions.
@@ -137,7 +150,10 @@ The shared transport instead uses a 120-second no-progress watchdog plus caller 
 A transfer that continues making progress can exceed two minutes.
 The watchdog distinguishes sending a body, waiting for response headers, and reading a body.
 
-`Transport.Do` performs one HTTP request without automatic retries.
+`Transport.Do` performs one HTTP request.
+When Tableau rejects the request's session, with HTTP 401 and REST code 401002 or with no code from the Metadata, search, and Pulse APIs, it renews the session and sends the same request once more.
+Tableau rejects the session before processing the request, so the rejected attempt changed nothing; the [session rejection contract](../evidence/session-rejection-contract.md) records the evidence.
+A renewal failure is reported after the original rejection, and no other failure is retried.
 It rejects authenticated cleartext requests, cross-origin redirects, and HTTPS downgrade redirects.
 It attaches the session through `Session.Authorize`, adds a command correlation ID, and sanitizes request IDs and upstream diagnostics.
 It buffers ordinary request bodies and response bodies; the shared response ceiling is 256 MiB, and callers can request smaller bounds.

@@ -114,7 +114,7 @@ func TestCommandSessionSuspendReusesSessionWhenEpochIsUnchanged(t *testing.T) {
 	}
 }
 
-func TestCommandSessionMonitorDropsSessionAfterSharedEpochChanges(t *testing.T) {
+func TestCommandSessionMonitorSignsInAgainAfterSharedEpochChanges(t *testing.T) {
 	directory := t.TempDir()
 	firstManager := auth.NewCommandSessions(auth.LookupEnvFunc(commandEnvironmentLookup), nil, directory)
 	defer firstManager.Close()
@@ -139,8 +139,8 @@ func TestCommandSessionMonitorDropsSessionAfterSharedEpochChanges(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if monitor == first || signer.calls.Load() != 3 {
-		t.Fatalf("monitor session=%v first=%v signins=%d, want re-sign-in after shared epoch change", monitor, first, signer.calls.Load())
+	if monitor != first || signer.calls.Load() != 3 {
+		t.Fatalf("monitor session=%v first=%v signins=%d, want the same session signed in again after shared epoch change", monitor, first, signer.calls.Load())
 	}
 }
 

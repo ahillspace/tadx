@@ -13,15 +13,19 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type testSession struct {
 	token    string
 	siteLUID string
 }
 
-func (s testSession) String() string            { return "authenticated Tableau session" }
-func (s testSession) SiteLUID() string          { return s.siteLUID }
-func (s testSession) UserLUID() string          { return "user-1" }
-func (s testSession) Authorize(r *http.Request) { r.Header.Set(coreauth.TableauAuthHeader, s.token) }
+func (s testSession) String() string                         { return "authenticated Tableau session" }
+func (s testSession) SiteLUID() string                       { return s.siteLUID }
+func (s testSession) UserLUID() string                       { return "user-1" }
+func (s testSession) Authorize(r *http.Request)              { r.Header.Set(coreauth.TableauAuthHeader, s.token) }
+func (testSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
 
 var workbookLineageRequest = CaptureRequest{Kind: KindWorkbook, RESTLUID: "wb-1", Direction: DirectionUpstream}
 

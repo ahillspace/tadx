@@ -13,12 +13,16 @@ import (
 	"time"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type testSession struct{ token string }
 
-func (s testSession) Authorize(request *http.Request) { request.Header.Set("X-Tableau-Auth", s.token) }
-func (s testSession) SiteLUID() string                { return "site-luid" }
-func (s testSession) UserLUID() string                { return "user-luid" }
-func (s testSession) String() string                  { return "redacted session" }
+func (s testSession) Authorize(request *http.Request)        { request.Header.Set("X-Tableau-Auth", s.token) }
+func (testSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (s testSession) SiteLUID() string                       { return "site-luid" }
+func (s testSession) UserLUID() string                       { return "user-luid" }
+func (s testSession) String() string                         { return "redacted session" }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

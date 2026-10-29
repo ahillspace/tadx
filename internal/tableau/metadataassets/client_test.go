@@ -22,6 +22,9 @@ import (
 	"github.com/vektah/gqlparser/v2/validator"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type testSession struct{}
 
 type verificationFailure interface {
@@ -29,10 +32,11 @@ type verificationFailure interface {
 	VerificationFailed() bool
 }
 
-func (testSession) Authorize(r *http.Request) { r.Header.Set("X-Tableau-Auth", "fixture-token") }
-func (testSession) SiteLUID() string          { return "site-1" }
-func (testSession) UserLUID() string          { return "user-1" }
-func (testSession) String() string            { return "session" }
+func (testSession) Authorize(r *http.Request)                { r.Header.Set("X-Tableau-Auth", "fixture-token") }
+func (testSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (testSession) SiteLUID() string                         { return "site-1" }
+func (testSession) UserLUID() string                         { return "user-1" }
+func (testSession) String() string                           { return "session" }
 
 var fixtureGraphSchema = sync.OnceValues(func() (*ast.Schema, error) {
 	source, err := os.ReadFile("testdata/tableau-schema.graphql")

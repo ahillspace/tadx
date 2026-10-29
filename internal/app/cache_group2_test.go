@@ -17,6 +17,9 @@ import (
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type cacheExecutorFunc func(context.Context, tableaucache.Request) (tableaucache.Response, error)
 
 func (f cacheExecutorFunc) Do(ctx context.Context, input tableaucache.Request) (tableaucache.Response, error) {
@@ -176,9 +179,10 @@ type cacheTestSession struct{}
 func (cacheTestSession) Authorize(request *http.Request) {
 	request.Header.Set("X-Tableau-Auth", "secret-token")
 }
-func (cacheTestSession) SiteLUID() string { return "site-luid" }
-func (cacheTestSession) UserLUID() string { return "user-luid" }
-func (cacheTestSession) String() string   { return "redacted session" }
+func (cacheTestSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (cacheTestSession) SiteLUID() string                         { return "site-luid" }
+func (cacheTestSession) UserLUID() string                         { return "user-luid" }
+func (cacheTestSession) String() string                           { return "redacted session" }
 
 func TestCacheExecutorUsesSharedAuthenticatedTransport(t *testing.T) {
 	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
