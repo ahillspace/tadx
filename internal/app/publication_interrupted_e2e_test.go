@@ -10,7 +10,7 @@ import (
 
 func TestInterruptedPublicationInspectionRetainsAcceptedJobsThroughCLI(t *testing.T) {
 	fixture := newPublicationStatusFixture(t, publicationStatusFixtureOptions{jobDestination: true})
-	operationID, options := startNoWaitWorkbookPublication(t, fixture)
+	operationID, options := loadLegacyPublication(t, fixture, "single")
 	store := operationrun.Store{Directory: options.OperationDirectory}
 	// Model a worker lost after saving acceptance but before it could finish
 	// the current item and persist the final aggregate projection.
@@ -35,7 +35,7 @@ func TestInterruptedPublicationInspectionRetainsAcceptedJobsThroughCLI(t *testin
 	if job["status"] != "succeeded" || job["workbook_luid"] != "wb-new" || job["verification"] != "confirmed" {
 		t.Fatalf("confirmed job identity lost: %#v", job)
 	}
-	if fixture.publishes.Load() != 1 || fixture.jobGets.Load() != 1 {
+	if fixture.publishes.Load() != 0 || fixture.jobGets.Load() != 1 {
 		t.Fatalf("recovery requests: publishes=%d jobs=%d", fixture.publishes.Load(), fixture.jobGets.Load())
 	}
 	saved, err := store.Read(operationID)

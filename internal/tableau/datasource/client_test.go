@@ -200,6 +200,35 @@ func TestClientAvoidsLiveRejectedDatasourceContentURLSort(t *testing.T) {
 	}
 }
 
+func TestClientEncodesDatasourceNameFiltersWithAmpersands(t *testing.T) {
+	tests := []struct {
+		name  string
+		input tableaudatasource.ListRequest
+		want  string
+	}{
+		{name: "exact name", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Name: "Sales & Margin"}, want: "name:eq:Sales & Margin"},
+		{name: "one listed name", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Names: []string{"Sales & Margin"}}, want: "name:eq:Sales & Margin"},
+		{name: "listed names", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Names: []string{"Sales & Margin", "Alpha"}}, want: "name:in:[Sales & Margin,Alpha]"},
+		{name: "content URLs", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, ContentURLs: []string{"SalesMargin", "Alpha"}}, want: "contentUrl:in:[SalesMargin,Alpha]"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if filter := request.URL.Query().Get("filter"); filter != test.want {
+					t.Errorf("filter = %q, want %q (raw query %q)", filter, test.want, request.URL.RawQuery)
+				}
+				_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><datasources/></tsResponse>`)
+			}))
+			defer server.Close()
+
+			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			if _, err := client.List(context.Background(), test.input); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestClientRejectsInvalidDatasourceListInput(t *testing.T) {
 	client := tableaudatasource.NewClient(tableau.NewTransport(http.DefaultClient, "3.29", nil), session{}, "https://example.invalid")
 	tests := []struct {
@@ -210,7 +239,8 @@ func TestClientRejectsInvalidDatasourceListInput(t *testing.T) {
 		{name: "zero size", input: tableaudatasource.ListRequest{PageNumber: 1}},
 		{name: "oversize", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1001}},
 		{name: "unsafe comma", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Name: "Sales,Other"}},
-		{name: "unsafe ampersand", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Name: "Sales&Other"}},
+		{name: "unsafe name list comma", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Names: []string{"Sales", "East,West"}}},
+		{name: "empty name list value", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Names: []string{"Sales", " "}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

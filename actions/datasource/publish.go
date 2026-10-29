@@ -11,17 +11,12 @@ import (
 	"strings"
 )
 
-// ErrPublishedDatasourceNotVisible identifies a successful publish whose exact
-// destination is not yet exposed by Tableau's name index.
-var PublishErrPublishedDatasourceNotVisible = errors.New("published datasource is not visible in the Tableau name index")
-
 type ArtifactReader interface {
 	ReadDatasource(context.Context, string) (PublishArtifact, error)
 }
 type PublishResolver interface {
 	ProjectResolver
 	CollisionReader
-	ResolvePublishedDatasource(context.Context, string, string) (Record, error)
 }
 type PublishPreparer interface {
 	Prepare(context.Context, PublishRequest) (PreparedPublish, error)
@@ -88,27 +83,15 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
-		if known, ok := errors.AsType[*errs.Error](err); ok && known.Phase != "" {
-			if result.Status == "succeeded" {
-				result.Verification = "destination_unavailable"
-			}
-			if result != (PublishResult{}) {
-				out.Result = &result
-			}
-			return out, err
-		}
 		requestID := result.TableauRequestID
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)
 		}
 		errorID, summary := "datasource.publish.failed", "Datasource publish failed."
 		correctiveAction := "Review the upstream error before publishing again."
-		if result.Status == "unknown" || result.Status == "timed_out" || result.Status == "cancelled" {
+		if result.Status == "unknown" {
 			errorID, summary = "datasource.publish.outcome_unknown", "The datasource publish outcome could not be determined."
 			correctiveAction = "Inspect the target site and Tableau request before attempting another publish."
-			if result.JobID != "" {
-				correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
-			}
 		}
 		if hint := publishPublishInspectionHint(plan, result); hint != "" {
 			correctiveAction += " Run " + hint + "."
@@ -116,17 +99,14 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 		if result != (PublishResult{}) {
 			out.Result = &result
 		}
-		return out, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: new(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+		return out, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: new(false), CorrectiveAction: correctiveAction, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	out.Result = &result
-	if result.Status == "pending" || result.Status == "running" {
-		return out, nil
-	}
-	return a.Complete(ctx, out)
+	return a.Complete(out)
 }
 
-// Complete confirms a completed publish without ever repeating its write.
-func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOutput, error) {
+// Complete confirms the publish destination without ever repeating its write.
+func (a *Publisher) Complete(out PublishOutput) (PublishOutput, error) {
 	out.Help = nil
 	if out.Result == nil {
 		return out, nil
@@ -137,28 +117,9 @@ func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOut
 		return out, nil
 	}
 	input := PublishInput{Environment: plan.Target.Environment, Site: plan.Target.Site}
-	if result.DatasourceLUID == "" {
-		resolved, resolveErr := a.resolver.ResolvePublishedDatasource(ctx, plan.DatasourceName, plan.Target.ProjectLUID)
-		if resolveErr != nil {
-			if errors.Is(resolveErr, PublishErrPublishedDatasourceNotVisible) {
-				result.Verification = "destination_pending"
-				out.Help = []string{"Publication succeeded; its destination is not yet visible in the name index. Do not repeat publication.", publishPublishInspectionHint(plan, result)}
-				return out, nil
-			}
-			result.Verification = "destination_unavailable"
-			return out, publishUnknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))
-		}
-		if strings.TrimSpace(resolved.LUID) == "" || resolved.Name != plan.DatasourceName || resolved.ProjectLUID != plan.Target.ProjectLUID {
-			result.Verification = "destination_unavailable"
-			return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
-		}
-		result.DatasourceLUID, result.DatasourceName, result.ProjectLUID = resolved.LUID, resolved.Name, resolved.ProjectLUID
-		if result.ContentURL == "" {
-			result.ContentURL = resolved.ContentURL
-		}
-	} else if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
+	if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
 		result.Verification = "destination_mismatch"
-		return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
+		return out, publishUnknownOutcomeError(plan, input, result, errors.New("datasource publish returned identity conflicting with the exact publish target"))
 	}
 	result.Verification = "confirmed"
 	if plan.contentURL != "" && result.ContentURL != "" && result.ContentURL != plan.contentURL {
@@ -170,9 +131,6 @@ func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOut
 
 func publishUnknownOutcomeError(plan PublishPlan, input PublishInput, result PublishResult, cause error) error {
 	correctiveAction := "Inspect the target site and Tableau request before attempting another publish."
-	if result.JobID != "" {
-		correctiveAction = "Inspect the Tableau job and resolve the exact datasource name in the exact project before attempting another publish."
-	}
 	if hint := publishPublishInspectionHint(plan, result); hint != "" {
 		correctiveAction += " Run " + hint + "."
 	}
@@ -187,7 +145,7 @@ func publishUnknownOutcomeError(plan PublishPlan, input PublishInput, result Pub
 		Cause:            cause,
 		Retryable:        new(false),
 		CorrectiveAction: correctiveAction,
-		TableauJobID:     result.JobID,
+
 		TableauRequestID: result.TableauRequestID,
 		Phase:            errs.PhaseVerification,
 		Outcome:          errs.OutcomeConfirmed,
@@ -233,8 +191,8 @@ func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	if err != nil {
 		return PublishPlan{}, err
 	}
-	req := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Mode: input.Mode, ParentDataSourceURLs: parents, AsJob: input.AsJob}
-	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "automatically monitor an accepted job"}, AsJob: input.AsJob, request: req, contentURL: artifact.ContentURL}, nil
+	req := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Mode: input.Mode, ParentDataSourceURLs: parents}
+	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "confirm destination"}, request: req, contentURL: artifact.ContentURL}, nil
 }
 
 func (a *Publisher) resolveProject(ctx context.Context, input PublishInput, artifact PublishArtifact) (Project, error) {

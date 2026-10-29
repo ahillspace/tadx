@@ -1,0 +1,85 @@
+{
+  "id": "run-59735db73d522d2a50f2769c79be2339",
+  "version": 9,
+  "operation": "workbook.publish",
+  "requested_at": "2026-10-29T10:12:48.567518Z",
+  "started_at": "2026-10-29T10:12:48.572574Z",
+  "finished_at": "2026-10-29T10:12:48.655293Z",
+  "phase": "remote_pending",
+  "worker_pid": 5968,
+  "activity": "Uploading and submitting workbook",
+  "request": {
+    "args": [
+      "content",
+      "workbook",
+      "publish",
+      "--file",
+      "{{SOURCE_PATH}}",
+      "--environment",
+      "production",
+      "--project-id",
+      "project-1",
+      "--no-wait",
+      "--json"
+    ],
+    "config_path": "{{CONFIG_PATH}}",
+    "working_directory": "{{WORKING_DIRECTORY}}",
+    "operation": "workbook.publish",
+    "no_wait": true
+  },
+  "compact_result": {
+    "artifact_path": "{{SOURCE_PATH}}",
+    "details": "--full",
+    "environment": "production",
+    "help": [],
+    "kind": "workbook",
+    "operation": "workbook.publish",
+    "project_path": "Analytics",
+    "result": {
+      "receipt_path": "{{JOB_DIRECTORY}}/008340d9c17f5abfbff35a16f322fef0e92f426a395964fe598275708f177cb2.json",
+      "status": "pending",
+      "tableau_job_id": "job-recovery"
+    },
+    "site": "team-site",
+    "status": "pending"
+  },
+  "full_result": {
+    "help": [],
+    "plan": {
+      "artifact_fingerprint": "sha256:68abb01001b25a4356944675b979f2eabe8e62c0f302864de5b2efedaf0d1034",
+      "artifact_path": "{{SOURCE_PATH}}",
+      "filename": "Sales.twb",
+      "kind": "workbook",
+      "mode": "execute",
+      "operation": "workbook.publish",
+      "overwrite": false,
+      "source_kind": "native_file",
+      "source_luid": "",
+      "substeps": [
+        "resolve exact destination",
+        "check workbook collision",
+        "upload workbook",
+        "publish workbook",
+        "automatically monitor accepted jobs and confirm destination"
+      ],
+      "target": {
+        "environment": "production",
+        "origin": "explicit",
+        "project_luid": "project-1",
+        "project_path": "Analytics",
+        "site": "team-site"
+      },
+      "workbook_name": "Sales",
+      "workspace": ""
+    },
+    "result": {
+      "receipt_path": "{{JOB_DIRECTORY}}/008340d9c17f5abfbff35a16f322fef0e92f426a395964fe598275708f177cb2.json",
+      "status": "pending",
+      "tableau_job_id": "job-recovery"
+    }
+  },
+  "exit_code": 0,
+  "receipt_paths": [
+    "{{JOB_DIRECTORY}}/008340d9c17f5abfbff35a16f322fef0e92f426a395964fe598275708f177cb2.json"
+  ]
+}

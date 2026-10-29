@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/batchspec"
@@ -22,6 +24,7 @@ type batchOptionCall struct {
 
 func runBatchOptions(t *testing.T, options batchspec.Options, args []string) (any, []batchOptionCall, error) {
 	t.Helper()
+	var mu sync.Mutex
 	var calls []batchOptionCall
 	factory := func(renderer Renderer) *cobra.Command {
 		root := &cobra.Command{Use: "tadx", SilenceErrors: true, SilenceUsage: true}
@@ -48,7 +51,9 @@ func runBatchOptions(t *testing.T, options batchspec.Options, args []string) (an
 			return nil
 		}
 		command.RunE = func(_ *cobra.Command, _ []string) error {
+			mu.Lock()
 			calls = append(calls, input)
+			mu.Unlock()
 			if input.ID == "fail" {
 				return clierr.WithOutput(input, errors.New("item failed after a confirmed result"))
 			}
@@ -63,6 +68,10 @@ func runBatchOptions(t *testing.T, options batchspec.Options, args []string) (an
 	attachBatchWithOptions(root, command, options, renderer, factory)
 	root.SetArgs(append([]string{"change"}, args...))
 	err := root.ExecuteContext(context.Background())
+	// Items run in parallel, so calls are sorted for stable assertions.
+	sort.Slice(calls, func(i, j int) bool {
+		return calls[i].ID+calls[i].Name+strings.Join(calls[i].Args, " ") < calls[j].ID+calls[j].Name+strings.Join(calls[j].Args, " ")
+	})
 	return renderer.value, calls, err
 }
 
@@ -127,7 +136,7 @@ func TestBatchPositionalRowsPreserveLiteralArgumentsAndValidateEveryRow(t *testi
 	options := batchspec.Options{Positional: true}
 	file := batchFile(t, `{"items":[{"args":["two words"]},{"args":["--literal"]}]}`)
 	_, calls, err := runBatchOptions(t, options, []string{"--batch-file", file})
-	if err != nil || len(calls) != 2 || calls[0].Args[0] != "two words" || calls[1].Args[0] != "--literal" {
+	if err != nil || len(calls) != 2 || calls[0].Args[0] != "--literal" || calls[1].Args[0] != "two words" {
 		t.Fatalf("calls=%v err=%v", calls, err)
 	}
 	for _, body := range []string{
@@ -154,7 +163,7 @@ func TestBatchPartialFailurePreservesConfirmedResults(t *testing.T) {
 		t.Fatalf("calls=%v err=%v", calls, err)
 	}
 	batch := value.(contentbatch.Output)
-	if batch.Succeeded != 2 || batch.Failed != 1 || batch.Items[1].Result == nil || calls[0].ID != "alpha" || calls[2].ID != "beta" {
+	if batch.Succeeded != 2 || batch.Failed != 1 || batch.Items[0].Selector != "id=alpha" || batch.Items[1].Selector != "id=fail" || batch.Items[2].Selector != "id=beta" || batch.Items[1].Result == nil {
 		t.Fatalf("batch=%#v calls=%#v", batch, calls)
 	}
 }

@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/ahillspace/tadx/internal/tableau"
 )
@@ -38,11 +37,9 @@ type PublishRequest struct {
 	ContentSize                                                   int64
 	Mode                                                          PublishMode
 	ParentDataSourceURLs                                          []string
-	AsJob                                                         bool
-	Accepted                                                      func(context.Context, string, string) (PublishResult, error)
 }
 type PublishResult struct {
-	Status, DatasourceLUID, DatasourceName, ProjectLUID, JobID, TableauRequestID, ReceiptPath string
+	Status, DatasourceLUID, DatasourceName, ProjectLUID, TableauRequestID string
 	// ContentURL is the content URL Tableau assigned when its response reports one.
 	ContentURL string
 }
@@ -102,9 +99,6 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 	if input.Mode != PublishCreate {
 		query.Set(string(input.Mode), "true")
 	}
-	if input.AsJob {
-		query.Set("asJob", "true")
-	}
 	var body []byte
 	var contentType string
 	if input.ContentSize <= c.uploadThreshold {
@@ -132,7 +126,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 	if err := closeSnapshot(); err != nil {
 		return nil, fmt.Errorf("remove datasource publish snapshot: %w", err)
 	}
-	return &preparedDatasourcePublish{client: c, query: query, body: body, contentType: contentType, name: input.Name, project: input.ProjectLUID, asJob: input.AsJob, accepted: input.Accepted}, nil
+	return &preparedDatasourcePublish{client: c, query: query, body: body, contentType: contentType, name: input.Name, project: input.ProjectLUID}, nil
 }
 
 // datasourcePublishSnapshot is an immutable, fingerprint-verified copy of the publish payload.
@@ -317,8 +311,6 @@ type preparedDatasourcePublish struct {
 	contentType, name, project string
 	mu                         sync.Mutex
 	committed                  bool
-	asJob                      bool
-	accepted                   func(context.Context, string, string) (PublishResult, error)
 }
 
 func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, error) {
@@ -336,25 +328,12 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 		}
 		return PublishResult{}, err
 	}
-	expectedStatus := http.StatusCreated
-	if p.asJob {
-		expectedStatus = http.StatusAccepted
-	}
-	if response.StatusCode != expectedStatus {
-		return PublishResult{Status: "unknown", TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, fmt.Errorf("datasource publish returned HTTP %d, expected %d", response.StatusCode, expectedStatus), false)
+	if response.StatusCode != http.StatusCreated {
+		return PublishResult{Status: "unknown", TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, fmt.Errorf("datasource publish returned HTTP %d, expected %d", response.StatusCode, http.StatusCreated), false)
 	}
 	var envelope datasourcePublishEnvelope
 	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-		return PublishResult{Status: "unknown", JobID: envelope.Job.ID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, fmt.Errorf("decode datasource publish response: %w", err), false)
-	}
-	if p.asJob {
-		if err := validateAcceptedDatasourceJob(envelope.Job); err != nil {
-			return PublishResult{Status: "unknown", JobID: envelope.Job.ID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, err, false)
-		}
-		if p.accepted != nil {
-			return p.accepted(ctx, envelope.Job.ID, response.TableauRequestID)
-		}
-		return p.client.pollDatasourceJob(ctx, envelope.Job.ID, response.TableauRequestID, p.name, p.project)
+		return PublishResult{Status: "unknown", TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, fmt.Errorf("decode datasource publish response: %w", err), false)
 	}
 	ds := envelope.Datasource
 	if ds.ID == "" || ds.Name != p.name || ds.Project.ID != p.project {
@@ -363,177 +342,8 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 	return PublishResult{Status: "succeeded", DatasourceLUID: ds.ID, DatasourceName: ds.Name, ProjectLUID: ds.Project.ID, ContentURL: ds.ContentURL, TableauRequestID: response.TableauRequestID}, nil
 }
 
-func validateAcceptedDatasourceJob(job datasourceJobXML) error {
-	if strings.TrimSpace(job.ID) == "" {
-		return errors.New("asynchronous datasource publish response omitted job identity")
-	}
-	if job.Type != "PublishDatasource" {
-		return fmt.Errorf("asynchronous datasource publish returned job type %q, expected %q", job.Type, "PublishDatasource")
-	}
-	if job.Progress == nil || job.FinishCode == nil || *job.Progress != 0 || *job.FinishCode != 1 {
-		return errors.New("asynchronous datasource publish returned an invalid accepted job state")
-	}
-	return nil
-}
-
-func (c *Client) pollDatasourceJob(ctx context.Context, jobID, acceptedRequestID, expectedName, expectedProject string) (PublishResult, error) {
-	pollCtx, cancel := context.WithTimeout(ctx, c.pollTimeout)
-	defer cancel()
-	lastRequestID := acceptedRequestID
-	for {
-		response, err := c.transport.Do(pollCtx, c.session, tableau.Request{Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("jobs", jobID), Accept: "application/xml", Operation: "datasource.publish.poll", MaxResponseBytes: maxListResponseBytes})
-		if err != nil {
-			requestID := tableau.RequestID(err)
-			if requestID == "" {
-				requestID = lastRequestID
-			}
-			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-			}
-			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
-				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau datasource publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
-			}
-			var retryable interface{ Retryable() bool }
-			if errors.As(err, &retryable) && retryable.Retryable() {
-				delay := c.pollInterval
-				if wait, ok := tableau.RetryAfter(err); ok {
-					delay = wait
-				}
-				select {
-				case <-pollCtx.Done():
-					if ctx.Err() != nil {
-						return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-					}
-					return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau datasource publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
-				case <-time.After(delay):
-				}
-				continue
-			}
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, err
-		}
-		if response.TableauRequestID != "" {
-			lastRequestID = response.TableauRequestID
-		}
-		requestID := lastRequestID
-		response.TableauRequestID = requestID
-		var envelope datasourceJobEnvelope
-		if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-			}
-			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
-				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau datasource publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
-			}
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("decode Tableau job response: %w", err), true)
-		}
-		if envelope.Job.ID != jobID {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("Tableau job response returned job ID %q, expected %q", envelope.Job.ID, jobID), true)
-		}
-		if envelope.Job.Type != "PublishDatasource" {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("Tableau job response returned type %q, expected %q", envelope.Job.Type, "PublishDatasource"), true)
-		}
-		if envelope.Job.Progress == nil || envelope.Job.FinishCode == nil {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, errors.New("Tableau job response omitted progress or finish code"), true)
-		}
-		progress, finishCode := *envelope.Job.Progress, *envelope.Job.FinishCode
-		switch {
-		case progress == 0 && finishCode == 1:
-		case progress == 100 && finishCode == 0:
-			if envelope.Job.DatasourceCount == 0 {
-				return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: requestID}, nil
-			}
-			if envelope.Job.DatasourceCount != 1 || envelope.Job.Datasource == nil || strings.TrimSpace(envelope.Job.Datasource.ID) == "" {
-				return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, errors.New("successful Tableau datasource publish job omitted one authoritative datasource identity"), false)
-			}
-			datasource := envelope.Job.Datasource
-			if datasource.Name != "" && datasource.Name != expectedName {
-				return PublishResult{Status: "unknown", DatasourceLUID: datasource.ID, DatasourceName: datasource.Name, ProjectLUID: datasource.Project.ID, JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("successful Tableau datasource publish job returned datasource name %q, expected %q", datasource.Name, expectedName), false)
-			}
-			if datasource.Project.ID != "" && datasource.Project.ID != expectedProject {
-				return PublishResult{Status: "unknown", DatasourceLUID: datasource.ID, DatasourceName: datasource.Name, ProjectLUID: datasource.Project.ID, JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("successful Tableau datasource publish job returned project LUID %q, expected %q", datasource.Project.ID, expectedProject), false)
-			}
-			return PublishResult{Status: "succeeded", DatasourceLUID: datasource.ID, DatasourceName: expectedName, ProjectLUID: expectedProject, ContentURL: datasource.ContentURL, JobID: jobID, TableauRequestID: requestID}, nil
-		case progress == 100 && (finishCode == 1 || finishCode == 2):
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau datasource publish job %s failed with finish code %d", jobID, finishCode)
-		case progress == 100:
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("Tableau job response returned unknown finish code %d", finishCode), true)
-		default:
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("datasource.publish.poll", response, fmt.Errorf("Tableau job response returned invalid state progress=%d finishCode=%d", progress, finishCode), true)
-		}
-		select {
-		case <-pollCtx.Done():
-			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-			}
-			return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau datasource publish job %s timed out after %s", jobID, c.pollTimeout)
-		case <-time.After(c.pollInterval):
-		}
-	}
-}
-
 type datasourcePublishEnvelope struct {
-	Datasource datasourceXML    `xml:"datasource"`
-	Job        datasourceJobXML `xml:"job"`
-}
-
-type datasourceJobEnvelope struct {
-	Job datasourceJobXML `xml:"job"`
-}
-
-type datasourceJobXML struct {
-	ID              string
-	Type            string
-	Progress        *int
-	FinishCode      *int
-	Datasource      *datasourceXML
-	DatasourceCount int
-}
-
-func (j *datasourceJobXML) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
-	for _, attribute := range start.Attr {
-		switch attribute.Name.Local {
-		case "id":
-			j.ID = attribute.Value
-		case "type":
-			j.Type = attribute.Value
-		case "progress":
-			value, err := strconv.Atoi(attribute.Value)
-			if err != nil {
-				return fmt.Errorf("decode datasource job progress: %w", err)
-			}
-			j.Progress = &value
-		case "finishCode":
-			value, err := strconv.Atoi(attribute.Value)
-			if err != nil {
-				return fmt.Errorf("decode datasource job finish code: %w", err)
-			}
-			j.FinishCode = &value
-		}
-	}
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		switch value := token.(type) {
-		case xml.StartElement:
-			if value.Name.Local != "datasource" {
-				continue
-			}
-			var datasource datasourceXML
-			if err := decoder.DecodeElement(&datasource, &value); err != nil {
-				return err
-			}
-			j.DatasourceCount++
-			if j.DatasourceCount == 1 {
-				j.Datasource = &datasource
-			}
-		case xml.EndElement:
-			if value.Name == start.Name {
-				return nil
-			}
-		}
-	}
+	Datasource datasourceXML `xml:"datasource"`
 }
 
 func (c *Client) uploadDatasource(ctx context.Context, filename string, source io.Reader, size int64) (string, error) {

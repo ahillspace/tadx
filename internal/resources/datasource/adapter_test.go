@@ -3,10 +3,10 @@ package datasource_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -277,73 +277,6 @@ func TestAdapterFindsExactDatasourceCollisionWhenNameCannotUseTableauFilterGramm
 	}
 }
 
-func TestAdapterWaitsForCompletedDatasourceToBecomeAuthoritativelyVisible(t *testing.T) {
-	c := &client{pageSequence: []tableaudatasource.Page{
-		{Number: 1, Size: 1000, Total: 0},
-		{Number: 1, Size: 1000, Total: 1, TableauRequestID: "resolve-request", Items: []tableaudatasource.Datasource{{LUID: "ds-new", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"}}},
-	}}
-	adapter := resourcedatasource.NewAdapter(c)
-	adapter.SetCompletionResolvePolicy(time.Millisecond, 100*time.Millisecond)
-	item, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if item.LUID != "ds-new" || item.Name != "Sales" || item.ProjectLUID != "project-1" || len(c.listInputs) != 2 {
-		t.Fatalf("item = %#v, calls = %#v", item, c.listInputs)
-	}
-}
-
-func TestAdapterBoundsMissingCompletedDatasourceResolution(t *testing.T) {
-	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 0}}}
-	adapter := resourcedatasource.NewAdapter(c)
-	adapter.SetCompletionResolvePolicy(time.Millisecond, 10*time.Millisecond)
-	_, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
-	if err == nil || !strings.Contains(err.Error(), "resolution deadline") || len(c.listInputs) < 2 {
-		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
-	}
-}
-
-func TestAdapterClassifiesCompleteEmptyIndexAsNotVisible(t *testing.T) {
-	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 0}}}
-	adapter := resourcedatasource.NewAdapter(c)
-	adapter.SetCompletionResolvePolicy(time.Millisecond, 10*time.Millisecond)
-	_, err := adapter.ResolvePublishedDatasource(t.Context(), "Sales", "project-1")
-	if !errors.Is(err, resourcedatasource.ErrPublishedDatasourceNotVisible) {
-		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
-	}
-	notVisible, ok := errors.AsType[*resourcedatasource.PublishedDatasourceNotVisibleError](err)
-	if !ok || notVisible.Name != "Sales" || notVisible.ProjectLUID != "project-1" || notVisible.Timeout != 10*time.Millisecond {
-		t.Fatalf("typed error = %#v", notVisible)
-	}
-	if !strings.Contains(err.Error(), `datasource "Sales" in project "project-1"`) {
-		t.Fatalf("error omitted exact target: %v", err)
-	}
-}
-
-func TestAdapterRejectsAmbiguousCompletedDatasourceResolution(t *testing.T) {
-	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 2, Items: []tableaudatasource.Datasource{
-		{LUID: "ds-b", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"},
-		{LUID: "ds-a", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"},
-	}}}}
-	adapter := resourcedatasource.NewAdapter(c)
-	adapter.SetCompletionResolvePolicy(time.Millisecond, 100*time.Millisecond)
-	_, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
-	if err == nil || errors.Is(err, resourcedatasource.ErrPublishedDatasourceNotVisible) || !strings.Contains(err.Error(), "ambiguous: [ds-a, ds-b]") || len(c.listInputs) != 1 {
-		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
-	}
-}
-
-func TestAdapterPreservesUpstreamResolutionErrors(t *testing.T) {
-	upstreamErr := errors.New("Tableau list unavailable")
-	c := &client{listErr: upstreamErr}
-	adapter := resourcedatasource.NewAdapter(c)
-	adapter.SetCompletionResolvePolicy(time.Millisecond, 10*time.Millisecond)
-	_, err := adapter.ResolvePublishedDatasource(t.Context(), "Sales", "project-1")
-	if !errors.Is(err, upstreamErr) || errors.Is(err, resourcedatasource.ErrPublishedDatasourceNotVisible) {
-		t.Fatalf("error = %v", err)
-	}
-}
-
 func (c *client) Download(_ context.Context, luid string, includeExtract *bool) (tableaudatasource.Download, error) {
 	c.calls = append(c.calls, "download:"+luid)
 	if includeExtract != nil {
@@ -390,5 +323,38 @@ func TestAdapterRejectsIncompleteDatasourceIdentity(t *testing.T) {
 		if err == nil || !reflect.DeepEqual(c.calls, []string{"get:ds-1"}) {
 			t.Fatalf("metadata = %#v, error = %v, calls = %v", metadata, err, c.calls)
 		}
+	}
+}
+
+func TestAdapterFindsDatasourcesByExactContentURLsInBoundedBatches(t *testing.T) {
+	contentURLs := make([]string, 0, 27)
+	for index := range 26 {
+		contentURLs = append(contentURLs, fmt.Sprintf("Source%02d", index))
+	}
+	contentURLs = append(contentURLs, "Source00")
+	page := tableaudatasource.Page{Number: 1, Size: 1000, Total: 1, Items: []tableaudatasource.Datasource{{LUID: "ds-1", Name: "Source", ContentURL: "Source00", ProjectLUID: "project-1", ProjectName: "Ops"}}}
+	c := &client{pageSequence: []tableaudatasource.Page{page, {Number: 1, Size: 1000}}}
+	items, err := resourcedatasource.NewAdapter(c).FindDatasourcesByContentURL(context.Background(), contentURLs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].LUID != "ds-1" || items[0].ProjectLUID != "project-1" {
+		t.Fatalf("items = %#v", items)
+	}
+	if len(c.listInputs) != 2 || len(c.listInputs[0].ContentURLs) != 25 || !reflect.DeepEqual(c.listInputs[1].ContentURLs, []string{"Source25"}) || c.listInputs[0].PageNumber != 1 || c.listInputs[0].PageSize != 1000 {
+		t.Fatalf("requests = %#v", c.listInputs)
+	}
+}
+
+func TestAdapterFindsDatasourcesByExactNamesAndRejectsAnOverfullPage(t *testing.T) {
+	item := tableaudatasource.Datasource{LUID: "ds-1", Name: "Sales & Margin", ContentURL: "SalesMargin_1", ProjectLUID: "project-1", ProjectName: "Ops"}
+	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 1, Items: []tableaudatasource.Datasource{item}}}}
+	items, err := resourcedatasource.NewAdapter(c).FindDatasourcesByName(context.Background(), []string{"Sales & Margin"})
+	if err != nil || len(items) != 1 || !reflect.DeepEqual(c.listInputs[0].Names, []string{"Sales & Margin"}) {
+		t.Fatalf("items = %#v err = %v requests = %#v", items, err, c.listInputs)
+	}
+	c = &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 1001, Items: []tableaudatasource.Datasource{item}}}}
+	if _, err := resourcedatasource.NewAdapter(c).FindDatasourcesByName(context.Background(), []string{"Sales & Margin"}); err == nil || len(c.listInputs) != 1 {
+		t.Fatalf("overfull page err = %v requests = %d", err, len(c.listInputs))
 	}
 }

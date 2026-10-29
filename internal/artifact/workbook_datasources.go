@@ -108,7 +108,7 @@ func RewriteWorkbookDatasources(ctx context.Context, request WorkbookDatasourceR
 	}
 	fingerprint, err := fingerprintReader(ctx, io.NewSectionReader(file, 0, info.Size()))
 	if err != nil {
-		return RewrittenWorkbook{}, err
+		return RewrittenWorkbook{}, fmt.Errorf("fingerprint workbook file: %w", err)
 	}
 	if fingerprint != request.Fingerprint {
 		return RewrittenWorkbook{}, errors.New("workbook file changed after it was validated")
@@ -675,22 +675,4 @@ type countingWriter struct{ n int64 }
 func (w *countingWriter) Write(buffer []byte) (int, error) {
 	w.n += int64(len(buffer))
 	return len(buffer), nil
-}
-
-func fingerprintReader(ctx context.Context, reader io.Reader) (string, error) {
-	hash := sha256.New()
-	buffer := make([]byte, 1024*1024)
-	for {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		count, err := reader.Read(buffer)
-		hash.Write(buffer[:count])
-		if err == io.EOF {
-			return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
-		}
-		if err != nil {
-			return "", errors.New("workbook file fingerprint failed")
-		}
-	}
 }

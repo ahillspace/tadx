@@ -1588,7 +1588,7 @@ Move one exact published datasource to one exact project on the same site, or pr
 
 ### `datasource.publish`
 
-Publish one local datasource, or up to 100 repeated managed datasource artifacts sequentially, including explicit immediate-parent references for composed artifacts, or preview the operations; results report the content URL Tableau assigned and the workbook binding to use when Tableau suffixed it.
+Publish one local datasource, or up to 100 repeated managed datasource artifacts in parallel, including explicit immediate-parent references for composed artifacts, or preview the operations; results report the content URL Tableau assigned and the workbook binding to use when Tableau suffixed it.
 
 - Surface: tadx content datasource publish
 - Operation type: deliver
@@ -1605,7 +1605,7 @@ Publish one local datasource, or up to 100 repeated managed datasource artifacts
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Exactly one mode is required: --create, --overwrite, --append, or --replace; see tadx content datasource publish --help. Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; mutation execution policy applies; read-only preview remains available when writes are disabled
+- Safety and guard: Exactly one mode is required: --create, --overwrite, --append, or --replace; see tadx content datasource publish --help. Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; mutation execution policy applies; read-only preview remains available when writes are disabled
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/datasources; upload sessions; parentDataSourceUrls for composed path
 - Evidence: docs/evidence/datasource-lifecycle-rest-contract.md
@@ -1615,7 +1615,7 @@ Publish one local datasource, or up to 100 repeated managed datasource artifacts
 
 ### `datasource.pull`
 
-Download one datasource, or up to 100 repeated authoritative datasource LUIDs sequentially, while preserving native packages, composition provenance, and bounded lineage.
+Download one datasource, or up to 100 repeated authoritative datasource LUIDs in parallel, while preserving native packages, composition provenance, and bounded lineage.
 
 - Surface: tadx content datasource pull
 - Operation type: deliver
@@ -1632,7 +1632,7 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs se
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
+- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused Metadata GraphQL reads
 - Evidence: docs/evidence/datasource-lifecycle-rest-contract.md; docs/evidence/lineage-metadata-contract.md
@@ -1993,7 +1993,7 @@ Move one exact flow to one exact project on the same site, or preview the operat
 
 ### `flow.publish`
 
-Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequentially, to the sole configured or explicit target, or preview the operations.
+Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts in parallel, to the sole configured or explicit target, or preview the operations.
 
 - Surface: tadx content flow publish
 - Operation type: deliver
@@ -2010,7 +2010,7 @@ Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequent
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; overwrite explicit
+- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; overwrite explicit
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/flows; upload sessions for large files
 - Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
@@ -2020,7 +2020,7 @@ Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequent
 
 ### `flow.pull`
 
-Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, unchanged with bounded lineage and provenance.
+Download one flow, or up to 100 repeated authoritative flow LUIDs in parallel, unchanged with bounded lineage and provenance.
 
 - Surface: tadx content flow pull
 - Operation type: deliver
@@ -2037,7 +2037,7 @@ Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, 
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns
+- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: Flow content GET plus focused Metadata GraphQL reads
 - Evidence: Official REST and Metadata captures plus hermetic contract tests in docs/evidence/flow-rest-contract.md and docs/evidence/lineage-metadata-contract.md
@@ -3127,7 +3127,7 @@ Move one exact workbook to one exact project on the same site, or preview the op
 
 ### `workbook.publish`
 
-Publish one local workbook, or up to 100 repeated managed workbook artifacts sequentially, to one explicit target with optional exact published datasource bindings, or preview the operations.
+Publish one local workbook, or up to 100 repeated managed workbook artifacts in parallel, to one explicit target with optional exact published datasource bindings, or preview the operations.
 
 - Surface: tadx content workbook publish
 - Operation type: deliver
@@ -3144,7 +3144,7 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts seq
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID and each datasource binding; collision/overwrite explicit; no fuzzy target; only a temporary upload copy is rebound; unmapped references are left to Tableau, and its datasource-not-found rejection lists exact candidates
+- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID and each datasource binding; collision/overwrite explicit; no fuzzy target; only a temporary upload copy is rebound; unmapped references are left to Tableau, and its datasource-not-found rejection lists exact candidates
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB; datasource exact GET and bounded list for bindings and candidates
 - Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture
@@ -3154,7 +3154,7 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts seq
 
 ### `workbook.pull`
 
-Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequentially, while capturing bounded lineage and optional direct published datasource dependencies.
+Download one workbook, or up to 100 repeated authoritative workbook LUIDs in parallel, while capturing bounded lineage and optional direct published datasource dependencies.
 
 - Surface: tadx content workbook pull
 - Operation type: deliver
@@ -3171,7 +3171,7 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
+- Safety and guard: Batch selectors prevalidated; parallel processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
 - Artifact effect: Create / update workbook, lineage sidecar, and optional datasource siblings
 - Upstream operation: Workbook content GET; Metadata GraphQL POST for lineage; datasource contentUrl-filtered list and content GET
 - Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture

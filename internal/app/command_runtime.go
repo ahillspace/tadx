@@ -32,7 +32,6 @@ type commandRuntime struct {
 	clients           map[clientKey]tableauClients
 	workspaces        map[workspaceKey]workspaceResult
 	discovery         map[clientKey]*commandDiscoveryPaths
-	jobMonitoring     map[string]bool
 }
 
 type serverTransport struct {

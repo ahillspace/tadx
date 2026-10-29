@@ -15,9 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
@@ -430,7 +428,7 @@ func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
 	}
 }
 
-func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
+func TestClientUsesUploadSessionForLargeWorkbook(t *testing.T) {
 	payloadDirectory := t.TempDir()
 	payloadPath := filepath.Join(payloadDirectory, "Finance.twbx")
 	payloadContent := []byte("abcdefg")
@@ -443,7 +441,6 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	var appendSequences []string
 	var publishParts []multipartPart
 	var handlerErr error
-	jobPolls := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls = append(calls, request.Method+" "+request.URL.RequestURI())
 		writer.Header().Set("Content-Type", "application/xml")
@@ -462,7 +459,7 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 			appendSequences = append(appendSequences, request.URL.Query().Get("sequenceID"))
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="1"/></tsResponse>`)
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/workbooks"):
-			if request.URL.Query().Get("uploadSessionId") != "upload-1" || request.URL.Query().Get("asJob") != "true" || request.URL.Query().Get("overwrite") != "true" {
+			if request.URL.Query().Get("uploadSessionId") != "upload-1" || request.URL.Query().Has("asJob") || request.URL.Query().Get("overwrite") != "true" {
 				t.Fatalf("publish query = %s", request.URL.RawQuery)
 			}
 			var err error
@@ -473,14 +470,7 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 				return
 			}
 			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" mode="Asynchronous" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
-		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/jobs/job-1"):
-			jobPolls++
-			progress, finish := "0", "1"
-			if jobPolls == 2 {
-				progress, finish = "100", "0"
-			}
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishWorkbook" progress="`+progress+`" finishCode="`+finish+`"/></tsResponse>`)
+			_, _ = io.WriteString(writer, `<tsResponse><workbook id="workbook-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
 		default:
 			http.Error(writer, "unexpected", http.StatusNotFound)
 		}
@@ -490,9 +480,8 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	client.SetUploadThreshold(1)
 	client.SetUploadChunkSize(3)
-	client.SetPollPolicy(5*time.Millisecond, 100*time.Millisecond)
 	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", ContentPath: payloadPath, ContentSize: int64(len(payloadContent)), ExpectedFingerprint: "sha256:" + hex.EncodeToString(payloadDigest[:]), Overwrite: true, AsJob: true,
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", ContentPath: payloadPath, ContentSize: int64(len(payloadContent)), ExpectedFingerprint: "sha256:" + hex.EncodeToString(payloadDigest[:]), Overwrite: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -503,8 +492,8 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	if snapshots, globErr := filepath.Glob(filepath.Join(payloadDirectory, ".tadx-publish-snapshot-*")); globErr != nil || len(snapshots) != 0 {
 		t.Fatalf("publish snapshots = %v, error = %v", snapshots, globErr)
 	}
-	if result.JobID != "job-1" || result.Status != "succeeded" || jobPolls != 2 || len(calls) != 7 {
-		t.Fatalf("result = %#v, polls = %d, calls = %v", result, jobPolls, calls)
+	if result.WorkbookLUID != "workbook-1" || result.Status != "succeeded" || len(calls) != 5 {
+		t.Fatalf("result = %#v, calls = %v", result, calls)
 	}
 	if strings.Join(appendSequences, ",") != "1,2,3" {
 		t.Fatalf("append sequence IDs = %v", appendSequences)
@@ -814,113 +803,12 @@ func TestClientEscapesMultipartFilenames(t *testing.T) {
 	})
 }
 
-func TestClientStopsPollingAtTimeout(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/xml")
-		if request.Method == http.MethodPost {
-			writer.Header().Set("X-Tableau-Request-Id", "publish-request-1")
-			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-timeout" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		_, _ = io.WriteString(writer, `<tsResponse><job id="job-timeout" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetPollPolicy(2*time.Millisecond, 8*time.Millisecond)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
-	})
-	if err == nil || !strings.Contains(err.Error(), "timed out") {
-		t.Fatalf("error = %v", err)
-	}
-	if result.JobID != "job-timeout" || result.TableauRequestID != "publish-request-1" {
-		t.Fatalf("timeout result omitted identifiers: %#v", result)
-	}
-}
-
-func TestClientReturnsFailingPollRequestID(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/xml")
-		if request.Method == http.MethodPost {
-			writer.Header().Set("X-Tableau-Request-Id", "publish-request")
-			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-failed-poll" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		writer.Header().Set("X-Tableau-Request-Id", "poll-request")
-		writer.WriteHeader(http.StatusForbidden)
-		_, _ = io.WriteString(writer, `<tsResponse><error code="403007"><summary>Forbidden</summary><detail>Missing permission</detail></error></tsResponse>`)
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
-	})
-	if err == nil {
-		t.Fatal("Publish() succeeded after a failed poll")
-	}
-	if result.Status != "unknown" || result.JobID != "job-failed-poll" || result.TableauRequestID != "poll-request" {
-		t.Fatalf("poll failure result = %#v", result)
-	}
-}
-
-func TestClientRetainsLastPollRequestIDForProtocolFailure(t *testing.T) {
-	polls := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/xml")
-		if request.Method == http.MethodPost {
-			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		polls++
-		if polls == 1 {
-			writer.Header().Set("X-Tableau-Request-Id", "poll-request-1")
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1"`)
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetPollPolicy(time.Millisecond, 100*time.Millisecond)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true})
-	if err == nil || result.Status != "unknown" || result.TableauRequestID != "poll-request-1" || tableau.RequestID(err) != "poll-request-1" {
-		t.Fatalf("result = %#v, error = %v", result, err)
-	}
-}
-
-func TestClientReturnsTerminalJobFailure(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/xml")
-		if request.Method == http.MethodPost {
-			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		writer.Header().Set("X-Tableau-Request-Id", "terminal-poll-request")
-		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishWorkbook" progress="100" finishCode="2"/></tsResponse>`)
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetPollPolicy(time.Millisecond, 100*time.Millisecond)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true})
-	if err == nil || !strings.Contains(err.Error(), "finish code 2") || result.Status != "failed" || result.JobID != "job-1" || result.TableauRequestID != "terminal-poll-request" {
-		t.Fatalf("result = %#v, error = %v", result, err)
-	}
-}
-
-func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeDecoded(t *testing.T) {
+func TestClientReportsUnknownWhenPublishResponseCannotBeDecoded(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		writer.Header().Set("X-Tableau-Request-Id", "publish-request")
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(writer, `<tsResponse><job id="job-visible"/></broken>`)
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="workbook-1"/></broken>`)
 	}))
 	defer server.Close()
 
@@ -929,10 +817,34 @@ func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeDecoded(t *testi
 		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"),
 	})
 	if err == nil {
-		t.Fatal("Publish() succeeded with an invalid accepted response")
+		t.Fatal("Publish() succeeded with an invalid response")
 	}
-	if result.Status != "unknown" || result.JobID != "job-visible" || result.TableauRequestID != "publish-request" {
-		t.Fatalf("accepted response failure = %#v", result)
+	if result.Status != "unknown" || result.TableauRequestID != "publish-request" {
+		t.Fatalf("response failure = %#v", result)
+	}
+}
+
+func TestClientReportsUnknownWhenPublishReturnsAJob(t *testing.T) {
+	for _, status := range []int{http.StatusAccepted, http.StatusCreated} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			requests := 0
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				requests++
+				if request.URL.Query().Has("asJob") {
+					t.Errorf("publish query = %s", request.URL.RawQuery)
+				}
+				writer.Header().Set("Content-Type", "application/xml")
+				writer.Header().Set("X-Tableau-Request-Id", "accepted-request")
+				writer.WriteHeader(status)
+				_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
+			}))
+			defer server.Close()
+			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small")})
+			if err == nil || !strings.Contains(err.Error(), "asynchronous job") || result.Status != "unknown" || result.TableauRequestID != "accepted-request" || requests != 1 {
+				t.Fatalf("result = %#v, requests = %d, error = %v", result, requests, err)
+			}
+		})
 	}
 }
 
@@ -948,7 +860,7 @@ func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeRead(t *testing.
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"),
 	})
 	if err == nil {
 		t.Fatal("Publish() succeeded with a truncated accepted response")
@@ -977,141 +889,6 @@ func TestClientReportsUnknownWhenFinalPublishTransportFails(t *testing.T) {
 	}
 	if result.Status != "unknown" {
 		t.Fatalf("transport failure result = %#v", result)
-	}
-}
-
-func TestClientPollingTimeoutBoundsInFlightRequest(t *testing.T) {
-	pollStarted := make(chan struct{})
-	pollCanceled := make(chan struct{})
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/xml")
-		if request.Method == http.MethodPost {
-			writer.Header().Set("X-Tableau-Request-Id", "publish-request")
-			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-blocked" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		writer.Header().Set("X-Tableau-Request-Id", "poll-request")
-		writer.WriteHeader(http.StatusOK)
-		writer.(http.Flusher).Flush()
-		close(pollStarted)
-		<-request.Context().Done()
-		close(pollCanceled)
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetPollPolicy(time.Millisecond, 2*time.Second)
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	started := time.Now()
-	result, err := client.Publish(ctx, tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
-	})
-	if err == nil || !strings.Contains(err.Error(), "timed out") {
-		t.Fatalf("error = %v", err)
-	}
-	if time.Since(started) > 5*time.Second {
-		t.Fatalf("polling exceeded internal deadline bound: %s", time.Since(started))
-	}
-	select {
-	case <-pollStarted:
-	default:
-		t.Fatal("timeout occurred before the in-flight poll reached its handler")
-	}
-	select {
-	case <-pollCanceled:
-	case <-ctx.Done():
-		t.Fatal("poll timeout did not cancel the in-flight server request")
-	}
-	if result.Status != "timed_out" || result.JobID != "job-blocked" || result.TableauRequestID != "poll-request" {
-		t.Fatalf("poll timeout result = %#v", result)
-	}
-}
-
-func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
-	tests := []struct {
-		name      string
-		response  string
-		errorText string
-	}{
-		{name: "mismatched identity", response: `<tsResponse><job id="job-other" type="PublishWorkbook" progress="100" finishCode="0"/></tsResponse>`, errorText: "expected"},
-		{name: "missing type", response: `<tsResponse><job id="job-1" progress="100" finishCode="0"/></tsResponse>`, errorText: "type"},
-		{name: "wrong type", response: `<tsResponse><job id="job-1" type="ExtractRefresh" progress="100" finishCode="0"/></tsResponse>`, errorText: "type"},
-		{name: "missing progress", response: `<tsResponse><job id="job-1" type="PublishWorkbook" finishCode="0"/></tsResponse>`, errorText: "progress"},
-		{name: "intermediate progress", response: `<tsResponse><job id="job-1" type="PublishWorkbook" progress="50" finishCode="1"/></tsResponse>`, errorText: "state"},
-		{name: "progress beyond complete", response: `<tsResponse><job id="job-1" type="PublishWorkbook" progress="101" finishCode="0"/></tsResponse>`, errorText: "state"},
-		{name: "missing finish code", response: `<tsResponse><job id="job-1" type="PublishWorkbook" progress="100"/></tsResponse>`, errorText: "finish code"},
-		{name: "invalid pending finish code", response: `<tsResponse><job id="job-1" type="PublishWorkbook" progress="0" finishCode="0"/></tsResponse>`, errorText: "state"},
-		{name: "unknown terminal finish code", response: `<tsResponse><job id="job-1" type="PublishWorkbook" progress="100" finishCode="3"/></tsResponse>`, errorText: "finish code"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var polls atomic.Int32
-			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				writer.Header().Set("Content-Type", "application/xml")
-				if request.Method == http.MethodPost {
-					writer.Header().Set("X-Tableau-Request-Id", "publish-request")
-					writer.WriteHeader(http.StatusCreated)
-					_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
-					return
-				}
-				polls.Add(1)
-				writer.Header().Set("X-Tableau-Request-Id", "poll-request")
-				_, _ = io.WriteString(writer, test.response)
-			}))
-			defer server.Close()
-
-			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			// Protocol checks need the first TLS response; the deadline only bounds hangs.
-			client.SetPollPolicy(time.Millisecond, 5*time.Second)
-			result, err := client.Publish(t.Context(), tableauworkbook.PublishRequest{
-				Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
-			})
-			if polls.Load() != 1 {
-				t.Fatalf("malformed response must be inspected after exactly one poll; got %d", polls.Load())
-			}
-			if err == nil || !strings.Contains(err.Error(), test.errorText) {
-				t.Fatalf("error = %v", err)
-			}
-			if result.Status != "unknown" || result.JobID != "job-1" || result.TableauRequestID != "poll-request" {
-				t.Fatalf("protocol failure result = %#v", result)
-			}
-		})
-	}
-}
-
-func TestClientContinuesPollingAfterTransientPollError(t *testing.T) {
-	polls := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/xml")
-		if request.Method == http.MethodPost {
-			writer.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
-			return
-		}
-		polls++
-		if polls == 1 {
-			writer.Header().Set("Retry-After", "0")
-			writer.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = io.WriteString(writer, `<tsResponse><error code="503000"><summary>Unavailable</summary></error></tsResponse>`)
-			return
-		}
-		writer.Header().Set("X-Tableau-Request-Id", "poll-success")
-		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishWorkbook" progress="100" finishCode="0"/></tsResponse>`)
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetPollPolicy(time.Millisecond, 5*time.Second)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
-	})
-	if err != nil {
-		t.Fatalf("Publish() error = %v", err)
-	}
-	if result.Status != "succeeded" || result.JobID != "job-1" || polls != 2 {
-		t.Fatalf("result = %#v, polls = %d", result, polls)
 	}
 }
 

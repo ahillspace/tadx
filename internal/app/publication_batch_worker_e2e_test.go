@@ -18,14 +18,12 @@ import (
 	"github.com/ahillspace/tadx/internal/operationrun"
 )
 
-func TestPublicationWorkerDefaultWaitsForAcceptedJob(t *testing.T) {
-	var writes, reads atomic.Int32
+func TestPublicationWorkerDefaultWaitsForPublishedWorkbook(t *testing.T) {
+	var writes atomic.Int32
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-		case strings.HasSuffix(r.URL.Path, "/users/user-1"):
-			_, _ = io.WriteString(w, `<tsResponse><user id="user-1" name="publisher" siteRole="SiteAdministratorCreator"/></tsResponse>`)
 		case strings.HasSuffix(r.URL.Path, "/projects"):
 			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`)
 		case strings.HasSuffix(r.URL.Path, "/validateWorkbook"):
@@ -34,15 +32,10 @@ func TestPublicationWorkerDefaultWaitsForAcceptedJob(t *testing.T) {
 			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><workbooks/></tsResponse>`)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/workbooks"):
 			writes.Add(1)
-			if r.URL.Query().Get("asJob") != "true" {
-				t.Errorf("publish query = %s, want asJob=true", r.URL.RawQuery)
+			if r.URL.Query().Has("asJob") {
+				t.Errorf("publish query = %s, want no Tableau job", r.URL.RawQuery)
 			}
-			w.WriteHeader(http.StatusAccepted)
-			_, _ = io.WriteString(w, `<tsResponse><job id="job-default" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/jobs/job-default"):
-			reads.Add(1)
-			_, _ = io.WriteString(w, `<tsResponse><job id="job-default" type="PublishWorkbook" progress="100" finishCode="0"><workbook id="workbook-default"/></job></tsResponse>`)
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/workbooks/workbook-default"):
+			w.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(w, `<tsResponse><workbook id="workbook-default" name="Default"><project id="project-1" name="Analytics"/></workbook></tsResponse>`)
 		default:
 			t.Errorf("unexpected Tableau request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
@@ -81,23 +74,21 @@ func TestPublicationWorkerDefaultWaitsForAcceptedJob(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("default wait worker did not finish")
 	}
-	if writes.Load() != 1 || reads.Load() == 0 {
-		t.Fatalf("writes=%d job reads=%d, want one write and completion polling", writes.Load(), reads.Load())
+	if writes.Load() != 1 {
+		t.Fatalf("writes=%d, want one publish", writes.Load())
 	}
 	record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(operationID)
-	if err != nil || record.Phase != operationrun.PhaseCompleted || record.ExitCode == nil || *record.ExitCode != 0 {
+	if err != nil || record.Phase != operationrun.PhaseCompleted || record.ExitCode == nil || *record.ExitCode != 0 || !strings.Contains(string(record.FullResult), "workbook-default") {
 		t.Fatalf("default wait record=%+v err=%v", record, err)
 	}
 }
 
-func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneOperation(t *testing.T) {
-	var writes, reads atomic.Int32
+func TestPublicationWorkerRepeatedIDBatchPersistsMixedOutcomesUnderOneOperation(t *testing.T) {
+	var writes atomic.Int32
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-		case strings.HasSuffix(r.URL.Path, "/users/user-1"):
-			_, _ = io.WriteString(w, `<tsResponse><user id="user-1" name="publisher" siteRole="SiteAdministratorCreator"/></tsResponse>`)
 		case strings.HasSuffix(r.URL.Path, "/projects"):
 			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`)
 		case strings.HasSuffix(r.URL.Path, "/validateWorkbook"):
@@ -105,16 +96,16 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneO
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/workbooks"):
 			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><workbooks/></tsResponse>`)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/workbooks"):
-			if writes.Add(1) == 1 {
+			writes.Add(1)
+			body, _ := io.ReadAll(r.Body)
+			// Items run in parallel, so the rejected item is chosen by name.
+			if strings.Contains(string(body), `name="First"`) {
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = io.WriteString(w, `<tsResponse><error code="400000"><summary>forced batch failure</summary><detail>first item rejected</detail></error></tsResponse>`)
 				return
 			}
-			w.WriteHeader(http.StatusAccepted)
-			_, _ = io.WriteString(w, `<tsResponse><job id="job-batch-pending" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
-		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/jobs/"):
-			reads.Add(1)
-			_, _ = io.WriteString(w, `<tsResponse><job id="job-batch-pending" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `<tsResponse><workbook id="workbook-second" name="Second"><project id="project-1" name="Analytics"/></workbook></tsResponse>`)
 		default:
 			t.Errorf("unexpected Tableau request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
 			http.Error(w, "unexpected request", http.StatusBadRequest)
@@ -163,21 +154,21 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneO
 	case <-time.After(5 * time.Second):
 		t.Fatal("mixed failure batch worker did not finish")
 	}
-	if writes.Load() != 2 || reads.Load() != 0 {
-		t.Fatalf("writes=%d job reads=%d, want two submissions and no no-wait polling", writes.Load(), reads.Load())
+	if writes.Load() != 2 {
+		t.Fatalf("writes=%d, want two submissions", writes.Load())
 	}
 	record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(receipt.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Phase != operationrun.PhaseRemotePending || record.ExitCode == nil || *record.ExitCode == 0 {
+	if record.Phase != operationrun.PhaseFailed || record.ExitCode == nil || *record.ExitCode == 0 {
 		t.Fatalf("mixed batch record=%+v", record)
 	}
 	var aggregate map[string]any
 	if err := json.Unmarshal(record.FullResult, &aggregate); err != nil {
 		t.Fatalf("full result is not JSON: %v\n%s", err, record.FullResult)
 	}
-	if aggregate["status"] != "partial_failure" || aggregate["failed"] != float64(1) || aggregate["pending"] != float64(1) {
+	if aggregate["status"] != "partial_failure" || aggregate["failed"] != float64(1) || aggregate["succeeded"] != float64(1) {
 		t.Fatalf("aggregate=%#v, want one mixed operation", aggregate)
 	}
 	if strings.Contains(string(record.FullResult), "operation_id") {
@@ -191,13 +182,11 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneO
 func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmission(t *testing.T) {
 	submissionStarted := make(chan struct{})
 	releaseSubmission := make(chan struct{})
-	var writes, reads atomic.Int32
+	var writes atomic.Int32
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-		case strings.HasSuffix(r.URL.Path, "/users/user-1"):
-			_, _ = io.WriteString(w, `<tsResponse><user id="user-1" name="publisher" siteRole="SiteAdministratorCreator"/></tsResponse>`)
 		case strings.HasSuffix(r.URL.Path, "/projects"):
 			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`)
 		case strings.HasSuffix(r.URL.Path, "/validateWorkbook"):
@@ -208,11 +197,8 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 			writes.Add(1)
 			close(submissionStarted)
 			<-releaseSubmission
-			w.WriteHeader(http.StatusAccepted)
-			_, _ = io.WriteString(w, `<tsResponse><job id="job-cutoff" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
-		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/jobs/"):
-			reads.Add(1)
-			_, _ = io.WriteString(w, `<tsResponse><job id="job-cutoff" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `<tsResponse><workbook id="workbook-cutoff" name="Cutoff"><project id="project-1" name="Analytics"/></workbook></tsResponse>`)
 		default:
 			t.Errorf("unexpected Tableau request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
 			http.Error(w, "unexpected request", http.StatusBadRequest)
@@ -277,11 +263,11 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 	case <-time.After(5 * time.Second):
 		t.Fatal("cutoff worker did not finish after submission release")
 	}
-	if writes.Load() != 1 || reads.Load() != 0 {
-		t.Fatalf("writes=%d job reads=%d, want one held submission and no remote polls", writes.Load(), reads.Load())
+	if writes.Load() != 1 {
+		t.Fatalf("writes=%d, want one held submission", writes.Load())
 	}
 	record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(operationID)
-	if err != nil || record.Phase != operationrun.PhaseRemotePending || record.FinishedAt.IsZero() {
+	if err != nil || record.Phase != operationrun.PhaseCompleted || record.FinishedAt.IsZero() || !strings.Contains(string(record.FullResult), "workbook-cutoff") {
 		t.Fatalf("cutoff record=%+v err=%v", record, err)
 	}
 }

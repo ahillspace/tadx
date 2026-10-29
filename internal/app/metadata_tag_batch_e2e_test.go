@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
@@ -16,9 +17,12 @@ import (
 )
 
 func TestMetadataTagBatchRetainsPartialSuccessAndContinues(t *testing.T) {
+	var mu sync.Mutex
 	signins := 0
-	writes := []string{}
+	writes := map[string][]string{}
 	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		if catalogMetadataSignIn(w, r) {
 			signins++
 			return
@@ -31,7 +35,7 @@ func TestMetadataTagBatchRetainsPartialSuccessAndContinues(t *testing.T) {
 			return
 		}
 		if r.Method == http.MethodPut {
-			writes = append(writes, path)
+			writes[id] = append(writes[id], path)
 			if tagRequest {
 				if id == "first" {
 					w.Header().Set("X-Tableau-Request-Id", "first-tag-request")
@@ -73,7 +77,7 @@ func TestMetadataTagBatchRetainsPartialSuccessAndContinues(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatalf("invalid JSON: %v: %s", err, &out)
 	}
-	if code == 0 || signins != 1 || result.Status != "partial_failure" || result.Succeeded != 1 || result.Failed != 1 || len(result.Items) != 2 || !slices.Equal(writes, []string{"first", "first/tags", "second", "second/tags"}) {
+	if code == 0 || signins != 1 || result.Status != "partial_failure" || result.Succeeded != 1 || result.Failed != 1 || len(result.Items) != 2 || !slices.Equal(writes["first"], []string{"first", "first/tags"}) || !slices.Equal(writes["second"], []string{"second", "second/tags"}) {
 		t.Fatalf("code=%d signins=%d writes=%v output=%s", code, signins, writes, &out)
 	}
 	first, second := result.Items[0], result.Items[1]

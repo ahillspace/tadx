@@ -9,16 +9,21 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
 )
 
 func TestUserDeleteRepeatedIDsShareSessionAndKeepPartialResults(t *testing.T) {
+	var mu sync.Mutex
 	var signins int
 	var deleted []string
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		if diagnosticSignIn(w, r) {
 			signins++
 			return
@@ -45,6 +50,8 @@ func TestUserDeleteRepeatedIDsShareSessionAndKeepPartialResults(t *testing.T) {
 	opts.UserHomeDir = func() (string, error) { return t.TempDir(), nil }
 	var output bytes.Buffer
 	code := app.Run(context.Background(), []string{"admin", "user", "delete", "--id", "first", "--id", "missing", "--id", "last", "--env", "test", "--json"}, &output, opts)
+	// Items run in parallel, so writes are compared without arrival order.
+	sort.Strings(deleted)
 	if code == 0 || !json.Valid(output.Bytes()) || signins != 1 || !reflect.DeepEqual(deleted, []string{"first", "last"}) {
 		t.Fatalf("code=%d signins=%d deleted=%v output=%s", code, signins, deleted, output.String())
 	}
@@ -63,10 +70,13 @@ func TestUserDeleteRepeatedIDsShareSessionAndKeepPartialResults(t *testing.T) {
 func TestBatchFileDifferentUserSettingsPreviewAndExecution(t *testing.T) {
 	for _, preview := range []bool{true, false} {
 		t.Run(fmt.Sprint(preview), func(t *testing.T) {
+			var mu sync.Mutex
 			var signins int
 			roles := map[string]string{"one": "Viewer", "two": "Viewer"}
 			var updated []string
 			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				defer mu.Unlock()
 				if diagnosticSignIn(w, r) {
 					signins++
 					return
@@ -110,6 +120,7 @@ func TestBatchFileDifferentUserSettingsPreviewAndExecution(t *testing.T) {
 			if preview && len(updated) != 0 {
 				t.Fatal("preview wrote users")
 			}
+			sort.Strings(updated)
 			if !preview && !reflect.DeepEqual(updated, []string{"one", "two"}) {
 				t.Fatalf("updates=%v", updated)
 			}

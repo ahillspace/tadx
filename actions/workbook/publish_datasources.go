@@ -9,13 +9,10 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
-	"github.com/ahillspace/tadx/internal/paging"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
 const unmappedDatasourceExplanation = "This can happen when there are naming conflicts on the Tableau Site and should be resolved by using --datasource-binding <source name or content URL>=<target LUID>, where the source name or content URL are the data sources in your workbook and the LUID is the LUID of the published data source on the Tableau Site. Here are the data sources that need mapping along with suggested candidates found by searching the Tableau Site:"
-
-const datasourceCandidateRule = "Candidates match by exact name, or by the workbook's content URL followed by _<digits>. Always check a candidate before remapping."
 
 // matchDatasourceBindings resolves each binding source to exactly one workbook
 // datasource content URL. The returned bindings carry that content URL as
@@ -93,57 +90,18 @@ func (a *Publisher) readDatasourceBindings(ctx context.Context, input PublishInp
 	return contentURLs, display, nil
 }
 
-// unmappedDatasourceReference is one distinct workbook content URL left to Tableau.
-type unmappedDatasourceReference struct {
-	caption, contentURL string
-}
-
-func unmappedDatasourceReferences(plan PublishPlan) []unmappedDatasourceReference {
-	var references []unmappedDatasourceReference
+// unmappedDatasourceReferences returns the first workbook reference to each
+// distinct content URL left to Tableau.
+func unmappedDatasourceReferences(plan PublishPlan) []PublishDatasource {
+	var references []PublishDatasource
 	for _, datasource := range plan.datasources {
 		mapped := slices.ContainsFunc(plan.bindings, func(binding DatasourceBinding) bool { return binding.Source == datasource.ContentURL })
-		seen := slices.ContainsFunc(references, func(reference unmappedDatasourceReference) bool { return reference.contentURL == datasource.ContentURL })
+		seen := slices.ContainsFunc(references, func(reference PublishDatasource) bool { return reference.ContentURL == datasource.ContentURL })
 		if !mapped && !seen {
-			references = append(references, unmappedDatasourceReference{caption: datasource.Caption, contentURL: datasource.ContentURL})
+			references = append(references, datasource)
 		}
 	}
 	return references
-}
-
-// findDatasourceCandidates performs one bounded scan of the destination site.
-// A candidate has the reference's exact caption, its exact content URL, or its
-// content URL followed by Tableau's _<digits> collision suffix.
-func (a *Publisher) findDatasourceCandidates(ctx context.Context, plan PublishPlan, references []unmappedDatasourceReference) ([]PublishDatasourceCandidate, error) {
-	items, err := paging.Collect(ctx, a.resolver.ListDatasources, func(item value.Datasource) string { return item.LUID })
-	if err != nil {
-		return nil, err
-	}
-	var candidates []PublishDatasourceCandidate
-	for _, reference := range references {
-		var matches []value.Datasource
-		for _, item := range items {
-			if item.ContentURL == reference.contentURL || (reference.caption != "" && item.Name == reference.caption) || suffixedContentURL(reference.contentURL, item.ContentURL) {
-				matches = append(matches, item)
-			}
-		}
-		slices.SortStableFunc(matches, func(left, right value.Datasource) int {
-			if (left.ContentURL == reference.contentURL) != (right.ContentURL == reference.contentURL) {
-				if left.ContentURL == reference.contentURL {
-					return -1
-				}
-				return 1
-			}
-			return strings.Compare(left.ContentURL+"\x00"+left.LUID, right.ContentURL+"\x00"+right.LUID)
-		})
-		for _, item := range matches[:min(len(matches), publishMaxDatasourceCandidates)] {
-			candidates = append(candidates, PublishDatasourceCandidate{
-				SourceContentURL: reference.contentURL, Name: item.Name, ContentURL: item.ContentURL, LUID: item.LUID,
-				Project: item.ProjectName, OwnerLUID: item.OwnerLUID, UpdatedAt: item.UpdatedAt,
-				Command: datasourceRemapCommand(plan, DatasourceBinding{Source: reference.contentURL, TargetLUID: item.LUID}),
-			})
-		}
-	}
-	return candidates, nil
 }
 
 // datasourceRemapCommand repeats the planned publish with one added binding.
@@ -159,120 +117,102 @@ func datasourceRemapCommand(plan PublishPlan, binding DatasourceBinding) string 
 	return commandhint.Target(plan.Target.Environment, plan.Workspace, args...)
 }
 
-// suffixedContentURL reports whether candidate is contentURL followed by the
-// _<digits> suffix Tableau appends when a content URL is already taken.
-func suffixedContentURL(contentURL, candidate string) bool {
-	suffix, ok := strings.CutPrefix(candidate, contentURL+"_")
-	return contentURL != "" && ok && suffix != "" && strings.Trim(suffix, "0123456789") == ""
+func datasourceLabel(reference PublishDatasource) string {
+	if reference.Caption == "" {
+		return reference.ContentURL
+	}
+	return reference.Caption
 }
 
-func hasExactCandidate(candidates []PublishDatasourceCandidate, contentURL string) bool {
-	return slices.ContainsFunc(candidates, func(candidate PublishDatasourceCandidate) bool {
-		return candidate.SourceContentURL == contentURL && candidate.ContentURL == contentURL
-	})
-}
-
-// previewDatasourceCandidates adds remapping suggestions and likely-failure
-// warnings for references left to Tableau. It never blocks the preview.
-func (a *Publisher) previewDatasourceCandidates(ctx context.Context, plan PublishPlan) PublishPlan {
-	references := unmappedDatasourceReferences(plan)
-	if len(references) == 0 {
-		return plan
-	}
-	candidates, err := a.findDatasourceCandidates(ctx, plan, references)
-	if err != nil {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf("Data source candidate search was unavailable (%v); references left to Tableau were not checked.", err))
-		return plan
-	}
-	plan.DatasourceCandidates = candidates
-	for _, reference := range references {
-		if !hasExactCandidate(candidates, reference.contentURL) {
-			plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s (content URL %s): no data source on this site has that URL; this publish will likely fail.", datasourceLabel(reference), reference.contentURL))
-		}
-	}
-	return plan
-}
-
-func datasourceLabel(reference unmappedDatasourceReference) string {
-	if reference.caption == "" {
-		return reference.contentURL
-	}
-	return reference.caption
+// searchableByName reports whether a caption can be sent in a Tableau name
+// filter, which cannot carry a comma.
+func searchableByName(caption string) bool {
+	return caption != "" && !strings.Contains(caption, ",")
 }
 
 // unmappedDatasourceRejection explains Tableau's datasource-not-found
-// rejection with exact candidates, or returns nil when the rejection is not
-// about references left to Tableau.
-func (a *Publisher) unmappedDatasourceRejection(ctx context.Context, plan PublishPlan, cause error) error {
+// rejection. One exact content URL lookup finds the references left to
+// Tableau that have no datasource on the site, and one exact name lookup
+// finds candidates for them. It returns no error when the rejection is not
+// about missing references, with a note for Tableau's own error when that
+// could not be checked.
+func (a *Publisher) unmappedDatasourceRejection(ctx context.Context, plan PublishPlan, cause error) (string, error) {
 	var code interface{ TableauCode() string }
 	references := unmappedDatasourceReferences(plan)
 	if !errors.As(cause, &code) || code.TableauCode() != "400011" || len(references) == 0 {
-		return nil
+		return "", nil
 	}
-	candidates, searchErr := a.findDatasourceCandidates(ctx, plan, references)
-	unmapped := references
-	if missing := missingDatasourceReferences(references, candidates); searchErr == nil && len(missing) != 0 {
-		// When every reference has an exact URL match on the site, Tableau
-		// still could not use one of them, so every reference needs review.
-		unmapped = missing
+	contentURLs := make([]string, len(references))
+	for index, reference := range references {
+		contentURLs[index] = reference.ContentURL
 	}
-	return unmappedDatasourceError(plan, unmapped, candidates, searchErr, cause, "")
-}
-
-// ExplainFailedJob explains a failed publish job, which Tableau reports
-// without a reason, when the site has no data source at one or more content
-// URLs left to Tableau. Without that evidence it returns cause unchanged.
-func (a *Publisher) ExplainFailedJob(ctx context.Context, plan PublishPlan, result PublishResult, cause error) error {
-	references := unmappedDatasourceReferences(plan)
-	if result.Status != "failed" || len(references) == 0 {
-		return cause
+	present, err := a.resolver.FindDatasourcesByContentURL(ctx, contentURLs)
+	if err != nil {
+		return fmt.Sprintf(" The workbook's data sources could not be checked on this site: %v.", err), nil
 	}
-	candidates, err := a.findDatasourceCandidates(ctx, plan, references)
-	missing := missingDatasourceReferences(references, candidates)
-	if err != nil || len(missing) == 0 {
-		return cause
-	}
-	return unmappedDatasourceError(plan, missing, candidates, nil, cause, result.JobID)
-}
-
-func missingDatasourceReferences(references []unmappedDatasourceReference, candidates []PublishDatasourceCandidate) []unmappedDatasourceReference {
-	var missing []unmappedDatasourceReference
+	var missing []PublishDatasource
+	var names []string
 	for _, reference := range references {
-		if !hasExactCandidate(candidates, reference.contentURL) {
-			missing = append(missing, reference)
+		if slices.ContainsFunc(present, func(item value.Datasource) bool { return item.ContentURL == reference.ContentURL }) {
+			continue
+		}
+		missing = append(missing, reference)
+		if searchableByName(reference.Caption) {
+			names = append(names, reference.Caption)
 		}
 	}
-	return missing
+	if len(missing) == 0 {
+		return "", nil
+	}
+	var candidates []value.Datasource
+	var searchErr error
+	if len(names) != 0 {
+		candidates, searchErr = a.resolver.FindDatasourcesByName(ctx, names)
+	}
+	return "", unmappedDatasourceError(plan, missing, candidates, searchErr, cause)
 }
 
-// unmappedDatasourceError reports unmapped references with their exact
-// candidates. Tableau rejected the publication, so nothing was applied.
-func unmappedDatasourceError(plan PublishPlan, unmapped []unmappedDatasourceReference, candidates []PublishDatasourceCandidate, searchErr, cause error, jobID string) error {
+// unmappedDatasourceError reports each missing reference with the
+// datasources that have its exact name. Tableau rejected the publication, so
+// nothing was applied.
+func unmappedDatasourceError(plan PublishPlan, missing []PublishDatasource, candidates []value.Datasource, searchErr, cause error) error {
 	lines := []string{unmappedDatasourceExplanation}
-	for _, reference := range unmapped {
-		lines = append(lines, fmt.Sprintf("- %s (content URL %s):", datasourceLabel(reference), reference.contentURL))
-		if searchErr != nil {
+	for _, reference := range missing {
+		lines = append(lines, fmt.Sprintf("- %s (content URL %s):", datasourceLabel(reference), reference.ContentURL))
+		if strings.Contains(reference.Caption, ",") {
+			lines = append(lines, "  Not searched by name because Tableau name filters cannot contain a comma.")
+			continue
+		}
+		if searchErr != nil && reference.Caption != "" {
 			lines = append(lines, fmt.Sprintf("  Candidate search was unavailable: %v.", searchErr))
 			continue
 		}
-		found := false
+		var matches []value.Datasource
 		for _, candidate := range candidates {
-			if candidate.SourceContentURL != reference.contentURL {
-				continue
+			if reference.Caption != "" && strings.EqualFold(candidate.Name, reference.Caption) {
+				matches = append(matches, candidate)
 			}
-			found = true
-			lines = append(lines, fmt.Sprintf("  - %q, content URL %s, LUID %s, project %q, owner %s, updated %s. Remap: %s", candidate.Name, candidate.ContentURL, candidate.LUID, candidate.Project, candidate.OwnerLUID, candidate.UpdatedAt, candidate.Command))
 		}
-		if !found {
+		slices.SortFunc(matches, func(left, right value.Datasource) int {
+			return strings.Compare(left.ContentURL+"\x00"+left.LUID, right.ContentURL+"\x00"+right.LUID)
+		})
+		for _, match := range matches[:min(len(matches), publishMaxDatasourceCandidates)] {
+			command := datasourceRemapCommand(plan, DatasourceBinding{Source: reference.ContentURL, TargetLUID: match.LUID})
+			lines = append(lines, fmt.Sprintf("  - %q, content URL %s, LUID %s, project %q (LUID %s), owner %s, updated %s. Remap: %s", match.Name, match.ContentURL, match.LUID, match.ProjectName, match.ProjectLUID, match.OwnerLUID, match.UpdatedAt, command))
+		}
+		if omitted := len(matches) - publishMaxDatasourceCandidates; omitted > 0 {
+			lines = append(lines, fmt.Sprintf("  %d more data source(s) have this name; list them with %s.", omitted, commandhint.Environment(plan.Target.Environment, "content", "datasource", "list", "--name", reference.Caption)))
+		}
+		if len(matches) == 0 {
 			lines = append(lines, "  No candidates found. Publish the data source if it does not exist yet. If you already published it, find it with "+commandhint.Environment(plan.Target.Environment, "content", "datasource", "list", "--project-name", "<leaf>")+" or "+commandhint.Environment(plan.Target.Environment, "content", "datasource", "list", "--all")+"; there is no partial-name filter, and --name matches exact names only.")
 		}
 	}
-	lines = append(lines, datasourceCandidateRule)
+	lines = append(lines, "Always check a candidate before remapping.")
 	return &errs.Error{
 		ID: "workbook.publish.datasource_unmapped", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID,
 		Environment: plan.Target.Environment, Site: plan.Target.Site,
-		Summary: fmt.Sprintf("Your workbook contains %d data source(s) that do not map to a published data source on this Tableau Site.", len(unmapped)),
+		Summary: fmt.Sprintf("Your workbook contains %d data source(s) that do not map to a published data source on this Tableau Site.", len(missing)),
 		Cause:   cause, Retryable: new(false), CorrectiveAction: strings.Join(lines, "\n"),
-		TableauJobID: jobID, TableauRequestID: errs.TableauRequestID(cause), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeNotApplied,
+		TableauRequestID: errs.TableauRequestID(cause), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeNotApplied,
 	}
 }

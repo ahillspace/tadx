@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/batchspec"
@@ -19,7 +21,7 @@ type batchTestRenderer struct{ value any }
 
 func (r *batchTestRenderer) Render(v any) error { r.value = v; return nil }
 
-func batchTestRoot(renderer Renderer, calls *[]string, enabled bool) *cobra.Command {
+func batchTestRoot(renderer Renderer, mu *sync.Mutex, calls *[]string, enabled bool) *cobra.Command {
 	root := &cobra.Command{Use: "tadx", SilenceUsage: true, SilenceErrors: true}
 	var id, env, mode string
 	var preview bool
@@ -33,7 +35,9 @@ func batchTestRoot(renderer Renderer, calls *[]string, enabled bool) *cobra.Comm
 		if !enabled && !preview {
 			return errors.New("mutation disabled")
 		}
+		mu.Lock()
 		*calls = append(*calls, id+":"+env+":"+mode)
+		mu.Unlock()
 		value := map[string]any{"id": id, "preview": preview}
 		if id == "fail" {
 			return clierr.WithOutput(value, errors.New("verification unavailable"))
@@ -51,13 +55,16 @@ func batchTestRoot(renderer Renderer, calls *[]string, enabled bool) *cobra.Comm
 func runBatchFixture(t *testing.T, args []string, enabled bool) (any, []string, error) {
 	t.Helper()
 	renderer := &batchTestRenderer{}
+	var mu sync.Mutex
 	var calls []string
-	factory := func(r Renderer) *cobra.Command { return batchTestRoot(r, &calls, enabled) }
+	factory := func(r Renderer) *cobra.Command { return batchTestRoot(r, &mu, &calls, enabled) }
 	root := factory(renderer)
 	cmd, _, _ := root.Find([]string{"change"})
 	attachBatch(root, cmd, "id", renderer, factory)
 	root.SetArgs(append([]string{"change"}, args...))
 	err := root.ExecuteContext(context.Background())
+	// Items run in parallel, so calls are sorted for stable assertions.
+	sort.Strings(calls)
 	return renderer.value, calls, err
 }
 
@@ -70,16 +77,16 @@ func batchFile(t *testing.T, body string) string {
 	return p
 }
 
-func TestRepeatedIDsRunInOrderWithPartialEvidence(t *testing.T) {
+func TestRepeatedIDsRunEveryItemWithPartialEvidenceInSelectionOrder(t *testing.T) {
 	value, calls, err := runBatchFixture(t, []string{"--id", "one", "--id", "fail", "--id", "three", "--environment", "dev"}, true)
 	if err == nil || !clierr.IsRendered(err) {
 		t.Fatalf("error = %v", err)
 	}
-	if !reflect.DeepEqual(calls, []string{"one:dev:", "fail:dev:", "three:dev:"}) {
+	if !reflect.DeepEqual(calls, []string{"fail:dev:", "one:dev:", "three:dev:"}) {
 		t.Fatalf("calls = %v", calls)
 	}
 	out := value.(contentbatch.Output)
-	if out.Succeeded != 2 || out.Failed != 1 || out.Items[1].Result == nil {
+	if out.Succeeded != 2 || out.Failed != 1 || out.Items[0].Selector != "id=one" || out.Items[1].Selector != "id=fail" || out.Items[2].Selector != "id=three" || out.Items[1].Result == nil {
 		t.Fatalf("out = %#v", out)
 	}
 }

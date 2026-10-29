@@ -149,7 +149,7 @@ func newPull(deps Dependencies) *cobra.Command {
 	}
 	short := deps.PullShort
 	if short == "" {
-		short = "Pull workbook artifacts sequentially."
+		short = "Pull workbook artifacts in parallel."
 	}
 	var input workbookops.PullInput
 	var ids []string
@@ -197,7 +197,7 @@ func newPull(deps Dependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative workbook LUID; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative workbook LUID; repeat for up to 100 items, processed in parallel")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&project, "project", "", "exact slash-delimited project path")
 	command.Flags().BoolVar(&includeExtract, "include-extract", true, "include workbook extracts")
@@ -216,7 +216,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 	}
 	short := deps.PublishShort
 	if short == "" {
-		short = "Publish workbook artifacts sequentially."
+		short = "Publish workbook artifacts in parallel."
 	}
 	var input workbookops.PublishInput
 	var artifacts, bindings []string
@@ -256,7 +256,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("workbook", "Finance--identity")+"; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("workbook", "Finance--identity")+"; repeat for up to 100 items, processed in parallel")
 	command.Flags().StringVar(&input.File, "file", "", "standalone native .twb or .twbx file; no managed artifact required")
 	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source workbook LUID within the resolved workspace")
 	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed workbook name within the resolved workspace")

@@ -146,7 +146,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 					"(default: 25)", "(default: 20)", "measure|dimension|date|excluded",
 					"dirty local files", "Project: destination", "create: collision fails", "append/replace: data",
 					"at least one of: --new-name, --owner-id", "omitted settings stay unchanged", "--field-id: <=10000",
-					"--batch-file", "File OR repeated selectors", "1-100 sequential items", "Env/control flags outside rows",
+					"--batch-file", "File OR repeated selectors", "1-100 items", "Env/control flags outside rows",
 				} {
 					if !strings.Contains(flat, fact) {
 						t.Errorf("compact reference lost %q", fact)

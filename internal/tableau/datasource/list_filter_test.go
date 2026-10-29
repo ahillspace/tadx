@@ -13,10 +13,11 @@ func TestTypedListFilter(t *testing.T) {
 	if got, err := adapter.ListFilter(adapter.ListRequest{}); err != nil || got != "" {
 		t.Fatalf("empty filter=%q error=%v", got, err)
 	}
-	for _, value := range []string{"One,Two", "One&Two"} {
-		if _, err := adapter.ListFilter(adapter.ListRequest{Name: value}); err == nil {
-			t.Fatalf("accepted delimiter %q", value)
-		}
+	if _, err := adapter.ListFilter(adapter.ListRequest{Name: "One,Two"}); err == nil {
+		t.Fatal("accepted comma delimiter")
+	}
+	if got, err := adapter.ListFilter(adapter.ListRequest{Name: "One&Two", ProjectName: "R&D"}); err != nil || got != "name:eq:One&Two,projectName:eq:R&D" {
+		t.Fatalf("ampersand filter=%q error=%v", got, err)
 	}
 	for _, value := range []string{"One,Two", "One&Two"} {
 		if _, err := adapter.ListFilter(adapter.ListRequest{ProjectLUID: value}); err == nil {
@@ -30,7 +31,7 @@ func TestTypedDatasourceFilterValidatesTimeBoundsAndContentURLs(t *testing.T) {
 		{UpdatedAfter: "invalid"}, {UpdatedBefore: "2026-09-01"},
 		{UpdatedAfter: "2026-09-02T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z"},
 		{UpdatedAfter: "0001-01-01T00:00:00Z", UpdatedBefore: "0000-01-01T00:00:00Z"},
-		{ContentURLs: []string{""}}, {ContentURLs: []string{"One,Two"}}, {ContentURLs: []string{"One&Two"}},
+		{ContentURLs: []string{""}}, {ContentURLs: []string{"One,Two"}}, {Names: []string{"One,Two"}}, {Names: []string{""}},
 	} {
 		if _, err := adapter.ListFilter(input); err == nil {
 			t.Fatalf("accepted invalid selectors: %+v", input)
@@ -42,6 +43,7 @@ func TestTypedDatasourceFilterValidatesTimeBoundsAndContentURLs(t *testing.T) {
 	}{
 		{adapter.ListRequest{ContentURLs: []string{"one"}}, "contentUrl:eq:one"},
 		{adapter.ListRequest{ContentURLs: []string{"one", "two"}}, "contentUrl:in:[one,two]"},
+		{adapter.ListRequest{Names: []string{"Sales & Margin", "Alpha"}, ContentURLs: []string{"one"}}, "name:in:[Sales & Margin,Alpha],contentUrl:eq:one"},
 		{adapter.ListRequest{UpdatedAfter: "2026-09-01T00:00:00Z", UpdatedBefore: "2026-08-31T17:00:00-07:00"}, "updatedAt:gte:2026-09-01T00:00:00Z,updatedAt:lte:2026-08-31T17:00:00-07:00"},
 	} {
 		got, err := adapter.ListFilter(test.input)

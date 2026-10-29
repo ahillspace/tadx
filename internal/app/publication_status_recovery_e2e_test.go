@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,68 +11,70 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/ahillspace/tadx/internal/artifact"
-	"github.com/ahillspace/tadx/internal/operationrun"
+	"github.com/ahillspace/tadx/internal/jobmonitor"
 )
 
+// TestPublicationStatusRecoveryThroughCLI starts from operation records and
+// job receipts written by a v1.0.0 --no-wait publish that Tableau accepted as
+// a job. Publish no longer creates jobs, but operations started by v1.0.x
+// must still decode and recover through job inspect --operation-id.
 func TestPublicationStatusRecoveryThroughCLI(t *testing.T) {
 	t.Run("workbook pending then success confirms destination once", func(t *testing.T) {
 		fixture := newPublicationStatusFixture(t, publicationStatusFixtureOptions{jobDestination: true})
-		operationID, options := startNoWaitWorkbookPublication(t, fixture)
+		operationID, options := loadLegacyPublication(t, fixture, "single")
 
 		first := inspectPublicationOperationThroughCLI(t, operationID, options)
 		assertPublicationItem(t, first, "succeeded", "confirmed", "wb-new")
-		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 || fixture.publishes.Load() != 1 {
-			t.Fatalf("first recovery requests: jobs=%d destinations=%d publishes=%d, want 1, 1, 1", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
+		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 || fixture.publishes.Load() != 0 {
+			t.Fatalf("first recovery requests: jobs=%d destinations=%d publishes=%d, want 1, 1, 0", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
 		}
 
 		second := inspectPublicationOperationThroughCLI(t, operationID, options)
 		assertPublicationItem(t, second, "succeeded", "confirmed", "wb-new")
-		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 || fixture.publishes.Load() != 1 {
+		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 || fixture.publishes.Load() != 0 {
 			t.Fatalf("repeated recovery requests: jobs=%d destinations=%d publishes=%d, want no duplicate reads or write", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
 		}
 	})
 
 	t.Run("empty name index stays succeeded and later resolves without republish", func(t *testing.T) {
 		fixture := newPublicationStatusFixture(t, publicationStatusFixtureOptions{jobDestination: false})
-		operationID, options := startNoWaitWorkbookPublication(t, fixture)
+		operationID, options := loadLegacyPublication(t, fixture, "single")
 
 		pending := inspectPublicationOperationThroughCLI(t, operationID, options)
 		assertPublicationItem(t, pending, "succeeded", "destination_pending", "")
-		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 0 || fixture.publishes.Load() != 1 {
-			t.Fatalf("pending recovery requests: jobs=%d destinations=%d publishes=%d, want 1, 0, 1", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
+		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 0 || fixture.publishes.Load() != 0 {
+			t.Fatalf("pending recovery requests: jobs=%d destinations=%d publishes=%d, want 1, 0, 0", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
 		}
 
 		stillPending := inspectPublicationOperationThroughCLI(t, operationID, options)
 		assertPublicationItem(t, stillPending, "succeeded", "destination_pending", "")
-		if fixture.jobGets.Load() != 1 || fixture.publishes.Load() != 1 {
+		if fixture.jobGets.Load() != 1 || fixture.publishes.Load() != 0 {
 			t.Fatalf("repeated pending recovery republished or polled job: jobs=%d publishes=%d", fixture.jobGets.Load(), fixture.publishes.Load())
 		}
 
 		fixture.indexVisible.Store(true)
 		resolved := inspectPublicationOperationThroughCLI(t, operationID, options)
 		assertPublicationItem(t, resolved, "succeeded", "confirmed", "wb-new")
-		if fixture.jobGets.Load() != 1 || fixture.publishes.Load() != 1 {
+		if fixture.jobGets.Load() != 1 || fixture.publishes.Load() != 0 {
 			t.Fatalf("later index recovery changed accepted identity: jobs=%d publishes=%d", fixture.jobGets.Load(), fixture.publishes.Load())
 		}
 	})
 
 	t.Run("mismatched destination remains visible", func(t *testing.T) {
 		fixture := newPublicationStatusFixture(t, publicationStatusFixtureOptions{jobDestination: true, mismatchedDestination: true})
-		operationID, options := startNoWaitWorkbookPublication(t, fixture)
+		operationID, options := loadLegacyPublication(t, fixture, "single")
 
 		result := inspectPublicationOperationThroughCLI(t, operationID, options)
 		assertPublicationItem(t, result, "succeeded", "destination_mismatch", "wb-new")
-		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 || fixture.publishes.Load() != 1 {
-			t.Fatalf("mismatch recovery requests: jobs=%d destinations=%d publishes=%d, want 1, 1, 1", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
+		if fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 || fixture.publishes.Load() != 0 {
+			t.Fatalf("mismatch recovery requests: jobs=%d destinations=%d publishes=%d, want 1, 1, 0", fixture.jobGets.Load(), fixture.destinationGets.Load(), fixture.publishes.Load())
 		}
 	})
 
 	t.Run("submission failure and accepted success preserve partial failure", func(t *testing.T) {
 		fixture := newPublicationStatusFixture(t, publicationStatusFixtureOptions{batch: true, jobDestination: true})
-		operationID, options := startNoWaitWorkbookBatchPublication(t, fixture)
+		operationID, options := loadLegacyPublication(t, fixture, "batch")
 
 		result := inspectPublicationOperationThroughCLI(t, operationID, options)
 		if result["status"] != "partial_failure" {
@@ -90,8 +91,8 @@ func TestPublicationStatusRecoveryThroughCLI(t *testing.T) {
 		if !ok || acceptedResult["verification"] != "confirmed" || acceptedResult["workbook_luid"] != "wb-batch" {
 			t.Fatalf("accepted item = %#v, want confirmed wb-batch", items[1])
 		}
-		if fixture.publishes.Load() != 2 || fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 {
-			t.Fatalf("mixed recovery requests: publishes=%d jobs=%d destinations=%d, want 2, 1, 1", fixture.publishes.Load(), fixture.jobGets.Load(), fixture.destinationGets.Load())
+		if fixture.publishes.Load() != 0 || fixture.jobGets.Load() != 1 || fixture.destinationGets.Load() != 1 {
+			t.Fatalf("mixed recovery requests: publishes=%d jobs=%d destinations=%d, want 0, 1, 1", fixture.publishes.Load(), fixture.jobGets.Load(), fixture.destinationGets.Load())
 		}
 	})
 }
@@ -140,12 +141,8 @@ func (f *publicationStatusFixture) handle(w http.ResponseWriter, r *http.Request
 	switch {
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/auth/signin"):
 		_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/users/user-1"):
-		_, _ = io.WriteString(w, `<tsResponse><user id="user-1" name="publisher" siteRole="SiteAdministratorCreator"/></tsResponse>`)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects"):
 		_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="project-1" name="Analytics"/><project id="project-other" name="Other"/></projects></tsResponse>`)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/validateWorkbook"):
-		_, _ = io.WriteString(w, `{"errors":[],"warnings":[]}`)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/workbooks"):
 		if f.indexVisible.Load() {
 			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><workbooks><workbook id="wb-new" name="Sales"><project id="project-1" name="Analytics"/><owner id="user-1"/></workbook></workbooks></tsResponse>`)
@@ -153,14 +150,8 @@ func (f *publicationStatusFixture) handle(w http.ResponseWriter, r *http.Request
 			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="0"/><workbooks/></tsResponse>`)
 		}
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/workbooks"):
-		count := f.publishes.Add(1)
-		if f.batch && count == 1 {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `<tsResponse><error code="400000"><summary>forced submission failure</summary><detail>first item rejected</detail></error></tsResponse>`)
-			return
-		}
-		w.WriteHeader(http.StatusAccepted)
-		_, _ = fmt.Fprintf(w, `<tsResponse><job id="%s" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`, jobID)
+		f.publishes.Add(1)
+		http.Error(w, "recovery must not publish", http.StatusBadRequest)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/jobs/"+jobID):
 		f.jobGets.Add(1)
 		if f.jobDestination {
@@ -176,84 +167,73 @@ func (f *publicationStatusFixture) handle(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func startNoWaitWorkbookPublication(t *testing.T, fixture *publicationStatusFixture) (string, Options) {
+// loadLegacyPublication installs a saved v1.0.0 operation record and its job
+// receipt, bound to this test's fixture server, configuration, and directories.
+func loadLegacyPublication(t *testing.T, fixture *publicationStatusFixture, name string) (string, Options) {
 	t.Helper()
 	runtime, _ := datasourceLifecycleRuntime(t, fixture.server)
-	file := filepath.Join(t.TempDir(), "Sales.twb")
-	if err := os.WriteFile(file, []byte("<workbook/>"), 0o600); err != nil {
+	options := publicationWorkerTestOptions(runtime.configPath, fixture.server, t)
+	source := filepath.Join(t.TempDir(), "Sales.twb")
+	if err := os.WriteFile(source, []byte("<workbook/>"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	options := publicationWorkerTestOptions(runtime.configPath, fixture.server, t)
-	done := make(chan int, 1)
-	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
-		return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
+	replacer := strings.NewReplacer(
+		"{{SERVER}}", jsonStringContent(t, fixture.server.URL),
+		"{{CONFIG_PATH}}", jsonStringContent(t, runtime.configPath),
+		"{{SOURCE_PATH}}", jsonStringContent(t, source),
+		"{{JOB_DIRECTORY}}", jsonStringContent(t, options.JobDirectory),
+		"{{WORKING_DIRECTORY}}", jsonStringContent(t, t.TempDir()),
+	)
+	files, err := filepath.Glob(filepath.Join("testdata", "legacy-publication", name, "*.json"))
+	if err != nil || len(files) != 2 {
+		t.Fatalf("legacy fixture files = %v, err = %v", files, err)
 	}
-	var output strings.Builder
-	args := []string{"content", "workbook", "publish", "--file", file, "--environment", "production", "--project-id", "project-1", "--no-wait", "--json"}
-	if exit := Run(t.Context(), args, &output, options); exit != 0 {
-		t.Fatalf("no-wait publish exit=%d output=%s", exit, output.String())
-	}
-	operationID := operationIDFromOutput(t, output.String())
-	select {
-	case code := <-done:
-		if code != 0 {
-			record, _ := (operationrun.Store{Directory: options.OperationDirectory}).Read(operationID)
-			t.Fatalf("worker exit=%d full result=%s", code, record.FullResult)
+	// Receipt file names hash the server URL, which differs per test server,
+	// so receipts are renamed to the path the current store derives and the
+	// operation record is rewritten to match.
+	store := jobmonitor.Store{Directory: options.JobDirectory}
+	renames := make([]string, 0, 2)
+	runFile := ""
+	for _, file := range files {
+		base := filepath.Base(file)
+		if strings.HasPrefix(base, "run-") {
+			runFile = file
+			continue
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("publication worker did not finish")
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := replacer.Replace(string(data))
+		var receipt jobmonitor.Receipt
+		if err := json.Unmarshal([]byte(content), &receipt); err != nil {
+			t.Fatal(err)
+		}
+		path := store.Path(receipt)
+		renames = append(renames, base, filepath.Base(path))
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(operationID)
-	if err != nil || record.Phase != operationrun.PhaseRemotePending {
-		t.Fatalf("finished no-wait record=%+v err=%v, want remote pending accepted job", record, err)
+	data, err := os.ReadFile(runFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := strings.NewReplacer(renames...).Replace(replacer.Replace(string(data)))
+	operationID := strings.TrimSuffix(filepath.Base(runFile), ".json")
+	if err := os.WriteFile(filepath.Join(options.OperationDirectory, filepath.Base(runFile)), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	return operationID, options
 }
 
-func startNoWaitWorkbookBatchPublication(t *testing.T, fixture *publicationStatusFixture) (string, Options) {
+func jsonStringContent(t *testing.T, value string) string {
 	t.Helper()
-	runtime, workspace := datasourceLifecycleRuntime(t, fixture.server)
-	manager := artifact.NewWorkbookManager(nil)
-	for _, item := range []struct{ id, name string }{{"source-a", "First"}, {"source-b", "Second"}} {
-		_, err := manager.Pull(t.Context(), artifact.WorkbookPull{
-			Workspace: workspace,
-			Filename:  item.name + ".twb",
-			Content:   []byte("<workbook/>"),
-			Metadata: artifact.WorkbookMetadata{
-				Kind: "workbook", Name: item.name, TableauID: item.id,
-				SourceServerOrigin: fixture.server.URL, SourceSiteLUID: "site-1",
-				SourceEnvironment: "production", SourceSite: "team-site",
-				SourceProjectID: "project-1", SourceProjectName: "Analytics",
-			},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
 	}
-	options := publicationWorkerTestOptions(runtime.configPath, fixture.server, t)
-	done := make(chan int, 1)
-	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
-		return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
-	}
-	var output strings.Builder
-	args := []string{"content", "workbook", "publish", "--workspace", "analytics", "--environment", "production", "--project-id", "project-1", "--id", "source-a", "--id", "source-b", "--overwrite", "--no-wait", "--json"}
-	if exit := Run(t.Context(), args, &output, options); exit != 0 {
-		t.Fatalf("mixed no-wait command exit=%d output=%s", exit, output.String())
-	}
-	operationID := operationIDFromOutput(t, output.String())
-	select {
-	case code := <-done:
-		if code == 0 {
-			t.Fatal("mixed submission worker unexpectedly succeeded")
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("mixed submission worker did not finish")
-	}
-	record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(operationID)
-	if err != nil || record.Phase != operationrun.PhaseRemotePending {
-		t.Fatalf("finished mixed record=%+v err=%v, want remote pending accepted job", record, err)
-	}
-	return operationID, options
+	return string(data[1 : len(data)-1])
 }
 
 func inspectPublicationOperationThroughCLI(t *testing.T, operationID string, options Options) map[string]any {

@@ -27,7 +27,6 @@ type PublishInput struct {
 	ProjectSelector                                  identity.Selector
 	SourceDefaulted                                  bool
 	Mode                                             Mode
-	AsJob                                            bool
 }
 
 // SetProjectSelector sets one exact destination project selector.
@@ -68,7 +67,6 @@ type PublishPlan struct {
 	ParentDataSourceURLs []string      `json:"parent_datasource_urls,omitempty"`
 	Target               PublishTarget `json:"target"`
 	Substeps             []string      `json:"substeps"`
-	AsJob                bool          `json:"-"`
 	request              PublishRequest
 	contentURL           string
 }
@@ -86,7 +84,6 @@ type PublishCompactPlan struct {
 	SourceKind     string        `json:"source_kind"`
 	DatasourceName string        `json:"datasource_name"`
 	Target         PublishTarget `json:"target"`
-	AsJob          bool          `json:"-"`
 }
 
 type PublishRequest struct {
@@ -94,7 +91,6 @@ type PublishRequest struct {
 	ContentSize                                                   int64
 	Mode                                                          Mode
 	ParentDataSourceURLs                                          []string
-	AsJob                                                         bool
 }
 type PublishResult struct {
 	Status           string `json:"status"`
@@ -103,7 +99,6 @@ type PublishResult struct {
 	ProjectLUID      string `json:"project_luid,omitempty"`
 	ContentURL       string `json:"content_url,omitempty"`
 	RenamedFrom      string `json:"renamed_from,omitempty"`
-	JobID            string `json:"tableau_job_id,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 	ReceiptPath      string `json:"receipt_path,omitempty"`
 	Verification     string `json:"verification,omitempty"`
@@ -130,7 +125,6 @@ type PublishCompactPublishResult struct {
 	ProjectLUID    string `json:"project_luid,omitempty"`
 	ContentURL     string `json:"content_url,omitempty"`
 	RenamedFrom    string `json:"renamed_from,omitempty"`
-	JobID          string `json:"tableau_job_id,omitempty"`
 	ReceiptPath    string `json:"receipt_path,omitempty"`
 	Verification   string `json:"verification,omitempty"`
 }
@@ -165,7 +159,6 @@ func (o PublishOutput) CompactOutput() any {
 		SourceKind:     o.Plan.SourceKind,
 		DatasourceName: o.Plan.DatasourceName,
 		Target:         o.Plan.Target,
-		AsJob:          o.Plan.AsJob,
 	}
 	compact := PublishCompactResult{Plan: plan, Details: "--full", Help: o.Help}
 	if o.Result != nil {
@@ -176,7 +169,6 @@ func (o PublishOutput) CompactOutput() any {
 			ProjectLUID:    o.Result.ProjectLUID,
 			ContentURL:     o.Result.ContentURL,
 			RenamedFrom:    o.Result.RenamedFrom,
-			JobID:          o.Result.JobID,
 			ReceiptPath:    o.Result.ReceiptPath,
 			Verification:   o.Result.Verification,
 		}

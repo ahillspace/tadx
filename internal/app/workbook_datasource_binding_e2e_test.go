@@ -40,8 +40,10 @@ func TestWorkbookPublishBindsPublishedDatasourcesThroughCLI(t *testing.T) {
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Ops"/></projects></tsResponse>`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks":
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="0"/><workbooks/></tsResponse>`)
-		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources":
-			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="2"/><datasources><datasource id="ds-name" name="Sales &amp; Margin" contentUrl="SalesMargin_1" updatedAt="2026-01-02T03:04:05Z"><project id="project-1" name="Ops"/><owner id="user-1"/></datasource><datasource id="ds-other" name="Other" contentUrl="SalesMarginX_1"><project id="project-1" name="Ops"/><owner id="user-1"/></datasource></datasources></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources" && request.URL.Query().Get("filter") == "contentUrl:eq:SalesMargin":
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="0"/><datasources/></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources" && request.URL.Query().Get("filter") == "name:eq:Sales & Margin":
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="1"/><datasources><datasource id="ds-name" name="Sales &amp; Margin" contentUrl="SalesMargin_1" updatedAt="2026-01-02T03:04:05Z"><project id="project-1" name="Ops"/><owner id="user-1"/></datasource></datasources></tsResponse>`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources/ds-name":
 			_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-name" name="Sales &amp; Margin" contentUrl="SalesMargin_1"><project id="project-1" name="Ops"/><owner id="user-1"/></datasource></tsResponse>`)
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/sites/site-1/workbooks/validateWorkbook":
@@ -54,7 +56,7 @@ func TestWorkbookPublishBindsPublishedDatasourcesThroughCLI(t *testing.T) {
 			mu.Unlock()
 			if !strings.Contains(string(body), "dbname='SalesMargin_1'") {
 				writer.WriteHeader(http.StatusBadRequest)
-				_, _ = io.WriteString(writer, `<tsResponse><error code="400011"><summary>Bad Request</summary><detail>There was a problem publishing the file 'Finance.twb'. PublishingException: Datasource 'Sales &amp; Margin' not found for workbook 'Finance'.</detail></error></tsResponse>`)
+				_, _ = io.WriteString(writer, `<tsResponse><error code="400011"><summary>Bad Request</summary><detail>There was a problem publishing the file 'Finance.twb'. PublishingException: Datasource 'SalesMargin' not found for workbook 'Finance'.</detail></error></tsResponse>`)
 				return
 			}
 			writer.WriteHeader(http.StatusCreated)
@@ -80,13 +82,11 @@ func TestWorkbookPublishBindsPublishedDatasourcesThroughCLI(t *testing.T) {
 	if exit := app.Run(context.Background(), append(publish, "--preview"), &preview, options); exit != 0 {
 		t.Fatalf("preview exit = %d, output = %s", exit, preview.String())
 	}
-	for _, want := range []string{"datasource_bindings[1]{datasource,content_url,origin,target_content_url,target_luid}:\n    Sales & Margin,SalesMargin,workbook,SalesMargin,\"\"\n", "SalesMargin_1", "ds-name", "no data source on this site has that URL; this publish will likely fail"} {
-		if !strings.Contains(preview.String(), want) {
-			t.Fatalf("preview missing %q:\n%s", want, preview.String())
-		}
+	if !strings.Contains(preview.String(), "datasource_bindings[1]{datasource,content_url,origin,target_content_url,target_luid}:\n    Sales & Margin,SalesMargin,workbook,SalesMargin,\"\"\n") {
+		t.Fatalf("preview missing the workbook datasource list:\n%s", preview.String())
 	}
-	if strings.Contains(preview.String(), "ds-other") || len(uploads) != 0 {
-		t.Fatalf("preview listed a non-candidate or uploaded: uploads=%d\n%s", len(uploads), preview.String())
+	if strings.Contains(preview.String(), "ds-name") || strings.Contains(preview.String(), "likely fail") || strings.Contains(preview.String(), "candidate search") || len(uploads) != 0 {
+		t.Fatalf("preview searched the site or uploaded: uploads=%d\n%s", len(uploads), preview.String())
 	}
 
 	var rejected strings.Builder

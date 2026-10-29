@@ -1,4 +1,5 @@
-// Package contentbatch runs explicitly selected content operations in order.
+// Package contentbatch runs explicitly selected content operations and reports
+// their outcomes in selection order.
 package contentbatch
 
 import (
@@ -6,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -78,78 +80,55 @@ func (o Output) project(full bool) Output {
 	return o
 }
 
-// Run invokes one item at a time and never retries an uncertain operation.
-// A canceled context skips remaining items without starting more work.
+// Run starts every selected item at once and never retries an uncertain
+// operation. Results stay in selection order, and observer notifications are
+// serialized. A canceled context starts no further item.
 func Run[T any](ctx context.Context, operation string, selectors []string, execute func(context.Context, string) (T, error)) (Output, error) {
 	if err := Validate(selectors); err != nil {
 		return Output{}, &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: err.Error()}
 	}
-	out := Output{Operation: operation, Status: "running", Total: len(selectors), Items: make([]Item, len(selectors)), Help: []string{"Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."}}
+	out := Output{Operation: operation, Status: "running", Total: len(selectors), Items: make([]Item, len(selectors)), Help: []string{"Items run in parallel; results are listed in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."}}
 	for i, selector := range selectors {
 		out.Items[i] = Item{Selector: selector, Status: "queued"}
 	}
 	recount(&out)
 	notify(ctx, out)
-	completions := make([]*completion, len(selectors))
-	for index, selector := range selectors {
-		item := Item{Selector: selector, Status: "succeeded"}
-		if err := ctx.Err(); err != nil {
-			payload := errs.Structure(&errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "Item skipped because the batch was canceled."}).Error
-			item.Status, item.Error = "skipped", &payload
-			out.Skipped++
-		} else {
-			out.Items[index].Status = "running"
-			notify(ctx, out)
-			itemCtx := WithObserver(ctx, nil)
-			if len(selectors) > 1 {
-				completions[index] = &completion{}
-				itemCtx = context.WithValue(itemCtx, completionKey{}, completions[index])
-			}
-			result, err := execute(itemCtx, selector)
-			if err != nil {
-				payload := errs.Structure(err).Error
-				item.Status, item.Error = "failed", &payload
-				if value := reflect.ValueOf(result); value.IsValid() && !value.IsZero() {
-					item.Result = result
-				}
-				out.Failed++
-			} else {
-				item.Result = result
-				item.Status = resultStatus(result)
-				out.Succeeded++
-			}
-		}
+	var mu sync.Mutex
+	update := func(index int, item Item) {
+		mu.Lock()
+		defer mu.Unlock()
 		out.Items[index] = item
 		recount(&out)
 		notify(ctx, out)
 	}
-	for i, pending := range completions {
-		if pending == nil || pending.finish == nil || out.Items[i].Error != nil || out.Items[i].Status == "skipped" {
+	var wg sync.WaitGroup
+	for index, selector := range selectors {
+		if ctx.Err() != nil {
+			payload := errs.Structure(&errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "Item skipped because the batch was canceled."}).Error
+			update(index, Item{Selector: selector, Status: "skipped", Error: &payload})
 			continue
 		}
-		result, err := pending.finish(ctx)
-		if result != nil {
-			out.Items[i].Result = result
-			out.Items[i].Status = resultStatus(result)
-		}
-		if err != nil {
-			payload := errs.Structure(err).Error
-			out.Items[i].Status, out.Items[i].Error = "failed", &payload
-			out.Succeeded--
-			out.Failed++
-		}
-		recount(&out)
-		notify(ctx, out)
+		update(index, Item{Selector: selector, Status: "running"})
+		wg.Go(func() { update(index, runItem(ctx, selector, execute)) })
 	}
-	recount(&out)
+	wg.Wait()
 	if out.Failed+out.Skipped != 0 {
-		out.Status = "partial_failure"
-		if out.Succeeded == 0 && out.Pending == 0 {
-			out.Status = "failed"
-		}
 		return out, &errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "One or more batch items failed or were skipped.", Retryable: errs.Bool(false), CorrectiveAction: "Review the per-item outcomes before retrying individual items."}
 	}
 	return out, nil
+}
+
+func runItem[T any](ctx context.Context, selector string, execute func(context.Context, string) (T, error)) Item {
+	result, err := execute(WithObserver(ctx, nil), selector)
+	if err != nil {
+		payload := errs.Structure(err).Error
+		item := Item{Selector: selector, Status: "failed", Error: &payload}
+		if value := reflect.ValueOf(result); value.IsValid() && !value.IsZero() {
+			item.Result = result
+		}
+		return item
+	}
+	return Item{Selector: selector, Status: resultStatus(result), Result: result}
 }
 
 func resultStatus(result any) string {

@@ -69,8 +69,6 @@ func TestDatasourcePublicationMixedSizeBatchUsesExactUploadsAndIndependentOutcom
 		case strings.HasSuffix(request.URL.Path, "/auth/signin"):
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-		case strings.HasSuffix(request.URL.Path, "/users/user-1"):
-			_, _ = io.WriteString(writer, `<tsResponse><user id="user-1" name="publisher" siteRole="SiteAdministratorCreator"/></tsResponse>`)
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/projects"):
 			_, _ = fmt.Fprintf(writer, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`, request.URL.Query().Get("pageNumber"), request.URL.Query().Get("pageSize"))
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources/ds-large":
@@ -101,12 +99,9 @@ func TestDatasourcePublicationMixedSizeBatchUsesExactUploadsAndIndependentOutcom
 			if request.URL.Query().Get("uploadSessionId") != "upload-large" || request.URL.Query().Get("datasourceType") != "tdsx" {
 				t.Errorf("chunked publish query = %s", request.URL.RawQuery)
 			}
-			writer.Header().Set("X-Tableau-Request-Id", "chunked-accepted")
-			writer.WriteHeader(http.StatusAccepted)
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-large" type="PublishDatasource" progress="0" finishCode="1"/></tsResponse>`)
-		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/jobs/job-large":
-			writer.Header().Set("X-Tableau-Request-Id", "chunked-observed")
-			_, _ = io.WriteString(writer, `<tsResponse><job id="job-large" type="PublishDatasource" progress="100" finishCode="0"><datasource id="ds-large" name="chunked"><project id="project-1"/></datasource></job></tsResponse>`)
+			writer.Header().Set("X-Tableau-Request-Id", "chunked-published")
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-large" name="chunked"><project id="project-1"/></datasource></tsResponse>`)
 		default:
 			t.Errorf("unexpected request %s %s", request.Method, request.URL)
 			http.Error(writer, "unexpected fixture request", http.StatusNotFound)
@@ -151,14 +146,11 @@ func TestDatasourcePublicationMixedSizeBatchUsesExactUploadsAndIndependentOutcom
 	if len(gotSequences) != 2 || gotSequences[0] != "1" || gotSequences[1] != "2" {
 		t.Fatalf("upload sequence IDs = %#v", gotSequences)
 	}
-	if gotCounts["POST /api/3.29/auth/signin"] != 1 || gotCounts["GET /api/3.29/sites/site-1/users/user-1"] != 1 {
+	if gotCounts["POST /api/3.29/auth/signin"] != 1 || gotCounts["GET /api/3.29/sites/site-1/users/user-1"] != 0 {
 		t.Fatalf("authentication request counts = %#v", gotCounts)
 	}
 	if gotCounts["POST /api/3.29/sites/site-1/datasources"] != 2 || gotCounts["POST /api/3.29/sites/site-1/fileUploads"] != 1 || gotCounts["PUT /api/3.29/sites/site-1/fileUploads/upload-large"] != 2 {
 		t.Fatalf("publication request counts = %#v", gotCounts)
-	}
-	if strings.Count(progress.String(), "status: accepted") != 1 {
-		t.Fatalf("accepted progress count = %d, progress=%s", strings.Count(progress.String(), "status: accepted"), progress.String())
 	}
 	t.Logf("mixed-size publication elapsed=%s requests=%d sign-ins=%d paths=%v", elapsed, len(gotPaths), gotCounts["POST /api/3.29/auth/signin"], gotPaths)
 }

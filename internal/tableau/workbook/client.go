@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/tableau"
@@ -104,8 +103,6 @@ type PublishRequest struct {
 	ExpectedFingerprint string
 	Content             []byte
 	Overwrite           bool
-	AsJob               bool
-	Accepted            func(context.Context, string, string) (PublishResult, error)
 }
 
 // PublishResult is the authoritative terminal publish outcome.
@@ -114,10 +111,8 @@ type PublishResult struct {
 	WorkbookLUID     string
 	WorkbookName     string
 	ProjectLUID      string
-	JobID            string
 	TableauRequestID string
 	Warnings         []ValidationIssue
-	ReceiptPath      string
 }
 
 // MutationResult is the authoritative outcome of one workbook mutation.
@@ -181,7 +176,6 @@ type PreparedPublish struct {
 	mu          sync.Mutex
 	committed   bool
 	warnings    []ValidationIssue
-	accepted    func(context.Context, string, string) (PublishResult, error)
 }
 
 // Client is the first released REST client family.
@@ -191,8 +185,6 @@ type Client struct {
 	serverURL        string
 	uploadThreshold  int
 	uploadChunkSize  int
-	pollInterval     time.Duration
-	pollTimeout      time.Duration
 	maxDownloadBytes int64
 }
 
@@ -201,7 +193,6 @@ func NewClient(transport *tableau.Transport, session auth.Session, serverURL str
 	return &Client{
 		transport: transport, session: session, serverURL: serverURL,
 		uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize,
-		pollInterval: time.Second, pollTimeout: 10 * time.Minute,
 	}
 }
 
@@ -318,16 +309,6 @@ func (c *Client) SetUploadChunkSize(bytes int) {
 func (c *Client) SetMaxDownloadBytes(limit int64) {
 	if limit > 0 {
 		c.maxDownloadBytes = limit
-	}
-}
-
-// SetPollPolicy configures bounded internal asynchronous polling.
-func (c *Client) SetPollPolicy(interval, timeout time.Duration) {
-	if interval > 0 {
-		c.pollInterval = interval
-	}
-	if timeout > 0 {
-		c.pollTimeout = timeout
 	}
 }
 
@@ -462,7 +443,7 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 	return Download{Filename: filename, ContentType: response.Header.Get("Content-Type"), Content: response.Body, TableauRequestID: response.TableauRequestID}, nil
 }
 
-// Publish uploads and publishes a workbook, then polls an explicit async job to a bounded terminal result.
+// Publish uploads a workbook and publishes it with one synchronous request.
 func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResult, error) {
 	prepared, err := c.Prepare(ctx, input)
 	if err != nil {
@@ -531,14 +512,11 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (*PreparedPu
 		return nil, fmt.Errorf("remove workbook publish snapshot: %w", err)
 	}
 	query := url.Values{"overwrite": {strconv.FormatBool(input.Overwrite)}}
-	if input.AsJob {
-		query.Set("asJob", "true")
-	}
 	if uploadSessionID != "" {
 		query.Set("uploadSessionId", uploadSessionID)
 		query.Set("workbookType", extension)
 	}
-	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType, warnings: warnings, accepted: input.Accepted}, nil
+	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType, warnings: warnings}, nil
 }
 
 // Commit issues the final publish request exactly once.
@@ -562,35 +540,14 @@ func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 		}
 		return PublishResult{}, err
 	}
-	result, err := parsePublishResponse(response.Body)
+	result, err := parsePublishResponse(response)
 	result.Warnings = append([]ValidationIssue(nil), p.warnings...)
+	result.TableauRequestID = response.TableauRequestID
 	if err != nil {
 		result.Status = "unknown"
-		result.TableauRequestID = response.TableauRequestID
 		return result, tableau.NewProtocolError("workbook.publish", response, err, false)
 	}
-	result.TableauRequestID = response.TableauRequestID
-	if result.JobID == "" {
-		result.Status = "succeeded"
-		return result, nil
-	}
-	if p.accepted != nil {
-		observed, err := p.accepted(ctx, result.JobID, result.TableauRequestID)
-		observed.Warnings = append([]ValidationIssue(nil), p.warnings...)
-		return observed, err
-	}
-	terminal, err := p.client.pollJob(ctx, result.JobID)
-	terminal.Warnings = append([]ValidationIssue(nil), p.warnings...)
-	if terminal.JobID == "" {
-		terminal.JobID = result.JobID
-	}
-	if terminal.TableauRequestID == "" {
-		terminal.TableauRequestID = response.TableauRequestID
-	}
-	if err != nil {
-		return terminal, err
-	}
-	return terminal, nil
+	return result, nil
 }
 
 func (c *Client) upload(ctx context.Context, filename string, content io.Reader, size int64) (string, error) {
@@ -791,101 +748,6 @@ func (c *Client) validateWorkbook(ctx context.Context, filename string, reader i
 	return envelope.Warnings, nil
 }
 
-func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, error) {
-	pollCtx, cancel := context.WithTimeout(ctx, c.pollTimeout)
-	defer cancel()
-	lastRequestID := ""
-	for {
-		response, err := c.do(pollCtx, http.MethodGet, c.sitePath("jobs", jobID), nil, nil, "", "workbook.publish.poll")
-		if err != nil {
-			requestID := tableau.RequestID(err)
-			if requestID == "" {
-				requestID = lastRequestID
-			}
-			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-			}
-			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
-				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
-			}
-			// A transient upstream failure (429/408/5xx) is not terminal: back off
-			// and keep polling until the job resolves or the deadline passes.
-			var retryable interface{ Retryable() bool }
-			if errors.As(err, &retryable) && retryable.Retryable() {
-				delay := c.pollInterval
-				if wait, ok := tableau.RetryAfter(err); ok {
-					delay = wait
-				}
-				select {
-				case <-pollCtx.Done():
-					if ctx.Err() != nil {
-						return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-					}
-					return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
-				case <-time.After(delay):
-				}
-				continue
-			}
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, err
-		}
-		if response.TableauRequestID != "" {
-			lastRequestID = response.TableauRequestID
-		}
-		requestID := response.TableauRequestID
-		if requestID == "" {
-			requestID = lastRequestID
-		}
-		response.TableauRequestID = requestID
-		var envelope jobEnvelope
-		if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-			// A response can yield its headers just before the polling deadline and
-			// then finish with an empty or truncated body as cancellation closes the
-			// stream. Preserve the bounded polling outcome instead of misclassifying
-			// that timing window as a retryable protocol response.
-			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-			}
-			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
-				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
-			}
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("decode Tableau job response: %w", err), true)
-		}
-		if envelope.Job.ID != jobID {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned job ID %q, expected %q", envelope.Job.ID, jobID), true)
-		}
-		if envelope.Job.Type != "PublishWorkbook" {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned type %q, expected %q", envelope.Job.Type, "PublishWorkbook"), true)
-		}
-		if envelope.Job.Progress == nil {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("Tableau job response omitted progress"), true)
-		}
-		if envelope.Job.FinishCode == nil {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("Tableau job response omitted finish code"), true)
-		}
-		progress, finishCode := *envelope.Job.Progress, *envelope.Job.FinishCode
-		switch {
-		case progress == 0 && finishCode == 1:
-			// Tableau documents publish jobs as pending in this exact state.
-		case progress == 100 && finishCode == 0:
-			return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: requestID}, nil
-		case progress == 100 && (finishCode == 1 || finishCode == 2):
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, finishCode)
-		case progress == 100:
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned unknown finish code %d", finishCode), true)
-		default:
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned invalid state progress=%d finishCode=%d", progress, finishCode), true)
-		}
-		select {
-		case <-pollCtx.Done():
-			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
-			}
-			return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s", jobID, c.pollTimeout)
-		case <-time.After(c.pollInterval):
-		}
-	}
-}
-
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body []byte, contentType, operation string) (tableau.Response, error) {
 	return c.doAccept(ctx, method, path, query, body, contentType, "application/xml", operation)
 }
@@ -1009,19 +871,20 @@ func validationBody(filename string, content []byte) ([]byte, string, error) {
 	return buffer.Bytes(), "multipart/mixed; boundary=" + writer.Boundary(), nil
 }
 
-func parsePublishResponse(body []byte) (PublishResult, error) {
+// parsePublishResponse accepts only a completed synchronous publish. tadx
+// never requests a job, so a job response leaves the outcome unknown.
+func parsePublishResponse(response tableau.Response) (PublishResult, error) {
 	var envelope publishEnvelope
-	if err := xml.Unmarshal(body, &envelope); err != nil {
+	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
 		return PublishResult{
-			JobID: envelope.Job.ID, WorkbookLUID: envelope.Workbook.ID,
-			WorkbookName: envelope.Workbook.Name, ProjectLUID: envelope.Workbook.Project.ID,
+			WorkbookLUID: envelope.Workbook.ID, WorkbookName: envelope.Workbook.Name, ProjectLUID: envelope.Workbook.Project.ID,
 		}, fmt.Errorf("decode workbook publish response: %w", err)
 	}
-	if envelope.Job.ID != "" {
-		return PublishResult{Status: "pending", JobID: envelope.Job.ID}, nil
+	if envelope.Job.ID != "" || response.StatusCode == http.StatusAccepted {
+		return PublishResult{}, fmt.Errorf("Tableau returned asynchronous job %q for a synchronous workbook publish", envelope.Job.ID)
 	}
 	if envelope.Workbook.ID == "" {
-		return PublishResult{}, errors.New("workbook publish response omitted workbook and job identity")
+		return PublishResult{}, errors.New("workbook publish response omitted workbook identity")
 	}
 	return PublishResult{Status: "succeeded", WorkbookLUID: envelope.Workbook.ID, WorkbookName: envelope.Workbook.Name, ProjectLUID: envelope.Workbook.Project.ID}, nil
 }
@@ -1191,21 +1054,12 @@ type publishEnvelope struct {
 			ID string `xml:"id,attr"`
 		} `xml:"project"`
 	} `xml:"workbook"`
-	Job jobXML `xml:"job"`
-}
-
-type jobEnvelope struct {
-	Job jobXML `xml:"job"`
+	Job struct {
+		ID string `xml:"id,attr"`
+	} `xml:"job"`
 }
 
 type validationEnvelope struct {
 	Errors   []ValidationIssue `json:"errors"`
 	Warnings []ValidationIssue `json:"warnings"`
-}
-
-type jobXML struct {
-	ID         string `xml:"id,attr"`
-	Type       string `xml:"type,attr"`
-	Progress   *int   `xml:"progress,attr"`
-	FinishCode *int   `xml:"finishCode,attr"`
 }

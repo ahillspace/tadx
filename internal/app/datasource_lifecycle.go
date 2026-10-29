@@ -9,7 +9,6 @@ import (
 
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cli/progress"
-	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
@@ -91,11 +90,8 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	out, err := action.Execute(ctx, input, preview)
 	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
 		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.DatasourceLUID, out.Result.TableauRequestID, out.Result.Verification)
+		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.Status, out.Result.DatasourceLUID, out.Result.TableauRequestID, out.Result.Verification)
 		err = errors.Join(err, saveErr)
-	}
-	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !c.runtime.publicationNoWait() {
-		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) { return lifecycle.completeDatasource(ctx, action, out) })
 	}
 	return out, err
 }
@@ -219,27 +215,12 @@ func (a datasourcePublishAdapter) FindDatasources(ctx context.Context, name, pro
 	return a.datasources.FindDatasources(ctx, name, projectLUID)
 }
 
-func (a datasourcePublishAdapter) ResolvePublishedDatasource(ctx context.Context, name, projectLUID string) (datasourceops.Record, error) {
-	if a.runtime != nil {
-		fresh, err := newRemoteContentCommands(a.runtime).connect(ctx, a.environment, true)
-		if err != nil {
-			return datasourceops.Record{}, err
-		}
-		a.datasources = fresh.datasources
-	}
-	item, err := a.datasources.ResolvePublishedDatasource(ctx, name, projectLUID)
-	if _, notVisible := errors.AsType[*resourcedatasource.PublishedDatasourceNotVisibleError](err); notVisible {
-		return datasourceops.Record{}, datasourceops.PublishErrPublishedDatasourceNotVisible
-	}
-	return item, err
-}
-
 func (a datasourcePublishAdapter) Prepare(ctx context.Context, input datasourceops.PublishRequest) (datasourceops.PreparedPublish, error) {
 	mode, err := datasourcePublishMode(input.Mode)
 	if err != nil {
 		return nil, err
 	}
-	request := tableaudatasource.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Mode: mode, ParentDataSourceURLs: append([]string(nil), input.ParentDataSourceURLs...), AsJob: input.AsJob}
+	request := tableaudatasource.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Mode: mode, ParentDataSourceURLs: append([]string(nil), input.ParentDataSourceURLs...)}
 	if a.runtime != nil {
 		p, err := a.runtime.publication(ctx, a.environment, "datasource", a.sourcePath, input.ProjectLUID, input.Name)
 		if err != nil {
@@ -248,7 +229,6 @@ func (a datasourcePublishAdapter) Prepare(ctx context.Context, input datasourceo
 		if a.lifecycle != nil {
 			*a.lifecycle = p
 		}
-		request.AsJob, request.Accepted = p.asJob, p.acceptDatasource
 	}
 	prepared, err := a.changes.PrepareDatasource(ctx, request)
 	if err != nil {
@@ -279,7 +259,7 @@ type preparedDatasourcePublish struct {
 func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourceops.PublishResult, error) {
 	progress.SetLabel(ctx, "Uploading and submitting datasource")
 	result, err := p.prepared.Commit(ctx)
-	return datasourceops.PublishResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, ContentURL: result.ContentURL, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
+	return datasourceops.PublishResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, ContentURL: result.ContentURL, TableauRequestID: result.TableauRequestID}, err
 }
 
 func (a datasourceMutationAdapter) DeleteDatasource(ctx context.Context, luid string) (datasourceops.DeleteResult, error) {

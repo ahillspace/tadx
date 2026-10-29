@@ -1020,13 +1020,17 @@ func fingerprintFile(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
+	return fingerprintReader(ctx, file)
+}
+
+func fingerprintReader(ctx context.Context, reader io.Reader) (string, error) {
 	hash := sha256.New()
 	buffer := make([]byte, 1024*1024)
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		count, readErr := file.Read(buffer)
+		count, readErr := reader.Read(buffer)
 		if count > 0 {
 			if _, err := hash.Write(buffer[:count]); err != nil {
 				return "", err

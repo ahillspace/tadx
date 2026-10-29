@@ -18,12 +18,11 @@ plan:
     project_luid: project-1
     project_path: Analytics
     existing_datasource_luid: ds-1
-  substeps[2]: resolve exact destination,poll asynchronous job
+  substeps[2]: resolve exact destination,confirm destination
 result:
   status: succeeded
   datasource_luid: ds-1
   datasource_name: Sales
   project_luid: project-1
-  tableau_job_id: job-1
   tableau_request_id: request-1
 help[1]: tadx content datasource inspect --id ds-1

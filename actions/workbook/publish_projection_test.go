@@ -23,9 +23,8 @@ func TestPublishCompactExecutionProjectionKeepsOutcomeContextWithoutPlan(t *test
 			WorkbookLUID: "wb-1",
 			WorkbookName: "Sales",
 			ProjectLUID:  "project-1",
-			JobID:        "job-1",
-			ReceiptPath:  "jobs/job-1.json",
-			Verification: "destination_unavailable",
+			ReceiptPath:  "jobs/receipt-1.json",
+			Verification: "destination_mismatch",
 		},
 	}
 
@@ -33,7 +32,7 @@ func TestPublishCompactExecutionProjectionKeepsOutcomeContextWithoutPlan(t *test
 	if compact.Plan != nil || compact.Status != "succeeded" || compact.Environment != "production" || compact.Site != "marketing" || compact.ProjectPath != "Ops" || compact.Workspace != "analytics" || compact.ArtifactPath == "" {
 		t.Fatalf("compact execution context = %#v", compact)
 	}
-	if compact.Result == nil || compact.Result.WorkbookLUID != "wb-1" || compact.Result.WorkbookName != "Sales" || compact.Result.ProjectLUID != "project-1" || compact.Result.ReceiptPath == "" || compact.Result.Verification != "destination_unavailable" {
+	if compact.Result == nil || compact.Result.WorkbookLUID != "wb-1" || compact.Result.WorkbookName != "Sales" || compact.Result.ProjectLUID != "project-1" || compact.Result.ReceiptPath == "" || compact.Result.Verification != "destination_mismatch" {
 		t.Fatalf("compact execution result = %#v", compact.Result)
 	}
 }

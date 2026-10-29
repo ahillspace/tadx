@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -16,6 +18,7 @@ import (
 
 func TestWorkbookBatchReusesCommandSignInAndPreservesFailures(t *testing.T) {
 	var signins atomic.Int32
+	var mu sync.Mutex
 	var requested []string
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/auth/signin") {
@@ -23,7 +26,9 @@ func TestWorkbookBatchReusesCommandSignInAndPreservesFailures(t *testing.T) {
 			_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 			return
 		}
+		mu.Lock()
 		requested = append(requested, r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:])
+		mu.Unlock()
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `<tsResponse><error code="404006"><summary>Workbook not found</summary></error></tsResponse>`)
 	}))
@@ -45,6 +50,8 @@ func TestWorkbookBatchReusesCommandSignInAndPreservesFailures(t *testing.T) {
 	if len(requested) != 100 {
 		t.Fatalf("resource requests=%d", len(requested))
 	}
+	// Items run in parallel, so requests are sorted for stable assertions.
+	sort.Strings(requested)
 	for i, id := range requested {
 		if want := fmt.Sprintf("workbook-%03d", i); id != want {
 			t.Fatalf("request%d=%q want%q", i, id, want)

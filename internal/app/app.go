@@ -30,18 +30,15 @@ import (
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
-	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/output"
-	"github.com/ahillspace/tadx/internal/paging"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"github.com/ahillspace/tadx/internal/tableau"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	updater "github.com/ahillspace/tadx/internal/update"
 	"github.com/ahillspace/tadx/internal/value"
@@ -739,13 +736,8 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 	out, err := action.Execute(ctx, input, preview)
 	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
 		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
+		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
 		err = errors.Join(err, saveErr)
-	}
-	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !s.runtime.publicationNoWait() {
-		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) {
-			return lifecycle.completeWorkbook(ctx, action, out)
-		})
 	}
 	return out, err
 }
@@ -810,15 +802,17 @@ func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string)
 func (a publishAdapter) ReadDatasource(ctx context.Context, luid string) (value.Datasource, error) {
 	return a.datasources.ResolveDatasource(ctx, identity.Selector{LUID: identity.LUID(luid)})
 }
-func (a publishAdapter) ListDatasources(ctx context.Context, state paging.State) (paging.Page[value.Datasource], error) {
-	page, err := a.datasources.ListDatasources(ctx, tableaudatasource.ListRequest{PageNumber: state.Number, PageSize: state.Size})
-	return paging.Page[value.Datasource]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Items}, err
+func (a publishAdapter) FindDatasourcesByContentURL(ctx context.Context, contentURLs []string) ([]value.Datasource, error) {
+	return a.datasources.FindDatasourcesByContentURL(ctx, contentURLs)
+}
+func (a publishAdapter) FindDatasourcesByName(ctx context.Context, names []string) ([]value.Datasource, error) {
+	return a.datasources.FindDatasourcesByName(ctx, names)
 }
 
 // Prepare uploads a rebound copy when the plan maps datasources, leaving the
 // workbook artifact itself unchanged.
 func (a publishAdapter) Prepare(ctx context.Context, input workbookops.PublishRequest) (workbookops.PreparedPublish, error) {
-	request := tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob}
+	request := tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite}
 	if len(input.DatasourceContentURLs) > 0 {
 		rewritten, err := artifact.RewriteWorkbookDatasources(ctx, artifact.WorkbookDatasourceRewrite{Path: input.ContentPath, Fingerprint: input.ExpectedFingerprint, Size: input.ContentSize, ServerOrigin: a.serverURL, Site: a.site, ContentURLs: input.DatasourceContentURLs})
 		if err != nil {
@@ -836,8 +830,6 @@ func (a publishAdapter) Prepare(ctx context.Context, input workbookops.PublishRe
 		if a.lifecycle != nil {
 			*a.lifecycle = p
 		}
-		request.AsJob = p.asJob
-		request.Accepted = p.acceptWorkbook
 	}
 	prepared, err := a.adapter.PrepareWorkbook(ctx, request)
 	if err != nil {
@@ -857,7 +849,7 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookops.Publish
 	for index, warning := range result.Warnings {
 		warnings[index] = workbookops.PublishValidationIssue{Severity: warning.Severity, Message: warning.Message, Line: warning.Line, Column: warning.Column, ElementName: warning.ElementName}
 	}
-	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath, ValidationWarnings: warnings}, err
+	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID, ValidationWarnings: warnings}, err
 }
 
 type registrySource struct{ runtime *runtimeDependencies }

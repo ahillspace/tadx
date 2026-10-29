@@ -31,7 +31,6 @@ type PublishInput struct {
 	ProjectLUID     string
 	ProjectPath     string
 	Overwrite       bool
-	AsJob           bool
 	// DatasourceBindings map workbook published datasource references to exact
 	// destination datasources. Unmapped references are left to Tableau.
 	DatasourceBindings []DatasourceBinding
@@ -62,20 +61,6 @@ type PublishDatasourceBinding struct {
 	TargetContentURL string `json:"target_content_url"`
 	// TargetLUID is known only for explicit bindings.
 	TargetLUID string `json:"target_luid"`
-}
-
-// PublishDatasourceCandidate is one destination datasource that an unmapped
-// workbook reference matches by exact name, exact content URL, or the content
-// URL followed by Tableau's _<digits> collision suffix.
-type PublishDatasourceCandidate struct {
-	SourceContentURL string `json:"source_content_url"`
-	Name             string `json:"name"`
-	ContentURL       string `json:"content_url"`
-	LUID             string `json:"luid"`
-	Project          string `json:"project"`
-	OwnerLUID        string `json:"owner_luid"`
-	UpdatedAt        string `json:"updated_at"`
-	Command          string `json:"command"`
 }
 
 // PublishArtifact is the current local canonical workbook.
@@ -124,19 +109,15 @@ type PublishPlan struct {
 	WorkbookName        string        `json:"workbook_name"`
 	Target              PublishTarget `json:"target"`
 	Overwrite           bool          `json:"overwrite"`
-	AsJob               bool          `json:"-"`
 	Warnings            []string      `json:"warnings,omitempty"`
 	// DatasourceBindings lists how every published datasource reference binds.
 	DatasourceBindings []PublishDatasourceBinding `json:"datasource_bindings,omitempty"`
-	// DatasourceCandidates are preview-only remapping suggestions for
-	// references left to Tableau.
-	DatasourceCandidates []PublishDatasourceCandidate `json:"datasource_candidates,omitempty"`
-	Substeps             []string                     `json:"substeps"`
-	request              PublishRequest
-	planned              bool
-	selection            []string
-	datasources          []PublishDatasource
-	bindings             []DatasourceBinding
+	Substeps           []string                   `json:"substeps"`
+	request            PublishRequest
+	planned            bool
+	selection          []string
+	datasources        []PublishDatasource
+	bindings           []DatasourceBinding
 }
 
 // PublishRequest is the explicit adapter mutation request.
@@ -148,7 +129,6 @@ type PublishRequest struct {
 	ContentSize         int64
 	ExpectedFingerprint string
 	Overwrite           bool
-	AsJob               bool
 	// DatasourceContentURLs rebinds the upload copy from each source content
 	// URL to its exact destination datasource content URL.
 	DatasourceContentURLs map[string]string
@@ -169,7 +149,6 @@ type PublishResult struct {
 	WorkbookLUID       string                   `json:"workbook_luid,omitempty"`
 	WorkbookName       string                   `json:"workbook_name,omitempty"`
 	ProjectLUID        string                   `json:"project_luid,omitempty"`
-	JobID              string                   `json:"tableau_job_id,omitempty"`
 	TableauRequestID   string                   `json:"tableau_request_id,omitempty"`
 	ReceiptPath        string                   `json:"receipt_path,omitempty"`
 	Verification       string                   `json:"verification,omitempty"`
@@ -205,13 +184,11 @@ type PublishCompactPlan struct {
 	WorkbookName    string        `json:"workbook_name"`
 	Target          PublishTarget `json:"target"`
 	Overwrite       bool          `json:"overwrite"`
-	AsJob           bool          `json:"-"`
 	Warnings        []string      `json:"warnings,omitempty"`
 	WarningsOmitted int           `json:"warnings_omitted,omitempty"`
-	// DatasourceBindings and DatasourceCandidates are decision-relevant for a
-	// cross-site publish, so the compact preview keeps them.
-	DatasourceBindings   []PublishDatasourceBinding   `json:"datasource_bindings,omitempty"`
-	DatasourceCandidates []PublishDatasourceCandidate `json:"datasource_candidates,omitempty"`
+	// DatasourceBindings are decision-relevant for a cross-site publish, so
+	// the compact preview keeps them.
+	DatasourceBindings []PublishDatasourceBinding `json:"datasource_bindings,omitempty"`
 }
 
 // PublishCompactPublishResult preserves authoritative identities without request diagnostics.
@@ -220,7 +197,6 @@ type PublishCompactPublishResult struct {
 	WorkbookLUID    string `json:"workbook_luid,omitempty"`
 	WorkbookName    string `json:"workbook_name,omitempty"`
 	ProjectLUID     string `json:"project_luid,omitempty"`
-	JobID           string `json:"tableau_job_id,omitempty"`
 	ReceiptPath     string `json:"receipt_path,omitempty"`
 	Verification    string `json:"verification,omitempty"`
 	WarningsOmitted int    `json:"validation_warnings_omitted,omitempty"`
@@ -248,24 +224,22 @@ type PublishCompactResult struct {
 
 // PublishFullPlan includes bounded publish diagnostics.
 type PublishFullPlan struct {
-	Workspace            string                       `json:"workspace"`
-	Kind                 string                       `json:"kind"`
-	SourceLUID           string                       `json:"source_luid"`
-	Mode                 string                       `json:"mode"`
-	Operation            string                       `json:"operation"`
-	ArtifactPath         string                       `json:"artifact_path"`
-	SourceKind           string                       `json:"source_kind"`
-	ArtifactFingerprint  string                       `json:"artifact_fingerprint"`
-	Filename             string                       `json:"filename"`
-	WorkbookName         string                       `json:"workbook_name"`
-	Target               PublishTarget                `json:"target"`
-	Overwrite            bool                         `json:"overwrite"`
-	AsJob                bool                         `json:"-"`
-	Warnings             []string                     `json:"warnings,omitempty"`
-	WarningsOmitted      int                          `json:"warnings_omitted,omitempty"`
-	DatasourceBindings   []PublishDatasourceBinding   `json:"datasource_bindings,omitempty"`
-	DatasourceCandidates []PublishDatasourceCandidate `json:"datasource_candidates,omitempty"`
-	Substeps             []string                     `json:"substeps"`
+	Workspace           string                     `json:"workspace"`
+	Kind                string                     `json:"kind"`
+	SourceLUID          string                     `json:"source_luid"`
+	Mode                string                     `json:"mode"`
+	Operation           string                     `json:"operation"`
+	ArtifactPath        string                     `json:"artifact_path"`
+	SourceKind          string                     `json:"source_kind"`
+	ArtifactFingerprint string                     `json:"artifact_fingerprint"`
+	Filename            string                     `json:"filename"`
+	WorkbookName        string                     `json:"workbook_name"`
+	Target              PublishTarget              `json:"target"`
+	Overwrite           bool                       `json:"overwrite"`
+	Warnings            []string                   `json:"warnings,omitempty"`
+	WarningsOmitted     int                        `json:"warnings_omitted,omitempty"`
+	DatasourceBindings  []PublishDatasourceBinding `json:"datasource_bindings,omitempty"`
+	Substeps            []string                   `json:"substeps"`
 }
 
 // PublishFullPublishResult includes bounded validation and request diagnostics.
@@ -274,7 +248,6 @@ type PublishFullPublishResult struct {
 	WorkbookLUID              string                   `json:"workbook_luid,omitempty"`
 	WorkbookName              string                   `json:"workbook_name,omitempty"`
 	ProjectLUID               string                   `json:"project_luid,omitempty"`
-	JobID                     string                   `json:"tableau_job_id,omitempty"`
 	TableauRequestID          string                   `json:"tableau_request_id,omitempty"`
 	ReceiptPath               string                   `json:"receipt_path,omitempty"`
 	Verification              string                   `json:"verification,omitempty"`
@@ -295,15 +268,15 @@ func (o PublishOutput) CompactOutput() any {
 	planValue := PublishCompactPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
 		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind,
 		Filename: o.Plan.Filename, WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target,
-		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: omitted,
-		DatasourceBindings: o.Plan.DatasourceBindings, DatasourceCandidates: o.Plan.DatasourceCandidates,
+		Overwrite: o.Plan.Overwrite, Warnings: warnings, WarningsOmitted: omitted,
+		DatasourceBindings: o.Plan.DatasourceBindings,
 	}
 	plan := &planValue
 	var result *PublishCompactPublishResult
 	if o.Result != nil {
 		result = &PublishCompactPublishResult{
 			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
-			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
+			ProjectLUID: o.Result.ProjectLUID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
 			WarningsOmitted: len(o.Result.ValidationWarnings),
 		}
 	}
@@ -333,8 +306,8 @@ func (o PublishOutput) FullOutput() any {
 			Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind,
 			ArtifactFingerprint: o.Plan.ArtifactFingerprint, Filename: o.Plan.Filename,
 			WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite,
-			AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: warningsOmitted,
-			DatasourceBindings: o.Plan.DatasourceBindings, DatasourceCandidates: o.Plan.DatasourceCandidates, Substeps: o.Plan.Substeps,
+			Warnings: warnings, WarningsOmitted: warningsOmitted,
+			DatasourceBindings: o.Plan.DatasourceBindings, Substeps: o.Plan.Substeps,
 		},
 		Help: o.Help,
 	}
@@ -342,7 +315,7 @@ func (o PublishOutput) FullOutput() any {
 		validationWarnings, validationWarningsOmitted := publishBoundValidationWarnings(o.Result.ValidationWarnings)
 		full.Result = &PublishFullPublishResult{
 			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
-			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, TableauRequestID: o.Result.TableauRequestID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
+			ProjectLUID: o.Result.ProjectLUID, TableauRequestID: o.Result.TableauRequestID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
 			ValidationWarnings: validationWarnings, ValidationWarningsOmitted: validationWarningsOmitted,
 		}
 	}

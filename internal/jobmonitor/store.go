@@ -38,7 +38,6 @@ type Receipt struct {
 	CoordinationKey   string          `json:"coordination_key"`
 	AcceptedAt        time.Time       `json:"accepted_at"`
 	TrackingStartedAt time.Time       `json:"tracking_started_at,omitzero"`
-	PoolAfter         time.Time       `json:"pool_after"`
 	NextCheck         time.Time       `json:"next_check,omitzero"`
 	Observation       value.JobStatus `json:"observation"`
 	ReadFailures      int             `json:"read_failures,omitempty"`

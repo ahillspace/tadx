@@ -3,7 +3,9 @@ package workbook_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,7 +13,6 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
-	"github.com/ahillspace/tadx/internal/paging"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -35,14 +36,10 @@ var publishBindingDatasources = []workbookops.PublishDatasource{
 }
 
 var publishBindingSite = []value.Datasource{
-	{LUID: "ds-name", Name: "Sales & Margin", ContentURL: "SalesMargin_1", ProjectName: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-02T03:04:05Z"},
-	{LUID: "ds-similar", Name: "Sales & Margin v2", ContentURL: "SalesMarginV2", ProjectName: "Finance"},
-	{LUID: "ds-suffix", Name: "Archive", ContentURL: "SalesMargin_12", ProjectName: "Archive", OwnerLUID: "user-2", UpdatedAt: "2025-12-01T00:00:00Z"},
-	{LUID: "ds-prefix", Name: "Other", ContentURL: "SalesMarginX_1", ProjectName: "Finance"},
-	{LUID: "ds-empty-suffix", Name: "Other", ContentURL: "SalesMargin_", ProjectName: "Finance"},
-	{LUID: "ds-mixed-suffix", Name: "Other", ContentURL: "SalesMargin_1x", ProjectName: "Finance"},
-	{LUID: "ds-case", Name: "Other", ContentURL: "salesmargin_1", ProjectName: "Finance"},
-	{LUID: "ds-orders", Name: "Orders", ContentURL: "Orders", ProjectName: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-03T00:00:00Z"},
+	{LUID: "ds-name", Name: "Sales & Margin", ContentURL: "SalesMargin_1", ProjectLUID: "project-1", ProjectName: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-02T03:04:05Z"},
+	{LUID: "ds-similar", Name: "Sales & Margin v2", ContentURL: "SalesMarginV2", ProjectLUID: "project-1", ProjectName: "Finance"},
+	{LUID: "ds-suffix", Name: "Archive", ContentURL: "SalesMargin_12", ProjectLUID: "project-2", ProjectName: "Archive"},
+	{LUID: "ds-orders", Name: "Orders", ContentURL: "Orders", ProjectLUID: "project-1", ProjectName: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-03T00:00:00Z"},
 }
 
 func publishBindingAction(publisher *publishPublisher, resolver publishResolver) *workbookops.Publisher {
@@ -59,7 +56,7 @@ func publishBindingInput(bindings ...workbookops.DatasourceBinding) workbookops.
 func publishBindingResolver() publishResolver {
 	return publishResolver{
 		project:     workbookops.Project{LUID: "project-1", Path: "Ops"},
-		datasources: map[string]value.Datasource{"ds-name": publishBindingSite[0], "ds-orders": publishBindingSite[4]},
+		datasources: map[string]value.Datasource{"ds-name": publishBindingSite[0], "ds-orders": publishBindingSite[3]},
 		site:        publishBindingSite,
 	}
 }
@@ -83,8 +80,8 @@ func TestPublishPlanMapsDatasourceBindingsOntoTheUploadCopy(t *testing.T) {
 		{Datasource: "Orders", ContentURL: "Orders", Origin: "workbook", TargetContentURL: "Orders"},
 		{Datasource: "Returns", ContentURL: "Returns", Origin: "workbook", TargetContentURL: "Returns"},
 	}
-	if !reflect.DeepEqual(out.Plan.DatasourceBindings, wantPlan) || len(out.Plan.Warnings) != 0 || len(out.Plan.DatasourceCandidates) != 0 {
-		t.Fatalf("plan bindings = %#v warnings = %#v candidates = %#v", out.Plan.DatasourceBindings, out.Plan.Warnings, out.Plan.DatasourceCandidates)
+	if !reflect.DeepEqual(out.Plan.DatasourceBindings, wantPlan) || len(out.Plan.Warnings) != 0 {
+		t.Fatalf("plan bindings = %#v warnings = %#v", out.Plan.DatasourceBindings, out.Plan.Warnings)
 	}
 	compact := out.CompactOutput().(workbookops.PublishCompactResult)
 	if compact.Status != "succeeded" || !reflect.DeepEqual(compact.DatasourceBindings, wantPlan) {
@@ -144,44 +141,15 @@ func TestPublishPlanReportsUnreadableBindingTarget(t *testing.T) {
 	}
 }
 
-func TestPublishPreviewListsExactDatasourceCandidates(t *testing.T) {
-	action := publishBindingAction(&publishPublisher{}, publishBindingResolver())
-	out, err := action.Execute(context.Background(), publishBindingInput(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	remap := func(binding string) string {
-		return commandhint.Target("production", "default", "content", "workbook", "publish", "--artifact", "artifacts/workbook/Finance", "--project-id", "project-1", "--name", "Finance", "--datasource-binding", binding)
-	}
-	want := []workbookops.PublishDatasourceCandidate{
-		{SourceContentURL: "SalesMargin", Name: "Sales & Margin", ContentURL: "SalesMargin_1", LUID: "ds-name", Project: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-02T03:04:05Z", Command: remap("SalesMargin=ds-name")},
-		{SourceContentURL: "SalesMargin", Name: "Archive", ContentURL: "SalesMargin_12", LUID: "ds-suffix", Project: "Archive", OwnerLUID: "user-2", UpdatedAt: "2025-12-01T00:00:00Z", Command: remap("SalesMargin=ds-suffix")},
-		{SourceContentURL: "Orders", Name: "Orders", ContentURL: "Orders", LUID: "ds-orders", Project: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-03T00:00:00Z", Command: remap("Orders=ds-orders")},
-	}
-	if !reflect.DeepEqual(out.Plan.DatasourceCandidates, want) {
-		t.Fatalf("candidates = %#v", out.Plan.DatasourceCandidates)
-	}
-	joined := strings.Join(out.Plan.Warnings, "\n")
-	for _, url := range []string{"SalesMargin", "Returns"} {
-		if !strings.Contains(joined, "(content URL "+url+"): no data source on this site has that URL; this publish will likely fail") {
-			t.Fatalf("warnings missing %s: %#v", url, out.Plan.Warnings)
-		}
-	}
-	if strings.Contains(joined, "content URL Orders)") || len(out.Plan.Warnings) != 2 {
-		t.Fatalf("warnings = %#v", out.Plan.Warnings)
-	}
-}
-
-func TestPublishPreviewWarnsWhenCandidateSearchIsUnavailable(t *testing.T) {
+func TestPublishPreviewLooksUpNoDatasources(t *testing.T) {
 	resolver := publishBindingResolver()
-	resolver.listErr = errors.New("list unavailable")
-	action := publishBindingAction(&publishPublisher{}, resolver)
-	out, err := action.Execute(context.Background(), publishBindingInput(), true)
+	resolver.contentURLErr, resolver.nameErr = errors.New("preview looked up content URLs"), errors.New("preview looked up names")
+	out, err := publishBindingAction(&publishPublisher{}, resolver).Execute(context.Background(), publishBindingInput(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Plan.Warnings) != 1 || !strings.Contains(out.Plan.Warnings[0], "list unavailable") || len(out.Plan.DatasourceCandidates) != 0 {
-		t.Fatalf("warnings = %#v candidates = %#v", out.Plan.Warnings, out.Plan.DatasourceCandidates)
+	if len(out.Plan.Warnings) != 0 || len(out.Plan.DatasourceBindings) != 3 {
+		t.Fatalf("plan = %#v", out.Plan)
 	}
 }
 
@@ -205,11 +173,10 @@ func TestPublishApplyExplainsUnmappedDatasourceRejection(t *testing.T) {
 	want := strings.Join([]string{
 		"This can happen when there are naming conflicts on the Tableau Site and should be resolved by using --datasource-binding <source name or content URL>=<target LUID>, where the source name or content URL are the data sources in your workbook and the LUID is the LUID of the published data source on the Tableau Site. Here are the data sources that need mapping along with suggested candidates found by searching the Tableau Site:",
 		"- Sales & Margin (content URL SalesMargin):",
-		`  - "Sales & Margin", content URL SalesMargin_1, LUID ds-name, project "Finance", owner user-1, updated 2026-01-02T03:04:05Z. Remap: ` + remap,
-		"  - \"Archive\", content URL SalesMargin_12, LUID ds-suffix, project \"Archive\", owner user-2, updated 2025-12-01T00:00:00Z. Remap: " + strings.Replace(remap, "SalesMargin=ds-name", "SalesMargin=ds-suffix", 1),
+		`  - "Sales & Margin", content URL SalesMargin_1, LUID ds-name, project "Finance" (LUID project-1), owner user-1, updated 2026-01-02T03:04:05Z. Remap: ` + remap,
 		"- Returns (content URL Returns):",
 		"  No candidates found. Publish the data source if it does not exist yet. If you already published it, find it with " + byProject + " or " + all + "; there is no partial-name filter, and --name matches exact names only.",
-		"Candidates match by exact name, or by the workbook's content URL followed by _<digits>. Always check a candidate before remapping.",
+		"Always check a candidate before remapping.",
 	}, "\n")
 	if structured.CorrectiveAction != want {
 		t.Fatalf("corrective action:\n%s\nwant:\n%s", structured.CorrectiveAction, want)
@@ -219,27 +186,59 @@ func TestPublishApplyExplainsUnmappedDatasourceRejection(t *testing.T) {
 	}
 }
 
-func TestPublishApplyListsEveryUnmappedReferenceWhenNoneIsMissing(t *testing.T) {
+func TestPublishApplyBoundsCandidatesPerReference(t *testing.T) {
 	resolver := publishBindingResolver()
-	resolver.site = []value.Datasource{{LUID: "ds-orders", Name: "Orders", ContentURL: "Orders", ProjectName: "Finance"}}
+	resolver.site = nil
+	for index := range 7 {
+		resolver.site = append(resolver.site, value.Datasource{LUID: fmt.Sprintf("ds-%d", index), Name: "Returns", ContentURL: fmt.Sprintf("Returns_%d", index), ProjectLUID: "project-1", ProjectName: "Finance"})
+	}
+	action := workbookops.NewPublish(
+		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifacts/workbook/Finance", Filename: "Finance.twbx", Name: "Finance", Datasources: publishBindingDatasources[2:]}},
+		resolver, &publishPublisher{err: publishUpstreamError{status: 400, code: "400011"}},
+	)
+	_, err := action.Execute(context.Background(), publishBindingInput(), false)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || strings.Count(structured.CorrectiveAction, "Remap: ") != 5 || strings.Contains(structured.CorrectiveAction, "LUID ds-5") {
+		t.Fatalf("error = %#v", err)
+	}
+	more := "  2 more data source(s) have this name; list them with " + commandhint.Environment("production", "content", "datasource", "list", "--name", "Returns") + "."
+	if !strings.Contains(structured.CorrectiveAction, more) || strings.Contains(structured.CorrectiveAction, "No candidates found") {
+		t.Fatalf("corrective action:\n%s", structured.CorrectiveAction)
+	}
+}
+
+func TestPublishApplyReturnsTableauRejectionWhenEveryReferenceExists(t *testing.T) {
+	resolver := publishBindingResolver()
+	resolver.nameErr = errors.New("name lookup must not run")
 	action := workbookops.NewPublish(
 		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifacts/workbook/Finance", Filename: "Finance.twbx", Name: "Finance", Datasources: publishBindingDatasources[1:2]}},
 		resolver, &publishPublisher{err: publishUpstreamError{status: 400, code: "400011"}},
 	)
 	_, err := action.Execute(context.Background(), publishBindingInput(), false)
 	var structured *errs.Error
-	if !errors.As(err, &structured) || !strings.HasPrefix(structured.Summary, "Your workbook contains 1 data source(s)") || !strings.Contains(structured.CorrectiveAction, "LUID ds-orders") {
+	if !errors.As(err, &structured) || structured.ID != "workbook.publish.failed" || structured.Outcome != errs.OutcomeNotApplied || errs.Structure(err).Error.UpstreamCode != "400011" {
+		t.Fatalf("error = %#v", err)
+	}
+}
+
+func TestPublishApplyNotesContentURLLookupFailureOnTableauRejection(t *testing.T) {
+	resolver := publishBindingResolver()
+	resolver.contentURLErr = errors.New("lookup unavailable")
+	action := publishBindingAction(&publishPublisher{err: publishUpstreamError{status: 400, code: "400011"}}, resolver)
+	_, err := action.Execute(context.Background(), publishBindingInput(), false)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "workbook.publish.failed" || structured.Outcome != errs.OutcomeNotApplied || !strings.HasSuffix(structured.CorrectiveAction, " The workbook's data sources could not be checked on this site: lookup unavailable.") {
 		t.Fatalf("error = %#v", err)
 	}
 }
 
 func TestPublishApplyReportsCandidateSearchFailureInRejection(t *testing.T) {
 	resolver := publishBindingResolver()
-	resolver.listErr = errors.New("list unavailable")
+	resolver.nameErr = errors.New("list unavailable")
 	action := publishBindingAction(&publishPublisher{err: publishUpstreamError{status: 400, code: "400011"}}, resolver)
 	_, err := action.Execute(context.Background(), publishBindingInput(), false)
 	var structured *errs.Error
-	if !errors.As(err, &structured) || !strings.HasPrefix(structured.Summary, "Your workbook contains 3 data source(s)") || !strings.Contains(structured.CorrectiveAction, "Candidate search was unavailable: list unavailable.") {
+	if !errors.As(err, &structured) || !strings.HasPrefix(structured.Summary, "Your workbook contains 2 data source(s)") || strings.Count(structured.CorrectiveAction, "Candidate search was unavailable: list unavailable.") != 2 {
 		t.Fatalf("error = %#v", err)
 	}
 }
@@ -269,59 +268,6 @@ func TestPublishApplyReportsDefinitiveRejectionAsNotApplied(t *testing.T) {
 	}
 }
 
-func failedPublishJob() (workbookops.PublishResult, error) {
-	return workbookops.PublishResult{Status: "failed", JobID: "job-1"}, &errs.Error{ID: "workbook.publish.monitor", Kind: errs.KindOperation, Operation: "workbook.publish", Summary: "Tableau reports that publication failed.", Cause: errors.New("remote job is failed"), Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown, TableauJobID: "job-1", Retryable: new(false)}
-}
-
-func TestPublishApplyExplainsFailedPublishJobWithMissingDatasource(t *testing.T) {
-	result, monitor := failedPublishJob()
-	action := publishBindingAction(&publishPublisher{result: result, err: monitor}, publishBindingResolver())
-	out, err := action.Execute(context.Background(), publishBindingInput(), false)
-	var structured *errs.Error
-	if !errors.As(err, &structured) || structured.ID != "workbook.publish.datasource_unmapped" || structured.Outcome != errs.OutcomeNotApplied || structured.Phase != errs.PhaseSubmission || structured.TableauJobID != "job-1" || !errors.Is(err, monitor) {
-		t.Fatalf("error = %#v", err)
-	}
-	if want := "Your workbook contains 2 data source(s) that do not map to a published data source on this Tableau Site."; structured.Summary != want {
-		t.Fatalf("summary = %q", structured.Summary)
-	}
-	for _, want := range []string{"- Sales & Margin (content URL SalesMargin):", "LUID ds-name", "- Returns (content URL Returns):", datasourceCandidateRuleText} {
-		if !strings.Contains(structured.CorrectiveAction, want) {
-			t.Fatalf("corrective action missing %q:\n%s", want, structured.CorrectiveAction)
-		}
-	}
-	if strings.Contains(structured.CorrectiveAction, "- Orders") || out.Result == nil || out.Result.Status != "failed" || out.Result.JobID != "job-1" {
-		t.Fatalf("corrective action = %s result = %#v", structured.CorrectiveAction, out.Result)
-	}
-}
-
-func TestPublishApplyKeepsFailedPublishJobWithoutMissingDatasourceEvidence(t *testing.T) {
-	for _, test := range []struct {
-		name        string
-		datasources []workbookops.PublishDatasource
-		listErr     error
-	}{
-		{"every reference has its URL on the site", publishBindingDatasources[1:2], nil},
-		{"no datasource references", nil, nil},
-		{"candidate search unavailable", publishBindingDatasources, errors.New("list unavailable")},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			result, monitor := failedPublishJob()
-			resolver := publishBindingResolver()
-			resolver.listErr = test.listErr
-			action := workbookops.NewPublish(
-				publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifacts/workbook/Finance", Filename: "Finance.twbx", Name: "Finance", Datasources: test.datasources}},
-				resolver, &publishPublisher{result: result, err: monitor},
-			)
-			_, err := action.Execute(context.Background(), publishBindingInput(), false)
-			if err != monitor {
-				t.Fatalf("error = %#v", err)
-			}
-		})
-	}
-}
-
-const datasourceCandidateRuleText = "Candidates match by exact name, or by the workbook's content URL followed by _<digits>. Always check a candidate before remapping."
-
 func (r publishResolver) ReadDatasource(_ context.Context, luid string) (value.Datasource, error) {
 	if r.datasourceErr != nil {
 		return value.Datasource{}, r.datasourceErr
@@ -333,27 +279,50 @@ func (r publishResolver) ReadDatasource(_ context.Context, luid string) (value.D
 	return item, nil
 }
 
-func (r publishResolver) ListDatasources(_ context.Context, state paging.State) (paging.Page[value.Datasource], error) {
-	if r.listErr != nil {
-		return paging.Page[value.Datasource]{}, r.listErr
+func (r publishResolver) FindDatasourcesByContentURL(_ context.Context, contentURLs []string) ([]value.Datasource, error) {
+	if r.contentURLErr != nil {
+		return nil, r.contentURLErr
 	}
-	start := min((state.Number-1)*state.Size, len(r.site))
-	end := min(start+state.Size, len(r.site))
-	return paging.Page[value.Datasource]{Number: state.Number, Size: state.Size, Total: len(r.site), Items: r.site[start:end]}, nil
+	return siteDatasources(r.site, func(item value.Datasource) bool { return slices.Contains(contentURLs, item.ContentURL) }), nil
+}
+
+func (r publishResolver) FindDatasourcesByName(_ context.Context, names []string) ([]value.Datasource, error) {
+	if r.nameErr != nil {
+		return nil, r.nameErr
+	}
+	return siteDatasources(r.site, func(item value.Datasource) bool { return slices.Contains(names, item.Name) }), nil
+}
+
+func siteDatasources(site []value.Datasource, match func(value.Datasource) bool) []value.Datasource {
+	var matches []value.Datasource
+	for _, item := range site {
+		if match(item) {
+			matches = append(matches, item)
+		}
+	}
+	return matches
 }
 
 func (*publishChangingResolver) ReadDatasource(context.Context, string) (value.Datasource, error) {
 	return value.Datasource{}, errors.New("unexpected datasource read")
 }
 
-func (*publishChangingResolver) ListDatasources(_ context.Context, state paging.State) (paging.Page[value.Datasource], error) {
-	return paging.Page[value.Datasource]{Number: state.Number, Size: state.Size}, nil
+func (*publishChangingResolver) FindDatasourcesByContentURL(context.Context, []string) ([]value.Datasource, error) {
+	return nil, nil
+}
+
+func (*publishChangingResolver) FindDatasourcesByName(context.Context, []string) ([]value.Datasource, error) {
+	return nil, nil
 }
 
 func (*publishRevalidationResolver) ReadDatasource(context.Context, string) (value.Datasource, error) {
 	return value.Datasource{}, errors.New("unexpected datasource read")
 }
 
-func (*publishRevalidationResolver) ListDatasources(_ context.Context, state paging.State) (paging.Page[value.Datasource], error) {
-	return paging.Page[value.Datasource]{Number: state.Number, Size: state.Size}, nil
+func (*publishRevalidationResolver) FindDatasourcesByContentURL(context.Context, []string) ([]value.Datasource, error) {
+	return nil, nil
+}
+
+func (*publishRevalidationResolver) FindDatasourcesByName(context.Context, []string) ([]value.Datasource, error) {
+	return nil, nil
 }
