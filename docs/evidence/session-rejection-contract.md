@@ -35,5 +35,6 @@ After a sign-in outside TADX superseded the saved session, the next read, a para
 ## Verification limits
 
 Idle-timeout expiry was not observed live; it is expected to use the same token rejection, but that was not tested.
+The no-effect observation covers a classic REST write; for Metadata, search, and Pulse, the live requests established the rejection shape only, and resending there relies on HTTP 401 meaning the request was not authenticated.
 The live run cannot show whether the batch's rejected requests overlapped; hermetic race-detector tests cover concurrent rejections.
 These requests establish one deployment's behavior, not every Tableau Server release.

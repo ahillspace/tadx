@@ -9,7 +9,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/auth"
 )
 
 // renewingSession sends "stale" until renewed, then "current".
@@ -174,5 +177,51 @@ func TestTransportReportsTheRejectionFirstWhenRenewalFails(t *testing.T) {
 	}
 	if len(*sent) != 1 {
 		t.Fatalf("requests = %d, want no resend after a failed renewal", len(*sent))
+	}
+}
+
+// secondTokenSigner issues "first" and then "second" for every later sign-in.
+type secondTokenSigner struct{ calls atomic.Int32 }
+
+func (s *secondTokenSigner) SignIn(context.Context, auth.SignInRequest) (auth.SignInResponse, error) {
+	token := "second"
+	if s.calls.Add(1) == 1 {
+		token = "first"
+	}
+	return auth.SignInResponse{Token: token, SiteLUID: "site-luid", UserLUID: "user-luid"}, nil
+}
+
+func TestTransportParallelRejectionsOfOneCommandSessionSignInOnce(t *testing.T) {
+	var accepted atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("X-Tableau-Auth") != "second" {
+			writer.Header().Set("Content-Type", "application/xml")
+			writer.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(writer, restSessionRejection)
+			return
+		}
+		accepted.Add(1)
+		_, _ = io.WriteString(writer, `{"ok":true}`)
+	}))
+	defer server.Close()
+	sessions := auth.NewCommandSessions(auth.LookupEnvFunc(func(name string) (string, bool) { return "value-" + name, true }), nil, t.TempDir())
+	defer sessions.Close()
+	signer := &secondTokenSigner{}
+	session, err := sessions.Authenticate(t.Context(), auth.Target{ServerURL: server.URL, SiteContentURL: "Sales", PATNameVariable: "NAME", PATSecretVariable: "SECRET"}, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := NewTransport(server.Client(), "3.29", nil)
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Go(func() {
+			if _, err := transport.Do(t.Context(), session, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/api/3.29/sites", Operation: "site.list"}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	if signer.calls.Load() != 2 || accepted.Load() != 20 {
+		t.Fatalf("sign-ins = %d, accepted = %d; want one renewal shared by every rejected request", signer.calls.Load(), accepted.Load())
 	}
 }
