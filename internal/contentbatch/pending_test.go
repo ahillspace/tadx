@@ -23,7 +23,7 @@ func TestAcceptedBatchIsNotReportedAsSucceeded(t *testing.T) {
 	}
 }
 
-func TestInitialBatchObserverReportsAllQueuedItemsAsPending(t *testing.T) {
+func TestInitialBatchObserverReportsAllStartedItemsAsPending(t *testing.T) {
 	var snapshots []Output
 	ctx := WithObserver(t.Context(), func(out Output) {
 		out.Items = append([]Item(nil), out.Items...)
@@ -44,8 +44,8 @@ func TestInitialBatchObserverReportsAllQueuedItemsAsPending(t *testing.T) {
 		t.Fatalf("initial observer snapshot = %+v, want three pending items", initial)
 	}
 	for _, item := range initial.Items {
-		if item.Status != "queued" {
-			t.Errorf("initial queued item = %+v", item)
+		if item.Status != "running" {
+			t.Errorf("initial started item = %+v", item)
 		}
 	}
 	if got.Pending != 3 || got.Status != "running" {

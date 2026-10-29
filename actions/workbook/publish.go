@@ -266,11 +266,11 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 		return output, err
 	}
 	output.Result = &result
-	return a.Complete(ctx, output)
+	return a.Complete(output)
 }
 
 // Complete confirms the publication destination without submitting it again.
-func (a *Publisher) Complete(_ context.Context, output PublishOutput) (PublishOutput, error) {
+func (a *Publisher) Complete(output PublishOutput) (PublishOutput, error) {
 	output.Help = nil
 	if output.Result == nil || output.Result.Status != "succeeded" {
 		return output, nil

@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableausearch "github.com/ahillspace/tadx/internal/tableau/search"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const maxNativeCursorBytes = 4096
@@ -26,7 +26,7 @@ type NativeClient interface {
 // DatasourceIdentityResolver translates native search datasource identities
 // into classic REST LUIDs used by TADX lifecycle actions.
 type DatasourceIdentityResolver interface {
-	ResolveContentURLs(context.Context, []string) (map[string]tableaudatasource.Datasource, error)
+	ResolveContentURLs(context.Context, []string) (map[string]value.Datasource, error)
 }
 
 // NativeAdapter maps Tableau native search pages to the shared resource result.

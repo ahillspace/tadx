@@ -368,10 +368,11 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	}
 	contentType := input.ContentType
 	if input.Multipart != nil {
-		contentType = input.Multipart.ContentType()
-		request.ContentLength = input.Multipart.Len()
-		request.Body = input.Multipart.open()
-		request.GetBody = func() (io.ReadCloser, error) { return input.Multipart.open(), nil }
+		body := input.Multipart
+		contentType = body.ContentType()
+		request.ContentLength = body.Len()
+		request.Body = body.open()
+		request.GetBody = func() (io.ReadCloser, error) { return body.open(), nil }
 	}
 	watchdog := startStallWatchdog(t.stallTimeout, cancel, request.ContentLength > 0)
 	defer watchdog.stop()

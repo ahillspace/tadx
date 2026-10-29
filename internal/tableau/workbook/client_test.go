@@ -380,7 +380,7 @@ func TestClientPreservesProtocolResponseContext(t *testing.T) {
 		defer server.Close()
 		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 		client.SetUploadThreshold(1)
-		_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("large")})
+		_, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx"}, []byte("large")))
 		assertProtocolContext(t, err, http.StatusCreated, "upload-request")
 	})
 }
@@ -552,7 +552,7 @@ func TestClientDefersFinalPublishUntilPreparedCommit(t *testing.T) {
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	client.SetUploadThreshold(1)
 	client.SetUploadChunkSize(3)
-	prepared, err := client.Prepare(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("abc")})
+	prepared, err := client.Prepare(context.Background(), withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx"}, []byte("abc")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,9 +587,9 @@ func TestClientPublishesSmallWorkbookInMultipartBody(t *testing.T) {
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("workbook-content"),
-	})
+	result, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+	}, []byte("workbook-content")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestClientValidatesTWBAndSurfacesWarnings(t *testing.T) {
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("<workbook/>")})
+	result, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb"}, []byte("<workbook/>")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +660,7 @@ func TestClientStopsTWBPublishOnValidationErrors(t *testing.T) {
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.28", nil), session{}, server.URL)
-	_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("<workbook>")})
+	_, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb"}, []byte("<workbook>")))
 	var validationErr *tableauworkbook.ValidationError
 	if !errors.As(err, &validationErr) || validationErr.RequestID() != "validation-request" || len(validationErr.Errors) != 1 || len(validationErr.Warnings) != 1 {
 		t.Fatalf("validation error = %#v, error = %v", validationErr, err)
@@ -681,7 +681,7 @@ func TestClientSkipsServerValidationForTWBX(t *testing.T) {
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	if _, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("package")}); err != nil {
+	if _, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx"}, []byte("package"))); err != nil {
 		t.Fatal(err)
 	}
 	if len(paths) != 1 || strings.HasSuffix(paths[0], "/validateWorkbook") {
@@ -754,9 +754,9 @@ func TestClientEscapesMultipartFilenames(t *testing.T) {
 		defer server.Close()
 
 		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-		if _, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-			Name: "Finance", ProjectLUID: "project-1", Filename: filename, Content: []byte("workbook-content"),
-		}); err != nil {
+		if _, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+			Name: "Finance", ProjectLUID: "project-1", Filename: filename,
+		}, []byte("workbook-content"))); err != nil {
 			t.Fatal(err)
 		}
 		if len(parts) != 2 || parts[1].filename != filename {
@@ -792,9 +792,9 @@ func TestClientEscapesMultipartFilenames(t *testing.T) {
 
 		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 		client.SetUploadThreshold(1)
-		if _, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-			Name: "Finance", ProjectLUID: "project-1", Filename: filename, Content: []byte("workbook-content"),
-		}); err != nil {
+		if _, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+			Name: "Finance", ProjectLUID: "project-1", Filename: filename,
+		}, []byte("workbook-content"))); err != nil {
 			t.Fatal(err)
 		}
 		if len(appendParts) != 2 || appendParts[1].filename != filename {
@@ -813,9 +813,9 @@ func TestClientReportsUnknownWhenPublishResponseCannotBeDecoded(t *testing.T) {
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"),
-	})
+	result, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+	}, []byte("small")))
 	if err == nil {
 		t.Fatal("Publish() succeeded with an invalid response")
 	}
@@ -840,7 +840,7 @@ func TestClientReportsUnknownWhenPublishReturnsAJob(t *testing.T) {
 			}))
 			defer server.Close()
 			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small")})
+			result, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx"}, []byte("small")))
 			if err == nil || !strings.Contains(err.Error(), "asynchronous job") || result.Status != "unknown" || result.TableauRequestID != "accepted-request" || requests != 1 {
 				t.Fatalf("result = %#v, requests = %d, error = %v", result, requests, err)
 			}
@@ -859,9 +859,9 @@ func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeRead(t *testing.
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"),
-	})
+	result, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+	}, []byte("small")))
 	if err == nil {
 		t.Fatal("Publish() succeeded with a truncated accepted response")
 	}
@@ -878,9 +878,9 @@ func TestClientReportsUnknownWhenFinalPublishTransportFails(t *testing.T) {
 		return nil, errors.New("connection closed after request write")
 	})}
 	client := tableauworkbook.NewClient(tableau.NewTransport(httpClient, "3.29", nil), session{}, "https://tableau.example")
-	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"),
-	})
+	result, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+	}, []byte("small")))
 	if err == nil {
 		t.Fatal("Publish() succeeded after an indeterminate final request")
 	}
@@ -903,9 +903,9 @@ func TestClientSurfacesMalformedAPIVersionOnChunkedUpload(t *testing.T) {
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "bogus", nil), session{}, server.URL)
 	client.SetUploadThreshold(1)
 	client.SetUploadChunkSize(3)
-	_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("large"),
-	})
+	_, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+	}, []byte("large")))
 	if err == nil || !strings.Contains(err.Error(), "version") {
 		t.Fatalf("Publish() error = %v", err)
 	}
@@ -932,9 +932,9 @@ func TestClientRejectsMismatchedUploadAppendIdentity(t *testing.T) {
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	client.SetUploadThreshold(1)
-	_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("large"),
-	})
+	_, err := client.Publish(context.Background(), withPayload(t, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+	}, []byte("large")))
 	if err == nil || !strings.Contains(err.Error(), "upload session ID") {
 		t.Fatalf("error = %v", err)
 	}
@@ -1029,4 +1029,16 @@ func TestPreparedPublishKeepsSnapshotUntilCommitOrClose(t *testing.T) {
 	if _, err := abandoned.Commit(context.Background()); err == nil || publishes != 1 {
 		t.Fatalf("Commit after Close error = %v, publishes = %d", err, publishes)
 	}
+}
+
+// withPayload writes content as the publish payload and plans request for it.
+func withPayload(t *testing.T, request tableauworkbook.PublishRequest, content []byte) tableauworkbook.PublishRequest {
+	t.Helper()
+	request.ContentPath = filepath.Join(t.TempDir(), "payload")
+	if err := os.WriteFile(request.ContentPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	request.ContentSize, request.ExpectedFingerprint = int64(len(content)), "sha256:"+hex.EncodeToString(digest[:])
+	return request
 }

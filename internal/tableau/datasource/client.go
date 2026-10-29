@@ -71,64 +71,6 @@ type ListRequest struct {
 // request URL well under server limits.
 const MaxFilterValues = 25
 
-// ResolveContentURLs maps datasource content URLs to their classic REST
-// records in bounded batches. Native search and workbook files both identify
-// published datasources by content URL; only the REST LUID is authoritative
-// for lifecycle operations.
-func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]Datasource, error) {
-	if len(contentURLs) == 0 || len(contentURLs) > maxPageSize {
-		return nil, fmt.Errorf("datasource content URL resolution requires between 1 and %d values", maxPageSize)
-	}
-	unique := make([]string, 0, len(contentURLs))
-	requested := make(map[string]struct{}, len(contentURLs))
-	for index, value := range contentURLs {
-		value = strings.TrimSpace(value)
-		if value == "" || strings.Contains(value, ",") {
-			return nil, fmt.Errorf("datasource content URL %d is empty or cannot be represented in a Tableau filter", index)
-		}
-		if _, exists := requested[value]; exists {
-			continue
-		}
-		requested[value] = struct{}{}
-		unique = append(unique, value)
-	}
-	sort.Strings(unique)
-	resolved := make(map[string]Datasource, len(unique))
-	for start := 0; start < len(unique); start += MaxFilterValues {
-		end := start + MaxFilterValues
-		if end > len(unique) {
-			end = len(unique)
-		}
-		batch := unique[start:end]
-		page, err := c.List(ctx, ListRequest{PageNumber: 1, PageSize: len(batch), ContentURLs: batch})
-		if err != nil {
-			return nil, err
-		}
-		if page.Total != len(page.Items) {
-			return nil, errors.New("datasource content URL resolution exceeded its bounded result page")
-		}
-		batchRequested := make(map[string]struct{}, len(batch))
-		for _, value := range batch {
-			batchRequested[value] = struct{}{}
-		}
-		for _, item := range page.Items {
-			if _, expected := batchRequested[item.ContentURL]; !expected || strings.TrimSpace(item.LUID) == "" {
-				return nil, errors.New("datasource content URL resolution returned an unexpected identity")
-			}
-			if _, duplicate := resolved[item.ContentURL]; duplicate {
-				return nil, fmt.Errorf("datasource content URL %q resolved ambiguously", item.ContentURL)
-			}
-			resolved[item.ContentURL] = item
-		}
-	}
-	for _, value := range unique {
-		if _, ok := resolved[value]; !ok {
-			return nil, fmt.Errorf("datasource content URL %q did not resolve to a datasource on this site", value)
-		}
-	}
-	return resolved, nil
-}
-
 // Page contains one normalized classic REST datasource page.
 type Page struct {
 	Number           int

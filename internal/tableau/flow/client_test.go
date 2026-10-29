@@ -494,18 +494,16 @@ func TestClientDecodesFormEncodedFlowDownloadFilename(t *testing.T) {
 	}
 }
 
-func TestPreparedFlowPublishKeepsSnapshotUntilCommitOrClose(t *testing.T) {
+func TestPreparedFlowPublishKeepsSnapshotUntilCommit(t *testing.T) {
 	content := []byte("native-flow")
 	path := writePayload(t, "Daily.tflx", content)
-	publishes := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		publishes++
 		writer.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(writer, `<tsResponse><flow id="flow-new" name="Daily"><project id="project-1"/></flow></tsResponse>`)
 	}))
 	defer server.Close()
 	snapshots := func() int {
-		matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".tadx-flow-publish-snapshot-*"))
+		matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".tadx-publish-snapshot-*"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -524,18 +522,7 @@ func TestPreparedFlowPublishKeepsSnapshotUntilCommitOrClose(t *testing.T) {
 	if _, err := prepared.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if snapshots() != 0 || prepared.Close() != nil {
+	if snapshots() != 0 {
 		t.Fatal("Commit did not release the snapshot")
-	}
-
-	abandoned, err := client.Prepare(context.Background(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := abandoned.Close(); err != nil || snapshots() != 0 {
-		t.Fatalf("Close() error = %v, snapshots = %d", err, snapshots())
-	}
-	if _, err := abandoned.Commit(context.Background()); err == nil || publishes != 1 {
-		t.Fatalf("Commit after Close error = %v, publishes = %d", err, publishes)
 	}
 }

@@ -2,19 +2,13 @@ package datasource
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/ahillspace/tadx/internal/tableau"
 )
@@ -49,10 +43,9 @@ type UpdateRequest struct {
 	OwnerLUID   *string
 }
 
-// PreparedPublish holds the publish snapshot until Commit or Close releases it.
+// PreparedPublish holds the publish snapshot until Commit sends and releases it.
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
-	Close() error
 }
 
 func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPublish, error) {
@@ -64,7 +57,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 		return nil, err
 	}
 	if len(input.ParentDataSourceURLs) > 0 {
-		ok, err := apiAtLeast(c.transport.APIVersion(), 3, 29)
+		ok, err := tableau.APIVersionAtLeast(c.transport.APIVersion(), 3, 29)
 		if err != nil || !ok {
 			if err != nil {
 				return nil, err
@@ -73,7 +66,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 		}
 	}
 	if input.Mode == PublishReplace {
-		ok, err := apiAtLeast(c.transport.APIVersion(), 3, 25)
+		ok, err := tableau.APIVersionAtLeast(c.transport.APIVersion(), 3, 25)
 		if err != nil || !ok {
 			if err != nil {
 				return nil, err
@@ -81,14 +74,14 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 			return nil, errors.New("datasource replace requires Tableau REST API 3.25 or later")
 		}
 	}
-	snapshot, err := openDatasourcePublishSnapshot(ctx, input)
+	snapshot, err := tableau.SnapshotPublishPayload(ctx, input.ContentPath, input.ContentSize, input.ExpectedFingerprint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare datasource publish payload: %w", err)
 	}
 	prepared := false
 	defer func() {
 		if !prepared {
-			_ = snapshot.close()
+			_ = snapshot.Close()
 		}
 	}()
 	payload, err := datasourcePublishPayload(input)
@@ -100,10 +93,11 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 	if input.Mode != PublishCreate {
 		query.Set(string(input.Mode), "true")
 	}
-	if snapshot.size <= c.uploadThreshold {
-		parts = append(parts, tableau.FilePart("tableau_datasource", input.Filename, snapshot.content, 0, snapshot.size))
+	if snapshot.Size() <= c.uploadThreshold {
+		parts = append(parts, tableau.FilePart("tableau_datasource", input.Filename, snapshot.File(), 0, snapshot.Size()))
 	} else {
-		session, err := c.uploadDatasource(ctx, input.Filename, snapshot)
+		upload := tableau.FileUpload{Transport: c.transport, Session: c.session, ServerURL: c.serverURL, Operation: "datasource", Filename: input.Filename, ChunkSize: c.uploadChunkSize}
+		session, err := upload.Upload(ctx, snapshot)
 		if err != nil {
 			return nil, err
 		}
@@ -115,80 +109,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 		return nil, err
 	}
 	prepared = true
-	return &preparedDatasourcePublish{client: c, query: query, body: body, release: snapshot.close, name: input.Name, project: input.ProjectLUID}, nil
-}
-
-// datasourcePublishSnapshot is an immutable, fingerprint-verified copy of the publish payload.
-type datasourcePublishSnapshot struct {
-	content *os.File
-	size    int64
-	close   func() error
-}
-
-// openDatasourcePublishSnapshot copies the managed artifact once into a temp snapshot, hashing it in
-// the same pass, and verifies the snapshot against the planned fingerprint. All subsequent reads
-// (streamed body or chunked upload) come from the snapshot, so the bytes published are exactly the
-// bytes fingerprinted, even if the source file is mutated after planning.
-func openDatasourcePublishSnapshot(ctx context.Context, input PublishRequest) (datasourcePublishSnapshot, error) {
-	source, err := os.Open(input.ContentPath)
-	if err != nil {
-		return datasourcePublishSnapshot{}, fmt.Errorf("open datasource publish payload: %w", err)
-	}
-	info, err := source.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != input.ContentSize {
-		_ = source.Close()
-		return datasourcePublishSnapshot{}, errors.New("datasource publish payload changed after planning")
-	}
-	snapshot, err := os.CreateTemp(filepath.Dir(input.ContentPath), ".tadx-datasource-publish-snapshot-*")
-	if err != nil {
-		_ = source.Close()
-		return datasourcePublishSnapshot{}, fmt.Errorf("create datasource publish snapshot: %w", err)
-	}
-	cleanup := func() error {
-		return errors.Join(snapshot.Close(), os.Remove(snapshot.Name()))
-	}
-	fingerprint, copied, err := fingerprintCopy(ctx, snapshot, source)
-	sourceCloseErr := source.Close()
-	if err != nil {
-		return datasourcePublishSnapshot{}, errors.Join(fmt.Errorf("snapshot datasource publish payload: %w", err), sourceCloseErr, cleanup())
-	}
-	if sourceCloseErr != nil {
-		return datasourcePublishSnapshot{}, errors.Join(fmt.Errorf("close datasource publish payload: %w", sourceCloseErr), cleanup())
-	}
-	if copied != input.ContentSize || fingerprint != input.ExpectedFingerprint {
-		return datasourcePublishSnapshot{}, errors.Join(errors.New("datasource publish payload changed after planning"), cleanup())
-	}
-	return datasourcePublishSnapshot{content: snapshot, size: copied, close: cleanup}, nil
-}
-
-// fingerprintCopy streams source into destination once, returning the sha256 fingerprint and byte count.
-func fingerprintCopy(ctx context.Context, destination io.Writer, source io.Reader) (string, int64, error) {
-	hash := sha256.New()
-	buffer := make([]byte, 1024*1024)
-	var total int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return "", total, err
-		}
-		count, readErr := source.Read(buffer)
-		if count > 0 {
-			written, writeErr := destination.Write(buffer[:count])
-			if writeErr != nil {
-				return "", total, writeErr
-			}
-			if written != count {
-				return "", total, io.ErrShortWrite
-			}
-			_, _ = hash.Write(buffer[:count])
-			total += int64(count)
-		}
-		if errors.Is(readErr, io.EOF) {
-			return "sha256:" + hex.EncodeToString(hash.Sum(nil)), total, nil
-		}
-		if readErr != nil {
-			return "", total, readErr
-		}
-	}
+	return &preparedDatasourcePublish{client: c, query: query, body: body, snapshot: snapshot, name: input.Name, project: input.ProjectLUID}, nil
 }
 
 func (c *Client) Delete(ctx context.Context, luid string) (MutationResult, error) {
@@ -294,23 +215,17 @@ type preparedDatasourcePublish struct {
 	client        *Client
 	query         url.Values
 	body          *tableau.MultipartBody
-	release       func() error
+	snapshot      *tableau.PublishSnapshot
 	name, project string
-	mu            sync.Mutex
-	done          bool
 }
 
-// Commit sends the final publish request exactly once, then releases the
-// publish snapshot. A snapshot cleanup failure never changes the publish result.
+// Commit sends the final publish request exactly once, then releases the publish
+// snapshot. A snapshot cleanup failure never changes the publish result.
 func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, error) {
-	p.mu.Lock()
-	if p.done {
-		p.mu.Unlock()
-		return PublishResult{}, errors.New("prepared datasource publish was already committed or closed")
+	if err := p.snapshot.Claim(); err != nil {
+		return PublishResult{}, fmt.Errorf("prepared datasource publish: %w", err)
 	}
-	p.done = true
-	p.mu.Unlock()
-	defer func() { _ = p.release() }()
+	defer func() { _ = p.snapshot.Close() }()
 	response, err := p.client.transport.Do(ctx, p.client.session, tableau.Request{Method: http.MethodPost, ServerURL: p.client.serverURL, Path: p.client.sitePath("datasources"), Query: p.query, Multipart: p.body, Accept: "application/xml", Operation: "datasource.publish", MaxResponseBytes: maxListResponseBytes})
 	if err != nil {
 		if isUncertainDatasourceMutation(err) {
@@ -332,69 +247,8 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 	return PublishResult{Status: "succeeded", DatasourceLUID: ds.ID, DatasourceName: ds.Name, ProjectLUID: ds.Project.ID, ContentURL: ds.ContentURL, TableauRequestID: response.TableauRequestID}, nil
 }
 
-// Close releases the publish snapshot when Commit never runs.
-func (p *preparedDatasourcePublish) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.done {
-		return nil
-	}
-	p.done = true
-	return p.release()
-}
-
 type datasourcePublishEnvelope struct {
 	Datasource datasourceXML `xml:"datasource"`
-}
-
-func (c *Client) uploadDatasource(ctx context.Context, filename string, snapshot datasourcePublishSnapshot) (string, error) {
-	ordered, err := apiAtLeast(c.transport.APIVersion(), 3, 27)
-	if err != nil {
-		return "", err
-	}
-	response, err := c.transport.Do(ctx, c.session, tableau.Request{Method: http.MethodPost, ServerURL: c.serverURL, Path: c.sitePath("fileUploads"), Accept: "application/xml", Operation: "datasource.upload.initiate", MaxResponseBytes: maxListResponseBytes})
-	if err != nil {
-		return "", err
-	}
-	if response.StatusCode != http.StatusCreated {
-		return "", tableau.NewProtocolError("datasource.upload.initiate", response, errors.New("initiate upload did not return HTTP 201"), false)
-	}
-	var initiated struct {
-		Upload struct {
-			ID string `xml:"uploadSessionId,attr"`
-		} `xml:"fileUpload"`
-	}
-	if err := xml.Unmarshal(response.Body, &initiated); err != nil || initiated.Upload.ID == "" {
-		return "", tableau.NewProtocolError("datasource.upload.initiate", response, errors.New("initiate upload omitted session ID"), false)
-	}
-	for sequence, offset := 1, int64(0); offset < snapshot.size; sequence++ {
-		blockSize := min(snapshot.size-offset, c.uploadChunkSize)
-		body, err := tableau.NewMultipartBody(tableau.RequestPayloadPart(nil), tableau.FilePart("tableau_file", filename, snapshot.content, offset, blockSize))
-		if err != nil {
-			return "", err
-		}
-		offset += blockSize
-		query := url.Values{}
-		if ordered {
-			query.Set("sequenceID", strconv.Itoa(sequence))
-		}
-		appended, err := c.transport.Do(ctx, c.session, tableau.Request{Method: http.MethodPut, ServerURL: c.serverURL, Path: c.sitePath("fileUploads", initiated.Upload.ID), Query: query, Multipart: body, Accept: "application/xml", Operation: "datasource.upload.append", MaxResponseBytes: maxListResponseBytes})
-		if err != nil {
-			return "", err
-		}
-		if appended.StatusCode != http.StatusOK {
-			return "", tableau.NewProtocolError("datasource.upload.append", appended, errors.New("append upload did not return HTTP 200"), false)
-		}
-		var confirm struct {
-			Upload struct {
-				ID string `xml:"uploadSessionId,attr"`
-			} `xml:"fileUpload"`
-		}
-		if xml.Unmarshal(appended.Body, &confirm) != nil || confirm.Upload.ID != initiated.Upload.ID {
-			return "", tableau.NewProtocolError("datasource.upload.append", appended, errors.New("append upload changed session identity"), false)
-		}
-	}
-	return initiated.Upload.ID, nil
 }
 
 func validateMutationPublish(input PublishRequest) (string, error) {
@@ -425,19 +279,6 @@ func datasourcePublishPayload(input PublishRequest) ([]byte, error) {
 		XMLName    xml.Name `xml:"tsRequest"`
 		Datasource ds       `xml:"datasource"`
 	}{Datasource: value})
-}
-
-func apiAtLeast(value string, major, minor int) (bool, error) {
-	parts := strings.SplitN(value, ".", 3)
-	if len(parts) < 2 {
-		return false, fmt.Errorf("malformed Tableau REST API version %q", value)
-	}
-	a, e1 := strconv.Atoi(parts[0])
-	b, e2 := strconv.Atoi(parts[1])
-	if e1 != nil || e2 != nil {
-		return false, fmt.Errorf("malformed Tableau REST API version %q", value)
-	}
-	return a > major || (a == major && b >= minor), nil
 }
 
 func isUncertainDatasourceMutation(err error) bool {

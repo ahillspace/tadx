@@ -129,8 +129,9 @@ func (m Monitor) round(ctx context.Context, target Receipt) error {
 	if err != nil {
 		return err
 	}
+	currentName := filepath.Base(m.Store.Path(current))
 	for _, p := range paths {
-		if p == filepath.Base(m.Store.Path(current)) {
+		if p == currentName {
 			continue
 		}
 		other, err := readReceipt(filepath.Join(m.Store.Directory, p))

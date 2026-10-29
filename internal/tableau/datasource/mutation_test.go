@@ -290,18 +290,16 @@ func TestClientReportsUnknownWhenDatasourcePublishReturnsAJob(t *testing.T) {
 	}
 }
 
-func TestPreparedDatasourcePublishKeepsSnapshotUntilCommitOrClose(t *testing.T) {
+func TestPreparedDatasourcePublishKeepsSnapshotUntilCommit(t *testing.T) {
 	content := `<datasource/>`
 	path, fingerprint := publishFixture(t, content)
-	publishes := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		publishes++
 		writer.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-new" name="Sales"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
 	}))
 	defer server.Close()
 	snapshots := func() int {
-		matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".tadx-datasource-publish-snapshot-*"))
+		matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".tadx-publish-snapshot-*"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -320,18 +318,7 @@ func TestPreparedDatasourcePublishKeepsSnapshotUntilCommitOrClose(t *testing.T) 
 	if _, err := prepared.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if snapshots() != 0 || prepared.Close() != nil {
+	if snapshots() != 0 {
 		t.Fatal("Commit did not release the snapshot")
-	}
-
-	abandoned, err := client.Prepare(context.Background(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := abandoned.Close(); err != nil || snapshots() != 0 {
-		t.Fatalf("Close() error = %v, snapshots = %d", err, snapshots())
-	}
-	if _, err := abandoned.Commit(context.Background()); err == nil || publishes != 1 {
-		t.Fatalf("Commit after Close error = %v, publishes = %d", err, publishes)
 	}
 }

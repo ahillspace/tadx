@@ -145,7 +145,6 @@ func publishUnknownOutcomeError(plan PublishPlan, input PublishInput, result Pub
 		Cause:            cause,
 		Retryable:        new(false),
 		CorrectiveAction: correctiveAction,
-
 		TableauRequestID: result.TableauRequestID,
 		Phase:            errs.PhaseVerification,
 		Outcome:          errs.OutcomeConfirmed,

@@ -23,7 +23,6 @@ type client struct {
 	pageSequence []tableaudatasource.Page
 	listInputs   []tableaudatasource.ListRequest
 	listErr      error
-	resolved     map[string]tableaudatasource.Datasource
 }
 
 func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
@@ -45,11 +44,6 @@ func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (t
 func (c *client) Get(_ context.Context, luid string) (tableaudatasource.Datasource, error) {
 	c.calls = append(c.calls, "get:"+luid)
 	return c.metadata, c.getErr
-}
-
-func (c *client) ResolveContentURLs(_ context.Context, contentURLs []string) (map[string]tableaudatasource.Datasource, error) {
-	c.calls = append(c.calls, "resolve:"+strings.Join(contentURLs, ","))
-	return c.resolved, nil
 }
 
 type projectPaths map[string]string
@@ -106,24 +100,41 @@ func TestAdapterListsOneRichDatasourcePage(t *testing.T) {
 	}
 }
 
-func TestAdapterResolvesDatasourceContentURLsToAuthoritativeRecords(t *testing.T) {
-	c := &client{resolved: map[string]tableaudatasource.Datasource{"SalesMargin": {LUID: "ds-1", Name: "Sales & Margin", ContentURL: "SalesMargin", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "request-1"}}}
-	resolved, err := resourcedatasource.NewAdapter(c).ResolveContentURLs(t.Context(), []string{"SalesMargin"})
+func TestAdapterResolvesDatasourceContentURLsToAuthoritativeRecordsInOneBatch(t *testing.T) {
+	page := tableaudatasource.Page{Number: 1, Size: 1000, Total: 2, Items: []tableaudatasource.Datasource{
+		{LUID: "ds-b", Name: "Beta", ContentURL: "beta", ProjectLUID: "project-1", ProjectName: "Ops"},
+		{LUID: "ds-a", Name: "Sales & Margin", ContentURL: "alpha", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "request-1"},
+	}}
+	c := &client{pageSequence: []tableaudatasource.Page{page}}
+	resolved, err := resourcedatasource.NewAdapter(c).ResolveContentURLs(t.Context(), []string{"beta", "alpha", "beta"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resolved) != 1 || resolved["SalesMargin"].LUID != "ds-1" || resolved["SalesMargin"].Name != "Sales & Margin" || resolved["SalesMargin"].RequestID != "request-1" {
+	if len(resolved) != 2 || resolved["alpha"].LUID != "ds-a" || resolved["alpha"].Name != "Sales & Margin" || resolved["alpha"].RequestID != "request-1" || resolved["beta"].LUID != "ds-b" {
 		t.Fatalf("resolved = %#v", resolved)
 	}
-	if !reflect.DeepEqual(c.calls, []string{"resolve:SalesMargin"}) {
-		t.Fatalf("calls = %v", c.calls)
+	if len(c.listInputs) != 1 || !reflect.DeepEqual(c.listInputs[0].ContentURLs, []string{"alpha", "beta"}) {
+		t.Fatalf("requests = %#v", c.listInputs)
 	}
 }
 
-func TestAdapterRejectsIncompleteResolvedDatasourceContentURL(t *testing.T) {
-	c := &client{resolved: map[string]tableaudatasource.Datasource{"SalesMargin": {LUID: "ds-1", ContentURL: "SalesMargin", ProjectLUID: "project-1", ProjectName: "Ops"}}}
-	if _, err := resourcedatasource.NewAdapter(c).ResolveContentURLs(t.Context(), []string{"SalesMargin"}); err == nil || !strings.Contains(err.Error(), "authoritative LUID, name") {
-		t.Fatalf("err = %v", err)
+func TestAdapterFailsClosedWhenDatasourceContentURLResolutionIsIncompleteOrAmbiguous(t *testing.T) {
+	alpha := tableaudatasource.Datasource{LUID: "ds-a", Name: "Alpha", ContentURL: "alpha", ProjectLUID: "project-1", ProjectName: "Ops"}
+	for name, test := range map[string]struct {
+		items []tableaudatasource.Datasource
+		want  string
+	}{
+		"missing":    {items: []tableaudatasource.Datasource{alpha}, want: `"missing" did not resolve`},
+		"unexpected": {items: []tableaudatasource.Datasource{alpha, {LUID: "ds-x", Name: "X", ContentURL: "x", ProjectLUID: "project-1", ProjectName: "Ops"}}, want: "unexpected identity"},
+		"ambiguous":  {items: []tableaudatasource.Datasource{alpha, {LUID: "ds-a2", Name: "Alpha", ContentURL: "alpha", ProjectLUID: "project-2", ProjectName: "Ops"}}, want: "resolved ambiguously"},
+		"incomplete": {items: []tableaudatasource.Datasource{{LUID: "ds-a", ContentURL: "alpha", ProjectLUID: "project-1", ProjectName: "Ops"}}, want: "authoritative LUID, name"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: len(test.items), Items: test.items}}}
+			if _, err := resourcedatasource.NewAdapter(c).ResolveContentURLs(t.Context(), []string{"alpha", "missing"}); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

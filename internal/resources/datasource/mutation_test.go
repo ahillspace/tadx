@@ -13,7 +13,6 @@ type preparedDatasourcePublish struct{}
 func (preparedDatasourcePublish) Commit(context.Context) (tableaudatasource.PublishResult, error) {
 	return tableaudatasource.PublishResult{Status: "succeeded", DatasourceLUID: "ds-new"}, nil
 }
-func (preparedDatasourcePublish) Close() error { return nil }
 
 type datasourceMutationClient struct {
 	prepared, deleted int

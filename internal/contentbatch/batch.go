@@ -82,43 +82,46 @@ func (o Output) project(full bool) Output {
 
 // Run starts every selected item at once and never retries an uncertain
 // operation. Results stay in selection order, and observer notifications are
-// serialized. A canceled context starts no further item.
+// serialized. A batch whose context is already canceled starts no item.
 func Run[T any](ctx context.Context, operation string, selectors []string, execute func(context.Context, string) (T, error)) (Output, error) {
 	if err := Validate(selectors); err != nil {
 		return Output{}, &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: err.Error()}
 	}
 	out := Output{Operation: operation, Status: "running", Total: len(selectors), Items: make([]Item, len(selectors)), Help: []string{"Items run in parallel; results are listed in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."}}
+	canceled := ctx.Err() != nil
 	for i, selector := range selectors {
-		out.Items[i] = Item{Selector: selector, Status: "queued"}
+		out.Items[i] = Item{Selector: selector, Status: "running"}
+		if canceled {
+			out.Items[i] = skippedItem(operation, selector)
+		}
 	}
 	recount(&out)
 	notify(ctx, out)
-	var mu sync.Mutex
-	update := func(index int, item Item) {
-		mu.Lock()
-		defer mu.Unlock()
-		out.Items[index] = item
-		recount(&out)
-		notify(ctx, out)
-	}
-	var wg sync.WaitGroup
-	for index, selector := range selectors {
-		if ctx.Err() != nil {
-			payload := errs.Structure(&errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "Item skipped because the batch was canceled."}).Error
-			update(index, Item{Selector: selector, Status: "skipped", Error: &payload})
-			continue
+	if !canceled {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		for index, selector := range selectors {
+			wg.Go(func() {
+				item := runItem(ctx, operation, selector, execute)
+				mu.Lock()
+				defer mu.Unlock()
+				out.Items[index] = item
+				recount(&out)
+				notify(ctx, out)
+			})
 		}
-		update(index, Item{Selector: selector, Status: "running"})
-		wg.Go(func() { update(index, runItem(ctx, selector, execute)) })
+		wg.Wait()
 	}
-	wg.Wait()
 	if out.Failed+out.Skipped != 0 {
 		return out, &errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "One or more batch items failed or were skipped.", Retryable: errs.Bool(false), CorrectiveAction: "Review the per-item outcomes before retrying individual items."}
 	}
 	return out, nil
 }
 
-func runItem[T any](ctx context.Context, selector string, execute func(context.Context, string) (T, error)) Item {
+func runItem[T any](ctx context.Context, operation, selector string, execute func(context.Context, string) (T, error)) Item {
+	if ctx.Err() != nil {
+		return skippedItem(operation, selector)
+	}
 	result, err := execute(WithObserver(ctx, nil), selector)
 	if err != nil {
 		payload := errs.Structure(err).Error
@@ -129,6 +132,11 @@ func runItem[T any](ctx context.Context, selector string, execute func(context.C
 		return item
 	}
 	return Item{Selector: selector, Status: resultStatus(result), Result: result}
+}
+
+func skippedItem(operation, selector string) Item {
+	payload := errs.Structure(&errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "Item skipped because the batch was canceled."}).Error
+	return Item{Selector: selector, Status: "skipped", Error: &payload}
 }
 
 func resultStatus(result any) string {

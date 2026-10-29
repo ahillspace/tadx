@@ -20,7 +20,6 @@ type Client interface {
 	Get(context.Context, string) (tableaudatasource.Datasource, error)
 	List(context.Context, tableaudatasource.ListRequest) (tableaudatasource.Page, error)
 	Download(context.Context, string, *bool) (tableaudatasource.Download, error)
-	ResolveContentURLs(context.Context, []string) (map[string]tableaudatasource.Datasource, error)
 }
 
 // ProjectPathResolver supplies canonical project paths without coupling resource packages.
@@ -175,20 +174,30 @@ func (a *Adapter) listDatasourcesByProjectLUID(ctx context.Context, input tablea
 
 // ResolveContentURLs maps exact datasource content URLs to authoritative
 // records, keyed by content URL. Every URL must resolve to one datasource.
+// Native search and workbook files both identify published datasources by
+// content URL; only the REST LUID is authoritative for lifecycle operations.
 func (a *Adapter) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]Datasource, error) {
-	if a == nil || a.client == nil {
-		return nil, errors.New("datasource resource adapter is not configured")
+	if len(contentURLs) == 0 || len(contentURLs) > datasourceAdapterPageSize {
+		return nil, fmt.Errorf("datasource content URL resolution requires between 1 and %d values", datasourceAdapterPageSize)
 	}
-	upstream, err := a.client.ResolveContentURLs(ctx, contentURLs)
+	found, err := a.FindDatasourcesByContentURL(ctx, contentURLs)
 	if err != nil {
 		return nil, err
 	}
-	resolved := make(map[string]Datasource, len(upstream))
-	for contentURL, item := range upstream {
-		if err := validateDatasourceIdentity(item); err != nil {
-			return nil, err
+	resolved := make(map[string]Datasource, len(found))
+	for _, item := range found {
+		if !slices.Contains(contentURLs, item.ContentURL) {
+			return nil, errors.New("datasource content URL resolution returned an unexpected identity")
 		}
-		resolved[contentURL] = normalizeDatasource(item, "")
+		if _, duplicate := resolved[item.ContentURL]; duplicate {
+			return nil, fmt.Errorf("datasource content URL %q resolved ambiguously", item.ContentURL)
+		}
+		resolved[item.ContentURL] = item
+	}
+	for _, contentURL := range contentURLs {
+		if _, ok := resolved[contentURL]; !ok {
+			return nil, fmt.Errorf("datasource content URL %q did not resolve to a datasource on this site", contentURL)
+		}
 	}
 	return resolved, nil
 }

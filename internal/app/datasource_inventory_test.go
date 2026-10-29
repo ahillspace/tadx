@@ -33,10 +33,6 @@ func (*datasourceInventoryClient) Download(context.Context, string, *bool) (tabl
 	return tableaudatasource.Download{}, errors.New("not used")
 }
 
-func (*datasourceInventoryClient) ResolveContentURLs(context.Context, []string) (map[string]tableaudatasource.Datasource, error) {
-	return nil, errors.New("not used")
-}
-
 type datasourceInventoryProjects map[string]string
 
 func (p datasourceInventoryProjects) ResolveProjectPath(_ context.Context, luid string) (string, error) {

@@ -2,19 +2,14 @@ package flow
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/tableau"
@@ -178,21 +173,14 @@ func (c *RESTClient) Prepare(ctx context.Context, input PublishRequest) (Prepare
 	if err := validateUploadBlockCount(input.ContentSize, c.uploadChunkSize); err != nil {
 		return nil, err
 	}
-	orderedUpload := false
-	if input.ContentSize > c.uploadThreshold {
-		orderedUpload, err = apiAtLeast(c.transport.APIVersion(), 3, 27)
-		if err != nil {
-			return nil, fmt.Errorf("interpret Tableau REST API version for flow upload: %w", err)
-		}
-	}
-	source, err := snapshotPublishContent(ctx, input)
+	snapshot, err := tableau.SnapshotPublishPayload(ctx, input.ContentPath, input.ContentSize, input.ExpectedFingerprint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare flow publish payload: %w", err)
 	}
 	prepared := false
 	defer func() {
 		if !prepared {
-			_ = source.close()
+			_ = snapshot.Close()
 		}
 	}()
 	payload, err := publishPayload(input.Name, input.ProjectLUID)
@@ -201,15 +189,16 @@ func (c *RESTClient) Prepare(ctx context.Context, input PublishRequest) (Prepare
 	}
 	parts := []tableau.MultipartPart{tableau.RequestPayloadPart(payload)}
 	query := url.Values{"overwrite": {strconv.FormatBool(input.Overwrite)}}
-	if source.size > c.uploadThreshold {
-		uploadSessionID, err := c.upload(ctx, input.Filename, source, orderedUpload)
+	if snapshot.Size() > c.uploadThreshold {
+		upload := tableau.FileUpload{Transport: c.transport, Session: c.session, ServerURL: c.serverURL, Operation: "flow", Filename: input.Filename, ChunkSize: c.uploadChunkSize}
+		uploadSessionID, err := upload.Upload(ctx, snapshot)
 		if err != nil {
 			return nil, err
 		}
 		query.Set("uploadSessionId", uploadSessionID)
 		query.Set("flowType", extension)
 	} else {
-		parts = append(parts, tableau.FilePart("tableau_flow", input.Filename, source.content, 0, source.size))
+		parts = append(parts, tableau.FilePart("tableau_flow", input.Filename, snapshot.File(), 0, snapshot.Size()))
 	}
 	body, err := tableau.NewMultipartBody(parts...)
 	if err != nil {
@@ -217,7 +206,7 @@ func (c *RESTClient) Prepare(ctx context.Context, input PublishRequest) (Prepare
 	}
 	prepared = true
 	return &preparedPublish{
-		client: c, query: query, body: body, release: source.close,
+		client: c, query: query, body: body, snapshot: snapshot,
 		expectedName: input.Name, expectedProjectLUID: input.ProjectLUID,
 	}, nil
 }
@@ -303,27 +292,21 @@ type preparedPublish struct {
 	client              *RESTClient
 	query               url.Values
 	body                *tableau.MultipartBody
-	release             func() error
+	snapshot            *tableau.PublishSnapshot
 	expectedName        string
 	expectedProjectLUID string
-	mu                  sync.Mutex
-	done                bool
 }
 
-// Commit sends the final publish request exactly one time, then releases the
-// publish snapshot. A snapshot cleanup failure never changes the publish result.
+// Commit sends the final publish request exactly once, then releases the publish
+// snapshot. A snapshot cleanup failure never changes the publish result.
 func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	if p == nil || p.client == nil {
 		return PublishResult{}, errors.New("flow publish is not prepared")
 	}
-	p.mu.Lock()
-	if p.done {
-		p.mu.Unlock()
-		return PublishResult{}, errors.New("prepared flow publish was already committed or closed")
+	if err := p.snapshot.Claim(); err != nil {
+		return PublishResult{}, fmt.Errorf("prepared flow publish: %w", err)
 	}
-	p.done = true
-	p.mu.Unlock()
-	defer func() { _ = p.release() }()
+	defer func() { _ = p.snapshot.Close() }()
 
 	response, err := p.client.doMultipart(ctx, http.MethodPost, p.client.sitePath("flows"), p.query, p.body, "flow.publish")
 	if err != nil {
@@ -346,64 +329,6 @@ func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 		return result, tableau.NewProtocolError("flow.publish", response, fmt.Errorf("flow publish response returned flow %q named %q in project %q", envelope.Flow.ID, envelope.Flow.Name, envelope.Flow.Project.ID), false)
 	}
 	return PublishResult{Status: "succeeded", FlowLUID: envelope.Flow.ID, FlowName: envelope.Flow.Name, ProjectLUID: envelope.Flow.Project.ID, TableauRequestID: response.TableauRequestID}, nil
-}
-
-// Close releases the publish snapshot when Commit never runs.
-func (p *preparedPublish) Close() error {
-	if p == nil {
-		return nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.done {
-		return nil
-	}
-	p.done = true
-	return p.release()
-}
-
-func (c *RESTClient) upload(ctx context.Context, filename string, source publishSource, ordered bool) (string, error) {
-	response, err := c.do(ctx, http.MethodPost, c.sitePath("fileUploads"), nil, nil, "", "flow.upload.initiate", metadataResponseLimit)
-	if err != nil {
-		return "", err
-	}
-	if response.StatusCode != http.StatusCreated {
-		return "", tableau.NewProtocolError("flow.upload.initiate", response, fmt.Errorf("initiate flow upload returned HTTP %d, expected 201", response.StatusCode), false)
-	}
-	var initiated uploadEnvelope
-	if err := xml.Unmarshal(response.Body, &initiated); err != nil {
-		return "", tableau.NewProtocolError("flow.upload.initiate", response, fmt.Errorf("decode initiate flow upload response: %w", err), false)
-	}
-	if initiated.Upload.SessionID == "" {
-		return "", tableau.NewProtocolError("flow.upload.initiate", response, errors.New("initiate flow upload response omitted upload session ID"), false)
-	}
-	for sequence, offset := 1, int64(0); offset < source.size; sequence++ {
-		blockSize := min(source.size-offset, c.uploadChunkSize)
-		body, err := tableau.NewMultipartBody(tableau.RequestPayloadPart(nil), tableau.FilePart("tableau_file", filename, source.content, offset, blockSize))
-		if err != nil {
-			return "", err
-		}
-		offset += blockSize
-		query := url.Values{}
-		if ordered {
-			query.Set("sequenceID", strconv.Itoa(sequence))
-		}
-		response, err := c.doMultipart(ctx, http.MethodPut, c.sitePath("fileUploads", initiated.Upload.SessionID), query, body, "flow.upload.append")
-		if err != nil {
-			return "", err
-		}
-		if response.StatusCode != http.StatusOK {
-			return "", tableau.NewProtocolError("flow.upload.append", response, fmt.Errorf("append flow upload returned HTTP %d, expected 200", response.StatusCode), false)
-		}
-		var appended uploadEnvelope
-		if err := xml.Unmarshal(response.Body, &appended); err != nil {
-			return "", tableau.NewProtocolError("flow.upload.append", response, fmt.Errorf("decode append flow upload response: %w", err), false)
-		}
-		if appended.Upload.SessionID != initiated.Upload.SessionID {
-			return "", tableau.NewProtocolError("flow.upload.append", response, fmt.Errorf("append flow upload response returned upload session ID %q, expected %q", appended.Upload.SessionID, initiated.Upload.SessionID), false)
-		}
-	}
-	return initiated.Upload.SessionID, nil
 }
 
 func (c *RESTClient) do(ctx context.Context, method, path string, query url.Values, body []byte, contentType, operation string, responseLimit int64) (tableau.Response, error) {
@@ -514,70 +439,6 @@ func validatePublishRequest(input PublishRequest) (string, error) {
 	return extension, nil
 }
 
-// publishSource is the fingerprint-verified snapshot every publish request reads.
-type publishSource struct {
-	content *os.File
-	size    int64
-	close   func() error
-}
-
-func snapshotPublishContent(ctx context.Context, input PublishRequest) (publishSource, error) {
-	source, err := os.Open(input.ContentPath)
-	if err != nil {
-		return publishSource{}, fmt.Errorf("open flow publish payload: %w", err)
-	}
-	defer source.Close()
-	info, err := source.Stat()
-	if err != nil {
-		return publishSource{}, fmt.Errorf("inspect flow publish payload: %w", err)
-	}
-	if !info.Mode().IsRegular() || info.Size() != input.ContentSize {
-		return publishSource{}, errors.New("flow publish payload changed after planning")
-	}
-	snapshot, err := os.CreateTemp(filepath.Dir(input.ContentPath), ".tadx-flow-publish-snapshot-*")
-	if err != nil {
-		return publishSource{}, fmt.Errorf("create flow publish snapshot: %w", err)
-	}
-	snapshotName := snapshot.Name()
-	cleanup := func() error { return errors.Join(snapshot.Close(), os.Remove(snapshotName)) }
-	digest := sha256.New()
-	written, err := copyWithContext(ctx, io.MultiWriter(snapshot, digest), source)
-	if err != nil {
-		return publishSource{}, errors.Join(fmt.Errorf("snapshot flow publish payload: %w", err), cleanup())
-	}
-	if written != input.ContentSize || "sha256:"+hex.EncodeToString(digest.Sum(nil)) != input.ExpectedFingerprint {
-		return publishSource{}, errors.Join(errors.New("flow publish payload changed after planning"), cleanup())
-	}
-	return publishSource{content: snapshot, size: written, close: cleanup}, nil
-}
-
-func copyWithContext(ctx context.Context, destination io.Writer, source io.Reader) (int64, error) {
-	buffer := make([]byte, 64*1024)
-	var total int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return total, err
-		}
-		count, readErr := source.Read(buffer)
-		if count > 0 {
-			written, writeErr := destination.Write(buffer[:count])
-			total += int64(written)
-			if writeErr != nil {
-				return total, writeErr
-			}
-			if written != count {
-				return total, io.ErrShortWrite
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			return total, nil
-		}
-		if readErr != nil {
-			return total, readErr
-		}
-	}
-}
-
 func validateUploadBlockCount(size, chunkSize int64) error {
 	if size <= 0 || chunkSize <= 0 {
 		return errors.New("invalid flow publish payload size")
@@ -640,19 +501,6 @@ func isUncertain(err error) bool {
 	return !errors.As(err, &status) || (status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices)
 }
 
-func apiAtLeast(value string, major, minor int) (bool, error) {
-	parts := strings.SplitN(value, ".", 3)
-	if len(parts) < 2 {
-		return false, fmt.Errorf("malformed Tableau REST API version %q", value)
-	}
-	gotMajor, majorErr := strconv.Atoi(parts[0])
-	gotMinor, minorErr := strconv.Atoi(parts[1])
-	if majorErr != nil || minorErr != nil {
-		return false, fmt.Errorf("malformed Tableau REST API version %q", value)
-	}
-	return gotMajor > major || (gotMajor == major && gotMinor >= minor), nil
-}
-
 type paginationXML struct {
 	Number *int `xml:"pageNumber,attr"`
 	Size   *int `xml:"pageSize,attr"`
@@ -699,12 +547,6 @@ type listEnvelope struct {
 type getEnvelope struct {
 	Flow        flowXML         `xml:"flow"`
 	OutputSteps []outputStepXML `xml:"flowOutputSteps>flowOutputStep"`
-}
-
-type uploadEnvelope struct {
-	Upload struct {
-		SessionID string `xml:"uploadSessionId,attr"`
-	} `xml:"fileUpload"`
 }
 
 var _ Client = (*RESTClient)(nil)

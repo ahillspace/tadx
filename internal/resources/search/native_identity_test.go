@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableausearch "github.com/ahillspace/tadx/internal/tableau/search"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 func publishedHit(hit, parent, url string) tableausearch.Item {
@@ -25,7 +25,7 @@ func TestNativeAdapterNormalizesRankedConnectionsAcrossPages(t *testing.T) {
 			publishedHit("connection-b", "ds-1", "sales"), publishedHit("connection-c", "ds-2", "other-sales")}},
 		2: {PageIndex: 2, Limit: 2, Total: 5, Items: []tableausearch.Item{{LUID: "wb-2", Type: "workbook", Name: "Last"}}},
 	}}
-	resolver := &datasourceResolver{results: map[string]tableaudatasource.Datasource{"sales": {LUID: "ds-1"}, "other-sales": {LUID: "ds-2"}}}
+	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}, "other-sales": {LUID: "ds-2"}}}
 	input := resourcesearch.Input{Types: []string{"datasource", "workbook"}, Terms: "sales", Limit: 2}
 	first, err := resourcesearch.NewNativeAdapter(client, resolver).Search(t.Context(), input)
 	if err != nil {
@@ -51,7 +51,7 @@ func TestNativeAdapterFiltersEmbeddedConnectionsBeforeRESTResolution(t *testing.
 	embedded.ParentType = "Workbook"
 	client := &nativeClient{pages: map[int]tableausearch.Page{0: {PageIndex: 0, Limit: 10, Total: 3,
 		Items: []tableausearch.Item{embedded, publishedHit("a", "ds-1", "sales"), publishedHit("b", "ds-1", "sales")}}}}
-	resolver := &datasourceResolver{results: map[string]tableaudatasource.Datasource{"sales": {LUID: "ds-1"}}}
+	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}}}
 	page, err := resourcesearch.NewNativeAdapter(client, resolver).Search(t.Context(), resourcesearch.Input{Types: []string{"datasource"}, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestNativeAdapterFiltersEmbeddedConnectionsBeforeRESTResolution(t *testing.
 func TestNativeAdapterRejectsConflictingPublishedIdentity(t *testing.T) {
 	client := &nativeClient{pages: map[int]tableausearch.Page{0: {PageIndex: 0, Limit: 10, Total: 1,
 		Items: []tableausearch.Item{publishedHit("a", "wrong-parent", "sales")}}}}
-	resolver := &datasourceResolver{results: map[string]tableaudatasource.Datasource{"sales": {LUID: "ds-1"}}}
+	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}}}
 	if _, err := resourcesearch.NewNativeAdapter(client, resolver).Search(t.Context(), resourcesearch.Input{Types: []string{"datasource"}, Limit: 10}); err == nil {
 		t.Fatal("accepted a search parent that disagrees with classic REST")
 	}
@@ -75,7 +75,7 @@ func TestNativeAdapterTrailingConnectionsDoNotClaimMoreContent(t *testing.T) {
 		0: {PageIndex: 0, Limit: 1, Total: 2, HasNext: true, Items: []tableausearch.Item{publishedHit("a", "ds-1", "sales")}},
 		1: {PageIndex: 1, Limit: 1, Total: 2, Items: []tableausearch.Item{publishedHit("b", "ds-1", "sales")}},
 	}}
-	resolver := &datasourceResolver{results: map[string]tableaudatasource.Datasource{"sales": {LUID: "ds-1"}}}
+	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}}}
 	page, err := resourcesearch.NewNativeAdapter(client, resolver).Search(t.Context(), resourcesearch.Input{Types: []string{"datasource"}, Limit: 1})
 	if err != nil || len(page.Items) != 1 || page.NextCursor != "" || page.MoreAvailable || page.Total != 1 || len(resolver.calls) != 1 {
 		t.Fatalf("page=%+v error=%v resolver calls=%v", page, err, resolver.calls)
@@ -87,7 +87,7 @@ func TestNativeAdapterResumeChecksPrefixAndReusesCommandPages(t *testing.T) {
 		0: {PageIndex: 0, Limit: 1, Total: 2, HasNext: true, Items: []tableausearch.Item{publishedHit("a", "ds-1", "sales")}},
 		1: {PageIndex: 1, Limit: 1, Total: 2, Items: []tableausearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Workbook"}}},
 	}}
-	resolver := &datasourceResolver{results: map[string]tableaudatasource.Datasource{"sales": {LUID: "ds-1"}}}
+	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}}}
 	input := resourcesearch.Input{Types: []string{"datasource", "workbook"}, Limit: 1}
 	adapter := resourcesearch.NewNativeAdapter(client, resolver)
 	first, err := adapter.Search(t.Context(), input)
@@ -139,7 +139,7 @@ func TestNativeAdapterConnectionScanRetainsNativeWindowLimit(t *testing.T) {
 		}
 		client.pages[page] = tableausearch.Page{PageIndex: page, Limit: 100, Total: 2001, HasNext: page < 19, Items: items}
 	}
-	resolver := &datasourceResolver{results: map[string]tableaudatasource.Datasource{"sales": {LUID: "ds-1"}}}
+	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}}}
 	page, err := resourcesearch.NewNativeAdapter(client, resolver).Search(t.Context(), resourcesearch.Input{Types: []string{"datasource"}, Limit: 100})
 	if err != nil || len(page.Items) != 1 || !page.MoreAvailable || page.NextCursor != "" || page.Total != 0 || len(page.Warnings) != 1 || len(client.requests) != 20 || len(resolver.calls) != 1 {
 		t.Fatalf("page=%+v error=%v requests=%d resolutions=%d", page, err, len(client.requests), len(resolver.calls))

@@ -107,7 +107,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
-	datasourceResolver := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
+	datasourceResolver := resourcedatasource.NewAdapter(tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL))
 	return searchaction.Execute(ctx, globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}, input, types)
 }
 
