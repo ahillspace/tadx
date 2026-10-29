@@ -171,7 +171,7 @@ Before publishing, confirm those datasources exist at the destination and the wo
 Publish missing referenced datasources first, then the workbook.
 Workbook publication does not publish dependencies automatically.
 Tableau binds each reference by its datasource content URL on the destination site.
-Datasource publish reports the `content_url` Tableau assigned, and `renamed_from` when Tableau added a suffix because the original URL was taken.
+Datasource publish reports the `content_url` Tableau assigned, and `renamed_from` when it differs from the URL recorded in the file, such as when Tableau adds a suffix because that URL was taken.
 Map a reference whose destination URL differs with `--datasource-binding <source name or content URL>=<target LUID>`; only the upload copy is rebound.
 A workbook preview lists each binding, warns about references that will likely fail, and suggests exact candidates.
 Pulling with `--include-pds` saves direct datasource dependencies as separate artifacts; it does not make the workbook self-contained.
@@ -341,7 +341,7 @@ The check does not install anything, use Tableau credentials, or send Tableau in
 It has a short network timeout and does not wait for the network when your command finishes.
 An unfinished or failed check keeps the cached release, and an unfinished check can retry on a later command; check failures do not change command results.
 
-Automatic checks are skipped in CI and for JSON output, help, completion, previews, updates, cache commands, and the local overview.
+Automatic checks are skipped in CI and for JSON output, help, completion, updates, cache commands, and the local overview.
 Commands using `--cache` also skip the check.
 Development builds do not show update notices.
 Set `TADX_NO_UPDATE_NOTIFIER=1` to disable automatic checks and notices.

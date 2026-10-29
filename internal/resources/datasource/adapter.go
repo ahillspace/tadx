@@ -20,6 +20,7 @@ type Client interface {
 	Get(context.Context, string) (tableaudatasource.Datasource, error)
 	List(context.Context, tableaudatasource.ListRequest) (tableaudatasource.Page, error)
 	Download(context.Context, string, *bool) (tableaudatasource.Download, error)
+	ResolveContentURLs(context.Context, []string) (map[string]tableaudatasource.Datasource, error)
 }
 
 // ProjectPathResolver supplies canonical project paths without coupling resource packages.
@@ -213,6 +214,26 @@ func (a *Adapter) listDatasourcesByProjectLUID(ctx context.Context, input tablea
 	}
 	end := min(start+input.PageSize, len(matches))
 	return Page{Number: input.PageNumber, Size: input.PageSize, Total: len(matches), Items: matches[start:end], RequestID: requestID}, nil
+}
+
+// ResolveContentURLs maps exact datasource content URLs to authoritative
+// records, keyed by content URL. Every URL must resolve to one datasource.
+func (a *Adapter) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]Datasource, error) {
+	if a == nil || a.client == nil {
+		return nil, errors.New("datasource resource adapter is not configured")
+	}
+	upstream, err := a.client.ResolveContentURLs(ctx, contentURLs)
+	if err != nil {
+		return nil, err
+	}
+	resolved := make(map[string]Datasource, len(upstream))
+	for contentURL, item := range upstream {
+		if err := validateDatasourceIdentity(item); err != nil {
+			return nil, err
+		}
+		resolved[contentURL] = normalizeDatasource(item, "")
+	}
+	return resolved, nil
 }
 
 // ResolveDatasource resolves one authoritative LUID or exact name and canonical project path.

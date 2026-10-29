@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
-	"github.com/ahillspace/tadx/internal/value"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -162,9 +161,9 @@ func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOut
 		return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
 	}
 	result.Verification = "confirmed"
-	if value.SuffixedContentURL(plan.contentURL, result.ContentURL) {
+	if plan.contentURL != "" && result.ContentURL != "" && result.ContentURL != plan.contentURL {
 		result.RenamedFrom = plan.contentURL
-		out.Help = []string{fmt.Sprintf("Tableau assigned content URL %s because %s is already taken on this site. Workbooks that reference %s need --datasource-binding %s=%s when published here.", result.ContentURL, plan.contentURL, plan.contentURL, plan.contentURL, result.DatasourceLUID)}
+		out.Help = []string{fmt.Sprintf("Tableau assigned content URL %s instead of %s, the URL recorded in this file. Workbooks that reference %s need --datasource-binding %s=%s when published here.", result.ContentURL, plan.contentURL, plan.contentURL, plan.contentURL, result.DatasourceLUID)}
 	}
 	return out, nil
 }

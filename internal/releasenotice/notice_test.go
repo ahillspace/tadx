@@ -189,13 +189,9 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 		{"help", func(o *Options) { o.Args = []string{"capability", "list", "--help"} }},
 		{"help explicit true", func(o *Options) { o.Args = []string{"capability", "list", "--help=true"} }},
 		{"help shorthand cluster", func(o *Options) { o.Args = []string{"capability", "list", "-fh"} }},
-		{"preview shorthand cluster", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fp"} }},
-		{"preview shorthand cluster explicit true", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fp=true"} }},
+		{"help shorthand cluster explicit true", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fh=true"} }},
 		{"help command", func(o *Options) { o.Args = []string{"help", "capability"} }},
 		{"completion", func(o *Options) { o.Args = []string{"completion", "bash"} }},
-		{"preview", func(o *Options) { o.Args = []string{"capability", "list", "--preview"} }},
-		{"preview alias", func(o *Options) { o.Args = []string{"content", "workbook", "delete", "--pv"} }},
-		{"preview shorthand", func(o *Options) { o.Args = []string{"content", "workbook", "delete", "-p"} }},
 		{"update", func(o *Options) { o.Args = []string{"update", "--check"} }},
 		{"update alias", func(o *Options) { o.Args = []string{"upd", "--chk"} }},
 		{"cache category", func(o *Options) { o.Args = []string{"cache", "status"} }},
@@ -243,6 +239,33 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(directory, "tadx")); !os.IsNotExist(err) {
 				t.Fatalf("cache created: %v", err)
+			}
+		})
+	}
+}
+
+func TestEligibilityIncludesPreviews(t *testing.T) {
+	for _, args := range [][]string{
+		{"admin", "group", "create", "--name", "Example", "--preview"},
+		{"admin", "group", "create", "--name", "Example", "--preview=true"},
+		{"content", "workbook", "delete", "--pv"},
+		{"content", "workbook", "delete", "-p"},
+		{"admin", "group", "create", "--name", "Example", "-fp"},
+		{"admin", "group", "create", "--name", "Example", "-fp=true"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			options := testOptions(t.TempDir(), time.Now())
+			options.Args = args
+			options.Latest = func(context.Context) (version.Release, error) {
+				return version.Release{Version: "1.1.0", URL: "https://github.com/ahillspace/tadx/releases/tag/v1.1.0"}, nil
+			}
+			check := Start(t.Context(), options)
+			if check == nil {
+				t.Fatal("preview check did not start")
+			}
+			<-check.Done()
+			if notice := check.Finish(true); notice == "" {
+				t.Fatal("preview produced no notice")
 			}
 		})
 	}

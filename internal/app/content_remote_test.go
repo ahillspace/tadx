@@ -26,6 +26,10 @@ func (c lineageDatasourceClient) Download(context.Context, string, *bool) (table
 	return tableaudatasource.Download{}, errors.New("unexpected download")
 }
 
+func (c lineageDatasourceClient) ResolveContentURLs(context.Context, []string) (map[string]tableaudatasource.Datasource, error) {
+	return nil, errors.New("unexpected content URL resolution")
+}
+
 type lineageProjectPaths map[string]string
 
 func (p lineageProjectPaths) ResolveProjectPath(_ context.Context, luid string) (string, error) {

@@ -2,8 +2,6 @@
 // Action inputs, outputs, behavior, and provider payloads remain in their owning packages.
 package value
 
-import "strings"
-
 // ContentIdentity identifies exact REST content and its containing project.
 type ContentIdentity struct {
 	LUID        string `json:"luid"`
@@ -69,13 +67,6 @@ type Datasource struct {
 	Tags                []string            `json:"tags,omitempty"`
 	AskDataEnablement   string              `json:"ask_data_enablement,omitempty"`
 	RequestID           string              `json:"-"`
-}
-
-// SuffixedContentURL reports whether candidate is contentURL followed by the
-// _<digits> suffix Tableau appends when a content URL is already taken.
-func SuffixedContentURL(contentURL, candidate string) bool {
-	suffix, ok := strings.CutPrefix(candidate, contentURL+"_")
-	return contentURL != "" && ok && suffix != "" && strings.Trim(suffix, "0123456789") == ""
 }
 
 // DatasourceUpstream preserves one separately observed upstream metadata result.

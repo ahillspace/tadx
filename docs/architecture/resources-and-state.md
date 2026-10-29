@@ -125,7 +125,7 @@ Datasource and flow actions share the publication boundary but preserve differen
 | Publication | Distinct behavior and source |
 | --- | --- |
 | Workbook | [`Publisher.Apply`](../../actions/workbook/publish.go) rechecks overwrite identity around preparation; `Complete` preserves successful publication despite delayed destination visibility. |
-| Datasource | [`Publisher.Execute`](../../actions/datasource/publish.go) rereads native fingerprint and composition references, revalidates the destination and collision, then prepares and commits; `Complete` reports the assigned content URL and compares it with the file's own repository location to report a Tableau collision suffix. |
+| Datasource | [`Publisher.Execute`](../../actions/datasource/publish.go) rereads native fingerprint and composition references, revalidates the destination and collision, then prepares and commits; `Complete` reports the assigned content URL and compares it with the file's own repository location to report a changed URL and the workbook binding to use. |
 | Flow | [`Publisher.Execute`](../../actions/flow/publish.go) completes artifact, destination, and collision revalidation before upload preparation, leaving no fallible action gate between preparation and commit. |
 
 Preparation can create a server-side upload, so its placement is part of each resource's recovery design.

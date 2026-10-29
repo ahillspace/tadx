@@ -545,13 +545,12 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	}
 	input.SiteLUID = connection.session.SiteLUID()
 
-	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, contentURLs: datasourceClient, lineage: lineage}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
+	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
 }
 
 type pullReader struct {
 	workbooks   *resourceworkbook.Adapter
 	datasources *resourcedatasource.Adapter
-	contentURLs *tableaudatasource.Client
 	lineage     *resourcelineage.Adapter
 }
 
@@ -578,7 +577,7 @@ func (r pullReader) PublishedDatasources(ctx context.Context, download workbooko
 	for index, reference := range references {
 		urls[index] = reference.ContentURL
 	}
-	resolved, err := r.contentURLs.ResolveContentURLs(ctx, urls)
+	resolved, err := r.datasources.ResolveContentURLs(ctx, urls)
 	if err != nil {
 		return nil, err
 	}

@@ -70,6 +70,9 @@ func (c *contentMutationDatasourceClient) List(context.Context, tableaudatasourc
 func (c *contentMutationDatasourceClient) Download(context.Context, string, *bool) (tableaudatasource.Download, error) {
 	return tableaudatasource.Download{}, nil
 }
+func (c *contentMutationDatasourceClient) ResolveContentURLs(context.Context, []string) (map[string]tableaudatasource.Datasource, error) {
+	return nil, nil
+}
 func (c *contentMutationDatasourceClient) Prepare(context.Context, tableaudatasource.PublishRequest) (tableaudatasource.PreparedPublish, error) {
 	return nil, nil
 }

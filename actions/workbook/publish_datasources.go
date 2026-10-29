@@ -122,7 +122,7 @@ func (a *Publisher) findDatasourceCandidates(ctx context.Context, plan PublishPl
 	for _, reference := range references {
 		var matches []value.Datasource
 		for _, item := range items {
-			if item.ContentURL == reference.contentURL || (reference.caption != "" && item.Name == reference.caption) || value.SuffixedContentURL(reference.contentURL, item.ContentURL) {
+			if item.ContentURL == reference.contentURL || (reference.caption != "" && item.Name == reference.caption) || suffixedContentURL(reference.contentURL, item.ContentURL) {
 				matches = append(matches, item)
 			}
 		}
@@ -157,6 +157,13 @@ func datasourceRemapCommand(plan PublishPlan, binding DatasourceBinding) string 
 		args = append(args, "--datasource-binding", mapped.Source+"="+mapped.TargetLUID)
 	}
 	return commandhint.Target(plan.Target.Environment, plan.Workspace, args...)
+}
+
+// suffixedContentURL reports whether candidate is contentURL followed by the
+// _<digits> suffix Tableau appends when a content URL is already taken.
+func suffixedContentURL(contentURL, candidate string) bool {
+	suffix, ok := strings.CutPrefix(candidate, contentURL+"_")
+	return contentURL != "" && ok && suffix != "" && strings.Trim(suffix, "0123456789") == ""
 }
 
 func hasExactCandidate(candidates []PublishDatasourceCandidate, contentURL string) bool {

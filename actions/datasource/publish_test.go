@@ -281,41 +281,49 @@ func TestPublishPublishSourceDefaultRequiresRecordedLUIDToRemainExact(t *testing
 	}
 }
 
-func TestPublishPublishReportsTableauSuffixedContentURLWithBinding(t *testing.T) {
-	artifact := publishComposedArtifact()
-	artifact.ContentURL = "SalesMargin"
-	resolver := &publishPublishResolver{project: datasourceops.Project{LUID: "project-1", Path: "Analytics"}}
-	publisher := &publishOutcomePublisher{result: datasourceops.PublishResult{Status: "succeeded", DatasourceLUID: "ds-new", DatasourceName: "Sales", ProjectLUID: "project-1", ContentURL: "SalesMargin_17932075825460"}}
-	out, err := datasourceops.NewPublish(&publishPublishArtifactReader{artifact: artifact}, resolver, publisher).Execute(context.Background(), datasourceops.PublishInput{ArtifactPath: artifact.Path, Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeCreate}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Result == nil || out.Result.ContentURL != "SalesMargin_17932075825460" || out.Result.RenamedFrom != "SalesMargin" || out.Result.Verification != "confirmed" {
-		t.Fatalf("result = %#v", out.Result)
-	}
-	want := "Tableau assigned content URL SalesMargin_17932075825460 because SalesMargin is already taken on this site. Workbooks that reference SalesMargin need --datasource-binding SalesMargin=ds-new when published here."
-	if !reflect.DeepEqual(out.Help, []string{want}) {
-		t.Fatalf("help = %#v", out.Help)
-	}
-	var compact bytes.Buffer
-	if err := output.Render(&compact, out); err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range []string{"content_url: SalesMargin_17932075825460", "renamed_from: SalesMargin"} {
-		if !strings.Contains(compact.String(), field) {
-			t.Fatalf("compact output missing %q:\n%s", field, compact.String())
-		}
+func TestPublishPublishReportsChangedContentURLWithBinding(t *testing.T) {
+	for _, test := range []struct {
+		name, assigned string
+	}{
+		{"Tableau collision suffix", "SalesMargin_17932075825460"},
+		{"different URL", "Margin"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			artifact := publishComposedArtifact()
+			artifact.ContentURL = "SalesMargin"
+			resolver := &publishPublishResolver{project: datasourceops.Project{LUID: "project-1", Path: "Analytics"}}
+			publisher := &publishOutcomePublisher{result: datasourceops.PublishResult{Status: "succeeded", DatasourceLUID: "ds-new", DatasourceName: "Sales", ProjectLUID: "project-1", ContentURL: test.assigned}}
+			out, err := datasourceops.NewPublish(&publishPublishArtifactReader{artifact: artifact}, resolver, publisher).Execute(context.Background(), datasourceops.PublishInput{ArtifactPath: artifact.Path, Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeCreate}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Result == nil || out.Result.ContentURL != test.assigned || out.Result.RenamedFrom != "SalesMargin" || out.Result.Verification != "confirmed" {
+				t.Fatalf("result = %#v", out.Result)
+			}
+			want := "Tableau assigned content URL " + test.assigned + " instead of SalesMargin, the URL recorded in this file. Workbooks that reference SalesMargin need --datasource-binding SalesMargin=ds-new when published here."
+			if !reflect.DeepEqual(out.Help, []string{want}) {
+				t.Fatalf("help = %#v", out.Help)
+			}
+			var compact bytes.Buffer
+			if err := output.Render(&compact, out); err != nil {
+				t.Fatal(err)
+			}
+			for _, field := range []string{"content_url: " + test.assigned, "renamed_from: SalesMargin"} {
+				if !strings.Contains(compact.String(), field) {
+					t.Fatalf("compact output missing %q:\n%s", field, compact.String())
+				}
+			}
+		})
 	}
 }
 
-func TestPublishPublishReportsAssignedContentURLWithoutInferringRenames(t *testing.T) {
+func TestPublishPublishReportsAssignedContentURLWithoutRename(t *testing.T) {
 	for _, test := range []struct {
 		name, file, assigned string
 	}{
 		{"unchanged", "SalesMargin", "SalesMargin"},
-		{"different prefix", "SalesMargin", "SalesMarginX_1"},
-		{"non-digit suffix", "SalesMargin", "SalesMargin_v2"},
 		{"never published", "", "Sales_1"},
+		{"not reported", "SalesMargin", ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			artifact := publishComposedArtifact()

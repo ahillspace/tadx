@@ -104,7 +104,7 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 			notes = []string{"Workspace ID/name, or --artifact: TADX-managed artifact directory; --file: standalone native file (no workspace). Project: destination; name: source default."}
 		}
 		if resource == "datasource" {
-			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.", "Output: content_url; renamed_from if Tableau suffixed it.")
+			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.", "Output: content_url; renamed_from if not the file's URL.")
 		}
 		if resource == "workbook" {
 			notes = append(notes, "Publish missing datasources first; Tableau binds them by content URL.")

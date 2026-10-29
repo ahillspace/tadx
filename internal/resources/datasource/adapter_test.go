@@ -23,6 +23,7 @@ type client struct {
 	pageSequence []tableaudatasource.Page
 	listInputs   []tableaudatasource.ListRequest
 	listErr      error
+	resolved     map[string]tableaudatasource.Datasource
 }
 
 func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
@@ -44,6 +45,11 @@ func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (t
 func (c *client) Get(_ context.Context, luid string) (tableaudatasource.Datasource, error) {
 	c.calls = append(c.calls, "get:"+luid)
 	return c.metadata, c.getErr
+}
+
+func (c *client) ResolveContentURLs(_ context.Context, contentURLs []string) (map[string]tableaudatasource.Datasource, error) {
+	c.calls = append(c.calls, "resolve:"+strings.Join(contentURLs, ","))
+	return c.resolved, nil
 }
 
 type projectPaths map[string]string
@@ -97,6 +103,27 @@ func TestAdapterListsOneRichDatasourcePage(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.listInputs, []tableaudatasource.ListRequest{request}) {
 		t.Fatalf("inputs = %#v", c.listInputs)
+	}
+}
+
+func TestAdapterResolvesDatasourceContentURLsToAuthoritativeRecords(t *testing.T) {
+	c := &client{resolved: map[string]tableaudatasource.Datasource{"SalesMargin": {LUID: "ds-1", Name: "Sales & Margin", ContentURL: "SalesMargin", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "request-1"}}}
+	resolved, err := resourcedatasource.NewAdapter(c).ResolveContentURLs(t.Context(), []string{"SalesMargin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 1 || resolved["SalesMargin"].LUID != "ds-1" || resolved["SalesMargin"].Name != "Sales & Margin" || resolved["SalesMargin"].RequestID != "request-1" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	if !reflect.DeepEqual(c.calls, []string{"resolve:SalesMargin"}) {
+		t.Fatalf("calls = %v", c.calls)
+	}
+}
+
+func TestAdapterRejectsIncompleteResolvedDatasourceContentURL(t *testing.T) {
+	c := &client{resolved: map[string]tableaudatasource.Datasource{"SalesMargin": {LUID: "ds-1", ContentURL: "SalesMargin", ProjectLUID: "project-1", ProjectName: "Ops"}}}
+	if _, err := resourcedatasource.NewAdapter(c).ResolveContentURLs(t.Context(), []string{"SalesMargin"}); err == nil || !strings.Contains(err.Error(), "authoritative LUID, name") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

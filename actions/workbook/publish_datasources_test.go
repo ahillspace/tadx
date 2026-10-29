@@ -39,6 +39,9 @@ var publishBindingSite = []value.Datasource{
 	{LUID: "ds-similar", Name: "Sales & Margin v2", ContentURL: "SalesMarginV2", ProjectName: "Finance"},
 	{LUID: "ds-suffix", Name: "Archive", ContentURL: "SalesMargin_12", ProjectName: "Archive", OwnerLUID: "user-2", UpdatedAt: "2025-12-01T00:00:00Z"},
 	{LUID: "ds-prefix", Name: "Other", ContentURL: "SalesMarginX_1", ProjectName: "Finance"},
+	{LUID: "ds-empty-suffix", Name: "Other", ContentURL: "SalesMargin_", ProjectName: "Finance"},
+	{LUID: "ds-mixed-suffix", Name: "Other", ContentURL: "SalesMargin_1x", ProjectName: "Finance"},
+	{LUID: "ds-case", Name: "Other", ContentURL: "salesmargin_1", ProjectName: "Finance"},
 	{LUID: "ds-orders", Name: "Orders", ContentURL: "Orders", ProjectName: "Finance", OwnerLUID: "user-1", UpdatedAt: "2026-01-03T00:00:00Z"},
 }
 
