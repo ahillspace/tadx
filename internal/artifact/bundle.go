@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -82,7 +83,7 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookBundlePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	handle, err := lockWorkspace(workspace)
+	handle, err := lockWorkspace(ctx, workspace)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err
 	}
@@ -231,7 +232,8 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	metadata.CompositionStatus, metadata.ParentDataSourceURLs = classifyDatasourcePackage(filename, input.Content)
+	definition := readDatasourceDefinition(filename, bytes.NewReader(input.Content), int64(len(input.Content)))
+	metadata.CompositionStatus, metadata.ParentDataSourceURLs = definition.CompositionStatus, definition.ParentDataSourceURLs
 	metadata.sourceSitePresent = true
 	if err := validateDatasourceMetadata(metadata); err != nil {
 		return preparedDirectory{}, DatasourcePullResult{}, err

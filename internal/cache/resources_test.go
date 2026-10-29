@@ -294,3 +294,28 @@ func TestReadThroughUpsertInvalidatesCompleteScopeSnapshotAndItsCursor(t *testin
 		t.Fatalf("read-through result = %#v", current)
 	}
 }
+
+func TestConcurrentFirstOpensFromSeparateStoresKeepEveryWrite(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	const writers = 16
+	errs := make(chan error, writers)
+	for index := range writers {
+		go func() {
+			luid := fmt.Sprintf("wb-%d", index)
+			errs <- NewStore(root, func() time.Time { return now }).UpsertResources(context.Background(), []ResourceEntry{{Environment: "production", Site: "marketing", Kind: "workbook", LUID: luid, Name: luid, Coverage: "detail", ObservedAt: now}})
+		}()
+	}
+	for range writers {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent first open: %v", err)
+		}
+	}
+	result, err := NewStore(root, func() time.Time { return now }).ReadResources(context.Background(), ResourceQuery{Environment: "production", Site: "marketing", Kind: "workbook", Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != writers {
+		t.Fatalf("cached workbooks = %d, want %d", result.Total, writers)
+	}
+}

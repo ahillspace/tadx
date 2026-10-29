@@ -3,7 +3,6 @@ package releasenotice
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,7 +36,7 @@ func TestStableVersionComparison(t *testing.T) {
 	}
 }
 
-func TestCompletedCheckCachesReleaseAndNotice(t *testing.T) {
+func TestCompletedCheckCachesReleaseAndNotifiesEverySuccessfulCommand(t *testing.T) {
 	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
 	directory := t.TempDir()
 	calls := 0
@@ -51,11 +50,13 @@ func TestCompletedCheckCachesReleaseAndNotice(t *testing.T) {
 		t.Fatal("eligible check did not start")
 	}
 	<-check.Done()
-	if notice := check.Finish(true); !strings.Contains(notice, "1.3.0") || !strings.Contains(notice, "tadx update") {
-		t.Fatalf("notice = %q", notice)
+	want := "A new TADX release is available: v1.3.0 (current: v1.0.0). Run `tadx update` to install it. Agents: ask the user before updating.\n"
+	if notice := check.Finish(true); notice != want {
+		t.Fatalf("notice = %q, want %q", notice, want)
 	}
-	if notice := Start(t.Context(), options).Finish(true); notice != "" {
-		t.Fatalf("repeated notice = %q", notice)
+	options.Now = func() time.Time { return now.Add(time.Hour) }
+	if notice := Start(t.Context(), options).Finish(true); notice != want {
+		t.Fatalf("repeated notice = %q, want %q", notice, want)
 	}
 	if calls != 1 {
 		t.Fatalf("network calls = %d, want 1", calls)
@@ -63,7 +64,7 @@ func TestCompletedCheckCachesReleaseAndNotice(t *testing.T) {
 	options.Now = func() time.Time { return now.Add(25 * time.Hour) }
 	check = Start(t.Context(), options)
 	<-check.Done()
-	if notice := check.Finish(true); !strings.Contains(notice, "1.3.0") {
+	if notice := check.Finish(true); notice != want {
 		t.Fatalf("next-day notice = %q", notice)
 	}
 	if calls != 2 {
@@ -86,33 +87,6 @@ func TestFailedCommandCanNotifyFromCache(t *testing.T) {
 	}
 }
 
-func TestRefreshPreservesDelayedNoticeCadence(t *testing.T) {
-	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
-	options := testOptions(t.TempDir(), now)
-	options.Latest = func(context.Context) (version.Release, error) {
-		return version.Release{Version: "2.0.0", URL: "https://github.com/ahillspace/tadx/releases/tag/v2.0.0"}, nil
-	}
-	check := Start(t.Context(), options)
-	<-check.Done()
-	if notice := check.Finish(false); notice != "" {
-		t.Fatalf("failed command notice = %q", notice)
-	}
-	options.Now = func() time.Time { return now.Add(23 * time.Hour) }
-	if notice := Start(t.Context(), options).Finish(true); notice == "" {
-		t.Fatal("expected first notice from cached release")
-	}
-	options.Now = func() time.Time { return now.Add(25 * time.Hour) }
-	check = Start(t.Context(), options)
-	<-check.Done()
-	if notice := check.Finish(true); notice != "" {
-		t.Fatalf("refresh repeated notice after only two hours: %q", notice)
-	}
-	options.Now = func() time.Time { return now.Add(47 * time.Hour) }
-	if notice := Start(t.Context(), options).Finish(true); notice == "" {
-		t.Fatal("expected notice after its independent 24-hour interval")
-	}
-}
-
 func TestCompletedFailureIsThrottled(t *testing.T) {
 	options := testOptions(t.TempDir(), time.Now())
 	calls := 0
@@ -127,6 +101,55 @@ func TestCompletedFailureIsThrottled(t *testing.T) {
 	}
 	if notice := Start(t.Context(), options).Finish(true); notice != "" || calls != 1 {
 		t.Fatalf("cached failure notice = %q, calls = %d", notice, calls)
+	}
+}
+
+func TestFailedRefreshKeepsCachedRelease(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	options := testOptions(t.TempDir(), now)
+	options.Latest = func(context.Context) (version.Release, error) {
+		return version.Release{Version: "2.0.0", URL: "https://github.com/ahillspace/tadx/releases/tag/v2.0.0"}, nil
+	}
+	check := Start(t.Context(), options)
+	<-check.Done()
+	check.Finish(true)
+	options.Now = func() time.Time { return now.Add(25 * time.Hour) }
+	calls := 0
+	options.Latest = func(context.Context) (version.Release, error) {
+		calls++
+		return version.Release{}, errors.New("offline")
+	}
+	check = Start(t.Context(), options)
+	<-check.Done()
+	if notice := check.Finish(true); !strings.Contains(notice, "2.0.0") {
+		t.Fatalf("failed refresh notice = %q", notice)
+	}
+	options.Now = func() time.Time { return now.Add(26 * time.Hour) }
+	if notice := Start(t.Context(), options).Finish(true); !strings.Contains(notice, "2.0.0") || calls != 1 {
+		t.Fatalf("notice after failed refresh = %q, calls = %d", notice, calls)
+	}
+}
+
+func TestUnfinishedRefreshShowsCachedNotice(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	options := testOptions(t.TempDir(), now)
+	options.Latest = func(context.Context) (version.Release, error) {
+		return version.Release{Version: "2.0.0", URL: "https://github.com/ahillspace/tadx/releases/tag/v2.0.0"}, nil
+	}
+	check := Start(t.Context(), options)
+	<-check.Done()
+	check.Finish(true)
+	options.Now = func() time.Time { return now.Add(25 * time.Hour) }
+	entered := make(chan struct{})
+	options.Latest = func(ctx context.Context) (version.Release, error) {
+		close(entered)
+		<-ctx.Done()
+		return version.Release{}, ctx.Err()
+	}
+	check = Start(t.Context(), options)
+	<-entered
+	if notice := check.Finish(true); !strings.Contains(notice, "2.0.0") {
+		t.Fatalf("in-flight refresh notice = %q", notice)
 	}
 }
 
@@ -166,13 +189,9 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 		{"help", func(o *Options) { o.Args = []string{"capability", "list", "--help"} }},
 		{"help explicit true", func(o *Options) { o.Args = []string{"capability", "list", "--help=true"} }},
 		{"help shorthand cluster", func(o *Options) { o.Args = []string{"capability", "list", "-fh"} }},
-		{"preview shorthand cluster", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fp"} }},
-		{"preview shorthand cluster explicit true", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fp=true"} }},
+		{"help shorthand cluster explicit true", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fh=true"} }},
 		{"help command", func(o *Options) { o.Args = []string{"help", "capability"} }},
 		{"completion", func(o *Options) { o.Args = []string{"completion", "bash"} }},
-		{"preview", func(o *Options) { o.Args = []string{"capability", "list", "--preview"} }},
-		{"preview alias", func(o *Options) { o.Args = []string{"content", "workbook", "delete", "--pv"} }},
-		{"preview shorthand", func(o *Options) { o.Args = []string{"content", "workbook", "delete", "-p"} }},
 		{"update", func(o *Options) { o.Args = []string{"update", "--check"} }},
 		{"update alias", func(o *Options) { o.Args = []string{"upd", "--chk"} }},
 		{"cache category", func(o *Options) { o.Args = []string{"cache", "status"} }},
@@ -180,8 +199,6 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 		{"cache alias", func(o *Options) { o.Args = []string{"content", "workbook", "list", "--cch=true"} }},
 		{"json", func(o *Options) { o.Args = []string{"capability", "list", "--json"} }},
 		{"json alias", func(o *Options) { o.Args = []string{"capability", "list", "--jsn=true"} }},
-		{"no stdout tty", func(o *Options) { o.Stdout = nil }},
-		{"no stderr tty", func(o *Options) { o.Stderr = nil }},
 		{"ci", func(o *Options) {
 			o.Env = func(name string) string {
 				if name == "CI" {
@@ -205,7 +222,6 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 			directory := t.TempDir()
 			options := testOptions(directory, time.Now())
 			var calls atomic.Int32
-			options.IsTerminal = func(writer io.Writer) bool { return writer != nil }
 			options.Latest = func(context.Context) (version.Release, error) {
 				calls.Add(1)
 				return version.Release{}, nil
@@ -223,6 +239,33 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(directory, "tadx")); !os.IsNotExist(err) {
 				t.Fatalf("cache created: %v", err)
+			}
+		})
+	}
+}
+
+func TestEligibilityIncludesPreviews(t *testing.T) {
+	for _, args := range [][]string{
+		{"admin", "group", "create", "--name", "Example", "--preview"},
+		{"admin", "group", "create", "--name", "Example", "--preview=true"},
+		{"content", "workbook", "delete", "--pv"},
+		{"content", "workbook", "delete", "-p"},
+		{"admin", "group", "create", "--name", "Example", "-fp"},
+		{"admin", "group", "create", "--name", "Example", "-fp=true"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			options := testOptions(t.TempDir(), time.Now())
+			options.Args = args
+			options.Latest = func(context.Context) (version.Release, error) {
+				return version.Release{Version: "1.1.0", URL: "https://github.com/ahillspace/tadx/releases/tag/v1.1.0"}, nil
+			}
+			check := Start(t.Context(), options)
+			if check == nil {
+				t.Fatal("preview check did not start")
+			}
+			<-check.Done()
+			if notice := check.Finish(true); notice == "" {
+				t.Fatal("preview produced no notice")
 			}
 		})
 	}
@@ -250,10 +293,8 @@ func TestPublicRequestHasNoAuthorizationAndIsBounded(t *testing.T) {
 func testOptions(directory string, now time.Time) Options {
 	return Options{
 		Args: []string{"capability", "list"}, Current: "1.0.0",
-		Stdout: io.Discard, Stderr: io.Discard,
-		IsTerminal: func(io.Writer) bool { return true },
-		Env:        func(string) string { return "" },
-		CacheDir:   func() (string, error) { return directory, nil },
-		Now:        func() time.Time { return now },
+		Env:      func(string) string { return "" },
+		CacheDir: func() (string, error) { return directory, nil },
+		Now:      func() time.Time { return now },
 	}
 }

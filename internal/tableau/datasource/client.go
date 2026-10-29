@@ -63,67 +63,13 @@ type ListRequest struct {
 	Tag           string
 	UpdatedAfter  string
 	UpdatedBefore string
+	Names         []string
 	ContentURLs   []string
 }
 
-const maxContentURLResolveBatch = 25
-
-// ResolveContentURLs maps native-search datasource content URLs to classic
-// REST LUIDs in bounded batches. Search-service datasource LUIDs are not
-// authoritative for classic lifecycle operations.
-func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]string, error) {
-	if len(contentURLs) == 0 || len(contentURLs) > maxPageSize {
-		return nil, fmt.Errorf("datasource content URL resolution requires between 1 and %d values", maxPageSize)
-	}
-	unique := make([]string, 0, len(contentURLs))
-	requested := make(map[string]struct{}, len(contentURLs))
-	for index, value := range contentURLs {
-		value = strings.TrimSpace(value)
-		if value == "" || strings.ContainsAny(value, ",&") {
-			return nil, fmt.Errorf("datasource content URL %d is empty or cannot be represented in a Tableau filter", index)
-		}
-		if _, exists := requested[value]; exists {
-			continue
-		}
-		requested[value] = struct{}{}
-		unique = append(unique, value)
-	}
-	sort.Strings(unique)
-	resolved := make(map[string]string, len(unique))
-	for start := 0; start < len(unique); start += maxContentURLResolveBatch {
-		end := start + maxContentURLResolveBatch
-		if end > len(unique) {
-			end = len(unique)
-		}
-		batch := unique[start:end]
-		page, err := c.List(ctx, ListRequest{PageNumber: 1, PageSize: len(batch), ContentURLs: batch})
-		if err != nil {
-			return nil, err
-		}
-		if page.Total != len(page.Items) {
-			return nil, errors.New("datasource content URL resolution exceeded its bounded result page")
-		}
-		batchRequested := make(map[string]struct{}, len(batch))
-		for _, value := range batch {
-			batchRequested[value] = struct{}{}
-		}
-		for _, item := range page.Items {
-			if _, expected := batchRequested[item.ContentURL]; !expected || strings.TrimSpace(item.LUID) == "" {
-				return nil, errors.New("datasource content URL resolution returned an unexpected identity")
-			}
-			if _, duplicate := resolved[item.ContentURL]; duplicate {
-				return nil, fmt.Errorf("datasource content URL %q resolved ambiguously", item.ContentURL)
-			}
-			resolved[item.ContentURL] = item.LUID
-		}
-	}
-	for _, value := range unique {
-		if resolved[value] == "" {
-			return nil, fmt.Errorf("datasource content URL %q did not resolve to a classic REST LUID", value)
-		}
-	}
-	return resolved, nil
-}
+// MaxFilterValues bounds the values one in-filter carries, keeping the
+// request URL well under server limits.
+const MaxFilterValues = 25
 
 // Page contains one normalized classic REST datasource page.
 type Page struct {
@@ -150,13 +96,11 @@ type Client struct {
 	maxDownloadBytes int64
 	uploadThreshold  int64
 	uploadChunkSize  int64
-	pollInterval     time.Duration
-	pollTimeout      time.Duration
 }
 
 // NewClient creates an authenticated datasource REST client.
 func NewClient(transport *tableau.Transport, session auth.Session, serverURL string) *Client {
-	return &Client{transport: transport, session: session, serverURL: serverURL, uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize, pollInterval: time.Second, pollTimeout: 10 * time.Minute}
+	return &Client{transport: transport, session: session, serverURL: serverURL, uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize}
 }
 
 func (c *Client) SetUploadThreshold(limit int64) {
@@ -167,19 +111,6 @@ func (c *Client) SetUploadThreshold(limit int64) {
 func (c *Client) SetUploadChunkSize(limit int64) {
 	if c != nil && limit > 0 && limit <= defaultUploadChunkSize {
 		c.uploadChunkSize = limit
-	}
-}
-
-// SetPollPolicy configures bounded internal asynchronous publish polling.
-func (c *Client) SetPollPolicy(interval, timeout time.Duration) {
-	if c == nil {
-		return
-	}
-	if interval > 0 {
-		c.pollInterval = interval
-	}
-	if timeout > 0 {
-		c.pollTimeout = timeout
 	}
 }
 
@@ -453,17 +384,25 @@ func ListFilter(input ListRequest) (string, error) {
 		if field.value == "" {
 			continue
 		}
-		if strings.ContainsAny(field.value, ",&") {
-			return "", fmt.Errorf("datasource filter %s cannot contain ampersand or comma", field.name)
+		if strings.Contains(field.value, ",") {
+			return "", fmt.Errorf("datasource filter %s cannot contain a comma", field.name)
 		}
 		filters = append(filters, field.name+":"+field.operator+":"+field.value)
 	}
-	if len(input.ContentURLs) > 0 {
-		values := make([]string, len(input.ContentURLs))
-		for index, value := range input.ContentURLs {
+	for _, list := range []struct {
+		name   string
+		values []string
+	}{
+		{name: "name", values: input.Names}, {name: "contentUrl", values: input.ContentURLs},
+	} {
+		if len(list.values) == 0 {
+			continue
+		}
+		values := make([]string, len(list.values))
+		for index, value := range list.values {
 			value = strings.TrimSpace(value)
-			if value == "" || strings.ContainsAny(value, ",&") {
-				return "", fmt.Errorf("datasource filter contentUrl value %d cannot be empty or contain ampersand or comma", index)
+			if value == "" || strings.Contains(value, ",") {
+				return "", fmt.Errorf("datasource filter %s value %d cannot be empty or contain a comma", list.name, index)
 			}
 			values[index] = value
 		}
@@ -471,7 +410,7 @@ func ListFilter(input ListRequest) (string, error) {
 		if len(values) > 1 {
 			operator, value = "in", "["+strings.Join(values, ",")+"]"
 		}
-		filters = append(filters, "contentUrl:"+operator+":"+value)
+		filters = append(filters, list.name+":"+operator+":"+value)
 	}
 	return strings.Join(filters, ","), nil
 }

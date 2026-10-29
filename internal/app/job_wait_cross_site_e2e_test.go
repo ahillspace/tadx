@@ -122,7 +122,6 @@ func TestJobWaitSurvivesIndependentCrossSiteAuthCheckWithoutResubmission(t *test
 		ConfigPath:        configA,
 		CoordinationKey:   "cross-site-coordination",
 		TrackingStartedAt: time.Now().UTC(),
-		PoolAfter:         time.Now().UTC().Add(time.Hour),
 		Observation:       value.JobStatus{ID: "job-cross-site", Type: "RefreshExtract", Status: "pending"},
 	}); err != nil {
 		t.Fatal(err)

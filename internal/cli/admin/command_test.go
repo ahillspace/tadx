@@ -5,6 +5,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
@@ -25,6 +26,7 @@ type fake struct {
 	groupPreview bool
 	memberAdd    groupmember.Input
 	memberRemove groupmember.Input
+	mu           sync.Mutex
 	permissions  []permission.Input
 }
 
@@ -93,6 +95,8 @@ func (f *fake) InspectAdminPermission(context.Context, permissioninspect.Input) 
 	return permissioninspect.Output{}, nil
 }
 func (f *fake) CreateAdminPermission(_ context.Context, in permission.Input, _ bool) (permission.Output, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.permissions = append(f.permissions, in)
 	return permission.Output{}, nil
 }
@@ -250,13 +254,15 @@ func TestUserMutationAcceptsExactUsernameSelector(t *testing.T) {
 	}
 }
 
-func TestPermissionCreateRepeatsCapabilitiesSequentially(t *testing.T) {
+func TestPermissionCreateWritesEveryRepeatedCapability(t *testing.T) {
 	f := &fake{}
 	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"permission", "create", "--environment", "prod", "--kind", "workbook", "--id", "w1", "--principal-type", "group", "--principal-id", "g1", "--mode", "Allow", "--capability", "Read", "--capability", "Write", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
+	// Capabilities are written in parallel, so calls are sorted for stable assertions.
+	sort.Slice(f.permissions, func(i, j int) bool { return f.permissions[i].Capability < f.permissions[j].Capability })
 	if len(f.permissions) != 2 || f.permissions[0].Capability != "Read" || f.permissions[1].Capability != "Write" {
 		t.Fatalf("permissions = %#v", f.permissions)
 	}

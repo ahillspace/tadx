@@ -79,9 +79,9 @@ An incomplete graph or permission-restricted response cannot establish the absen
 The composition root supplies these dependencies through [`app`](../../internal/app/app.go) and its content wiring.
 
 1. Validate the request and resolve the authoritative workbook.
-2. For `--preview`, inspect the local acquisition destination and requested dependency discovery without downloading or saving native content.
+2. For `--preview`, inspect the local acquisition destination and requested dependency discovery without saving native content; with `--include-pds`, download the workbook without extracts to detect its published datasources.
 3. Download the native workbook and attempt automatic asset lineage with direction `both` and depth one.
-4. Detect direct published datasource parents and record portability.
+4. Detect direct published datasource parents from the downloaded workbook file, resolve them by exact content URL, and record portability.
 5. If `--include-pds` is requested, download each dependency and verify its authoritative LUID.
 6. Write the workbook alone or commit its acquired dependencies and workbook as one local bundle transaction.
 7. Return portable workspace-relative paths, provenance, confirmed counts, and bounded diagnostics.
@@ -107,6 +107,10 @@ Its artifact is metadata-only; it does not download a native workbook, datasourc
 
 [`workbook.Publisher`](../../actions/workbook/publish.go) separates planning, preparation, commit, and destination verification.
 `Plan` reads the canonical artifact, resolves the destination, checks collisions, and constructs the exact request.
+It matches each `--datasource-binding` to one published datasource reference read from the uploaded file and reads its exact target by LUID.
+[`RewriteWorkbookDatasources`](../../internal/artifact/workbook_datasources.go) rebinds only a temporary upload copy; the source file is unchanged.
+References without a binding are left to Tableau, and its datasource-not-found rejection is explained with exact candidates from one bounded site listing.
+Asynchronous publish jobs fail without a reason, so a failed job gets the same explanation only when the listing shows an unbound content URL missing from the site.
 Artifact-source republishing uses the recorded project, name, and LUID and implies overwrite.
 It fails if the recorded source was moved, renamed, removed, or replaced.
 
@@ -121,7 +125,7 @@ Datasource and flow actions share the publication boundary but preserve differen
 | Publication | Distinct behavior and source |
 | --- | --- |
 | Workbook | [`Publisher.Apply`](../../actions/workbook/publish.go) rechecks overwrite identity around preparation; `Complete` preserves successful publication despite delayed destination visibility. |
-| Datasource | [`Publisher.Execute`](../../actions/datasource/publish.go) rereads native fingerprint and composition references, revalidates the destination and collision, then prepares and commits. |
+| Datasource | [`Publisher.Execute`](../../actions/datasource/publish.go) rereads native fingerprint and composition references, revalidates the destination and collision, then prepares and commits; `Complete` reports the assigned content URL and compares it with the file's own repository location to report a changed URL and the workbook binding to use. |
 | Flow | [`Publisher.Execute`](../../actions/flow/publish.go) completes artifact, destination, and collision revalidation before upload preparation, leaving no fallible action gate between preparation and commit. |
 
 Preparation can create a server-side upload, so its placement is part of each resource's recovery design.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 // ArtifactReader reads one canonical local workbook.
@@ -15,15 +16,27 @@ type ArtifactReader interface {
 	ReadWorkbook(context.Context, string) (PublishArtifact, error)
 }
 
-// PublishResolver performs authoritative destination and collision reads.
+// PublishResolver performs authoritative destination, collision, and
+// destination datasource reads.
 type PublishResolver interface {
 	ProjectResolver
 	CollisionReader
+	DatasourceReader
 }
 
-// PreparedPublish is ready for the final consequential remote mutation.
+// DatasourceReader reads published datasources on the destination site by
+// exact LUID, content URL, or name.
+type DatasourceReader interface {
+	ReadDatasource(context.Context, string) (value.Datasource, error)
+	FindDatasourcesByContentURL(context.Context, []string) ([]value.Datasource, error)
+	FindDatasourcesByName(context.Context, []string) ([]value.Datasource, error)
+}
+
+// PreparedPublish is ready for the final consequential remote mutation. Close
+// releases the prepared upload content when Commit never runs.
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
+	Close() error
 }
 
 // PublishPreparer prepares the publish content before the final target revalidation.
@@ -67,6 +80,10 @@ func (a *Publisher) Plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Repair or pull the exact workbook artifact, then review a new preview.")
 		return PublishPlan{}, &errs.Error{ID: "workbook.publish.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact read failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+	}
+	bindings, err := matchDatasourceBindings(input.DatasourceBindings, artifact.Datasources)
+	if err != nil {
+		return PublishPlan{}, err
 	}
 	// Artifact-home republish: with no explicit write target, the composition
 	// root defaults the environment/site to the artifact's recorded source, and
@@ -125,26 +142,25 @@ func (a *Publisher) Plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	if len(existing) == 1 {
 		existingLUID = existing[0].LUID
 	}
-	// A source-site-bound workbook references published datasources that will not
-	// resolve on a different site. Publishing there will be rejected by Tableau,
-	// so surface it in the preview rather than after a failed apply.
-	var warnings []string
-	if artifact.Portability == "source-site-bound" && (input.Environment != artifact.SourceEnvironment || input.Site != artifact.SourceSite) {
-		warnings = append(warnings, fmt.Sprintf("This workbook references %d published datasource(s) bound to source site %q; publishing to environment %q site %q will fail until those datasources exist there. Acquire the dependencies with --include-pds and publish them to the target first.", artifact.PublishedDatasourceCount, artifact.SourceSite, input.Environment, input.Site))
+	contentURLs, datasourceBindings, err := a.readDatasourceBindings(ctx, input, artifact.Datasources, bindings)
+	if err != nil {
+		return PublishPlan{}, err
 	}
-	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, AsJob: input.AsJob}
+	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, DatasourceContentURLs: contentURLs}
 	sourceKind := "managed_artifact"
+	selection := []string{"--artifact", artifact.Path}
 	if input.File != "" {
 		sourceKind = "native_file"
+		selection = []string{"--file", input.File}
 	}
 	return PublishPlan{
 		Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID,
 		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path, SourceKind: sourceKind,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,
 		Target:    PublishTarget{Origin: origin, Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},
-		Overwrite: overwrite, AsJob: input.AsJob, Warnings: warnings,
-		Substeps: []string{"resolve exact destination", "check workbook collision", "upload workbook", "publish workbook", "automatically monitor accepted jobs and confirm destination"},
-		request:  request, planned: true,
+		Overwrite: overwrite, DatasourceBindings: datasourceBindings,
+		Substeps: []string{"resolve exact destination", "check workbook collision", "upload workbook", "publish workbook", "confirm destination"},
+		request:  request, planned: true, selection: selection, datasources: artifact.Datasources, bindings: bindings,
 	}, nil
 }
 
@@ -172,6 +188,7 @@ func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult,
 	if prepared == nil {
 		return PublishResult{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindRuntime, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation returned no commit operation.", Retryable: new(false), CorrectiveAction: "Review the publish configuration before retrying."}
 	}
+	defer func() { _ = prepared.Close() }()
 	ctx = beginProjectResolution(ctx, a.resolver)
 	if plan.request.Overwrite {
 		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {
@@ -180,31 +197,35 @@ func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult,
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
-		if known, ok := errors.AsType[*errs.Error](err); ok && known.Phase != "" {
-			if result.Status == "succeeded" {
-				result.Verification = "destination_unavailable"
-			}
-			return result, err
-		}
 		requestID := result.TableauRequestID
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)
 		}
+		// Only a definitive Tableau rejection of the publish request itself
+		// proves nothing was applied; transport failures stay unknown.
+		outcome := errs.OutcomeUnknown
+		lookupNote := ""
+		var status interface{ HTTPStatus() int }
+		if result.Status == "" && errors.As(err, &status) && status.HTTPStatus() >= 400 && status.HTTPStatus() < 500 {
+			outcome = errs.OutcomeNotApplied
+			var rejection error
+			if lookupNote, rejection = a.unmappedDatasourceRejection(ctx, plan, err); rejection != nil {
+				return result, rejection
+			}
+		}
 		errorID := "workbook.publish.failed"
 		summary := "Workbook publish failed."
 		correctiveAction := "Review the upstream error before publishing again."
-		if result.Status == "unknown" || result.Status == "timed_out" || result.Status == "cancelled" {
+		if result.Status == "unknown" {
 			errorID = "workbook.publish.outcome_unknown"
 			summary = "The workbook publish outcome could not be determined."
 			correctiveAction = "Inspect the target site and Tableau request before attempting another publish."
-			if result.JobID != "" {
-				correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
-			}
 		}
 		if hint := publishInspectionHint(plan, result); hint != "" {
 			correctiveAction += " Run " + hint + "."
 		}
-		return result, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: summary, Cause: err, Retryable: new(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+		correctiveAction += lookupNote
+		return result, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: summary, Cause: err, Retryable: new(false), CorrectiveAction: correctiveAction, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: outcome}
 	}
 	return result, nil
 }
@@ -239,41 +260,25 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	output.Help = nil
 	result, err := a.Apply(ctx, plan)
 	if err != nil {
-		if result.Status != "" || result.WorkbookLUID != "" || result.JobID != "" || result.TableauRequestID != "" || result.ReceiptPath != "" || len(result.ValidationWarnings) != 0 {
+		if result.Status != "" || result.WorkbookLUID != "" || result.TableauRequestID != "" || result.ReceiptPath != "" || len(result.ValidationWarnings) != 0 {
 			output.Result = &result
 		}
 		return output, err
 	}
 	output.Result = &result
-	if result.Status == "pending" || result.Status == "running" {
-		return output, nil
-	}
-	return a.Complete(ctx, output)
+	return a.Complete(output)
 }
 
-// Complete confirms an already completed publication without submitting it again.
-func (a *Publisher) Complete(ctx context.Context, output PublishOutput) (PublishOutput, error) {
+// Complete confirms the publication destination without submitting it again.
+func (a *Publisher) Complete(output PublishOutput) (PublishOutput, error) {
 	output.Help = nil
 	if output.Result == nil || output.Result.Status != "succeeded" {
 		return output, nil
 	}
 	result, plan := output.Result, output.Plan
-	if result.WorkbookLUID == "" {
-		matches, err := a.resolver.FindWorkbooks(ctx, plan.WorkbookName, plan.Target.ProjectLUID)
-		if err == nil && len(matches) == 1 && matches[0].LUID != "" && matches[0].Name == plan.WorkbookName && matches[0].ProjectLUID == plan.Target.ProjectLUID {
-			result.WorkbookLUID, result.WorkbookName, result.ProjectLUID = matches[0].LUID, matches[0].Name, matches[0].ProjectLUID
-		} else if err == nil && len(matches) == 0 {
-			result.Verification = "destination_pending"
-			output.Help = []string{"Publication succeeded; its destination is not yet visible in the name index. Do not repeat publication.", publishInspectionHint(plan, *result)}
-			return output, nil
-		} else {
-			result.Verification = "destination_unavailable"
-			return output, &errs.Error{ID: "workbook.publish.destination_unavailable", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publication succeeded, but its destination identity could not be confirmed.", Cause: err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: new(false), TableauJobID: result.JobID, CorrectiveAction: "Recover the saved job status before any further write. Do not repeat publication."}
-		}
-	}
 	if result.WorkbookName != plan.WorkbookName || result.ProjectLUID != plan.Target.ProjectLUID {
 		result.Verification = "destination_mismatch"
-		return output, &errs.Error{ID: "workbook.publish.destination_mismatch", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: result.WorkbookLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publication succeeded, but its returned destination differs from the requested target.", Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: new(false), TableauJobID: result.JobID, CorrectiveAction: "Inspect the returned exact identity before any further write. Do not repeat publication."}
+		return output, &errs.Error{ID: "workbook.publish.destination_mismatch", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: result.WorkbookLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publication succeeded, but its returned destination differs from the requested target.", Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: new(false), CorrectiveAction: "Inspect the returned exact identity before any further write. Do not repeat publication."}
 	}
 	result.Verification = "confirmed"
 	return output, nil

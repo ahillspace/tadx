@@ -59,7 +59,16 @@ func TestInventoryEmptyAndInvalidFiltersThroughCLI(t *testing.T) {
 			for _, all := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%q/%t", kind, value, all), func(t *testing.T) {
 					filters, exit, output := runFilterCLI(t, kind, []string{"--name", value}, all)
-					if value != "" {
+					if kind == "datasource" && value == "One&Two" {
+						if exit != 0 || len(filters) == 0 {
+							t.Fatalf("datasource ampersand filter failed: exit=%d output=%s", exit, output)
+						}
+						for _, filter := range filters {
+							if filter != "name:eq:One&Two" {
+								t.Fatalf("datasource ampersand filter=%q", filter)
+							}
+						}
+					} else if value != "" {
 						if exit == 0 || len(filters) != 0 {
 							t.Fatalf("invalid filter made resource requests: filters=%v exit=%d output=%s", filters, exit, output)
 						}

@@ -4,11 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -190,47 +187,6 @@ func TestManagedCachedAdminReadersCheckBeforeStoreAccess(t *testing.T) {
 	_, err := reader.ListUsers(t.Context(), userops.ListPageRequest{PageNumber: 1, PageSize: 100})
 	if !errors.Is(err, denied) {
 		t.Fatalf("error=%v", err)
-	}
-}
-
-func TestManagedPublishSkipsDeniedOptionalRoleLookup(t *testing.T) {
-	var userReads, publishes atomic.Int32
-	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
-			_, _ = io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-		case strings.Contains(r.URL.Path, "/users/"):
-			userReads.Add(1)
-			w.WriteHeader(http.StatusForbidden)
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects"):
-			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"))
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/workbooks"):
-			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="0"/><workbooks/></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"))
-		case strings.HasSuffix(r.URL.Path, "/validateWorkbook"):
-			_, _ = io.WriteString(w, `{"errors":[],"warnings":[]}`)
-		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/workbooks"):
-			publishes.Add(1)
-			if r.URL.Query().Get("asJob") == "true" {
-				t.Error("denied role lookup enabled asynchronous publication")
-			}
-			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `<tsResponse><workbook id="created-1" name="Native"><project id="project-1"/></workbook></tsResponse>`)
-		default:
-			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusInternalServerError)
-		}
-	}))
-	defer server.Close()
-	runtime, _ := datasourceLifecycleRuntime(t, server)
-	file := filepath.Join(t.TempDir(), "Native.twb")
-	if err := os.WriteFile(file, []byte("<workbook/>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	options := withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), JobDirectory: t.TempDir(), managedPolicy: indirectTestPolicy{map[string]bool{"admin.user.inspect": true}}}, true)
-	var output bytes.Buffer
-	code := Run(t.Context(), []string{"content", "workbook", "publish", "--file", file, "--environment", "production", "--project-id", "project-1", "--json"}, &output, options)
-	if code != 0 || userReads.Load() != 0 || publishes.Load() != 1 {
-		t.Fatalf("exit=%d userReads=%d publishes=%d output=%s", code, userReads.Load(), publishes.Load(), output.String())
 	}
 }
 

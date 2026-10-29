@@ -22,39 +22,29 @@ import (
 	"github.com/ahillspace/tadx/internal/operationrun"
 )
 
-func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
+func TestNoWaitPublicationReturnsDuringSubmission(t *testing.T) {
 	for _, scenario := range []string{"workbook", "datasource", "flow", "workbook-process"} {
 		kind := strings.TrimSuffix(scenario, "-process")
 		t.Run(scenario, func(t *testing.T) {
 			release := make(chan struct{})
-			var reads, writes atomic.Int32
+			var writes atomic.Int32
 			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 					w.Header().Set("Content-Type", "application/json")
 					io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-				case strings.HasSuffix(r.URL.Path, "/users/user-1"):
-					io.WriteString(w, `<tsResponse><user id="user-1" name="publisher" siteRole="SiteAdministratorCreator"/></tsResponse>`)
 				case strings.HasSuffix(r.URL.Path, "/projects"):
 					fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"))
 				case strings.HasSuffix(r.URL.Path, "/validateWorkbook"):
 					io.WriteString(w, `{"errors":[],"warnings":[]}`)
-				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/jobs/"):
-					reads.Add(1)
-					fmt.Fprintf(w, `<tsResponse><job id="job-1" type="Publish%s" progress="100" finishCode="0"><%s id="created-1"/></job></tsResponse>`, map[string]string{"workbook": "Workbook", "datasource": "Datasource"}[kind], kind)
 				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/"+kind+"s"):
 					writes.Add(1)
 					<-release
-					if kind == "flow" {
-						w.WriteHeader(http.StatusCreated)
-						fmt.Fprint(w, `<tsResponse><flow id="created-1" name="Native"><project id="project-1"/></flow></tsResponse>`)
-						return
+					if r.URL.Query().Has("asJob") {
+						t.Error("publish requested a Tableau job")
 					}
-					if r.URL.Query().Get("asJob") != "true" {
-						t.Error("server job not requested")
-					}
-					w.WriteHeader(http.StatusAccepted)
-					fmt.Fprintf(w, `<tsResponse><job id="job-1" type="Publish%s" progress="0" finishCode="1"/></tsResponse>`, map[string]string{"workbook": "Workbook", "datasource": "Datasource"}[kind])
+					w.WriteHeader(http.StatusCreated)
+					fmt.Fprintf(w, `<tsResponse><%s id="created-1" name="Native"><project id="project-1"/></%s></tsResponse>`, kind, kind)
 				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/"+kind+"s"):
 					fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="0"/><%ss/></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"), kind)
 				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/created-1"):
@@ -115,15 +105,15 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("worker did not finish submission")
 			}
-			if reads.Load() != 0 || writes.Load() != 1 {
-				t.Fatalf("reads=%d writes=%d", reads.Load(), writes.Load())
+			if writes.Load() != 1 {
+				t.Fatalf("writes=%d", writes.Load())
 			}
 			record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(receipt.ID)
 			if err != nil || record.FinishedAt.IsZero() {
 				t.Fatalf("record=%+v err=%v", record, err)
 			}
-			if kind != "flow" && (record.Phase != operationrun.PhaseRemotePending || !strings.Contains(string(record.FullResult), "job-1")) {
-				t.Fatalf("accepted job lost: %+v", record)
+			if record.Phase != operationrun.PhaseCompleted || !strings.Contains(string(record.FullResult), "created-1") {
+				t.Fatalf("published identity lost: %+v", record)
 			}
 		})
 	}

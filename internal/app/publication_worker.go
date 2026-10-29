@@ -75,7 +75,6 @@ func bindPublicationExecution(root *cobra.Command, runtime *runtimeDependencies,
 					if noWait {
 						return publicationWorkerError("unconfigured", "Background execution requires the detached worker runtime.", nil)
 					}
-					runtime.publicationExecution = &publicationExecution{deadline: time.Now().Add(publicationWaitLimit)}
 					return original(cmd, args)
 				}
 				return beginPublicationWorker(cmd, runtime, capture, argv, noWait, options)
@@ -226,20 +225,8 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		return 1
 	}
 	defer lease.Release()
-	control := &publicationExecution{operation: record.Operation, noWait: record.Request.NoWait, deadline: record.RequestedAt.Add(publicationWaitLimit)}
-	control.detached = func() bool {
-		current, err := store.Read(id)
-		if err != nil || current.Detached {
-			return true
-		}
-		guard, err := store.TryAcquireForeground(id)
-		if err == nil {
-			_ = guard.Release()
-			return true
-		}
-		return !errors.Is(err, operationrun.ErrForegroundBusy)
-	}
-	control.accepted = func(_ context.Context, path string) error {
+	control := &publicationExecution{operation: record.Operation}
+	control.receiptSaved = func(_ context.Context, path string) error {
 		_, err := lease.Update(func(r *operationrun.Record) error {
 			if !slices.Contains(r.ReceiptPaths, path) {
 				r.ReceiptPaths = append(r.ReceiptPaths, path)

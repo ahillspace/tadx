@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -87,7 +88,9 @@ type DatasourceArtifact struct {
 	SourceProjectID      string
 	CompositionStatus    string
 	ParentDataSourceURLs []string
-	Lineage              LineageDocument
+	// ContentURL is the canonical definition's own repository location.
+	ContentURL string
+	Lineage    LineageDocument
 }
 
 // DatasourceManager owns first-class datasource artifact persistence.
@@ -136,7 +139,7 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (_ D
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return DatasourcePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	handle, err := lockWorkspace(workspace)
+	handle, err := lockWorkspace(ctx, workspace)
 	if err != nil {
 		return DatasourcePullResult{}, err
 	}
@@ -204,7 +207,8 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (_ D
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	metadata.CompositionStatus, metadata.ParentDataSourceURLs = classifyDatasourcePackage(filename, input.Content)
+	definition := readDatasourceDefinition(filename, bytes.NewReader(input.Content), int64(len(input.Content)))
+	metadata.CompositionStatus, metadata.ParentDataSourceURLs = definition.CompositionStatus, definition.ParentDataSourceURLs
 	metadata.LineageSidecar = "lineage.json"
 	if input.Lineage.Depth == 0 {
 		input.Lineage = LineageDocument{Complete: false, Direction: "both", Depth: 1, Warnings: []string{"Lineage was not captured for this datasource pull."}}
@@ -307,6 +311,10 @@ func (m *DatasourceManager) Read(ctx context.Context, path string) (DatasourceAr
 	if err != nil {
 		return DatasourceArtifact{}, fmt.Errorf("fingerprint canonical datasource: %w", err)
 	}
+	contentURL, err := readDatasourceContentURL(canonical)
+	if err != nil {
+		return DatasourceArtifact{}, fmt.Errorf("read canonical datasource definition: %w", err)
+	}
 	lineage := LineageDocument{Complete: false, Direction: "both", Depth: 1, Nodes: []LineageNode{}, Edges: []LineageEdge{}, Warnings: []string{"This legacy datasource artifact has no lineage sidecar."}}
 	if metadata.LineageSidecar != "" {
 		lineageBytes, err := readBoundedFile(filepath.Join(directory, metadata.LineageSidecar), maxLineageBytes)
@@ -328,6 +336,7 @@ func (m *DatasourceManager) Read(ctx context.Context, path string) (DatasourceAr
 		SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID,
 		CompositionStatus:    metadata.CompositionStatus,
 		ParentDataSourceURLs: append([]string(nil), metadata.ParentDataSourceURLs...),
+		ContentURL:           contentURL,
 		Lineage:              lineage,
 	}, nil
 }

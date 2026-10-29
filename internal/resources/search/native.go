@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	tableausearch "github.com/ahillspace/tadx/internal/tableau/search"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const maxNativeCursorBytes = 4096
@@ -25,7 +26,7 @@ type NativeClient interface {
 // DatasourceIdentityResolver translates native search datasource identities
 // into classic REST LUIDs used by TADX lifecycle actions.
 type DatasourceIdentityResolver interface {
-	ResolveContentURLs(context.Context, []string) (map[string]string, error)
+	ResolveContentURLs(context.Context, []string) (map[string]value.Datasource, error)
 }
 
 // NativeAdapter maps Tableau native search pages to the shared resource result.
@@ -240,7 +241,7 @@ func (a *NativeAdapter) nativePage(ctx context.Context, input Input, index int) 
 			return tableausearch.Page{}, err
 		}
 		for _, url := range urls {
-			id := strings.TrimSpace(resolved[url])
+			id := strings.TrimSpace(resolved[url].LUID)
 			if id == "" {
 				return tableausearch.Page{}, errors.New("native datasource search result has no classic REST LUID")
 			}

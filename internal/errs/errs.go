@@ -34,6 +34,9 @@ const (
 	OutcomeNotAttempted Outcome = "not_attempted"
 	OutcomeConfirmed    Outcome = "confirmed"
 	OutcomeUnknown      Outcome = "unknown"
+	// OutcomeNotApplied records a request Tableau received and definitively
+	// rejected without applying any change.
+	OutcomeNotApplied Outcome = "not_applied"
 )
 
 // Prerequisite identifies a bounded resource required before retrying an operation.
@@ -321,6 +324,8 @@ func recoveryAdvice(outcome Outcome, prerequisite *Prerequisite) string {
 		return "Inspect the exact target and request outcome before attempting another mutation."
 	case OutcomeConfirmed:
 		return "Retain the confirmed result and do not repeat the mutation."
+	case OutcomeNotApplied:
+		return "Tableau rejected the request without applying it; correct the cause before retrying."
 	}
 	if prerequisite != nil {
 		resource := strings.TrimSpace(prerequisite.Resource)

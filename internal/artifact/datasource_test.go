@@ -108,7 +108,7 @@ func TestDatasourceManagerPersistsCompositionReferencesAndLineageSidecar(t *test
 	workspace := createDatasourceWorkspace(t)
 	manager := NewDatasourceManager(time.Now)
 	lineage := LineageDocument{Complete: true, Direction: "both", Depth: 1, Nodes: []LineageNode{{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"}}}
-	content := []byte(`<datasource><relation datasource-url="parent-b"/><relation datasource-url="parent-a"/></datasource>`)
+	content := []byte(`<datasource><repository-location id="Sales" path="/datasources" revision="1.0"/><relation datasource-url="parent-b"/><relation datasource-url="parent-a"/></datasource>`)
 	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Sales.tds", Content: content, Metadata: validDatasourceMetadata("Sales", "ds-1"), Lineage: lineage})
 	if err != nil {
 		t.Fatal(err)
@@ -120,7 +120,7 @@ func TestDatasourceManagerPersistsCompositionReferencesAndLineageSidecar(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artifact.CompositionStatus != CompositionStatusComposed || strings.Join(artifact.ParentDataSourceURLs, ",") != "parent-a,parent-b" || len(artifact.Lineage.Nodes) != 1 || !artifact.Lineage.Complete {
+	if artifact.CompositionStatus != CompositionStatusComposed || strings.Join(artifact.ParentDataSourceURLs, ",") != "parent-a,parent-b" || artifact.ContentURL != "Sales" || len(artifact.Lineage.Nodes) != 1 || !artifact.Lineage.Complete {
 		t.Fatalf("artifact = %#v", artifact)
 	}
 	got, err := os.ReadFile(artifact.PayloadPath)

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
@@ -17,10 +19,13 @@ import (
 func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 	for _, preview := range []bool{true, false} {
 		t.Run(fmt.Sprintf("preview=%t", preview), func(t *testing.T) {
+			var mu sync.Mutex
 			var signins, writes int
 			var bodies []string
 			savedRules := make(map[string]struct{ capability, mode string })
 			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				defer mu.Unlock()
 				if r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin" {
 					signins++
 					w.Header().Set("Content-Type", "application/json")
@@ -82,6 +87,10 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 			var output bytes.Buffer
 			opts := withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, true)
 			code := app.Run(context.Background(), args, &output, opts)
+			// Items run in parallel, so write bodies are ordered by grantee.
+			sort.SliceStable(bodies, func(i, j int) bool {
+				return strings.Contains(bodies[i], `id="u-a"`) && !strings.Contains(bodies[j], `id="u-a"`)
+			})
 			if code != 0 || signins != 1 || (preview && (writes != 0 || len(savedRules) != 0)) || (!preview && (writes != 2 || len(savedRules) != 2 || !strings.Contains(bodies[0], `id="u-a"`) || !strings.Contains(bodies[1], `id="u-b"`))) {
 				t.Fatalf("code=%d signins=%d writes=%d bodies=%v output=%s", code, signins, writes, bodies, output.String())
 			}

@@ -673,6 +673,60 @@ func TestTransportPreservesRequestBodyLengthAndReplay(t *testing.T) {
 	}
 }
 
+func TestTransportStreamsMultipartBodyWithExactLengthAndReplay(t *testing.T) {
+	content := bytes.Repeat([]byte("w"), 32*1024)
+	body, err := NewMultipartBody(RequestPayloadPart([]byte("<tsRequest/>")), FilePart("tableau_workbook", "Finance.twbx", bytes.NewReader(content), 0, int64(len(content))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, _ := io.ReadAll(body.open())
+	var lengths []int64
+	var bodies [][]byte
+	var contentTypes []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		lengths = append(lengths, request.ContentLength)
+		contentTypes = append(contentTypes, request.Header.Get("Content-Type"))
+		received, _ := io.ReadAll(request.Body)
+		bodies = append(bodies, received)
+		if request.URL.Path == "/first" {
+			http.Redirect(writer, request, "/second", http.StatusTemporaryRedirect)
+		}
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	if _, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodPost, ServerURL: server.URL, Path: "/first", Operation: "workbook.publish", Multipart: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(lengths) != 2 {
+		t.Fatalf("requests = %d", len(lengths))
+	}
+	for index := range lengths {
+		if lengths[index] != body.Len() || contentTypes[index] != body.ContentType() || !bytes.Equal(bodies[index], expected) {
+			t.Fatalf("request %d: length %d, content type %q, body matches %t", index, lengths[index], contentTypes[index], bytes.Equal(bodies[index], expected))
+		}
+	}
+}
+
+func TestTransportStallTimeoutBoundsStalledMultipartBody(t *testing.T) {
+	content := bytes.Repeat([]byte("u"), 16*1024)
+	body, err := NewMultipartBody(FilePart("tableau_file", "Finance.twbx", bytes.NewReader(content), 0, int64(len(content))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := NewTransport(&http.Client{Transport: slowUploadTransport(1024, time.Millisecond, 2)}, "3.29", nil)
+	transport.SetStallTimeout(50 * time.Millisecond)
+	_, err = transport.Do(context.Background(), nil, Request{
+		Method: http.MethodPut, ServerURL: "https://tableau.example", Path: "/fileUploads/id",
+		Operation: "workbook.publish.upload", Multipart: body,
+	})
+	if err == nil || !strings.Contains(err.Error(), "no request body progress for 50ms") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestTransportCallerCancellationDuringBodyIsNotAStall(t *testing.T) {
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

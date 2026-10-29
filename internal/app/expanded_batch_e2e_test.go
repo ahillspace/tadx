@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
@@ -49,9 +51,12 @@ func TestWorkspaceCreateRejectsBatchFileBeforeCreatingRoots(t *testing.T) {
 }
 
 func TestPulseMetricListBatchSeparatesDefinitionScopesAndRetainsPartialResults(t *testing.T) {
+	var mu sync.Mutex
 	var signins int
 	var definitions []string
 	server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		if r.URL.Path == "/api/3.29/auth/signin" {
 			signins++
 			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
@@ -83,7 +88,9 @@ func TestPulseMetricListBatchSeparatesDefinitionScopesAndRetainsPartialResults(t
 	if err := json.Unmarshal(output.Bytes(), &batch); err != nil {
 		t.Fatalf("decode=%v output=%s", err, &output)
 	}
-	if code == 0 || signins != 1 || !reflect.DeepEqual(definitions, []string{"alpha", "denied", "beta"}) || batch.Succeeded != 2 || batch.Failed != 1 || len(batch.Items) != 3 || !bytes.Contains(batch.Items[0], []byte("metric-alpha")) || !bytes.Contains(batch.Items[2], []byte("metric-beta")) {
+	// Items run in parallel, so requests are sorted for stable assertions.
+	sort.Strings(definitions)
+	if code == 0 || signins != 1 || !reflect.DeepEqual(definitions, []string{"alpha", "beta", "denied"}) || batch.Succeeded != 2 || batch.Failed != 1 || len(batch.Items) != 3 || !bytes.Contains(batch.Items[0], []byte("metric-alpha")) || !bytes.Contains(batch.Items[2], []byte("metric-beta")) {
 		t.Fatalf("code=%d signins=%d scopes=%v output=%s", code, signins, definitions, &output)
 	}
 }

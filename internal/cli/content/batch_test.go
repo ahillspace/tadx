@@ -9,7 +9,9 @@ import (
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	"io"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,23 +24,31 @@ import (
 )
 
 type batchCalls struct {
+	mu               sync.Mutex
 	selectors        []string
 	envs, workspaces []string
 	previews         []bool
-	fail             bool
-	failAt           int
+	failSelector     string
 }
 
 var errBatchItem = errors.New("item failed")
 
 func (b *batchCalls) call(selector, env, workspace string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.selectors = append(b.selectors, selector)
 	b.envs = append(b.envs, env)
 	b.workspaces = append(b.workspaces, workspace)
-	if b.fail && len(b.selectors) == 2 || b.failAt > 0 && len(b.selectors) == b.failAt {
+	if selector == b.failSelector {
 		return errBatchItem
 	}
 	return nil
+}
+
+func (b *batchCalls) preview(preview bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.previews = append(b.previews, preview)
 }
 func (b *batchCalls) Execute(_ context.Context, in workbookops.PullInput) (workbookops.PullOutput, error) {
 	return workbookops.PullOutput{}, b.call(in.LUID, in.Environment, in.Workspace)
@@ -47,21 +57,21 @@ func (b *batchCalls) Execute(_ context.Context, in workbookops.PullInput) (workb
 type batchWorkbookPublisher struct{ b *batchCalls }
 
 func (p batchWorkbookPublisher) Execute(_ context.Context, in workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
-	p.b.previews = append(p.b.previews, preview)
+	p.b.preview(preview)
 	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: in.ArtifactPath}}, p.b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
 func (b *batchCalls) PullDatasource(_ context.Context, in datasourceops.PullInput) (datasourceops.PullOutput, error) {
 	return datasourceops.PullOutput{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
 }
 func (b *batchCalls) PublishDatasource(_ context.Context, in datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
-	b.previews = append(b.previews, preview)
+	b.preview(preview)
 	return datasourceops.PublishOutput{Plan: datasourceops.PublishPlan{Operation: "datasource.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
 func (b *batchCalls) PullFlow(_ context.Context, in flowops.PullInput) (flowops.PullOutput, error) {
 	return flowops.PullOutput{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
 }
 func (b *batchCalls) PublishFlow(_ context.Context, in flowops.PublishInput, preview bool) (flowops.PublishOutput, error) {
-	b.previews = append(b.previews, preview)
+	b.preview(preview)
 	return flowops.PublishOutput{Plan: flowops.PublishPlan{Operation: "flow.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
 
@@ -95,7 +105,7 @@ func TestContentBatchProcessesEverySelectorAndPreservesSharedFlags(t *testing.T)
 	for _, kind := range []string{"workbook", "datasource", "flow"} {
 		for _, verb := range []string{"pull", "publish"} {
 			t.Run(kind+"."+verb, func(t *testing.T) {
-				b, r := &batchCalls{fail: true}, &batchRenderer{}
+				b, r := &batchCalls{}, &batchRenderer{}
 				cmd := batchCommand(kind, verb, b, r)
 				var stderr bytes.Buffer
 				cmd.SetErr(&stderr)
@@ -115,8 +125,11 @@ func TestContentBatchProcessesEverySelectorAndPreservesSharedFlags(t *testing.T)
 				for _, selector := range selectors {
 					args = append(args, flag, selector)
 				}
+				b.failSelector = selectors[1]
 				cmd.SetArgs(args)
 				err := cmd.ExecuteContext(context.Background())
+				// Items run in parallel, so calls are sorted for stable assertions.
+				sort.Strings(b.selectors)
 				if err == nil || !clierr.IsRendered(err) {
 					t.Errorf("expected rendered batch failure, got %v", err)
 				}
@@ -197,7 +210,7 @@ func TestContentSelectionPreservesSingleOutputAndSuccessfulBatch(t *testing.T) {
 func TestSinglePublishFailurePreservesErrorAndKeepsRedirectedStderrSilent(t *testing.T) {
 	for _, kind := range []string{"workbook", "datasource", "flow"} {
 		t.Run(kind, func(t *testing.T) {
-			calls, renderer := &batchCalls{failAt: 1}, &batchRenderer{}
+			calls, renderer := &batchCalls{failSelector: "artifacts/" + kind + "/Finance--identity"}, &batchRenderer{}
 			command := batchCommand(kind, "publish", calls, renderer)
 			var stderr bytes.Buffer
 			command.SetErr(&stderr)
@@ -231,14 +244,10 @@ func TestPublishProgressUsesContentTypeAndArtifactBasename(t *testing.T) {
 					progress.WithTerminalDetector(func(io.Writer) bool { return true }),
 					progress.WithInterval(time.Hour),
 				)
-				renderer := &batchRenderer{}
-				artifacts := []string{
-					"artifacts/" + kind + "/Finance--identity",
-					"artifacts/" + kind + "/Sales--identity",
-				}
+				artifact := "artifacts/" + kind + "/Finance--identity"
 				var published []string
 
-				err := runPublishSelection(context.Background(), kind+".publish", kind, artifacts, preview, renderer, reporter, func(_ context.Context, artifact string) (string, error) {
+				err := runPublishSelection(context.Background(), kind+".publish", kind, []string{artifact}, preview, &batchRenderer{}, reporter, func(_ context.Context, artifact string) (string, error) {
 					published = append(published, artifact)
 					return artifact, nil
 				})
@@ -247,21 +256,18 @@ func TestPublishProgressUsesContentTypeAndArtifactBasename(t *testing.T) {
 					t.Fatal(err)
 				}
 				got := stderr.String()
-				first := "Publishing " + kind + " Finance--identity... elapsed 0s"
-				second := "Publishing " + kind + " Sales--identity... elapsed 0s"
+				want := "Publishing " + kind + " Finance--identity... elapsed 0s"
 				if preview {
-					first = "Previewing " + kind + " publication Finance--identity... elapsed 0s"
-					second = "Previewing " + kind + " publication Sales--identity... elapsed 0s"
+					want = "Previewing " + kind + " publication Finance--identity... elapsed 0s"
 				}
-				firstPosition, secondPosition := strings.Index(got, first), strings.Index(got, second)
-				if firstPosition < 0 || secondPosition <= firstPosition {
-					t.Fatalf("stderr = %q, want ordered labels %q then %q", got, first, second)
+				if !strings.Contains(got, want) {
+					t.Fatalf("stderr = %q, want label %q", got, want)
 				}
 				if strings.Contains(got, "artifacts/") {
 					t.Fatalf("stderr = %q, want workspace-relative basename only", got)
 				}
-				if !reflect.DeepEqual(published, artifacts) {
-					t.Fatalf("published artifacts = %v, want %v", published, artifacts)
+				if !reflect.DeepEqual(published, []string{artifact}) {
+					t.Fatalf("published artifacts = %v, want %v", published, artifact)
 				}
 			})
 		}

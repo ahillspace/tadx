@@ -69,7 +69,7 @@ Share genuinely identical identity, schema, and lineage records through dependen
 Reuse shared transport, authentication, errors, output, and identity machinery instead of parallel implementations.
 Reuse command-scoped configuration, workspace, and authenticated clients, including batches; retain locked rereads and explicit fresh-state phases.
 Reuse sessions only for the same server, site, and actual credential identity; retain the local credential lock until session use ends.
-Preserve sequential batch order and per-item failures.
+Preserve selection-order batch results and per-item failures.
 Keep local input and artifact prerequisite validation before authentication, with one owner for each unchanged fact; then validate remote state.
 Reuse a project index within one validation phase, but obtain fresh evidence for a separate pre-write phase.
 Do not introduce persisted sessions, generic retries, or implicit remote-to-cache fallback as shortcuts.

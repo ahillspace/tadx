@@ -844,6 +844,11 @@ type lineageConnection struct {
 	Nodes      *[]lineageNode `json:"nodes"`
 }
 
+type pageInfo struct {
+	HasNextPage *bool  `json:"hasNextPage"`
+	EndCursor   string `json:"endCursor"`
+}
+
 type lineageNode struct {
 	ID                              string             `json:"id"`
 	LUID                            string             `json:"luid"`

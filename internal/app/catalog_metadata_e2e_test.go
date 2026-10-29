@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
@@ -127,9 +129,12 @@ func TestCatalogMetadataUpdatePreviewGateAndExecution(t *testing.T) {
 	}
 }
 func TestCatalogMetadataBatchOrderedPartialAndOneSession(t *testing.T) {
+	var mu sync.Mutex
 	signins := 0
 	written := []string{}
 	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
 		if catalogMetadataSignIn(w, r) {
 			signins++
 			return
@@ -153,6 +158,8 @@ func TestCatalogMetadataBatchOrderedPartialAndOneSession(t *testing.T) {
 	var out bytes.Buffer
 	opts := catalogMetadataOptions(t, s, true)
 	code := app.Run(context.Background(), []string{"catalog", "database", "update", "--env", "production", "--id", "first", "--id", "missing", "--id", "last", "--description", "After", "--json"}, &out, opts)
+	// Items run in parallel, so writes are compared without arrival order.
+	sort.Strings(written)
 	if code == 0 || signins != 1 || !reflect.DeepEqual(written, []string{"first", "last"}) || !json.Valid(out.Bytes()) {
 		t.Fatalf("code%d signins%d writes%v %s", code, signins, written, &out)
 	}

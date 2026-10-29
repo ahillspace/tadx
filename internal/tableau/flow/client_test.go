@@ -493,3 +493,36 @@ func TestClientDecodesFormEncodedFlowDownloadFilename(t *testing.T) {
 		t.Fatalf("filename = %q", download.Filename)
 	}
 }
+
+func TestPreparedFlowPublishKeepsSnapshotUntilCommit(t *testing.T) {
+	content := []byte("native-flow")
+	path := writePayload(t, "Daily.tflx", content)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><flow id="flow-new" name="Daily"><project id="project-1"/></flow></tsResponse>`)
+	}))
+	defer server.Close()
+	snapshots := func() int {
+		matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".tadx-publish-snapshot-*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(matches)
+	}
+	client := tableauflow.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	request := tableauflow.PublishRequest{Name: "Daily", ProjectLUID: "project-1", Filename: "Daily.tflx", ContentPath: path, ContentSize: int64(len(content)), ExpectedFingerprint: fingerprint(content)}
+
+	prepared, err := client.Prepare(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshots() != 1 {
+		t.Fatal("prepared publish released its snapshot before Commit")
+	}
+	if _, err := prepared.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots() != 0 {
+		t.Fatal("Commit did not release the snapshot")
+	}
+}

@@ -125,25 +125,24 @@ func (m Monitor) round(ctx context.Context, target Receipt) error {
 		return nil
 	}
 	jobs := []Receipt{current}
-	if !current.PoolAfter.After(now) {
-		paths, err := readIndex(m.Store.indexPath(current.CoordinationKey))
-		if err != nil {
-			return err
+	paths, err := readIndex(m.Store.indexPath(current.CoordinationKey))
+	if err != nil {
+		return err
+	}
+	currentName := filepath.Base(m.Store.Path(current))
+	for _, p := range paths {
+		if p == currentName {
+			continue
 		}
-		for _, p := range paths {
-			if p == filepath.Base(m.Store.Path(current)) {
-				continue
-			}
-			other, err := readReceipt(filepath.Join(m.Store.Directory, p))
-			if err != nil {
-				return fmt.Errorf("read shared job receipt: %w", err)
-			}
-			if other.CoordinationKey != current.CoordinationKey {
-				return errors.New("shared job receipt has mismatched coordination identity")
-			}
-			if !other.ManualOnly && (other.WaitUntil.IsZero() || other.WaitUntil.After(now)) && !other.Observation.Terminal() && other.ReadFailures < maxReadFailures && !other.PoolAfter.After(now) && !other.NextCheck.After(now) {
-				jobs = append(jobs, other)
-			}
+		other, err := readReceipt(filepath.Join(m.Store.Directory, p))
+		if err != nil {
+			return fmt.Errorf("read shared job receipt: %w", err)
+		}
+		if other.CoordinationKey != current.CoordinationKey {
+			return errors.New("shared job receipt has mismatched coordination identity")
+		}
+		if !other.ManualOnly && (other.WaitUntil.IsZero() || other.WaitUntil.After(now)) && !other.Observation.Terminal() && other.ReadFailures < maxReadFailures && !other.NextCheck.After(now) {
+			jobs = append(jobs, other)
 		}
 	}
 	results := m.Observe(ctx, jobs)

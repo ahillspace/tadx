@@ -159,7 +159,21 @@ func TestPhaseOneAuthCheckHappyPathThroughCLI(t *testing.T) {
 	}
 }
 
+const boundWorkbook = `<?xml version='1.0' encoding='utf-8' ?>
+<workbook version='18.1'>
+  <datasources>
+    <datasource caption='Sales' inline='true' name='sqlproxy.0abc' version='18.1'>
+      <connection channel='https' class='sqlproxy' dbname='Sales' directory='dataserver' port='443' server='tableau.example.com' />
+    </datasource>
+    <datasource caption='Sales duplicate' inline='true' name='sqlproxy.1def' version='18.1'>
+      <connection channel='https' class='sqlproxy' dbname='Sales' directory='dataserver' port='443' server='tableau.example.com' />
+    </datasource>
+  </datasources>
+</workbook>
+`
+
 func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *testing.T) {
+	var datasourceLookups atomic.Int32
 	var datasourceGets atomic.Int32
 	var datasourceDownloads atomic.Int32
 	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -174,12 +188,17 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 			writer.Header().Set("Content-Type", "application/xml")
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="3"/><projects><project id="department" name="Department"/><project id="workbook-project" name="Ops" parentProjectId="department"/><project id="datasource-project" name="Shared" parentProjectId="department"/></projects></tsResponse>`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-bound/content":
-			writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Bound Book.twbx"`)
+			writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Bound Book.twb"`)
 			writer.Header().Set("X-Tableau-Request-Id", "workbook-download")
-			_, _ = writer.Write([]byte("native-workbook"))
-		case request.Method == http.MethodPost && request.URL.Path == "/api/metadata/graphql":
-			writer.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(writer, `{"data":{"workbooksConnection":{"totalCount":1,"nodes":[{"luid":"wb-bound","embeddedDatasourcesConnection":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"id":"embedded-1","name":"Sales","parentPublishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"luid":"ds-1","name":"Sales"}]}},{"id":"embedded-2","name":"Sales duplicate","parentPublishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"luid":"ds-1","name":"Sales"}]}}]}}]}}}`)
+			_, _ = io.WriteString(writer, boundWorkbook)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources":
+			datasourceLookups.Add(1)
+			if filter := request.URL.Query().Get("filter"); filter != "contentUrl:eq:Sales" {
+				http.Error(writer, "unexpected filter "+filter, http.StatusBadRequest)
+				return
+			}
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="1"/><datasources><datasource id="ds-1" name="Sales" contentUrl="Sales"><project id="datasource-project" name="Shared"/></datasource></datasources></tsResponse>`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources/ds-1":
 			datasourceGets.Add(1)
 			writer.Header().Set("Content-Type", "application/xml")
@@ -206,8 +225,8 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	if exit := app.Run(context.Background(), args, &stdout, options); exit != 0 {
 		t.Fatalf("pull exit = %d, output = %s", exit, stdout.String())
 	}
-	if datasourceGets.Load() != 1 || datasourceDownloads.Load() != 1 {
-		t.Fatalf("datasource calls: get=%d download=%d", datasourceGets.Load(), datasourceDownloads.Load())
+	if datasourceLookups.Load() != 1 || datasourceGets.Load() != 1 || datasourceDownloads.Load() != 1 {
+		t.Fatalf("datasource calls: lookup=%d get=%d download=%d", datasourceLookups.Load(), datasourceGets.Load(), datasourceDownloads.Load())
 	}
 	datasourceEntries, err := os.ReadDir(filepath.Join(workspace, "artifacts", "datasource"))
 	if err != nil || len(datasourceEntries) != 1 {
@@ -241,8 +260,12 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	if err := json.Unmarshal(metadataData, &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if metadata.Portability != artifact.PortabilitySourceSiteBound || !metadata.DependenciesAcquired || len(metadata.PublishedDatasources) != 1 || metadata.PublishedDatasources[0].LUID != "ds-1" || metadata.PublishedDatasources[0].LocalArtifactPath == "" || filepath.IsAbs(metadata.PublishedDatasources[0].LocalArtifactPath) {
+	if metadata.Portability != artifact.PortabilitySourceSiteBound || !metadata.DependenciesAcquired || len(metadata.PublishedDatasources) != 1 || metadata.PublishedDatasources[0].LUID != "ds-1" || metadata.PublishedDatasources[0].ContentURL != "Sales" || metadata.PublishedDatasources[0].LocalArtifactPath == "" || filepath.IsAbs(metadata.PublishedDatasources[0].LocalArtifactPath) {
 		t.Fatalf("workbook dependency provenance = %#v", metadata)
+	}
+	view, err := os.ReadFile(filepath.Join(workspace, "artifacts", "workbook", workbookEntries[0].Name(), "view.md"))
+	if err != nil || !strings.Contains(string(view), "- `ds-1` Sales, content URL `Sales` (source site `test-site`) -> `artifacts/datasource/") {
+		t.Fatalf("view.md published datasource references = %s, error = %v", view, err)
 	}
 	for _, want := range []string{"portability: source-site-bound", "published_datasource_count: 1", "dependencies_acquired: true", "last --full"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -264,7 +287,7 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	if datasourceGets.Load() != 2 || datasourceDownloads.Load() != 2 {
 		t.Fatalf("full datasource calls: get=%d download=%d", datasourceGets.Load(), datasourceDownloads.Load())
 	}
-	for _, want := range []string{"ds-1,Sales", "baseline_fingerprint", "tableau_request_id: workbook-download", "artifacts/datasource/"} {
+	for _, want := range []string{"ds-1,Sales,Sales,test-site", "baseline_fingerprint", "tableau_request_id: workbook-download", "artifacts/datasource/"} {
 		if !strings.Contains(fullOutput.String(), want) {
 			t.Fatalf("full output missing %q: %s", want, fullOutput.String())
 		}

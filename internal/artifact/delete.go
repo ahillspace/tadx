@@ -46,7 +46,7 @@ func deleteWithOperations(ctx context.Context, request DeleteRequest, operations
 	if err != nil {
 		return Item{}, err
 	}
-	handle, err := lockWorkspace(root)
+	handle, err := lockWorkspace(ctx, root)
 	if err != nil {
 		return Item{}, err
 	}

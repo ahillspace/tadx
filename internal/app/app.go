@@ -30,7 +30,6 @@ import (
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
-	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
@@ -534,7 +533,6 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	clients := s.runtime.clients(connection)
 	workbookClient, metadataClient, datasourceClient := clients.workbooks, clients.metadata, clients.datasources
 	workbooks := resourceworkbook.NewAdapterWithProjectResolver(workbookClient, s.runtime.discoveryPaths(connection))
-	references := resourceworkbook.NewReferenceAdapter(metadataClient)
 	lineage := resourcelineage.NewAdapter(metadataClient)
 	datasources := resourcedatasource.NewAdapter(datasourceClient)
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
@@ -544,12 +542,11 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	}
 	input.SiteLUID = connection.session.SiteLUID()
 
-	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, references: references, datasources: datasources, lineage: lineage}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
+	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
 }
 
 type pullReader struct {
 	workbooks   *resourceworkbook.Adapter
-	references  *resourceworkbook.ReferenceAdapter
 	datasources *resourcedatasource.Adapter
 	lineage     *resourcelineage.Adapter
 }
@@ -564,14 +561,28 @@ func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *
 	return workbookops.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
 }
 
-func (r pullReader) PublishedDatasources(ctx context.Context, luid string) ([]workbookops.PublishedDatasource, error) {
+func (r pullReader) PublishedDatasources(ctx context.Context, download workbookops.Download) ([]workbookops.PublishedDatasource, error) {
 	progress.SetLabel(ctx, "Reading workbook dependencies")
-	items, err := r.references.PublishedDatasources(ctx, luid)
-	result := make([]workbookops.PublishedDatasource, len(items))
-	for index, item := range items {
-		result[index] = workbookops.PublishedDatasource{LUID: item.LUID, Name: item.Name}
+	references, err := artifact.ReadWorkbookDatasources(ctx, download.Filename, download.Content)
+	if err != nil {
+		return nil, err
 	}
-	return result, err
+	if len(references) == 0 {
+		return nil, nil
+	}
+	urls := make([]string, len(references))
+	for index, reference := range references {
+		urls[index] = reference.ContentURL
+	}
+	resolved, err := r.datasources.ResolveContentURLs(ctx, urls)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]workbookops.PublishedDatasource, 0, len(resolved))
+	for _, item := range resolved {
+		result = append(result, workbookops.PublishedDatasource{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL})
+	}
+	return result, nil
 }
 
 func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string) (workbookops.DatasourceDownload, error) {
@@ -610,7 +621,7 @@ func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookops.Pul
 	progress.SetLabel(ctx, "Saving workbook files")
 	references := make([]artifact.PublishedDatasourceRef, len(input.PublishedDatasources))
 	for index, item := range input.PublishedDatasources {
-		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, SourceSite: item.SourceSite, LocalArtifactPath: item.LocalArtifactPath}
+		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, SourceSite: item.SourceSite, LocalArtifactPath: item.LocalArtifactPath}
 	}
 	result, err := w.workbooks.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Lineage: workbookLineageDocument(input.Lineage), LineageCountsKnown: input.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, Portability: input.Portability, PublishedDatasources: references, DependenciesAcquired: input.DependenciesAcquired}})
 	return workbookops.PullArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, LineagePath: result.LineagePath, LineageStatus: result.LineageStatus, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
@@ -620,7 +631,7 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookops.Pu
 	progress.SetLabel(ctx, "Saving workbook and datasource files")
 	references := make([]artifact.PublishedDatasourceRef, len(workbook.PublishedDatasources))
 	for index, item := range workbook.PublishedDatasources {
-		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, SourceSite: item.SourceSite}
+		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, SourceSite: item.SourceSite}
 	}
 	bundle := artifact.WorkbookBundlePull{
 		Workbook:    artifact.WorkbookPull{Workspace: workbook.Workspace, Filename: workbook.Filename, Content: workbook.Content, Overwrite: workbook.Overwrite, Lineage: workbookLineageDocument(workbook.Lineage), LineageCountsKnown: workbook.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: workbook.Name, TableauID: workbook.TableauID, SourceServerOrigin: workbook.ServerOrigin, SourceSiteLUID: workbook.SiteLUID, SourceEnvironment: workbook.Environment, SourceSite: workbook.Site, SourceProjectName: workbook.ProjectName, SourceProjectID: workbook.ProjectID, Portability: workbook.Portability, PublishedDatasources: references, DependenciesAcquired: true}},
@@ -674,7 +685,6 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 		return workbookops.PublishOutput{}, err
 	}
 	manager := artifact.NewWorkbookManager(s.runtime.now)
-	var adapter *resourceworkbook.Adapter
 	_, environment, err := s.runtime.environment(input.Environment, true)
 	if err != nil {
 		return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish target resolution failed.", "Select the destination with --env.", err)
@@ -706,13 +716,19 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 		}
 		reader = artifactReader{manager: manager, displayPath: managedArtifact.Path}
 	}
-	_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
+	connection, err := s.runtime.tableauConnection(ctx, input.Environment, true)
 	if err != nil {
 		return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
 	}
+	environment = connection.environment
 	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
+	clients := s.runtime.clients(connection)
+	projects := resourceproject.NewAdapter(clients.projects)
 	var lifecycle *publication
-	bridge := publishAdapter{adapter: adapter, runtime: s.runtime, environment: environment.Alias, sourcePath: input.ArtifactPath, lifecycle: &lifecycle}
+	bridge := publishAdapter{
+		adapter: resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, workbookProjectResolver{projects}), datasources: resourcedatasource.NewAdapterWithProjectResolver(clients.datasources, projects),
+		runtime: s.runtime, environment: environment.Alias, serverURL: environment.URL, site: environment.SiteContentURL, sourcePath: input.ArtifactPath, lifecycle: &lifecycle,
+	}
 	if managed, ok := reader.(artifactReader); ok {
 		bridge.sourcePath = managed.displayPath
 	}
@@ -720,13 +736,8 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 	out, err := action.Execute(ctx, input, preview)
 	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
 		var saveErr error
-		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
+		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
 		err = errors.Join(err, saveErr)
-	}
-	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !s.runtime.publicationNoWait() {
-		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) {
-			return lifecycle.completeWorkbook(ctx, action, out)
-		})
 	}
 	return out, err
 }
@@ -756,14 +767,23 @@ func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbook
 	if err == nil && r.displayPath != "" {
 		item.Path = r.displayPath
 	}
-	return workbookops.PublishArtifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Portability: item.Portability, PublishedDatasourceCount: item.PublishedDatasourceCount}, err
+	return workbookops.PublishArtifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Datasources: publishDatasources(item.Datasources)}, err
+}
+
+func publishDatasources(items []artifact.WorkbookDatasource) []workbookops.PublishDatasource {
+	var datasources []workbookops.PublishDatasource
+	for _, item := range items {
+		datasources = append(datasources, workbookops.PublishDatasource{Caption: item.Caption, ContentURL: item.ContentURL})
+	}
+	return datasources
 }
 
 type publishAdapter struct {
-	adapter                 *resourceworkbook.Adapter
-	runtime                 *runtimeDependencies
-	environment, sourcePath string
-	lifecycle               **publication
+	adapter                                  *resourceworkbook.Adapter
+	datasources                              *resourcedatasource.Adapter
+	runtime                                  *runtimeDependencies
+	environment, serverURL, site, sourcePath string
+	lifecycle                                **publication
 }
 
 func (a publishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (workbookops.Project, error) {
@@ -779,8 +799,29 @@ func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string)
 	}
 	return a.adapter.FindWorkbooks(ctx, name, project)
 }
+func (a publishAdapter) ReadDatasource(ctx context.Context, luid string) (value.Datasource, error) {
+	return a.datasources.ResolveDatasource(ctx, identity.Selector{LUID: identity.LUID(luid)})
+}
+func (a publishAdapter) FindDatasourcesByContentURL(ctx context.Context, contentURLs []string) ([]value.Datasource, error) {
+	return a.datasources.FindDatasourcesByContentURL(ctx, contentURLs)
+}
+func (a publishAdapter) FindDatasourcesByName(ctx context.Context, names []string) ([]value.Datasource, error) {
+	return a.datasources.FindDatasourcesByName(ctx, names)
+}
+
+// Prepare uploads a rebound copy when the plan maps datasources, leaving the
+// workbook artifact itself unchanged.
 func (a publishAdapter) Prepare(ctx context.Context, input workbookops.PublishRequest) (workbookops.PreparedPublish, error) {
-	request := tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob}
+	request := tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite}
+	if len(input.DatasourceContentURLs) > 0 {
+		rewritten, err := artifact.RewriteWorkbookDatasources(ctx, artifact.WorkbookDatasourceRewrite{Path: input.ContentPath, Fingerprint: input.ExpectedFingerprint, Size: input.ContentSize, ServerOrigin: a.serverURL, Site: a.site, ContentURLs: input.DatasourceContentURLs})
+		if err != nil {
+			return nil, err
+		}
+		// PrepareWorkbook snapshots the upload content before it returns.
+		defer os.Remove(rewritten.Path)
+		request.ContentPath, request.ContentSize, request.ExpectedFingerprint = rewritten.Path, rewritten.Size, rewritten.Fingerprint
+	}
 	if a.runtime != nil {
 		p, err := a.runtime.publication(ctx, a.environment, "workbook", a.sourcePath, input.ProjectLUID, input.Name)
 		if err != nil {
@@ -789,8 +830,6 @@ func (a publishAdapter) Prepare(ctx context.Context, input workbookops.PublishRe
 		if a.lifecycle != nil {
 			*a.lifecycle = p
 		}
-		request.AsJob = p.asJob
-		request.Accepted = p.acceptWorkbook
 	}
 	prepared, err := a.adapter.PrepareWorkbook(ctx, request)
 	if err != nil {
@@ -810,8 +849,10 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookops.Publish
 	for index, warning := range result.Warnings {
 		warnings[index] = workbookops.PublishValidationIssue{Severity: warning.Severity, Message: warning.Message, Line: warning.Line, Column: warning.Column, ElementName: warning.ElementName}
 	}
-	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath, ValidationWarnings: warnings}, err
+	return workbookops.PublishResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID, ValidationWarnings: warnings}, err
 }
+
+func (a preparedPublishAdapter) Close() error { return a.prepared.Close() }
 
 type registrySource struct{ runtime *runtimeDependencies }
 

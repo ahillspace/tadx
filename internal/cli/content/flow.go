@@ -84,7 +84,7 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 	var input flowops.PullInput
 	var ids []string
 	var name, projectPath string
-	command := &cobra.Command{Use: "pull", Short: "Pull unchanged native flow artifacts sequentially.", Annotations: map[string]string{"tadx.capability": "flow.pull"}, Args: batchPullArgs("flow.pull", &ids, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "pull", Short: "Pull unchanged native flow artifacts in parallel.", Annotations: map[string]string{"tadx.capability": "flow.pull"}, Args: batchPullArgs("flow.pull", &ids, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
 		return runContentSelection(command.Context(), "flow.pull", ids, deps.Renderer, func(ctx context.Context, id string) (flowops.PullOutput, error) {
 			item := input
 			if id != "" {
@@ -94,7 +94,7 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 		})
 	}}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
-	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative flow LUID; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative flow LUID; repeat for up to 100 items, processed in parallel")
 	command.Flags().StringVar(&name, "name", "", "exact flow name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
@@ -110,7 +110,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 	var artifacts []string
 	var projectLUID, projectPath string
 	var preview bool
-	command := &cobra.Command{Use: "publish", Short: "Publish native flow artifacts sequentially.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "publish", Short: "Publish native flow artifacts in parallel.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
 		if err := noContentArgs("flow.publish")(command, args); err != nil {
 			return err
 		}
@@ -137,7 +137,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 		})
 	}}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("flow", "DailyPrep--identity")+"; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("flow", "DailyPrep--identity")+"; repeat for up to 100 items, processed in parallel")
 	command.Flags().StringVar(&input.File, "file", "", "standalone native .tfl or .tflx file; no managed artifact required")
 	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source flow LUID within the resolved workspace")
 	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed flow name within the resolved workspace")

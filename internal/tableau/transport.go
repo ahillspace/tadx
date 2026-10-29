@@ -33,12 +33,15 @@ const (
 
 // Request describes one released Tableau REST request.
 type Request struct {
-	Method      string
-	ServerURL   string
-	Path        string
-	Query       url.Values
-	Header      http.Header
-	Body        []byte
+	Method    string
+	ServerURL string
+	Path      string
+	Query     url.Values
+	Header    http.Header
+	Body      []byte
+	// Multipart streams a replayable multipart body. When set it replaces
+	// Body and supplies the Content-Type.
+	Multipart   *MultipartBody
 	Operation   string
 	Secrets     []string
 	Accept      string
@@ -363,9 +366,17 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	if err != nil {
 		return Response{}, fmt.Errorf("create Tableau request: %w", err)
 	}
-	watchdog := startStallWatchdog(t.stallTimeout, cancel, len(input.Body) > 0)
+	contentType := input.ContentType
+	if input.Multipart != nil {
+		body := input.Multipart
+		contentType = body.ContentType()
+		request.ContentLength = body.Len()
+		request.Body = body.open()
+		request.GetBody = func() (io.ReadCloser, error) { return body.open(), nil }
+	}
+	watchdog := startStallWatchdog(t.stallTimeout, cancel, request.ContentLength > 0)
 	defer watchdog.stop()
-	if len(input.Body) > 0 {
+	if request.ContentLength > 0 {
 		request.Body = progressBody{ReadCloser: request.Body, watchdog: watchdog}
 		getBody := request.GetBody
 		request.GetBody = func() (io.ReadCloser, error) {
@@ -386,8 +397,8 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 		accept = "application/json"
 	}
 	request.Header.Set("Accept", accept)
-	if input.ContentType != "" {
-		request.Header.Set("Content-Type", input.ContentType)
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
 	}
 	if t.correlationID != nil {
 		if correlation := t.correlationID(); correlation != "" {

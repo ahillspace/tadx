@@ -371,7 +371,7 @@ func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 		fmt.Fprintf(out, "  %s: repeat positional targets; file rows use args:[\"<value>\"].\n", strings.Join(positional, ","))
 	}
 	fmt.Fprintln(out, "  Rows override flags: canonical keys, arrays for lists, required per row.")
-	fmt.Fprintln(out, "  Env/control flags outside rows. File OR repeated selectors; 1-100 sequential items, <=1MiB/100 selections.")
+	fmt.Fprintln(out, "  Env/control flags outside rows. File OR repeated selectors; 1-100 items, <=1MiB/100 selections.")
 	fmt.Fprintln(out)
 }
 

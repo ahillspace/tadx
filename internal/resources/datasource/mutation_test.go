@@ -32,7 +32,7 @@ func (c *datasourceMutationClient) Delete(context.Context, string) (tableaudatas
 func TestMutationAdapterPassesOnlyExplicitDatasourceChanges(t *testing.T) {
 	client := &datasourceMutationClient{}
 	adapter := resourcedatasource.NewMutationAdapter(client)
-	prepared, err := adapter.PrepareDatasource(context.Background(), tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1", AsJob: true})
+	prepared, err := adapter.PrepareDatasource(context.Background(), tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestMutationAdapterPassesOnlyExplicitDatasourceChanges(t *testing.T) {
 	if _, err := adapter.DeleteDatasource(context.Background(), "ds-1"); err != nil {
 		t.Fatal(err)
 	}
-	if client.prepared != 1 || client.deleted != 1 || !client.request.AsJob {
+	if client.prepared != 1 || client.deleted != 1 || client.request.Name != "Sales" || client.request.ProjectLUID != "project-1" {
 		t.Fatalf("client = %#v", client)
 	}
 }

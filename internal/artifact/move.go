@@ -114,7 +114,7 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 	if sameFilesystemPath(sourceRoot, destinationRoot) {
 		return Item{}, errors.New("source and destination workspaces must differ")
 	}
-	release, err := lockWorkspaces(sourceRoot, destinationRoot)
+	release, err := lockWorkspaces(ctx, sourceRoot, destinationRoot)
 	if err != nil {
 		return Item{}, err
 	}

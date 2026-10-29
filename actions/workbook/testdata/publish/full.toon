@@ -24,7 +24,6 @@ result:
   workbook_luid: wb-new
   workbook_name: Finance
   project_luid: project-1
-  tableau_job_id: job-1
   tableau_request_id: request-1
   validation_warnings[1]{severity,message,line,element_name}:
     warning,Detailed validation warning.,12,map

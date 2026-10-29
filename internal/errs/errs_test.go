@@ -147,6 +147,7 @@ func TestStructureGeneratesBoundedRecoveryAdviceFromFacts(t *testing.T) {
 	}{
 		{"unknown", &errs.Error{Outcome: errs.OutcomeUnknown}, "Inspect the exact target", "retry the mutation automatically"},
 		{"confirmed", &errs.Error{Outcome: errs.OutcomeConfirmed}, "Retain the confirmed result", "Inspect the exact target"},
+		{"not applied", &errs.Error{Outcome: errs.OutcomeNotApplied}, "Tableau rejected the request without applying it", "Inspect the exact target"},
 		{"prerequisite", &errs.Error{Prerequisite: &errs.Prerequisite{Kind: "project", Resource: "project-1"}}, "Resolve the required project project-1", "Inspect the exact target"},
 	}
 	for _, test := range tests {

@@ -72,16 +72,19 @@ type LineageCapture struct {
 	Warnings       []string              `json:"warnings,omitempty"`
 }
 
-// PublishedDatasource is one direct dependency discovered through authoritative metadata.
+// PublishedDatasource is one published datasource the workbook file
+// references, resolved by its content URL on the source site.
 type PublishedDatasource struct {
-	LUID string `json:"luid"`
-	Name string `json:"name,omitempty"`
+	LUID       string `json:"luid"`
+	Name       string `json:"name,omitempty"`
+	ContentURL string `json:"content_url,omitempty"`
 }
 
 // PublishedDatasourceRef is the provenance recorded on the workbook artifact.
 type PublishedDatasourceRef struct {
 	LUID                string `json:"luid"`
 	Name                string `json:"name,omitempty"`
+	ContentURL          string `json:"content_url,omitempty"`
 	SourceSite          string `json:"source_site,omitempty"`
 	LocalArtifactPath   string `json:"local_artifact_path,omitempty"`
 	CanonicalPath       string `json:"canonical_path,omitempty"`

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
@@ -36,32 +36,6 @@ type ProjectSelectorPathResolver interface {
 // Datasource is one normalized authoritative published datasource identity.
 type Datasource = value.Datasource
 
-// ErrPublishedDatasourceNotVisible identifies a completed publish whose exact
-// destination is not yet exposed by Tableau's name index.
-var ErrPublishedDatasourceNotVisible = errors.New("published datasource is not visible in the Tableau name index")
-
-// PublishedDatasourceNotVisibleError preserves the exact target and bounded
-// convergence window for an indexing-only completion result.
-type PublishedDatasourceNotVisibleError struct {
-	Name        string
-	ProjectLUID string
-	Timeout     time.Duration
-}
-
-func (e *PublishedDatasourceNotVisibleError) Error() string {
-	if e == nil {
-		return ErrPublishedDatasourceNotVisible.Error()
-	}
-	if e.Timeout > 0 {
-		return fmt.Sprintf("completed datasource %q in project %q was not visible before the %s resolution deadline", e.Name, e.ProjectLUID, e.Timeout)
-	}
-	return fmt.Sprintf("completed datasource %q in project %q was not visible in the name index", e.Name, e.ProjectLUID)
-}
-
-func (e *PublishedDatasourceNotVisibleError) Unwrap() error {
-	return ErrPublishedDatasourceNotVisible
-}
-
 // Page is one bounded normalized published datasource page.
 type Page struct {
 	Number    int
@@ -84,39 +58,22 @@ type Download struct {
 
 // Adapter owns published datasource identity and download sequencing.
 type Adapter struct {
-	client                    Client
-	projects                  ProjectPathResolver
-	completionResolveInterval time.Duration
-	completionResolveTimeout  time.Duration
+	client   Client
+	projects ProjectPathResolver
 }
 
 const (
-	defaultCompletionResolveInterval = time.Second
-	defaultCompletionResolveTimeout  = 30 * time.Second
-	datasourceAdapterPageSize        = 1000
+	datasourceAdapterPageSize = 1000
 )
 
 // NewAdapter creates a datasource resource adapter.
 func NewAdapter(client Client) *Adapter {
-	return &Adapter{client: client, completionResolveInterval: defaultCompletionResolveInterval, completionResolveTimeout: defaultCompletionResolveTimeout}
+	return &Adapter{client: client}
 }
 
 // NewAdapterWithProjectResolver creates a datasource adapter that supports exact selection.
 func NewAdapterWithProjectResolver(client Client, projects ProjectPathResolver) *Adapter {
-	return &Adapter{client: client, projects: projects, completionResolveInterval: defaultCompletionResolveInterval, completionResolveTimeout: defaultCompletionResolveTimeout}
-}
-
-// SetCompletionResolvePolicy configures the bounded search-index convergence window used after async publish.
-func (a *Adapter) SetCompletionResolvePolicy(interval, timeout time.Duration) {
-	if a == nil {
-		return
-	}
-	if interval > 0 {
-		a.completionResolveInterval = interval
-	}
-	if timeout > 0 {
-		a.completionResolveTimeout = timeout
-	}
+	return &Adapter{client: client, projects: projects}
 }
 
 // ListDatasources returns exactly one validated upstream page.
@@ -213,6 +170,88 @@ func (a *Adapter) listDatasourcesByProjectLUID(ctx context.Context, input tablea
 	}
 	end := min(start+input.PageSize, len(matches))
 	return Page{Number: input.PageNumber, Size: input.PageSize, Total: len(matches), Items: matches[start:end], RequestID: requestID}, nil
+}
+
+// ResolveContentURLs maps exact datasource content URLs to authoritative
+// records, keyed by content URL. Every URL must resolve to one datasource.
+// Native search and workbook files both identify published datasources by
+// content URL; only the REST LUID is authoritative for lifecycle operations.
+func (a *Adapter) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]Datasource, error) {
+	if len(contentURLs) == 0 || len(contentURLs) > datasourceAdapterPageSize {
+		return nil, fmt.Errorf("datasource content URL resolution requires between 1 and %d values", datasourceAdapterPageSize)
+	}
+	found, err := a.FindDatasourcesByContentURL(ctx, contentURLs)
+	if err != nil {
+		return nil, err
+	}
+	resolved := make(map[string]Datasource, len(found))
+	for _, item := range found {
+		if !slices.Contains(contentURLs, item.ContentURL) {
+			return nil, errors.New("datasource content URL resolution returned an unexpected identity")
+		}
+		if _, duplicate := resolved[item.ContentURL]; duplicate {
+			return nil, fmt.Errorf("datasource content URL %q resolved ambiguously", item.ContentURL)
+		}
+		resolved[item.ContentURL] = item
+	}
+	for _, contentURL := range contentURLs {
+		if _, ok := resolved[contentURL]; !ok {
+			return nil, fmt.Errorf("datasource content URL %q did not resolve to a datasource on this site", contentURL)
+		}
+	}
+	return resolved, nil
+}
+
+// FindDatasourcesByContentURL returns the datasources whose content URL is
+// one of contentURLs. Content URLs with no datasource are absent from the
+// result rather than an error.
+func (a *Adapter) FindDatasourcesByContentURL(ctx context.Context, contentURLs []string) ([]Datasource, error) {
+	return a.findExact(ctx, contentURLs, func(batch []string) tableaudatasource.ListRequest {
+		return tableaudatasource.ListRequest{ContentURLs: batch}
+	})
+}
+
+// FindDatasourcesByName returns the datasources whose name is one of names,
+// in any project.
+func (a *Adapter) FindDatasourcesByName(ctx context.Context, names []string) ([]Datasource, error) {
+	return a.findExact(ctx, names, func(batch []string) tableaudatasource.ListRequest {
+		return tableaudatasource.ListRequest{Names: batch}
+	})
+}
+
+// findExact sends one exact in-filter request per batch of distinct values
+// and fails rather than page when a batch matches more than one full page.
+func (a *Adapter) findExact(ctx context.Context, values []string, filter func([]string) tableaudatasource.ListRequest) ([]Datasource, error) {
+	if a == nil || a.client == nil {
+		return nil, errors.New("datasource resource adapter is not configured")
+	}
+	values = slices.Compact(slices.Sorted(slices.Values(values)))
+	seen := map[string]tableaudatasource.Datasource{}
+	result := []Datasource{}
+	for batch := range slices.Chunk(values, tableaudatasource.MaxFilterValues) {
+		request := filter(batch)
+		request.PageNumber, request.PageSize = 1, datasourceAdapterPageSize
+		page, err := a.client.List(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDatasourcePage(page, 1, datasourceAdapterPageSize); err != nil {
+			return nil, err
+		}
+		if page.Total != len(page.Items) {
+			return nil, fmt.Errorf("datasource lookup matched %d datasources, more than one %d-row page", page.Total, page.Size)
+		}
+		for _, item := range page.Items {
+			_, duplicate := seen[item.LUID]
+			if err := recordDatasource(seen, item); err != nil {
+				return nil, err
+			}
+			if !duplicate {
+				result = append(result, normalizeDatasource(item, ""))
+			}
+		}
+	}
+	return result, nil
 }
 
 // ResolveDatasource resolves one authoritative LUID or exact name and canonical project path.
@@ -329,7 +368,7 @@ func (a *Adapter) FindDatasources(ctx context.Context, name, projectLUID string)
 	result := []Datasource{}
 	expectedTotal, expectedSize := -1, -1
 	filterName := name
-	if strings.ContainsAny(filterName, ",&") {
+	if strings.Contains(filterName, ",") {
 		filterName = ""
 	}
 	for number := 1; number <= 1000; number++ {
@@ -364,57 +403,6 @@ func (a *Adapter) FindDatasources(ctx context.Context, name, projectLUID string)
 		}
 	}
 	return nil, errors.New("datasource collision lookup exceeded the 1000-page bound")
-}
-
-// ResolvePublishedDatasource waits for Tableau's search index to expose exactly one
-// completed async publish in the exact planned project.
-func (a *Adapter) ResolvePublishedDatasource(ctx context.Context, name, projectLUID string) (Datasource, error) {
-	if a == nil || a.client == nil {
-		return Datasource{}, errors.New("datasource resource adapter is not configured")
-	}
-	name, projectLUID = strings.TrimSpace(name), strings.TrimSpace(projectLUID)
-	if name == "" || projectLUID == "" {
-		return Datasource{}, errors.New("completed datasource resolution requires an exact name and project LUID")
-	}
-	timeout := a.completionResolveTimeout
-	if timeout <= 0 {
-		timeout = defaultCompletionResolveTimeout
-	}
-	interval := a.completionResolveInterval
-	if interval <= 0 {
-		interval = defaultCompletionResolveInterval
-	}
-	resolveCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	for {
-		items, err := a.FindDatasources(resolveCtx, name, projectLUID)
-		if err != nil {
-			return Datasource{}, err
-		}
-		switch len(items) {
-		case 1:
-			return items[0], nil
-		case 0:
-		case 2:
-			return Datasource{}, fmt.Errorf("completed datasource resolution for %q in project %q is ambiguous: [%s, %s]", name, projectLUID, items[0].LUID, items[1].LUID)
-		default:
-			luids := make([]string, len(items))
-			for index, item := range items {
-				luids[index] = item.LUID
-			}
-			return Datasource{}, fmt.Errorf("completed datasource resolution for %q in project %q is ambiguous: [%s]", name, projectLUID, strings.Join(luids, ", "))
-		}
-		timer := time.NewTimer(interval)
-		select {
-		case <-resolveCtx.Done():
-			timer.Stop()
-			if ctx.Err() != nil {
-				return Datasource{}, ctx.Err()
-			}
-			return Datasource{}, &PublishedDatasourceNotVisibleError{Name: name, ProjectLUID: projectLUID, Timeout: timeout}
-		case <-timer.C:
-		}
-	}
 }
 
 func validateDatasourceIdentity(item tableaudatasource.Datasource) error {

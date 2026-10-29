@@ -10,35 +10,33 @@ import (
 )
 
 func TestForegroundCadenceDoesNotSlowBatches(t *testing.T) {
-	for _, bulk := range []bool{false, true} {
-		for _, test := range []struct {
-			age, interval time.Duration
-		}{{0, 2 * time.Second}, {30 * time.Second, 5 * time.Second}, {10 * time.Minute, 15 * time.Second}} {
-			start := time.Now().UTC()
-			now := start.Add(test.age)
-			store := Store{Directory: t.TempDir()}
-			r := receipt("job", start, bulk)
-			if _, err := store.Register(t.Context(), r); err != nil {
-				t.Fatal(err)
+	for _, test := range []struct {
+		age, interval time.Duration
+	}{{0, 2 * time.Second}, {30 * time.Second, 5 * time.Second}, {10 * time.Minute, 15 * time.Second}} {
+		start := time.Now().UTC()
+		now := start.Add(test.age)
+		store := Store{Directory: t.TempDir()}
+		r := receipt("job", start)
+		if _, err := store.Register(t.Context(), r); err != nil {
+			t.Fatal(err)
+		}
+		checks := 0
+		monitor := Monitor{Store: store, Now: func() time.Time { return now }, Sleep: func(_ context.Context, delay time.Duration) error {
+			if delay != test.interval {
+				t.Errorf("age=%v delay=%v want=%v", test.age, delay, test.interval)
 			}
-			checks := 0
-			monitor := Monitor{Store: store, Now: func() time.Time { return now }, Sleep: func(_ context.Context, delay time.Duration) error {
-				if delay != test.interval {
-					t.Errorf("bulk=%v age=%v delay=%v want=%v", bulk, test.age, delay, test.interval)
-				}
-				now = now.Add(delay)
-				return nil
-			}, Observe: func(_ context.Context, jobs []Receipt) []CheckResult {
-				checks++
-				state := "running"
-				if checks == 2 {
-					state = "succeeded"
-				}
-				return []CheckResult{{Status: value.JobStatus{ID: "job", Status: state}}}
-			}}
-			if _, err := monitor.Wait(t.Context(), r); err != nil {
-				t.Fatal(err)
+			now = now.Add(delay)
+			return nil
+		}, Observe: func(_ context.Context, jobs []Receipt) []CheckResult {
+			checks++
+			state := "running"
+			if checks == 2 {
+				state = "succeeded"
 			}
+			return []CheckResult{{Status: value.JobStatus{ID: "job", Status: state}}}
+		}}
+		if _, err := monitor.Wait(t.Context(), r); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
@@ -47,7 +45,7 @@ func TestForegroundWaitLimitPreservesJobAndStopsSharedPolling(t *testing.T) {
 	start := time.Now().UTC()
 	now := start
 	store := Store{Directory: t.TempDir()}
-	r := receipt("unfinished", start, true)
+	r := receipt("unfinished", start)
 	if _, err := store.Register(t.Context(), r); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +59,7 @@ func TestForegroundWaitLimitPreservesJobAndStopsSharedPolling(t *testing.T) {
 	if !errors.Is(err, ErrWaitLimit) || got.Observation.Status != "running" || now.Sub(start) != 20*time.Minute {
 		t.Fatalf("duration=%v state=%s err=%v", now.Sub(start), got.Observation.Status, err)
 	}
-	other := receipt("other", now, true)
+	other := receipt("other", now)
 	if _, err := store.Register(t.Context(), other); err != nil {
 		t.Fatal(err)
 	}

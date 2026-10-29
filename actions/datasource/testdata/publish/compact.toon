@@ -10,6 +10,5 @@ result:
   datasource_luid: ds-1
   datasource_name: Sales
   project_luid: project-1
-  tableau_job_id: job-1
 details: "--full"
 help[1]: tadx content datasource inspect --id ds-1

@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,10 +25,15 @@ func (r publishArtifactReader) ReadWorkbook(context.Context, string) (workbookop
 }
 
 type publishResolver struct {
-	project      workbookops.Project
-	existing     []workbookops.Record
-	projectErr   error
-	collisionErr error
+	project       workbookops.Project
+	existing      []workbookops.Record
+	projectErr    error
+	collisionErr  error
+	datasources   map[string]value.Datasource
+	datasourceErr error
+	site          []value.Datasource
+	contentURLErr error
+	nameErr       error
 }
 
 func (r publishResolver) ResolveProject(context.Context, identity.Selector) (workbookops.Project, error) {
@@ -40,6 +46,7 @@ func (r publishResolver) FindWorkbooks(context.Context, string, string) ([]workb
 
 type publishPublisher struct {
 	calls     int
+	closes    int
 	input     workbookops.PublishRequest
 	result    workbookops.PublishResult
 	err       error
@@ -100,6 +107,11 @@ func (p *publishPublisher) Commit(context.Context) (workbookops.PublishResult, e
 	return p.result, p.err
 }
 
+func (p *publishPublisher) Close() error {
+	p.closes++
+	return nil
+}
+
 func TestPublishPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
 	p := &publishPublisher{}
 	action := workbookops.NewPublish(
@@ -108,18 +120,18 @@ func TestPublishPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
 	)
 	plan, err := action.Plan(context.Background(), workbookops.PublishInput{
 		ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing",
-		ProjectSelector: identity.Selector{ProjectPath: "Department/Ops"}, AsJob: true,
+		ProjectSelector: identity.Selector{ProjectPath: "Department/Ops"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.calls != 0 || plan.Mode != "preview" || plan.Target.ProjectLUID != "project-1" || !plan.AsJob {
+	if p.calls != 0 || plan.Mode != "preview" || plan.Target.ProjectLUID != "project-1" {
 		t.Fatalf("plan = %#v, publish calls = %d", plan, p.calls)
 	}
 }
 
 func TestPublishApplyExecutesOnlyPlanProducedByPlan(t *testing.T) {
-	p := &publishPublisher{result: workbookops.PublishResult{Status: "succeeded", WorkbookLUID: "wb-new", JobID: "job-1"}}
+	p := &publishPublisher{result: workbookops.PublishResult{Status: "succeeded", WorkbookLUID: "wb-new"}}
 	action := workbookops.NewPublish(
 		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		publishResolver{project: workbookops.Project{LUID: "project-1", Name: "Ops", Path: "Ops"}}, p,
@@ -247,6 +259,9 @@ func TestPublishApplyRevalidatesOverwriteTargetAfterPublishPreparation(t *testin
 	if p.calls != 0 || r.findCall != 3 {
 		t.Fatalf("commit calls = %d, collision reads = %d", p.calls, r.findCall)
 	}
+	if p.closes != 1 {
+		t.Fatalf("prepared publish closes = %d, want the abandoned upload released", p.closes)
+	}
 }
 
 func TestPublishApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) {
@@ -263,37 +278,6 @@ func TestPublishApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) 
 	payload := errs.Structure(err).Error
 	if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
 		t.Fatalf("structured error = %#v", payload)
-	}
-}
-
-func TestPublishPlanWarnsWhenSourceBoundWorkbookTargetsDifferentSite(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}},
-		&publishPublisher{},
-	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "staging", Site: "analytics", ProjectSelector: identity.Selector{LUID: "project-1"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	joined := strings.Join(plan.Warnings, " ")
-	if !strings.Contains(joined, "published datasource") || !strings.Contains(joined, "marketing") {
-		t.Fatalf("warnings = %#v", plan.Warnings)
-	}
-}
-
-func TestPublishPlanDoesNotWarnWhenTargetMatchesSource(t *testing.T) {
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}, existing: []workbookops.Record{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}},
-		&publishPublisher{},
-	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Warnings) != 0 {
-		t.Fatalf("unexpected warnings = %#v", plan.Warnings)
 	}
 }
 
@@ -406,12 +390,12 @@ func TestPublishOutputGoldens(t *testing.T) {
 			Mode: "execute", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Finance",
 			ArtifactFingerprint: "sha256:diagnostic", Filename: "Finance.twbx", WorkbookName: "Finance",
 			Target:    workbookops.PublishTarget{Origin: "explicit", Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops", ExistingLUID: "wb-existing"},
-			Overwrite: true, AsJob: true,
-			Warnings: []string{"Detailed portability warning."},
-			Substeps: []string{"resolve exact destination", "publish workbook"},
+			Overwrite: true,
+			Warnings:  []string{"Detailed portability warning."},
+			Substeps:  []string{"resolve exact destination", "publish workbook"},
 		},
 		Result: &workbookops.PublishResult{
-			Status: "succeeded", WorkbookLUID: "wb-new", WorkbookName: "Finance", ProjectLUID: "project-1", JobID: "job-1", TableauRequestID: "request-1",
+			Status: "succeeded", WorkbookLUID: "wb-new", WorkbookName: "Finance", ProjectLUID: "project-1", TableauRequestID: "request-1",
 			ValidationWarnings: []workbookops.PublishValidationIssue{{Severity: "warning", Message: "Detailed validation warning.", Line: 12, ElementName: "map"}},
 		},
 		Help: []string{"tadx search --type workbook --environment <alias> to confirm the published workbook."},
@@ -469,26 +453,6 @@ func TestPublishFullOutputBoundsDetailedWarnings(t *testing.T) {
 	}
 	if len(full.Result.ValidationWarnings) != 20 || full.Result.ValidationWarningsOmitted != 5 {
 		t.Fatalf("validation warnings = %d, omitted = %d", len(full.Result.ValidationWarnings), full.Result.ValidationWarningsOmitted)
-	}
-}
-
-func TestPublishApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
-	p := &publishPublisher{result: workbookops.PublishResult{Status: "unknown", JobID: "job-1", TableauRequestID: "poll-request"}, err: errors.New("poll forbidden")}
-	action := workbookops.NewPublish(
-		publishArtifactReader{artifact: workbookops.PublishArtifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
-		publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}}, p,
-	)
-	plan, err := action.Plan(context.Background(), workbookops.PublishInput{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, AsJob: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := action.Apply(context.Background(), plan)
-	var structured *errs.Error
-	if !errors.As(err, &structured) {
-		t.Fatalf("error = %T %v", err, err)
-	}
-	if result.JobID != "job-1" || structured.TableauJobID != "job-1" || structured.Phase != errs.PhaseSubmission || structured.Outcome != errs.OutcomeUnknown || structured.TableauRequestID != "poll-request" || !strings.Contains(strings.ToLower(structured.Summary), "outcome") || structured.Retryable == nil || *structured.Retryable {
-		t.Fatalf("structured error = %#v", structured)
 	}
 }
 

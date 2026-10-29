@@ -195,7 +195,7 @@ func TestBatchHelpSeparatesScalarRepetitionFromListValues(t *testing.T) {
 	remove.Annotations = map[string]string{"tadx.batch.file": "true", "tadx.batch.selectors": "group-id"}
 	installCategoryHelp(root)
 	got := renderedHelp(t, remove)
-	for _, want := range []string{"--batch-file <path>", "arrays for lists", "Env/control flags outside rows", "repeat one of --group-id", "1-100 sequential items"} {
+	for _, want := range []string{"--batch-file <path>", "arrays for lists", "Env/control flags outside rows", "repeat one of --group-id", "1-100 items"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q: %s", want, got)
 		}

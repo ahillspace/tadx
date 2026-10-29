@@ -36,8 +36,8 @@ The base publish method is available in REST API 2.0 and later on Tableau Cloud 
 The method accepts direct multipart publication and upload-session publication for TDS, TDSX, Hyper, and TDE payloads.
 The documented direct upload size boundary is 64 MB, so larger payloads use Initiate File Upload and Append to File Upload requests before the final publish request.
 The `sequenceID` ordering parameter is used only with REST API 3.27 and later because the captured reference says earlier releases assemble blocks by arrival time.
-When `asJob=true` is selected, the accepted `PublishDatasource` job identity is validated and polled internally to a bounded terminal state.
-Indeterminate, cancelled, or timed-out outcomes preserve the exact job and latest request IDs and are never presented as safe to retry.
+Publication is synchronous for every user: TADX never sends `asJob`, and the publish response carries the datasource identity.
+A job-shaped publish response is reported as an unknown outcome with the latest request ID and is never presented as safe to retry.
 Create is represented by leaving overwrite, append, and replace false.
 Overwrite, append, and replace are explicit mutually exclusive modes.
 Replace is documented as available beginning with Tableau 2025.1.
@@ -76,3 +76,4 @@ Authorized disposable Tableau Cloud verification completed on 2026-09-02 for pul
 The native datasource package round trip preserved its authoritative identity and project provenance without exposing machine-specific paths in compact output.
 The live asynchronous check proved the HTTP 202 acceptance contract and Tableau's terminal job response without an embedded datasource identity.
 TADX resolved the completed publication through a bounded exact-name and exact-project lookup, returned one authoritative LUID, and deleted the temporary datasource.
+Asynchronous publication was later removed, so this check now describes only how v1.0.x receipts are recovered.

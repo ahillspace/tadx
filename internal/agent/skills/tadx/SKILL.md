@@ -49,6 +49,7 @@ Retain confirmed identities and partial results; inspect unknown write outcomes 
 TADX confirms writes automatically where their response is insufficient; do not add routine verification calls after a confirmed result.
 Indexing delays do not undo acknowledged writes.
 Preserve environment, configuration, selectors, workspace, filters, encoding, and cache mode in follow-up commands.
+When TADX reports a newer release, tell the user and ask before running `tadx update`.
 
 ## Concepts when needed
 

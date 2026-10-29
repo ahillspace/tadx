@@ -11,7 +11,7 @@ import (
 func TestStaleReceiptCannotEraseConfirmedObservation(t *testing.T) {
 	now := time.Now().UTC()
 	store := Store{Directory: t.TempDir()}
-	stale := receipt("confirmed-job", now, true)
+	stale := receipt("confirmed-job", now)
 	latest := stale
 	latest.Observation = value.JobStatus{ID: stale.Observation.ID, Type: stale.Observation.Type, Status: "succeeded", ResourceID: "published-id", CheckedAt: now}
 	latest.Verification = "confirmed"
@@ -29,7 +29,7 @@ func TestStaleReceiptCannotEraseConfirmedObservation(t *testing.T) {
 func TestCancellationAfterObservationRetainsConfirmedResult(t *testing.T) {
 	now := time.Now().UTC()
 	store := Store{Directory: t.TempDir()}
-	accepted := receipt("observed-job", now, true)
+	accepted := receipt("observed-job", now)
 	if _, err := store.Register(t.Context(), accepted); err != nil {
 		t.Fatal(err)
 	}

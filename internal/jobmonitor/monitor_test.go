@@ -10,18 +10,14 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-func receipt(id string, now time.Time, bulk bool) Receipt {
-	pool := now.Add(time.Minute)
-	if bulk {
-		pool = now
-	}
-	return Receipt{Version: 1, Operation: "workbook.publish", Environment: "dev", Server: "https://example.test", SiteID: "site", CoordinationKey: "opaque-key", AcceptedAt: now, PoolAfter: pool, Observation: value.JobStatus{ID: id, Type: "PublishWorkbook", Status: "pending"}}
+func receipt(id string, now time.Time) Receipt {
+	return Receipt{Version: 1, Operation: "workbook.publish", Environment: "dev", Server: "https://example.test", SiteID: "site", CoordinationKey: "opaque-key", AcceptedAt: now, Observation: value.JobStatus{ID: id, Type: "PublishWorkbook", Status: "pending"}}
 }
 
 func TestPoolChecksActualRegisteredJobsTogether(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	store := Store{Directory: t.TempDir()}
-	first, second := receipt("job-a", now, true), receipt("job-b", now, true)
+	first, second := receipt("job-a", now), receipt("job-b", now)
 	for _, r := range []Receipt{first, second} {
 		path, err := store.Register(t.Context(), r)
 		if err != nil {
@@ -52,25 +48,21 @@ func TestPoolChecksActualRegisteredJobsTogether(t *testing.T) {
 	}
 }
 
-func TestSingleTransitionsAfterMinuteAndContinuesBeyondTenMinutes(t *testing.T) {
+func TestWaitPoolsRegisteredJobsAndContinuesBeyondTenMinutes(t *testing.T) {
 	start := time.Unix(1_800_000_000, 0).UTC()
 	now := start
 	store := Store{Directory: t.TempDir()}
-	single, other := receipt("single", start, false), receipt("other", start, true)
+	single, other := receipt("single", start), receipt("other", start)
 	for _, r := range []Receipt{single, other} {
 		if _, err := store.Register(t.Context(), r); err != nil {
 			t.Fatal(err)
 		}
 	}
-	fast, pooled := 0, 0
+	rounds := 0
 	monitor := Monitor{Store: store, Now: func() time.Time { return now }, Sleep: func(_ context.Context, d time.Duration) error { now = now.Add(d); return nil }, Observe: func(_ context.Context, jobs []Receipt) []CheckResult {
-		if now.Sub(start) < time.Minute {
-			fast++
-			if len(jobs) != 1 || jobs[0].Observation.ID != "single" {
-				t.Fatal("single joined pool too early")
-			}
-		} else {
-			pooled++
+		rounds++
+		if len(jobs) != 2 {
+			t.Fatalf("round %d observed %d jobs, want both registered jobs pooled", rounds, len(jobs))
 		}
 		out := make([]CheckResult, len(jobs))
 		for i, job := range jobs {
@@ -83,15 +75,15 @@ func TestSingleTransitionsAfterMinuteAndContinuesBeyondTenMinutes(t *testing.T) 
 		return out
 	}}
 	got, err := monitor.Wait(t.Context(), single)
-	if err != nil || got.Observation.Status != "succeeded" || fast == 0 || pooled == 0 || now.Sub(start) < 11*time.Minute {
-		t.Fatalf("fast=%d pooled=%d duration=%s got=%+v err=%v", fast, pooled, now.Sub(start), got, err)
+	if err != nil || got.Observation.Status != "succeeded" || rounds == 0 || now.Sub(start) < 11*time.Minute {
+		t.Fatalf("rounds=%d duration=%s got=%+v err=%v", rounds, now.Sub(start), got, err)
 	}
 }
 
 func TestReadFailuresAndInterruptionNeverChangeRemoteJobToFailed(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	store := Store{Directory: t.TempDir()}
-	r := receipt("pending", now, true)
+	r := receipt("pending", now)
 	if _, err := store.Register(t.Context(), r); err != nil {
 		t.Fatal(err)
 	}

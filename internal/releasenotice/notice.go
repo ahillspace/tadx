@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/version"
-	"github.com/mattn/go-isatty"
 )
 
 const cadence = 24 * time.Hour
@@ -23,23 +22,19 @@ const requestTimeout = 1500 * time.Millisecond
 var stableVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 // Options holds the small set of inputs needed by the entrypoint. Optional
-// functions allow tests to run without a terminal, network, or user cache.
+// functions allow tests to run without a network or user cache.
 type Options struct {
-	Args       []string
-	Current    string
-	Modified   bool
-	Stdout     io.Writer
-	Stderr     io.Writer
-	IsTerminal func(io.Writer) bool
-	Env        func(string) string
-	CacheDir   func() (string, error)
-	Now        func() time.Time
-	Latest     func(context.Context) (version.Release, error)
+	Args     []string
+	Current  string
+	Modified bool
+	Env      func(string) string
+	CacheDir func() (string, error)
+	Now      func() time.Time
+	Latest   func(context.Context) (version.Release, error)
 }
 
 type record struct {
 	Checked time.Time `json:"checked"`
-	Noticed time.Time `json:"noticed,omitzero"`
 	Version string    `json:"version,omitempty"`
 	URL     string    `json:"url,omitempty"`
 }
@@ -110,8 +105,9 @@ func (check *Check) Done() <-chan struct{} {
 	return check.done
 }
 
-// Finish cancels unfinished work immediately and returns a notice only for a
-// successful command. The caller writes that notice to stderr.
+// Finish cancels unfinished work immediately and returns a notice for every
+// successful command while the cached release is newer. An unfinished or
+// failed refresh keeps the cached release. The caller writes the notice to stderr.
 func (check *Check) Finish(success bool) string {
 	if check == nil {
 		return ""
@@ -120,45 +116,27 @@ func (check *Check) Finish(success bool) string {
 		select {
 		case completed := <-check.results:
 			check.cancel()
-			if errors.Is(completed.err, context.Canceled) {
-				return ""
-			}
-			check.record = record{Checked: check.now(), Noticed: check.record.Noticed}
-			if completed.err == nil && validRelease(completed.release) {
-				check.record.Version = completed.release.Version
-				check.record.URL = completed.release.URL
-			}
-			if !writeRecord(check.path, check.record) {
-				return ""
+			if !errors.Is(completed.err, context.Canceled) {
+				check.record.Checked = check.now()
+				if completed.err == nil && validRelease(completed.release) {
+					check.record.Version = completed.release.Version
+					check.record.URL = completed.release.URL
+				}
+				_ = writeRecord(check.path, check.record)
 			}
 		default:
 			check.cancel()
-			return ""
 		}
 	}
 	if !success || !newerStable(check.options.Current, check.record.Version) ||
 		!validRelease(version.Release{Version: check.record.Version, URL: check.record.URL}) {
 		return ""
 	}
-	if elapsed := check.now().Sub(check.record.Noticed); elapsed >= 0 && elapsed < cadence {
-		return ""
-	}
-	check.record.Noticed = check.now()
-	if !writeRecord(check.path, check.record) {
-		return ""
-	}
-	return "A new TADX release is available: v" + check.record.Version + " (current: v" + check.options.Current + "). Run `tadx update` to install it.\n"
+	return "A new TADX release is available: v" + check.record.Version + " (current: v" + check.options.Current + "). Run `tadx update` to install it. Agents: ask the user before updating.\n"
 }
 
 func eligible(options Options) bool {
 	if options.Modified || !stableVersion.MatchString(options.Current) || len(options.Args) == 0 {
-		return false
-	}
-	terminal := options.IsTerminal
-	if terminal == nil {
-		terminal = interactiveTerminal
-	}
-	if !terminal(options.Stdout) || !terminal(options.Stderr) {
 		return false
 	}
 	env := options.Env
@@ -171,13 +149,12 @@ func eligible(options Options) bool {
 	command := ""
 	for index := 0; index < len(options.Args); index++ {
 		arg := options.Args[index]
-		if strings.HasPrefix(arg, "--help=") || (len(arg) > 2 && arg[0] == '-' && arg[1] != '-') {
+		// Shorthand -h requests help alone or in a cluster such as -fh.
+		if shorthand, _, _ := strings.Cut(arg, "="); len(shorthand) > 1 && shorthand[0] == '-' && shorthand[1] != '-' && strings.ContainsRune(shorthand, 'h') {
 			return false
 		}
-		if arg == "--help" || arg == "-h" || arg == "--json" || strings.HasPrefix(arg, "--json=") ||
+		if arg == "--help" || strings.HasPrefix(arg, "--help=") || arg == "--json" || strings.HasPrefix(arg, "--json=") ||
 			arg == "--jsn" || strings.HasPrefix(arg, "--jsn=") ||
-			arg == "--preview" || strings.HasPrefix(arg, "--preview=") ||
-			arg == "--pv" || strings.HasPrefix(arg, "--pv=") || arg == "-p" || strings.HasPrefix(arg, "-p=") ||
 			arg == "--cache" || strings.HasPrefix(arg, "--cache=") ||
 			arg == "--cch" || strings.HasPrefix(arg, "--cch=") {
 			return false
@@ -193,15 +170,6 @@ func eligible(options Options) bool {
 	return command != "" && command != "update" && command != "upd" && command != "completion" && command != "cmp" &&
 		command != "cache" && command != "cch" && command != "help" &&
 		!strings.HasPrefix(command, "__complete")
-}
-
-func interactiveTerminal(writer io.Writer) bool {
-	fdWriter, ok := writer.(interface{ Fd() uintptr })
-	if !ok {
-		return false
-	}
-	fd := fdWriter.Fd()
-	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
 }
 
 func newerStable(current, latest string) bool {

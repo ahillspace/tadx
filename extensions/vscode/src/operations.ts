@@ -229,7 +229,7 @@ export class Operations {
 function failureState(error: unknown, executing: boolean): ActivityEntry['state'] {
   if (!executing || !(error instanceof TadxError)) return 'failed';
   if (error.details?.outcome === 'unknown') return 'unknown';
-  if (error.details?.outcome === 'not_attempted') return 'failed';
+  if (error.details?.outcome === 'not_attempted' || error.details?.outcome === 'not_applied') return 'failed';
   if (['timeout', 'aborted', 'output_limit', 'contract'].includes(error.reason)) return 'unknown';
   if (error.document) {
     const state = operationState(error.document);

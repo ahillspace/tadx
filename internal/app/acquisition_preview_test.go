@@ -15,9 +15,11 @@ type workbookPreviewReader struct {
 	t *testing.T
 }
 
-func (r workbookPreviewReader) DownloadWorkbook(context.Context, string, *bool) (workbookops.Download, error) {
-	r.t.Fatal("preview downloaded workbook")
-	return workbookops.Download{}, nil
+func (r workbookPreviewReader) DownloadWorkbook(ctx context.Context, luid string, include *bool) (workbookops.Download, error) {
+	if include == nil || *include {
+		r.t.Fatal("preview downloaded workbook extracts")
+	}
+	return r.workbookDependencyPullReader.DownloadWorkbook(ctx, luid, include)
 }
 func (r workbookPreviewReader) DownloadPublishedDatasource(context.Context, string) (workbookops.DatasourceDownload, error) {
 	r.t.Fatal("preview downloaded dependency")

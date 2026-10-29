@@ -169,7 +169,12 @@ If an older configuration contains `catalog_max_concurrency`, rename that key to
 A workbook can reference independently published datasources, even when its file is a packaged `.twbx`.
 Before publishing, confirm those datasources exist at the destination and the workbook references identify them correctly.
 Publish missing referenced datasources first, then the workbook.
-Workbook publication does not publish dependencies automatically or rebind references to a different site.
+Workbook publication does not publish dependencies automatically.
+Tableau binds each reference by its datasource content URL on the destination site.
+Datasource publish reports the `content_url` Tableau assigned, and `renamed_from` when it differs from the URL recorded in the file, such as when Tableau adds a suffix because that URL was taken.
+Map a reference whose destination URL differs with `--datasource-binding <source name or content URL>=<target LUID>`; only the upload copy is rebound.
+A workbook preview lists each binding.
+When Tableau rejects a publish because a referenced datasource is missing, the error lists each missing reference and exact same-name candidates.
 Pulling with `--include-pds` saves direct datasource dependencies as separate artifacts; it does not make the workbook self-contained.
 
 ### Check mutation consent
@@ -330,13 +335,14 @@ Use repeated `--target` flags to choose specific agents, for example `tadx updat
 The platform installer also performs a combined CLI-and-Guidance installation.
 Release installation uses published binaries, not the current source branch.
 
-Released builds also check GitHub for a newer published release alongside eligible interactive commands.
-A completed check is cached for 24 hours, and a short notice appears on stderr after a successful command when an update is available.
+Released builds also check GitHub for a newer published release alongside eligible commands, including commands run by agents without a terminal.
+A completed check is cached for 24 hours.
+While the cached release is newer than the installed one, a short notice appears on stderr after every successful command and asks agents to check with the user before updating.
 The check does not install anything, use Tableau credentials, or send Tableau information.
 It has a short network timeout and does not wait for the network when your command finishes.
-An unfinished check can retry on a later command; check failures do not change command results.
+An unfinished or failed check keeps the cached release, and an unfinished check can retry on a later command; check failures do not change command results.
 
-Automatic checks are skipped in CI, when stdout or stderr is not a terminal, and for JSON output, help, completion, previews, updates, cache commands, and the local overview.
+Automatic checks are skipped in CI and for JSON output, help, completion, updates, cache commands, and the local overview.
 Commands using `--cache` also skip the check.
 Development builds do not show update notices.
 Set `TADX_NO_UPDATE_NOTIFIER=1` to disable automatic checks and notices.

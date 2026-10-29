@@ -43,7 +43,7 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 	var ids []string
 	var name, projectPath string
 	command := &cobra.Command{
-		Use: "pull", Short: "Pull unchanged native datasource artifacts sequentially.",
+		Use: "pull", Short: "Pull unchanged native datasource artifacts in parallel.",
 		Annotations: map[string]string{"tadx.capability": "datasource.pull"},
 		Args:        batchPullArgs("datasource.pull", &ids, &name, &projectPath, input.SetSelector),
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -58,7 +58,7 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative datasource LUID; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative datasource LUID; repeat for up to 100 items, processed in parallel")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name; requires --project instead of --id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path; required with --name")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local datasource artifact")
@@ -75,7 +75,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	var create, overwrite, appendMode, replace bool
 	var preview bool
 	command := &cobra.Command{
-		Use: "publish", Short: "Publish native datasource artifacts sequentially.",
+		Use: "publish", Short: "Publish native datasource artifacts in parallel.",
 		Annotations: map[string]string{"tadx.capability": "datasource.publish"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("datasource.publish")(command, args); err != nil {
@@ -121,7 +121,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("datasource", "Sales--identity")+"; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("datasource", "Sales--identity")+"; repeat for up to 100 items, processed in parallel")
 	command.Flags().StringVar(&input.File, "file", "", "native .tds or .tdsx file; no managed artifact required")
 	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source datasource LUID within the resolved workspace")
 	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed datasource name within the resolved workspace")

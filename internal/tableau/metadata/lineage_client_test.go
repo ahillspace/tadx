@@ -717,6 +717,11 @@ func scalarIDFilter(selections ast.SelectionSet) bool {
 	return false
 }
 
+type capturedGraphQLRequest struct {
+	Query     string         `json:"query"`
+	Variables map[string]any `json:"variables"`
+}
+
 func lineageTestServer(t *testing.T, responses []string) (*httptest.Server, *[]capturedGraphQLRequest) {
 	t.Helper()
 	schema, err := lineageFixtureSchema()

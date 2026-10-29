@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -16,10 +17,11 @@ import (
 // section; dropping the lock silently would weaken a stated safety invariant.
 const workspaceLockName = ".tadx.lock"
 
-// lockWorkspace acquires the advisory workspace lock for a single root. Callers
-// must Release the returned handle when the mutation completes.
-func lockWorkspace(workspace string) (*lock.Handle, error) {
-	handle, err := lock.Acquire(filepath.Join(workspace, workspaceLockName))
+// lockWorkspace waits for the advisory workspace lock for a single root until
+// ctx ends. Callers must Release the returned handle when the mutation
+// completes.
+func lockWorkspace(ctx context.Context, workspace string) (*lock.Handle, error) {
+	handle, err := lock.AcquireContext(ctx, filepath.Join(workspace, workspaceLockName))
 	if err != nil {
 		return nil, fmt.Errorf("acquire workspace lock: %w", err)
 	}
@@ -30,7 +32,7 @@ func lockWorkspace(workspace string) (*lock.Handle, error) {
 // deterministic (sorted) order so concurrent cross-workspace moves cannot
 // deadlock. Duplicate roots are locked once. The returned function releases
 // every acquired handle in reverse order and must always be called.
-func lockWorkspaces(workspaces ...string) (func(), error) {
+func lockWorkspaces(ctx context.Context, workspaces ...string) (func(), error) {
 	unique := make([]string, 0, len(workspaces))
 	seen := make(map[string]struct{}, len(workspaces))
 	for _, workspace := range workspaces {
@@ -50,7 +52,7 @@ func lockWorkspaces(workspaces ...string) (func(), error) {
 		}
 	}
 	for _, workspace := range unique {
-		handle, err := lockWorkspace(workspace)
+		handle, err := lockWorkspace(ctx, workspace)
 		if err != nil {
 			release()
 			return nil, err

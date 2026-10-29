@@ -140,7 +140,8 @@ The watchdog distinguishes sending a body, waiting for response headers, and rea
 `Transport.Do` performs one HTTP request without automatic retries.
 It rejects authenticated cleartext requests, cross-origin redirects, and HTTPS downgrade redirects.
 It attaches the session through `Session.Authorize`, adds a command correlation ID, and sanitizes request IDs and upstream diagnostics.
-It buffers request and response bodies; the shared response ceiling is 256 MiB, and callers can request smaller bounds.
+It buffers ordinary request bodies and response bodies; the shared response ceiling is 256 MiB, and callers can request smaller bounds.
+Multipart uploads instead stream from a fingerprint-verified snapshot copy of the artifact through [`MultipartBody`](../../internal/tableau/multipart.go), which buffers only part framing, sends an exact `Content-Length`, and can reopen the body when the HTTP client replays a request.
 These are implementation limits, not a promise that every command accepts content of that size.
 
 Transport errors expose retry advice, upstream status, request identity, and available `Retry-After` guidance.
@@ -183,10 +184,9 @@ It saves compact and expanded results, bounded batch progress, and accepted rece
 Downloads retain local operation identity without inventing Tableau job IDs.
 Windows launches a hidden detached process; Unix launches a new session through the platform implementations of [`operationrun.Launch`](../../internal/operationrun/launch.go).
 
-[`runtimeDependencies.publication`](../../internal/app/publication.go) prepares publication recovery independently of submitting a write.
-Workbook and datasource publishing use optional asynchronous job monitoring only when the necessary administrative role inspection is available.
-Unavailable monitoring prerequisites preserve synchronous publication, and flow publication stays synchronous.
-`publication.accepted` saves an accepted identity before monitoring; `publication.record` preserves publication results when local receipt persistence fails.
+[`runtimeDependencies.publication`](../../internal/app/publication.go) prepares a publication receipt independently of submitting a write.
+Workbook, datasource, and flow publishing are synchronous: TADX never requests a Tableau job, and the publish response carries the resulting identity.
+`publication.record` saves that result and preserves it when local receipt persistence fails.
 Local storage failure must not trigger resubmission to recover a receipt.
 
 [`Monitor.Wait`](../../internal/jobmonitor/monitor.go) observes accepted identities and never submits or cancels remote work.
@@ -214,7 +214,8 @@ Clients must distinguish a failed inspection from an inspected operation that fa
 
 [`errs.Error`](../../internal/errs/errs.go) separates failure kind from operation phase and known mutation outcome.
 Phases identify validation, setup, submission, verification, or persistence.
-Outcomes distinguish `not_attempted`, `confirmed`, and `unknown`.
+Outcomes distinguish `not_attempted`, `not_applied`, `confirmed`, and `unknown`.
+`not_applied` means Tableau received the request and definitively rejected it without applying a change.
 The error can preserve confirmed completed items, a failed item, missing prerequisites, upstream details, and accepted job identity.
 `ExitCode` returns zero for success, two for usage errors, and one for other failures.
 
@@ -244,7 +245,7 @@ The following files help locate representative changes and existing regression c
 | PAT reuse or monitor admission | [`CommandSessions`](../../internal/auth/command_sessions.go) | [`command_sessions_cross_site_test.go`](../../internal/auth/command_sessions_cross_site_test.go), [`command_sessions_priority_test.go`](../../internal/auth/command_sessions_priority_test.go). |
 | HTTP timing, redaction, or redirects | [`Transport.Do`](../../internal/tableau/transport.go), [`NegotiateAPIVersion`](../../internal/tableau/version.go) | [`transport_test.go`](../../internal/tableau/transport_test.go), [`version_test.go`](../../internal/tableau/version_test.go). |
 | Detached execution or receipt recovery | [`publication_worker.go`](../../internal/app/publication_worker.go), [`publication_status.go`](../../internal/app/publication_status.go), [`operationrun.Store`](../../internal/operationrun/store.go) | [`publication_worker_e2e_test.go`](../../internal/app/publication_worker_e2e_test.go), [`publication_interrupted_e2e_test.go`](../../internal/app/publication_interrupted_e2e_test.go), [`store_test.go`](../../internal/operationrun/store_test.go). |
-| Observation limits or job pooling | [`Monitor`](../../internal/jobmonitor/monitor.go), [`publication.wait`](../../internal/app/publication.go) | [`monitor_test.go`](../../internal/jobmonitor/monitor_test.go), [`foreground_test.go`](../../internal/jobmonitor/foreground_test.go). |
+| Observation limits or job pooling | [`Monitor`](../../internal/jobmonitor/monitor.go) | [`monitor_test.go`](../../internal/jobmonitor/monitor_test.go), [`foreground_test.go`](../../internal/jobmonitor/foreground_test.go). |
 | Output projection or error recovery | [`RenderWithOptions`](../../internal/output/output.go), [`errs.Structure`](../../internal/errs/errs.go) | [`partial_test.go`](../../internal/output/partial_test.go), [`snapshot_test.go`](../../internal/output/snapshot_test.go), [`errs_test.go`](../../internal/errs/errs_test.go). |
 
 For changes within these shared boundaries, this focused command runs local regression coverage without intentionally enabling live Tableau tests:

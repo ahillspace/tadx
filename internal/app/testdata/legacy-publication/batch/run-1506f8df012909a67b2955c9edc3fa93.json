@@ -1,0 +1,304 @@
+{
+  "id": "run-1506f8df012909a67b2955c9edc3fa93",
+  "version": 17,
+  "operation": "workbook.publish",
+  "requested_at": "2026-10-29T10:12:48.891041Z",
+  "started_at": "2026-10-29T10:12:48.896408Z",
+  "finished_at": "2026-10-29T10:12:49.079295Z",
+  "phase": "remote_pending",
+  "worker_pid": 5968,
+  "activity": "Publishing workbook: 0 completed, 1 pending, 1 failed",
+  "request": {
+    "args": [
+      "content",
+      "workbook",
+      "publish",
+      "--workspace",
+      "analytics",
+      "--environment",
+      "production",
+      "--project-id",
+      "project-1",
+      "--id",
+      "source-a",
+      "--id",
+      "source-b",
+      "--overwrite",
+      "--no-wait",
+      "--json"
+    ],
+    "config_path": "{{CONFIG_PATH}}",
+    "working_directory": "{{WORKING_DIRECTORY}}",
+    "operation": "workbook.publish",
+    "no_wait": true
+  },
+  "compact_result": {
+    "failed": 1,
+    "help": [
+      "Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."
+    ],
+    "items": [
+      {
+        "error": {
+          "corrective_action": "Review the upstream error before publishing again. Run tadx --config {{CONFIG_PATH}} content workbook inspect --name First --project Analytics --environment production.",
+          "environment": "production",
+          "id": "workbook.publish.failed",
+          "kind": "operation",
+          "operation": "workbook.publish",
+          "outcome": "unknown",
+          "phase": "submission",
+          "recovery": "Inspect the exact target and request outcome before attempting another mutation.",
+          "retryable": false,
+          "site": "team-site",
+          "summary": "Workbook publish failed.",
+          "upstream_cause": "Tableau request failed with HTTP 400: code 400000: forced submission failure: first item rejected",
+          "upstream_code": "400000",
+          "upstream_detail": "first item rejected",
+          "upstream_status": 400,
+          "upstream_summary": "forced submission failure"
+        },
+        "result": {
+          "details": "--full",
+          "help": [],
+          "plan": {
+            "artifact_path": "artifacts/workbook/First--5c188cecee6aded26d70d13313477498b7b9736b0f962a8a4922cae873da6b20",
+            "filename": "First.twb",
+            "kind": "workbook",
+            "mode": "execute",
+            "operation": "workbook.publish",
+            "overwrite": true,
+            "source_kind": "managed_artifact",
+            "source_luid": "source-a",
+            "target": {
+              "environment": "production",
+              "origin": "explicit",
+              "project_luid": "project-1",
+              "project_path": "Analytics",
+              "site": "team-site"
+            },
+            "workbook_name": "First",
+            "workspace": "analytics"
+          }
+        },
+        "selector": "id=source-a",
+        "status": "failed"
+      },
+      {
+        "result": {
+          "artifact_path": "artifacts/workbook/Second--ddd007fc553b3569970701fda9164b9a874a5b210790b402a19a6a529b5dcadd",
+          "details": "--full",
+          "environment": "production",
+          "help": [],
+          "kind": "workbook",
+          "operation": "workbook.publish",
+          "project_path": "Analytics",
+          "result": {
+            "receipt_path": "{{JOB_DIRECTORY}}/2f8b0cb83254385af9960a033e4be9bc4734c92ce00c49530502b9b3bdff5a31.json",
+            "status": "pending",
+            "tableau_job_id": "job-batch"
+          },
+          "site": "team-site",
+          "status": "pending",
+          "workspace": "analytics"
+        },
+        "selector": "id=source-b",
+        "status": "pending"
+      }
+    ],
+    "operation": "workbook.publish",
+    "pending": 1,
+    "skipped": 0,
+    "status": "partial_failure",
+    "succeeded": 0,
+    "total": 2
+  },
+  "full_result": {
+    "failed": 1,
+    "help": [
+      "Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."
+    ],
+    "items": [
+      {
+        "error": {
+          "corrective_action": "Review the upstream error before publishing again. Run tadx --config {{CONFIG_PATH}} content workbook inspect --name First --project Analytics --environment production.",
+          "environment": "production",
+          "id": "workbook.publish.failed",
+          "kind": "operation",
+          "operation": "workbook.publish",
+          "outcome": "unknown",
+          "phase": "submission",
+          "recovery": "Inspect the exact target and request outcome before attempting another mutation.",
+          "retryable": false,
+          "site": "team-site",
+          "summary": "Workbook publish failed.",
+          "upstream_cause": "Tableau request failed with HTTP 400: code 400000: forced submission failure: first item rejected",
+          "upstream_code": "400000",
+          "upstream_detail": "first item rejected",
+          "upstream_status": 400,
+          "upstream_summary": "forced submission failure"
+        },
+        "result": {
+          "help": [],
+          "plan": {
+            "artifact_fingerprint": "sha256:68abb01001b25a4356944675b979f2eabe8e62c0f302864de5b2efedaf0d1034",
+            "artifact_path": "artifacts/workbook/First--5c188cecee6aded26d70d13313477498b7b9736b0f962a8a4922cae873da6b20",
+            "filename": "First.twb",
+            "kind": "workbook",
+            "mode": "execute",
+            "operation": "workbook.publish",
+            "overwrite": true,
+            "source_kind": "managed_artifact",
+            "source_luid": "source-a",
+            "substeps": [
+              "resolve exact destination",
+              "check workbook collision",
+              "upload workbook",
+              "publish workbook",
+              "automatically monitor accepted jobs and confirm destination"
+            ],
+            "target": {
+              "environment": "production",
+              "origin": "explicit",
+              "project_luid": "project-1",
+              "project_path": "Analytics",
+              "site": "team-site"
+            },
+            "workbook_name": "First",
+            "workspace": "analytics"
+          }
+        },
+        "selector": "id=source-a",
+        "status": "failed"
+      },
+      {
+        "result": {
+          "help": [],
+          "plan": {
+            "artifact_fingerprint": "sha256:68abb01001b25a4356944675b979f2eabe8e62c0f302864de5b2efedaf0d1034",
+            "artifact_path": "artifacts/workbook/Second--ddd007fc553b3569970701fda9164b9a874a5b210790b402a19a6a529b5dcadd",
+            "filename": "Second.twb",
+            "kind": "workbook",
+            "mode": "execute",
+            "operation": "workbook.publish",
+            "overwrite": true,
+            "source_kind": "managed_artifact",
+            "source_luid": "source-b",
+            "substeps": [
+              "resolve exact destination",
+              "check workbook collision",
+              "upload workbook",
+              "publish workbook",
+              "automatically monitor accepted jobs and confirm destination"
+            ],
+            "target": {
+              "environment": "production",
+              "origin": "explicit",
+              "project_luid": "project-1",
+              "project_path": "Analytics",
+              "site": "team-site"
+            },
+            "workbook_name": "Second",
+            "workspace": "analytics"
+          },
+          "result": {
+            "receipt_path": "{{JOB_DIRECTORY}}/2f8b0cb83254385af9960a033e4be9bc4734c92ce00c49530502b9b3bdff5a31.json",
+            "status": "pending",
+            "tableau_job_id": "job-batch"
+          }
+        },
+        "selector": "id=source-b",
+        "status": "pending"
+      }
+    ],
+    "operation": "workbook.publish",
+    "pending": 1,
+    "skipped": 0,
+    "status": "partial_failure",
+    "succeeded": 0,
+    "total": 2
+  },
+  "exit_code": 1,
+  "live_results": {
+    "failed": 1,
+    "help": [
+      "Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."
+    ],
+    "items": [
+      {
+        "error": {
+          "corrective_action": "Review the upstream error before publishing again. Run tadx --config {{CONFIG_PATH}} content workbook inspect --name First --project Analytics --environment production.",
+          "environment": "production",
+          "id": "workbook.publish.failed",
+          "kind": "operation",
+          "operation": "workbook.publish",
+          "outcome": "unknown",
+          "phase": "submission",
+          "recovery": "Inspect the exact target and request outcome before attempting another mutation.",
+          "retryable": false,
+          "site": "team-site",
+          "summary": "Workbook publish failed.",
+          "upstream_cause": "Tableau request failed with HTTP 400: code 400000: forced submission failure: first item rejected",
+          "upstream_code": "400000",
+          "upstream_detail": "first item rejected",
+          "upstream_status": 400,
+          "upstream_summary": "forced submission failure"
+        },
+        "result": {
+          "details": "--full",
+          "help": [],
+          "plan": {
+            "artifact_path": "artifacts/workbook/First--5c188cecee6aded26d70d13313477498b7b9736b0f962a8a4922cae873da6b20",
+            "filename": "First.twb",
+            "kind": "workbook",
+            "mode": "execute",
+            "operation": "workbook.publish",
+            "overwrite": true,
+            "source_kind": "managed_artifact",
+            "source_luid": "source-a",
+            "target": {
+              "environment": "production",
+              "origin": "explicit",
+              "project_luid": "project-1",
+              "project_path": "Analytics",
+              "site": "team-site"
+            },
+            "workbook_name": "First",
+            "workspace": "analytics"
+          }
+        },
+        "selector": "1",
+        "status": "failed"
+      },
+      {
+        "result": {
+          "artifact_path": "artifacts/workbook/Second--ddd007fc553b3569970701fda9164b9a874a5b210790b402a19a6a529b5dcadd",
+          "details": "--full",
+          "environment": "production",
+          "help": [],
+          "kind": "workbook",
+          "operation": "workbook.publish",
+          "project_path": "Analytics",
+          "result": {
+            "receipt_path": "{{JOB_DIRECTORY}}/2f8b0cb83254385af9960a033e4be9bc4734c92ce00c49530502b9b3bdff5a31.json",
+            "status": "pending",
+            "tableau_job_id": "job-batch"
+          },
+          "site": "team-site",
+          "status": "pending",
+          "workspace": "analytics"
+        },
+        "selector": "2",
+        "status": "pending"
+      }
+    ],
+    "operation": "workbook.publish",
+    "pending": 1,
+    "skipped": 0,
+    "status": "partial_failure",
+    "succeeded": 0,
+    "total": 2
+  },
+  "receipt_paths": [
+    "{{JOB_DIRECTORY}}/2f8b0cb83254385af9960a033e4be9bc4734c92ce00c49530502b9b3bdff5a31.json"
+  ]
+}

@@ -30,7 +30,7 @@ func (workbookDependencyPullReader) CaptureWorkbookLineage(context.Context, work
 	}, nil
 }
 
-func (workbookDependencyPullReader) PublishedDatasources(context.Context, string) ([]workbookops.PublishedDatasource, error) {
+func (workbookDependencyPullReader) PublishedDatasources(context.Context, workbookops.Download) ([]workbookops.PublishedDatasource, error) {
 	return []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales"}}, nil
 }
 
@@ -49,10 +49,6 @@ func (datasourcePublishPreviewDependency) ResolveProject(context.Context, identi
 
 func (datasourcePublishPreviewDependency) FindDatasources(context.Context, string, string) ([]datasourceops.Record, error) {
 	return nil, nil
-}
-
-func (datasourcePublishPreviewDependency) ResolvePublishedDatasource(context.Context, string, string) (datasourceops.Record, error) {
-	return datasourceops.Record{}, nil
 }
 
 func (datasourcePublishPreviewDependency) Prepare(context.Context, datasourceops.PublishRequest) (datasourceops.PreparedPublish, error) {

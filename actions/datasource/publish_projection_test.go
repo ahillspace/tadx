@@ -14,11 +14,11 @@ func TestPublishCompactExecutionProjectionKeepsOutcomeContextWithoutPlan(t *test
 			ArtifactPath: "artifacts/datasource/Sales--id",
 			Target:       datasourceops.PublishTarget{Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops"},
 		},
-		Result: &datasourceops.PublishResult{Status: "pending", DatasourceLUID: "ds-1", DatasourceName: "Sales", ProjectLUID: "project-1", JobID: "job-1", ReceiptPath: "jobs/job-1.json", Verification: "accepted"},
+		Result: &datasourceops.PublishResult{Status: "succeeded", DatasourceLUID: "ds-1", DatasourceName: "Sales", ProjectLUID: "project-1", ReceiptPath: "jobs/receipt-1.json", Verification: "confirmed"},
 	}
 
 	compact := value.CompactOutput().(datasourceops.PublishCompactResult)
-	if compact.Plan != nil || compact.Status != "pending" || compact.Environment != "production" || compact.Site != "marketing" || compact.ProjectPath != "Ops" || compact.Workspace != "analytics" || compact.ArtifactPath == "" {
+	if compact.Plan != nil || compact.Status != "succeeded" || compact.Environment != "production" || compact.Site != "marketing" || compact.ProjectPath != "Ops" || compact.Workspace != "analytics" || compact.ArtifactPath == "" {
 		t.Fatalf("compact execution context = %#v", compact)
 	}
 	if compact.Result == nil || compact.Result.DatasourceLUID != "ds-1" || compact.Result.DatasourceName != "Sales" || compact.Result.ProjectLUID != "project-1" || compact.Result.ReceiptPath == "" {

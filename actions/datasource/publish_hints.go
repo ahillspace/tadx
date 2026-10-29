@@ -7,9 +7,6 @@ func publishPublishInspectionHint(plan PublishPlan, result PublishResult) string
 	if id != "" {
 		return commandhint.Environment(plan.Target.Environment, "content", "datasource", "inspect", "--id", id)
 	}
-	if result.JobID != "" {
-		return commandhint.Environment(plan.Target.Environment, "job", "inspect", "--id", result.JobID)
-	}
 	if plan.Target.ExistingLUID != "" {
 		return commandhint.Environment(plan.Target.Environment, "content", "datasource", "inspect", "--id", plan.Target.ExistingLUID)
 	}

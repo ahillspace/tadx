@@ -99,7 +99,7 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 	for _, selector := range options.Selectors {
 		if flag := command.Flags().Lookup(selector); flag != nil && flag.Value.Type() == "string" {
 			flag.Value = &repeatedSelector{Value: flag.Value}
-			flag.Usage += "; repeat for a sequential batch"
+			flag.Usage += "; repeat for a parallel batch"
 		}
 	}
 	if command.Annotations == nil {

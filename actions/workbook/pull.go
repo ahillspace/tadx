@@ -22,7 +22,9 @@ type PullReader interface {
 	Resolver
 	DownloadWorkbook(context.Context, string, *bool) (Download, error)
 	CaptureWorkbookLineage(context.Context, LineageRequest) (LineageCapture, error)
-	PublishedDatasources(context.Context, string) ([]PublishedDatasource, error)
+	// PublishedDatasources resolves the published datasources the downloaded
+	// workbook file references, returning each once with its authoritative LUID.
+	PublishedDatasources(context.Context, Download) ([]PublishedDatasource, error)
 	DownloadPublishedDatasource(context.Context, string) (DatasourceDownload, error)
 }
 
@@ -52,13 +54,17 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 	if input.Preview {
 		var references []PublishedDatasource
 		if input.IncludePDS {
-			references, err = reader.PublishedDatasources(ctx, workbook.LUID)
-			if err == nil {
-				references, err = pullNormalizePublishedDatasources(references)
-			}
+			// Detection reads the workbook file, so the preview downloads it
+			// without extracts and writes nothing.
+			download, err := reader.DownloadWorkbook(ctx, workbook.LUID, new(false))
 			if err != nil {
-				return PullOutput{}, &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: err, Retryable: new(false), CorrectiveAction: "Wait for complete Tableau metadata visibility, then retry."}
+				return PullOutput{}, pullDownloadError(workbook, input, download, err)
 			}
+			references, err = reader.PublishedDatasources(ctx, download)
+			if err != nil {
+				return PullOutput{}, pullReferencesError(workbook, input, err)
+			}
+			sort.Slice(references, func(left, right int) bool { return references[left].LUID < references[right].LUID })
 		}
 		previewer, ok := writer.(interface {
 			PreviewWorkbook(context.Context, PullInput, Record, []PublishedDatasource) (value.AcquisitionPlan, error)
@@ -74,31 +80,21 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 	}
 	download, err := reader.DownloadWorkbook(ctx, workbook.LUID, input.IncludeExtract)
 	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review workbook access and the exact target, then retry.")
-		requestID := download.TableauRequestID
-		if requestID == "" {
-			requestID = errs.TableauRequestID(err)
-		}
-		return PullOutput{}, &errs.Error{ID: "workbook.pull.download", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook download failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: requestID}
+		return PullOutput{}, pullDownloadError(workbook, input, download, err)
 	}
 	lineage, lineageCountsKnown, lineageStatus, lineageWarnings := pullCaptureAutomaticLineage(ctx, reader, workbook.LUID)
-	references, detectionErr := reader.PublishedDatasources(ctx, workbook.LUID)
+	references, detectionErr := reader.PublishedDatasources(ctx, download)
 	warnings := append([]string(nil), lineageWarnings...)
 	compactWarnings := make([]string, 0)
 	portability := "unknown"
 	if detectionErr != nil {
 		if input.IncludePDS {
-			retryable, correctiveAction := errs.CompleteRetryAdvice(detectionErr, "Wait for complete Tableau metadata visibility, then retry.")
-			return PullOutput{}, &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: detectionErr, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(detectionErr)}
+			return PullOutput{}, pullReferencesError(workbook, input, detectionErr)
 		}
-		warnings = append(warnings, "Published datasource detection was incomplete; workbook portability remains unknown. Retry after Tableau metadata refreshes.")
+		warnings = append(warnings, "Published datasource detection was incomplete; workbook portability remains unknown. "+pullReferencesAdvice)
 		references = nil
 	} else {
-		references, err = pullNormalizePublishedDatasources(references)
-		if err != nil {
-			retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Wait for complete Tableau metadata visibility, then retry.")
-			return PullOutput{}, &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection returned invalid identities.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
-		}
+		sort.Slice(references, func(left, right int) bool { return references[left].LUID < references[right].LUID })
 		portability = "portable"
 		if len(references) > 0 {
 			portability = "source-site-bound"
@@ -107,7 +103,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 
 	provenance := make([]PublishedDatasourceRef, len(references))
 	for index, reference := range references {
-		provenance[index] = PublishedDatasourceRef{LUID: reference.LUID, Name: reference.Name, SourceSite: input.Site}
+		provenance[index] = PublishedDatasourceRef{LUID: reference.LUID, Name: reference.Name, ContentURL: reference.ContentURL, SourceSite: input.Site}
 	}
 	var datasourceArtifacts []DatasourceArtifact
 	if input.IncludePDS {
@@ -369,31 +365,20 @@ func pullInvalidBundleResult(workbook Record, input PullInput, cause error) erro
 	return &errs.Error{ID: "workbook.pull.write", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact transaction returned an invalid result.", Cause: cause, Retryable: new(false), CorrectiveAction: "Inspect the local workspace and retry the complete workbook pull."}
 }
 
-func pullNormalizePublishedDatasources(input []PublishedDatasource) ([]PublishedDatasource, error) {
-	byLUID := make(map[string]PublishedDatasource, len(input))
-	for _, item := range input {
-		item.LUID = strings.TrimSpace(item.LUID)
-		item.Name = strings.TrimSpace(item.Name)
-		if item.LUID == "" {
-			return nil, errors.New("published datasource reference requires an authoritative LUID")
-		}
-		if existing, ok := byLUID[item.LUID]; ok {
-			if existing.Name != "" && item.Name != "" && existing.Name != item.Name {
-				return nil, fmt.Errorf("published datasource %q returned conflicting names %q and %q", item.LUID, existing.Name, item.Name)
-			}
-			if existing.Name == "" {
-				byLUID[item.LUID] = item
-			}
-			continue
-		}
-		byLUID[item.LUID] = item
+const pullReferencesAdvice = "Verify access to the published datasources the workbook references, then retry."
+
+func pullDownloadError(workbook Record, input PullInput, download Download, err error) error {
+	retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review workbook access and the exact target, then retry.")
+	requestID := download.TableauRequestID
+	if requestID == "" {
+		requestID = errs.TableauRequestID(err)
 	}
-	result := make([]PublishedDatasource, 0, len(byLUID))
-	for _, item := range byLUID {
-		result = append(result, item)
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].LUID < result[right].LUID })
-	return result, nil
+	return &errs.Error{ID: "workbook.pull.download", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook download failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: requestID}
+}
+
+func pullReferencesError(workbook Record, input PullInput, err error) error {
+	retryable, correctiveAction := errs.CompleteRetryAdvice(err, pullReferencesAdvice)
+	return &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 }
 
 // ValidatePullInput checks caller-controlled arguments before dependency setup.

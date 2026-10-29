@@ -11,7 +11,6 @@ result:
   workbook_luid: wb-new
   workbook_name: Finance
   project_luid: project-1
-  tableau_job_id: job-1
   validation_warnings_omitted: 1
 details: "--full"
 help[1]: tadx search --type workbook --environment <alias> to confirm the published workbook.

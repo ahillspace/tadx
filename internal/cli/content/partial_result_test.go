@@ -35,7 +35,7 @@ func TestPublishPreviewDisplaysConsequentialWarningWithoutFull(t *testing.T) {
 func (p partialPublisher) Execute(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
 	result := &workbookops.PublishResult{Status: "created", WorkbookLUID: "created-workbook", TableauRequestID: "readback-request"}
 	if p.unknown {
-		result = &workbookops.PublishResult{Status: "unknown", JobID: "accepted-job"}
+		result = &workbookops.PublishResult{Status: "unknown"}
 	}
 	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: input.ArtifactPath}, Result: result},
 		&errs.Error{ID: "workbook.publish.verify", Kind: errs.KindOperation, Summary: "Verification failed.", Retryable: errs.Bool(false)}
@@ -74,7 +74,7 @@ func TestPublishCLIRespectsPartialAndUnknownResultsThroughSingleAndBatchRenderin
 				text := rendered.String()
 				identity := "created-workbook"
 				if unknown {
-					identity = "accepted-job"
+					identity = "unknown"
 				}
 				if !strings.Contains(text, identity) || !strings.Contains(text, "Verification failed.") {
 					t.Fatalf("batch=%t full=%t unknown=%t lost known outcome: %s", batch, full, unknown, text)

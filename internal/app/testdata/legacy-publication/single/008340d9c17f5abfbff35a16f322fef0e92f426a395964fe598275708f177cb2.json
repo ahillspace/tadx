@@ -1,0 +1,23 @@
+{
+  "receipt_id": "55QBX7GKEGIWKMFLQPKHUIAKE7",
+  "version": 1,
+  "operation": "workbook.publish",
+  "environment": "production",
+  "server": "{{SERVER}}",
+  "site": "team-site",
+  "site_id": "site-1",
+  "config_path": "{{CONFIG_PATH}}",
+  "source_path": "{{SOURCE_PATH}}",
+  "project_id": "project-1",
+  "name": "Sales",
+  "coordination_key": "f62bd9ce623d0a5b07a40a8f2de06840aaaa074ac0c9597b00d635cf0b352d02",
+  "accepted_at": "2026-10-29T10:12:48.637336Z",
+  "pool_after": "2026-10-29T10:13:48.637336Z",
+  "observation": {
+    "id": "job-recovery",
+    "type": "PublishWorkbook",
+    "status": "pending"
+  },
+  "manual_only": true,
+  "wait_until": "2026-10-29T10:32:48.567518Z"
+}

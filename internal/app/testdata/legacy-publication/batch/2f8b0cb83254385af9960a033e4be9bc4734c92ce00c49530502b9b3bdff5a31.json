@@ -1,0 +1,23 @@
+{
+  "receipt_id": "EJU35VMVFZW2DLP26VT7IEDZXX",
+  "version": 1,
+  "operation": "workbook.publish",
+  "environment": "production",
+  "server": "{{SERVER}}",
+  "site": "team-site",
+  "site_id": "site-1",
+  "config_path": "{{CONFIG_PATH}}",
+  "source_path": "artifacts/workbook/Second--ddd007fc553b3569970701fda9164b9a874a5b210790b402a19a6a529b5dcadd",
+  "project_id": "project-1",
+  "name": "Second",
+  "coordination_key": "10d2802debf29a644bf760d8f8ffefdeee4cf25f64f3d410151a082661f0b08b",
+  "accepted_at": "2026-10-29T10:12:49.055154Z",
+  "pool_after": "2026-10-29T10:12:49.055154Z",
+  "observation": {
+    "id": "job-batch",
+    "type": "PublishWorkbook",
+    "status": "pending"
+  },
+  "manual_only": true,
+  "wait_until": "2026-10-29T10:32:48.891041Z"
+}
