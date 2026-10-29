@@ -21,12 +21,16 @@ import (
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type pathTestSession struct{}
 
-func (pathTestSession) Authorize(*http.Request) {}
-func (pathTestSession) SiteLUID() string        { return "site-1" }
-func (pathTestSession) UserLUID() string        { return "user-1" }
-func (pathTestSession) String() string          { return "[redacted session]" }
+func (pathTestSession) Authorize(*http.Request)                  {}
+func (pathTestSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (pathTestSession) SiteLUID() string                         { return "site-1" }
+func (pathTestSession) UserLUID() string                         { return "user-1" }
+func (pathTestSession) String() string                           { return "[redacted session]" }
 
 func TestContentResolutionWithLiteralSlashProjectNames(t *testing.T) {
 	for _, target := range []struct{ luid, path string }{{"safe", "Shared"}, {"literal", "Ops/Reports"}, {"nested", "Ops/Reports"}} {

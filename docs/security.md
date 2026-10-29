@@ -39,7 +39,10 @@ A configured PAT environment-variable pair avoids a persistent credential store 
 Environment variables do not add isolation, because same-user processes can often read another process's environment, so supply the pair only to the processes that need it.
 To remove a stored PAT, run `tadx auth logout` for the environment, then revoke the PAT in Tableau if another program might have read it.
 
-Session tokens and credential reuse are scoped to a command's in-memory session state.
+A Tableau session signed in with a stored PAT is saved beside that PAT in the native OS credential store, so later commands reuse it instead of signing in again.
+Any process that can read that entry can already read the PAT that mints the session, so saving it adds no new class of exposure.
+A saved session is reused only for the same server, exact site, and PAT, and replacing or removing the PAT with `tadx auth login` or `tadx auth logout` removes it.
+Sessions from environment-variable PATs stay in the command's memory and are never saved.
 TADX redacts PATs and session tokens from its controlled configuration, ordinary output, and diagnostics.
 This does not control terminal recording, process memory inspection, operating-system backups, or third-party agent behavior.
 

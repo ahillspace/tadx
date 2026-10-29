@@ -125,8 +125,8 @@ func TestCommandSessionCrossSiteMonitorReauthenticatesAfterSharedPATSignIn(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumed == first {
-		t.Fatalf("monitor resumed invalidated site-a session after %d sign-ins", signer.callCount())
+	if resumed != first {
+		t.Fatalf("monitor replaced the site-a session instead of renewing it in place after %d sign-ins", signer.callCount())
 	}
 	if got := crossSiteRequestStatus(t, server.Client(), server.URL, resumed); got != http.StatusNoContent {
 		t.Fatalf("resumed session status=%d, want %d", got, http.StatusNoContent)

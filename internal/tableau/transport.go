@@ -329,27 +329,51 @@ func (t *Transport) SetStallTimeout(timeout time.Duration) {
 	t.stallTimeout = timeout
 }
 
-// Do performs one request without automatic retries.
+// Do performs one request. When Tableau rejects the request's session, the
+// session signs in again and the same request is sent once more: Tableau
+// rejects the session before it processes the request, so the rejected
+// attempt changed nothing. No other failure is retried.
 func (t *Transport) Do(ctx context.Context, session auth.Session, input Request) (Response, error) {
+	response, sent, err := t.send(ctx, session, input)
+	if session == nil || !sessionRejected(err) {
+		return response, err
+	}
+	if renewErr := session.Renew(ctx, sent); renewErr != nil {
+		return Response{}, fmt.Errorf("%w; signing in again failed: %w", err, renewErr)
+	}
+	response, _, err = t.send(ctx, session, input)
+	return response, err
+}
+
+// sessionRejected reports Tableau refusing a request's session token: HTTP
+// 401 with REST code 401002, or with no code from the Metadata, search, and
+// Pulse APIs, which return none. Other 401 codes are sign-in failures.
+func sessionRejected(err error) bool {
+	upstream, ok := errors.AsType[*UpstreamError](err)
+	return ok && upstream.StatusCode == http.StatusUnauthorized && (upstream.Code == "" || upstream.Code == "401002")
+}
+
+// send performs one HTTP request and returns the request headers it sent.
+func (t *Transport) send(ctx context.Context, session auth.Session, input Request) (Response, http.Header, error) {
 	if t == nil || t.client == nil {
-		return Response{}, errors.New("Tableau transport is not configured")
+		return Response{}, nil, errors.New("Tableau transport is not configured")
 	}
 	maxResponseBytes, err := responseLimit(input.MaxResponseBytes)
 	if err != nil {
-		return Response{}, err
+		return Response{}, nil, err
 	}
 	base, err := url.Parse(strings.TrimRight(input.ServerURL, "/"))
 	if err != nil || base.Scheme == "" || base.Host == "" {
-		return Response{}, fmt.Errorf("invalid Tableau server URL %q", input.ServerURL)
+		return Response{}, nil, fmt.Errorf("invalid Tableau server URL %q", input.ServerURL)
 	}
 	// Never attach a session credential over cleartext. This mirrors the sign-in
 	// HTTPS check so the X-Tableau-Auth token can't be sent in the clear.
 	if session != nil && !strings.EqualFold(base.Scheme, "https") {
-		return Response{}, fmt.Errorf("refusing to send Tableau session credentials to non-HTTPS server URL %q", input.ServerURL)
+		return Response{}, nil, fmt.Errorf("refusing to send Tableau session credentials to non-HTTPS server URL %q", input.ServerURL)
 	}
 	path, err := url.Parse(input.Path)
 	if err != nil {
-		return Response{}, fmt.Errorf("invalid Tableau request path: %w", err)
+		return Response{}, nil, fmt.Errorf("invalid Tableau request path: %w", err)
 	}
 	basePath := strings.TrimRight(base.Path, "/")
 	baseEscaped := strings.TrimRight(base.EscapedPath(), "/")
@@ -364,7 +388,7 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	defer cancel(nil)
 	request, err := http.NewRequestWithContext(requestCtx, input.Method, base.String(), bytes.NewReader(input.Body))
 	if err != nil {
-		return Response{}, fmt.Errorf("create Tableau request: %w", err)
+		return Response{}, nil, fmt.Errorf("create Tableau request: %w", err)
 	}
 	contentType := input.ContentType
 	if input.Multipart != nil {
@@ -416,7 +440,7 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 			err = stall
 		}
 		retryable, correctiveAction := requestAdvice(ctx, input.Method, input.Operation, err)
-		return Response{}, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+		return Response{}, request.Header, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	defer response.Body.Close()
 	watchdog.enter(stallReadingResponse)
@@ -427,10 +451,10 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 			err = stall
 		}
 		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
-		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	if int64(len(body)) > maxResponseBytes {
-		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Reduce the response size or use a bounded streaming workflow."}
+		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Reduce the response size or use a bounded streaming workflow."}
 	}
 	redactionSecrets := append([]string(nil), effectiveSecrets...)
 	result := Response{
@@ -438,11 +462,11 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 		redact: func(value string) string { return sanitizeDiagnostic(value, redactionSecrets) },
 	}
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		return result, nil
+		return result, request.Header, nil
 	}
 	code, summary, detail := parseError(body, effectiveSecrets)
 	retryAfter, retryAfterSet := parseRetryAfter(response.Header)
-	return Response{}, &UpstreamError{
+	return Response{}, request.Header, &UpstreamError{
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
 		Summary: summary, Detail: detail, TableauRequestID: requestID,
 		retryAfter: retryAfter, retryAfterSet: retryAfterSet,

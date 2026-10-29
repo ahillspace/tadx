@@ -20,14 +20,17 @@ import (
 )
 
 const (
-	credentialService = "io.github.ahillspace.tadx"
-	maxPATRecordBytes = 2048
-	patRecordVersion  = 1
+	credentialService     = "io.github.ahillspace.tadx"
+	maxPATRecordBytes     = 2048
+	patRecordVersion      = 1
+	maxSessionRecordBytes = 4096
+	sessionRecordVersion  = 1
 )
 
 var (
 	credentialReferencePattern = regexp.MustCompile(`\Acred_[0-9a-f]{32}\z`)
 	targetFingerprintPattern   = regexp.MustCompile(`\Asha256:[0-9a-f]{64}\z`)
+	credentialDigestPattern    = regexp.MustCompile(`\A[0-9a-f]{64}\z`)
 )
 
 // CredentialReference identifies one opaque credential-store entry.
@@ -70,12 +73,42 @@ func (c PATCredentials) MarshalJSON() ([]byte, error) {
 	}{Source: c.Source})
 }
 
-// PATStore persists complete PAT pairs in a native credential store.
+// PATStore persists complete PAT pairs, and the latest session each one
+// signed in with, in a native credential store. Replacing or deleting a PAT
+// also removes its saved session.
 type PATStore interface {
 	StorePAT(context.Context, CredentialTarget, string, string) (CredentialReference, error)
 	ReplacePAT(context.Context, CredentialReference, CredentialTarget, string, string) error
 	LoadPAT(context.Context, CredentialReference, CredentialTarget) (PATCredentials, error)
 	DeletePAT(context.Context, CredentialReference) error
+	LoadSession(context.Context, CredentialReference, CredentialTarget) (SavedSession, error)
+	SaveSession(context.Context, CredentialReference, CredentialTarget, SavedSession) error
+}
+
+// SavedSession is a Tableau session saved beside the stored PAT that signed
+// in, so a later command can reuse it. Credential is the opaque digest of that
+// PAT pair and server, and Epoch is the PAT's sign-in epoch when the session
+// was issued. Its formatting methods never expose the token or digest.
+type SavedSession struct {
+	Credential string
+	Epoch      uint64
+	Token      string
+	SiteLUID   string
+	UserLUID   string
+}
+
+func (s SavedSession) String() string {
+	return fmt.Sprintf("saved Tableau session for site %s ([REDACTED])", s.SiteLUID)
+}
+
+func (s SavedSession) GoString() string { return s.String() }
+
+// MarshalJSON emits only the session identities.
+func (s SavedSession) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		SiteLUID string `json:"site_luid"`
+		UserLUID string `json:"user_luid"`
+	}{SiteLUID: s.SiteLUID, UserLUID: s.UserLUID})
 }
 
 // CredentialStoreErrorKind classifies credential-store failures without exposing backend details.
@@ -227,9 +260,15 @@ func (s *patStore) StorePAT(ctx context.Context, target CredentialTarget, name, 
 	return reference, nil
 }
 
-// ReplacePAT atomically overwrites one referenced native credential record.
+// ReplacePAT atomically overwrites one referenced native credential record,
+// then removes its saved session. A session left behind by a failed removal
+// is never reused, because it belongs to the previous PAT's digest.
 func (s *patStore) ReplacePAT(ctx context.Context, reference CredentialReference, target CredentialTarget, name, secret string) error {
-	return s.writePAT(ctx, "replace", reference, target, name, secret)
+	if err := s.writePAT(ctx, "replace", reference, target, name, secret); err != nil {
+		return err
+	}
+	_ = s.backend.Delete(credentialService, sessionAccount(reference))
+	return nil
 }
 
 func (s *patStore) writePAT(ctx context.Context, operation string, reference CredentialReference, target CredentialTarget, name, secret string) error {
@@ -285,10 +324,87 @@ func (s *patStore) DeletePAT(ctx context.Context, reference CredentialReference)
 	if s == nil || s.backend == nil || !validCredentialReference(reference) {
 		return &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: "delete"}
 	}
+	// Remove the session first so a failure leaves the PAT for a retry that
+	// can still find and remove both entries.
+	if err := s.backend.Delete(credentialService, sessionAccount(reference)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return classifyCredentialBackendError("delete", err)
+	}
 	if err := s.backend.Delete(credentialService, credentialAccount(reference)); err != nil {
 		return classifyCredentialBackendError("delete", err)
 	}
 	return nil
+}
+
+type sessionRecord struct {
+	Version           int    `json:"version"`
+	TargetFingerprint string `json:"target_fingerprint"`
+	Credential        string `json:"credential"`
+	Epoch             uint64 `json:"epoch"`
+	Token             string `json:"token"`
+	SiteLUID          string `json:"site_luid"`
+	UserLUID          string `json:"user_luid"`
+}
+
+// SaveSession replaces the saved session for one stored PAT.
+func (s *patStore) SaveSession(ctx context.Context, reference CredentialReference, target CredentialTarget, saved SavedSession) error {
+	if err := credentialContextError(ctx, "session save"); err != nil {
+		return err
+	}
+	if s == nil || s.backend == nil || !validCredentialReference(reference) || !validSavedSession(saved) {
+		return &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: "session save"}
+	}
+	fingerprint, err := credentialTargetFingerprint(target)
+	if err != nil {
+		return err
+	}
+	record, err := json.Marshal(sessionRecord{Version: sessionRecordVersion, TargetFingerprint: fingerprint, Credential: saved.Credential, Epoch: saved.Epoch, Token: saved.Token, SiteLUID: saved.SiteLUID, UserLUID: saved.UserLUID})
+	if err != nil || len(record) > maxSessionRecordBytes {
+		return &CredentialStoreError{Kind: CredentialStoreTooLarge, Operation: "session save"}
+	}
+	if err := s.backend.Set(credentialService, sessionAccount(reference), string(record)); err != nil {
+		return classifyCredentialBackendError("session save", err)
+	}
+	return nil
+}
+
+// LoadSession returns the saved session for one stored PAT and exact target.
+func (s *patStore) LoadSession(ctx context.Context, reference CredentialReference, target CredentialTarget) (SavedSession, error) {
+	if err := credentialContextError(ctx, "session load"); err != nil {
+		return SavedSession{}, err
+	}
+	if s == nil || s.backend == nil || !validCredentialReference(reference) {
+		return SavedSession{}, &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: "session load"}
+	}
+	fingerprint, err := credentialTargetFingerprint(target)
+	if err != nil {
+		return SavedSession{}, err
+	}
+	encoded, err := s.backend.Get(credentialService, sessionAccount(reference))
+	if err != nil {
+		return SavedSession{}, classifyCredentialBackendError("session load", err)
+	}
+	corrupt := &CredentialStoreError{Kind: CredentialStoreCorrupt, Operation: "session load"}
+	if len(encoded) == 0 || len(encoded) > maxSessionRecordBytes || !hasUniqueTopLevelJSONFields(encoded) {
+		return SavedSession{}, corrupt
+	}
+	decoder := json.NewDecoder(strings.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	var record sessionRecord
+	if err := decoder.Decode(&record); err != nil || ensureJSONEOF(decoder) != nil {
+		return SavedSession{}, corrupt
+	}
+	saved := SavedSession{Credential: record.Credential, Epoch: record.Epoch, Token: record.Token, SiteLUID: record.SiteLUID, UserLUID: record.UserLUID}
+	if record.Version != sessionRecordVersion || !targetFingerprintPattern.MatchString(record.TargetFingerprint) || !validSavedSession(saved) {
+		return SavedSession{}, corrupt
+	}
+	if subtle.ConstantTimeCompare([]byte(record.TargetFingerprint), []byte(fingerprint)) != 1 {
+		return SavedSession{}, &CredentialStoreError{Kind: CredentialStoreTargetMismatch, Operation: "session load"}
+	}
+	return saved, nil
+}
+
+func validSavedSession(saved SavedSession) bool {
+	return credentialDigestPattern.MatchString(saved.Credential) && saved.Token != "" && saved.SiteLUID != "" && saved.UserLUID != ""
 }
 
 func decodePATRecord(encoded string) (patRecord, error) {
@@ -362,6 +478,10 @@ func CredentialStoreEntry(reference CredentialReference) string {
 
 func credentialAccount(reference CredentialReference) string {
 	return "pat:v1:" + strings.TrimPrefix(string(reference), "cred_")
+}
+
+func sessionAccount(reference CredentialReference) string {
+	return "session:v1:" + strings.TrimPrefix(string(reference), "cred_")
 }
 
 func credentialTargetFingerprint(target CredentialTarget) (string, error) {

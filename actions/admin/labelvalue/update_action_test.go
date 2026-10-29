@@ -17,6 +17,9 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type updateDefinitionStub struct {
 	item        value.LabelValue
 	writes      int
@@ -128,9 +131,10 @@ type labelValueHTTPSession struct{}
 func (labelValueHTTPSession) Authorize(r *http.Request) {
 	r.Header.Set("X-Tableau-Auth", "test-session")
 }
-func (labelValueHTTPSession) SiteLUID() string { return "site" }
-func (labelValueHTTPSession) UserLUID() string { return "user" }
-func (labelValueHTTPSession) String() string   { return "label value HTTP fixture" }
+func (labelValueHTTPSession) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (labelValueHTTPSession) SiteLUID() string                         { return "site" }
+func (labelValueHTTPSession) UserLUID() string                         { return "user" }
+func (labelValueHTTPSession) String() string                           { return "label value HTTP fixture" }
 
 func TestUpdateExistingDescriptionUsesExactRESTResource(t *testing.T) {
 	current := value.LabelValue{Name: "Definition", Category: "Custom", Description: "Before"}

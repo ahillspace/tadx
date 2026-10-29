@@ -3,6 +3,7 @@ package fieldcatalog_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,12 +13,16 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type session struct{}
 
-func (session) Authorize(request *http.Request) { request.Header.Set("X-Tableau-Auth", "token") }
-func (session) SiteLUID() string                { return "site-1" }
-func (session) UserLUID() string                { return "user-1" }
-func (session) String() string                  { return "[redacted session]" }
+func (session) Authorize(request *http.Request)          { request.Header.Set("X-Tableau-Auth", "token") }
+func (session) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (session) SiteLUID() string                         { return "site-1" }
+func (session) UserLUID() string                         { return "user-1" }
+func (session) String() string                           { return "[redacted session]" }
 
 func TestClientUsesVDSReadMetadataAndPreservesRawFieldIdentity(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

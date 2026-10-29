@@ -14,6 +14,9 @@ import (
 	admin "github.com/ahillspace/tadx/internal/tableau/admin"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 func TestCreateTransportFailureAfterHTTPExecutionPreservesUnknown(t *testing.T) {
 	var posts int
 	client := admin.NewClient(tableau.NewTransport(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
@@ -192,10 +195,11 @@ func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f
 
 type session struct{}
 
-func (session) String() string          { return "admin test session" }
-func (session) Authorize(*http.Request) {}
-func (session) SiteLUID() string        { return "site-1" }
-func (session) UserLUID() string        { return "caller-1" }
+func (session) String() string                           { return "admin test session" }
+func (session) Authorize(*http.Request)                  {}
+func (session) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (session) SiteLUID() string                         { return "site-1" }
+func (session) UserLUID() string                         { return "caller-1" }
 
 var _ coreauth.Session = session{}
 

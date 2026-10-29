@@ -144,9 +144,16 @@ func TestPATStoreBindsCredentialsToNormalizedServerBasePath(t *testing.T) {
 func TestPATStoreSupportsTheDefaultSiteAndDeletesOnlyItsOpaqueReference(t *testing.T) {
 	t.Parallel()
 
-	backend := &recordingKeyring{}
+	backend := newMapKeyring()
 	store := newPATStore(backend, fixedReader(2))
 	target := CredentialTarget{ServerURL: "https://example.com", SiteContentURL: ""}
+	other, err := store.StorePAT(context.Background(), target, "other", "other-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(backend.entries, credentialService+"/"+credentialAccount(other))
+	backend.entries[credentialService+"/unrelated"] = "kept"
+	store.random = fixedReader(3)
 	reference, err := store.StorePAT(context.Background(), target, "name", "secret")
 	if err != nil {
 		t.Fatal(err)
@@ -157,27 +164,26 @@ func TestPATStoreSupportsTheDefaultSiteAndDeletesOnlyItsOpaqueReference(t *testi
 	if err := store.DeletePAT(context.Background(), reference); err != nil {
 		t.Fatal(err)
 	}
-	if backend.deleteCalls != 1 || backend.service != credentialService || backend.account != credentialAccount(reference) {
-		t.Fatalf("delete call = %d, address = %q/%q", backend.deleteCalls, backend.service, backend.account)
+	if len(backend.entries) != 1 || backend.entries[credentialService+"/unrelated"] != "kept" {
+		t.Fatalf("entries after delete = %v", backend.entries)
 	}
 }
 
 func TestPATStoreReplacesCredentialAtTheSameOpaqueReference(t *testing.T) {
 	t.Parallel()
 
-	backend := &recordingKeyring{}
+	backend := newMapKeyring()
 	store := newPATStore(backend, fixedReader(4))
 	target := CredentialTarget{ServerURL: "https://example.com", SiteContentURL: "Sales"}
 	reference, err := store.StorePAT(context.Background(), target, "old-name", "old-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := backend.account
 	if err := store.ReplacePAT(context.Background(), reference, target, "new-name", "new-secret"); err != nil {
 		t.Fatal(err)
 	}
-	if backend.account != account || backend.setCalls != 2 {
-		t.Fatalf("replacement address = %q, calls = %d", backend.account, backend.setCalls)
+	if _, ok := backend.entries[credentialService+"/"+credentialAccount(reference)]; !ok || len(backend.entries) != 1 {
+		t.Fatalf("entries after replacement = %v", backend.entries)
 	}
 	credentials, err := store.LoadPAT(context.Background(), reference, target)
 	if err != nil {
@@ -471,6 +477,14 @@ func (s *recordingPATStore) LoadPAT(_ context.Context, reference CredentialRefer
 
 func (*recordingPATStore) DeletePAT(context.Context, CredentialReference) error {
 	return errors.New("unexpected DeletePAT call")
+}
+
+func (*recordingPATStore) LoadSession(context.Context, CredentialReference, CredentialTarget) (SavedSession, error) {
+	return SavedSession{}, &CredentialStoreError{Kind: CredentialStoreNotFound, Operation: "session load"}
+}
+
+func (*recordingPATStore) SaveSession(context.Context, CredentialReference, CredentialTarget, SavedSession) error {
+	return nil
 }
 
 func assertStoreErrorKind(t *testing.T, err error, want CredentialStoreErrorKind) {

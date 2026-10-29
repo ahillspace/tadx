@@ -15,7 +15,9 @@ import (
 	"github.com/ahillspace/tadx/internal/lock"
 )
 
-// CommandSessions owns ephemeral sessions and credential locks for one command.
+// CommandSessions owns one command's sessions and credential locks. Sessions
+// of a stored PAT are saved beside it for later commands and renewed in place
+// when Tableau rejects them.
 // Close must run after every request using these sessions has finished.
 type CommandSessions struct {
 	gate              chan struct{}
@@ -27,7 +29,7 @@ type CommandSessions struct {
 	closed            bool
 	credentials       map[credentialSourceKey]credentialResult
 	locks             map[string]*lock.Handle
-	sessions          map[sessionKey]sessionResult
+	sessions          map[sessionKey]sessionEntry
 }
 
 type credentialSourceKey struct{ server, site, nameVariable, secretVariable, reference string }
@@ -36,9 +38,11 @@ type credentialResult struct {
 	err   error
 }
 type sessionKey struct{ credential, site string }
-type sessionResult struct {
-	session Session
-	err     error
+
+// sessionEntry is the command's one session for a PAT and site and the
+// sign-in epoch its current token was issued at.
+type sessionEntry struct {
+	session *session
 	epoch   uint64
 }
 
@@ -67,7 +71,7 @@ func NewCommandSessions(lookup LookupEnv, store PATStore, directory string) *Com
 			return result.value, result.present
 		})
 	}
-	return &CommandSessions{gate: make(chan struct{}, 1), gateChanged: make(chan struct{}), resolver: NewPATSourceResolver(lookup, store), directory: directory, credentials: make(map[credentialSourceKey]credentialResult), locks: make(map[string]*lock.Handle), sessions: make(map[sessionKey]sessionResult)}
+	return &CommandSessions{gate: make(chan struct{}, 1), gateChanged: make(chan struct{}), resolver: NewPATSourceResolver(lookup, store), directory: directory, credentials: make(map[credentialSourceKey]credentialResult), locks: make(map[string]*lock.Handle), sessions: make(map[sessionKey]sessionEntry)}
 }
 
 func (c *CommandSessions) enter(ctx context.Context, monitor bool) error {
@@ -148,20 +152,21 @@ func (c *CommandSessions) leave() {
 // normalized server, and exact site. Authentication calls acquire this gate;
 // callers may use returned sessions after the call completes.
 func (c *CommandSessions) Authenticate(ctx context.Context, target Target, signer Signer) (Session, error) {
-	session, _, err := c.AuthenticateWithSource(ctx, target, signer)
+	session, _, err := c.authenticateWithSource(ctx, target, signer, authenticateReuse)
 	return session, err
 }
 
-// AuthenticateWithSource retains the source selected for this exact attempt,
-// including an upstream sign-in failure, without resolving credentials twice.
-func (c *CommandSessions) AuthenticateWithSource(ctx context.Context, target Target, signer Signer) (Session, CredentialSource, error) {
-	return c.authenticateWithSource(ctx, target, signer, false)
+// SignIn always signs in, so the PAT itself is validated, and saves the new
+// session for later commands like any other sign-in. It retains the source
+// selected for this exact attempt, including an upstream sign-in failure.
+func (c *CommandSessions) SignIn(ctx context.Context, target Target, signer Signer) (Session, CredentialSource, error) {
+	return c.authenticateWithSource(ctx, target, signer, authenticateSignIn)
 }
 
 // AuthenticateMonitor authenticates a read-only job observation. It yields to
 // foreground authentication when both are waiting for the same PAT lock.
 func (c *CommandSessions) AuthenticateMonitor(ctx context.Context, target Target, signer Signer) (Session, error) {
-	session, _, err := c.authenticateWithSource(ctx, target, signer, true)
+	session, _, err := c.authenticateWithSource(ctx, target, signer, authenticateMonitor)
 	return session, err
 }
 
@@ -206,7 +211,22 @@ func (c *CommandSessions) Suspend(ctx context.Context) error {
 	return failure
 }
 
-func (c *CommandSessions) authenticateWithSource(ctx context.Context, target Target, signer Signer, monitor bool) (Session, CredentialSource, error) {
+// authenticateMode selects how an authentication call treats an existing
+// session and the PAT lock.
+type authenticateMode int
+
+const (
+	// authenticateReuse reuses a current session and waits for the PAT lock.
+	authenticateReuse authenticateMode = iota
+	// authenticateMonitor reuses a current session and yields the PAT lock to
+	// foreground work.
+	authenticateMonitor
+	// authenticateSignIn always signs in and waits for the PAT lock.
+	authenticateSignIn
+)
+
+func (c *CommandSessions) authenticateWithSource(ctx context.Context, target Target, signer Signer, mode authenticateMode) (Session, CredentialSource, error) {
+	monitor := mode == authenticateMonitor
 	for {
 		if err := c.enter(ctx, monitor); err != nil {
 			return nil, "", err
@@ -220,7 +240,7 @@ func (c *CommandSessions) authenticateWithSource(ctx context.Context, target Tar
 			c.leave()
 			return nil, credentials.Source, err
 		}
-		session, err := c.authenticate(ctx, target, credentials, signer, server, monitor)
+		session, err := c.authenticate(ctx, sessionOrigin{owner: c, target: target, credentials: credentials, signer: signer, server: server}, mode)
 		c.leave()
 		if errors.Is(err, errMonitorCredentialBusy) {
 			if err := waitMonitorRetry(ctx); err != nil {
@@ -228,7 +248,10 @@ func (c *CommandSessions) authenticateWithSource(ctx context.Context, target Tar
 			}
 			continue
 		}
-		return session, credentials.Source, err
+		if err != nil {
+			return nil, credentials.Source, err
+		}
+		return session, credentials.Source, nil
 	}
 }
 
@@ -260,67 +283,72 @@ func (c *CommandSessions) AuthenticateCredentials(ctx context.Context, target Ta
 	if err != nil {
 		return nil, err
 	}
-	return c.authenticate(ctx, target, credentials, signer, server, false)
+	session, err := c.authenticate(ctx, sessionOrigin{owner: c, target: target, credentials: credentials, signer: signer, server: server}, authenticateReuse)
+	if err != nil {
+		return nil, err
+	}
+	return session, nil
 }
 
-func (c *CommandSessions) authenticate(ctx context.Context, target Target, credentials PATCredentials, signer Signer, server string, monitor bool) (Session, error) {
-	if err := validateAuthenticationInputs(target, credentials); err != nil {
+// sessionOrigin is what a command session was signed in with, so a rejected
+// session signs in again with the same PAT, site, and sign-in client.
+type sessionOrigin struct {
+	owner       *CommandSessions
+	target      Target
+	credentials PATCredentials
+	signer      Signer
+	server      string
+}
+
+// renew signs a rejected command session in again under the command gate.
+// Renewal serves a request that already holds or held the PAT, so it waits
+// for the PAT lock like foreground work instead of yielding.
+func (o sessionOrigin) renew(ctx context.Context, current *session, rejected string) error {
+	c := o.owner
+	if err := c.enter(ctx, false); err != nil {
+		return err
+	}
+	defer c.leave()
+	if c.closed {
+		return errors.New("command authentication is closed")
+	}
+	if current.currentToken() != rejected {
+		return nil
+	}
+	_, err := c.authenticate(ctx, o, authenticateSignIn)
+	return err
+}
+
+// authenticate returns the command's one session for a PAT and site. The
+// session is reused while the PAT's sign-in epoch is unchanged; otherwise the
+// PAT signs in again and the same session is updated in place.
+func (c *CommandSessions) authenticate(ctx context.Context, origin sessionOrigin, mode authenticateMode) (*session, error) {
+	if err := validateAuthenticationInputs(origin.target, origin.credentials); err != nil {
 		return nil, err
 	}
-	identity := credentialIdentity(server, credentials)
-	key := sessionKey{identity, target.SiteContentURL}
-	if previous, ok := c.sessions[key]; ok && previous.session != nil && c.locks[identity] != nil {
-		return previous.session, nil
-	}
-	newLock := false
-	if c.locks[identity] == nil {
-		held, err := c.acquireCredentialLock(ctx, identity, monitor)
-		if err != nil {
-			if errors.Is(err, errMonitorCredentialBusy) {
-				return nil, errMonitorCredentialBusy
-			}
-			if errors.Is(err, lock.ErrLocked) {
-				return nil, errors.New("PAT is in use by another command; retry after that command finishes")
-			}
-			if ctx.Err() != nil {
-				return nil, fmt.Errorf("PAT is in use by another command; credential wait ended: %w", ctx.Err())
-			}
-			return nil, errors.New("credential coordination lock is unavailable")
-		}
-		c.locks[identity] = held
-		newLock = true
-	}
-	directory, err := c.lockDirectory()
+	identity := credentialIdentity(origin.server, origin.credentials)
+	key := sessionKey{identity, origin.target.SiteContentURL}
+	directory, epoch, err := c.holdCredential(ctx, identity, mode == authenticateMonitor)
 	if err != nil {
-		if newLock {
-			_ = c.locks[identity].Release()
-			delete(c.locks, identity)
-		}
 		return nil, err
+	}
+	entry, exists := c.sessions[key]
+	if mode != authenticateSignIn {
+		if exists && entry.epoch == epoch {
+			return entry.session, nil
+		}
+		if !exists {
+			if saved, ok := c.loadSavedSession(ctx, origin, identity, epoch); ok {
+				entry = sessionEntry{session: newSession(saved, origin), epoch: epoch}
+				c.sessions[key] = entry
+				return entry.session, nil
+			}
+		}
 	}
 	// Signing in with the same PAT invalidates its sessions across sites.
 	// Epochs share the credential lock's scope, not the site-specific job pool.
-	epoch, err := readSignInEpoch(directory, identity)
+	response, err := signIn(ctx, origin.target, origin.credentials, origin.signer)
 	if err != nil {
-		if newLock {
-			_ = c.locks[identity].Release()
-			delete(c.locks, identity)
-		}
-		return nil, err
-	}
-	if previous, ok := c.sessions[key]; ok && previous.session != nil && previous.epoch == epoch {
-		return previous.session, nil
-	}
-	// A new site sign-in may invalidate the same PAT's earlier site session.
-	// Never retain a prior site session as a reusable authenticated target.
-	for previous := range c.sessions {
-		if previous.credential == identity {
-			delete(c.sessions, previous)
-		}
-	}
-	session, err := signIn(ctx, target, credentials, signer)
-	if err != nil {
-		c.sessions[key] = sessionResult{err: err, epoch: epoch}
 		return nil, err
 	}
 	if epoch == ^uint64(0) {
@@ -330,8 +358,82 @@ func (c *CommandSessions) authenticate(ctx context.Context, target Target, crede
 	if err := writeSignInEpoch(directory, identity, epoch); err != nil {
 		return nil, err
 	}
-	c.sessions[key] = sessionResult{session: session, epoch: epoch}
-	return session, err
+	if exists {
+		if err := entry.session.replace(response); err != nil {
+			return nil, err
+		}
+	} else {
+		entry.session = newSession(response, origin)
+	}
+	c.sessions[key] = sessionEntry{session: entry.session, epoch: epoch}
+	c.saveSession(ctx, origin, identity, epoch, response)
+	return entry.session, nil
+}
+
+// holdCredential takes the PAT lock if this command does not hold it and
+// reads the PAT's sign-in epoch. A lock taken here is released on failure.
+func (c *CommandSessions) holdCredential(ctx context.Context, identity string, monitor bool) (string, uint64, error) {
+	newLock := false
+	if c.locks[identity] == nil {
+		held, err := c.acquireCredentialLock(ctx, identity, monitor)
+		if err != nil {
+			if errors.Is(err, errMonitorCredentialBusy) {
+				return "", 0, errMonitorCredentialBusy
+			}
+			if errors.Is(err, lock.ErrLocked) {
+				return "", 0, errors.New("PAT is in use by another command; retry after that command finishes")
+			}
+			if ctx.Err() != nil {
+				return "", 0, fmt.Errorf("PAT is in use by another command; credential wait ended: %w", ctx.Err())
+			}
+			return "", 0, errors.New("credential coordination lock is unavailable")
+		}
+		c.locks[identity] = held
+		newLock = true
+	}
+	directory, err := c.lockDirectory()
+	if err == nil {
+		var epoch uint64
+		if epoch, err = readSignInEpoch(directory, identity); err == nil {
+			return directory, epoch, nil
+		}
+	}
+	if newLock {
+		_ = c.locks[identity].Release()
+		delete(c.locks, identity)
+	}
+	return "", 0, err
+}
+
+// sessionStore returns where origin's sessions persist. Only sessions of a
+// PAT loaded from the native credential store persist, beside that PAT.
+func (c *CommandSessions) sessionStore(origin sessionOrigin) (PATStore, bool) {
+	return c.resolver.store, origin.credentials.Source == CredentialSourceOSKeyring
+}
+
+// loadSavedSession returns a previous command's session for the same PAT and
+// target when no TADX sign-in with that PAT has superseded it. Any store
+// failure means signing in, as without a saved session.
+func (c *CommandSessions) loadSavedSession(ctx context.Context, origin sessionOrigin, identity string, epoch uint64) (SignInResponse, bool) {
+	store, ok := c.sessionStore(origin)
+	if !ok {
+		return SignInResponse{}, false
+	}
+	saved, err := store.LoadSession(ctx, CredentialReference(origin.target.CredentialReference), CredentialTarget{ServerURL: origin.target.ServerURL, SiteContentURL: origin.target.SiteContentURL})
+	if err != nil || saved.Credential != identity || saved.Epoch != epoch {
+		return SignInResponse{}, false
+	}
+	return SignInResponse{Token: saved.Token, SiteLUID: saved.SiteLUID, UserLUID: saved.UserLUID}, true
+}
+
+// saveSession keeps a new sign-in for later commands. A failed save only
+// means the next command signs in.
+func (c *CommandSessions) saveSession(ctx context.Context, origin sessionOrigin, identity string, epoch uint64, response SignInResponse) {
+	store, ok := c.sessionStore(origin)
+	if !ok {
+		return
+	}
+	_ = store.SaveSession(ctx, CredentialReference(origin.target.CredentialReference), CredentialTarget{ServerURL: origin.target.ServerURL, SiteContentURL: origin.target.SiteContentURL}, SavedSession{Credential: identity, Epoch: epoch, Token: response.Token, SiteLUID: response.SiteLUID, UserLUID: response.UserLUID})
 }
 
 func validateAuthenticationInputs(target Target, credentials PATCredentials) error {

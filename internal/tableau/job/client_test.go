@@ -1,6 +1,8 @@
 package job
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,12 +11,16 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type session struct{}
 
-func (session) String() string          { return "test job session" }
-func (session) Authorize(*http.Request) {}
-func (session) SiteLUID() string        { return "site" }
-func (session) UserLUID() string        { return "user" }
+func (session) String() string                           { return "test job session" }
+func (session) Authorize(*http.Request)                  {}
+func (session) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (session) SiteLUID() string                         { return "site" }
+func (session) UserLUID() string                         { return "user" }
 
 func TestInspectAuthoritativeJobStates(t *testing.T) {
 	for _, test := range []struct {

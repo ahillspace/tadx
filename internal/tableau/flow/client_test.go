@@ -20,12 +20,16 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 )
 
+// errTestSessionRenewal keeps a fixed-token test session from signing in again.
+var errTestSessionRenewal = errors.New("test session cannot sign in again")
+
 type session struct{}
 
-func (session) String() string          { return "test flow session" }
-func (session) Authorize(*http.Request) {}
-func (session) SiteLUID() string        { return "site-1" }
-func (session) UserLUID() string        { return "user-1" }
+func (session) String() string                           { return "test flow session" }
+func (session) Authorize(*http.Request)                  {}
+func (session) Renew(context.Context, http.Header) error { return errTestSessionRenewal }
+func (session) SiteLUID() string                         { return "site-1" }
+func (session) UserLUID() string                         { return "user-1" }
 
 var _ coreauth.Session = session{}
 

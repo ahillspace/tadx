@@ -441,7 +441,7 @@ func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authops.
 }
 
 func (r *runtimeDependencies) Authenticate(ctx context.Context, target authops.CheckTarget) (authops.CheckAuthentication, error) {
-	session, source, err := r.commandSessions().AuthenticateWithSource(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, commandSigner{runtime: r})
+	session, source, err := r.commandSessions().SignIn(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, commandSigner{runtime: r})
 	provenance := string(source)
 	if source == coreauth.CredentialSourceOSKeyring {
 		provenance = "os_credential_store"
