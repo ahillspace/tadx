@@ -197,6 +197,12 @@ func (a *Publisher) Apply(ctx context.Context, plan PublishPlan) (PublishResult,
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
+		if denied, ok := errors.AsType[interface {
+			error
+			NotAttempted() bool
+		}](err); ok && denied.NotAttempted() {
+			return result, &errs.Error{ID: "workbook.publish.not_attempted", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Publication was not submitted.", Cause: err, Retryable: new(false), Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		}
 		requestID := result.TableauRequestID
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)

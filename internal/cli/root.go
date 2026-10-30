@@ -418,6 +418,12 @@ func applyWriteTargetResolution(root *cobra.Command, deps Dependencies) {
 		if id != "" && (deps.MutationPolicy.IsRemoteMutation(id) || id == "auth.login" || id == "auth.logout") && command.Flags().Lookup("environment") != nil {
 			original := command.Args
 			command.Args = func(cmd *cobra.Command, args []string) error {
+				if LocalOperationCancellation(cmd) {
+					if original != nil {
+						return original(cmd, args)
+					}
+					return nil
+				}
 				alias, _ := cmd.Flags().GetString("environment")
 				if alias == "" && !(id == "auth.logout" && cmd.Flags().Changed("environment")) {
 					resolved, err := deps.ResolveWriteTarget(alias)
@@ -498,6 +504,13 @@ func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, en
 			originalRun := command.Run
 			command.Run = nil
 			command.RunE = func(command *cobra.Command, args []string) error {
+				if LocalOperationCancellation(command) {
+					if originalRunE != nil {
+						return originalRunE(command, args)
+					}
+					originalRun(command, args)
+					return nil
+				}
 				effective := enabled
 				if !explicitMutationPreview(command) && len(resolver) > 0 && resolver[0] != nil {
 					var err error
@@ -682,4 +695,13 @@ func withUsageRecovery(command *cobra.Command, err error) error {
 		return &copy
 	}
 	return err
+}
+
+// LocalOperationCancellation identifies the local-only selector before target or mutation resolution.
+func LocalOperationCancellation(command *cobra.Command) bool {
+	if command.Annotations[CapabilityAnnotation] != "job.cancel" {
+		return false
+	}
+	id, _ := command.Flags().GetString("operation-id")
+	return id != ""
 }

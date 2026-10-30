@@ -2074,28 +2074,28 @@ Replace the owner of one exact flow, or preview the operation.
 
 ### `job.cancel`
 
-Request cancellation for supported refresh or flow-run jobs, then check their status.
+Request cancellation of one local transfer operation or supported Tableau job while preserving its actual outcome.
 
 - Surface: tadx job cancel
 - Operation type: change
 - Owner: cli
-- Selectors: Required exact --id; optional --preview; configured environment
-- Products and availability: Tableau Cloud / Server; only documented cancellable job types and administrator permissions
+- Selectors: Exactly one of --operation-id (local) or --id (Tableau); environment, site, and preview apply only to Tableau jobs
+- Products and availability: Local: compatible operation worker; Tableau: documented cancellable job type and administrator permissions
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: Yes
 - Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Preview is read-only; cancellation is never claimed for unsupported types such as publication jobs; acknowledgement is distinct from confirmed cancelled state
-- Artifact effect: None
-- Upstream operation: PUT /api/{version}/sites/{site-id}/jobs/{job-id}, followed by bounded GET confirmation
-- Evidence: internal/tableau/job/client_test.go; internal/app/jobs.go
-- Validation or blocker: Supported-type guard, mutation policy, request identity preservation, and exact confirmation
+- Safety and guard: Local cancellation needs no Tableau sign-in or site consent but retains capability policy; requests and acknowledgements do not establish completion; admitted commits preserve actual outcomes; Tableau preview is read-only
+- Artifact effect: Stops cancellable local preparation and transfers, cleans private staging, and retains operation results and receipts
+- Upstream operation: Local operation control; or PUT /api/{version}/sites/{site-id}/jobs/{job-id}, followed by bounded GET confirmation
+- Evidence: internal/operationrun/cancel_test.go; internal/app/publication_cancel_e2e_test.go; internal/tableau/job/client_test.go
+- Validation or blocker: Exact selector validation, local-only policy routing, durable cancellation, commit admission, legacy compatibility, partial outcomes, and supported remote-job confirmation
 - Blocker ID: None
 - Command binding: `tadx job cancel`
 

@@ -148,6 +148,8 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 	}
 	if has("publish") || has("pull") {
 		fmt.Fprintln(out, "  --no-wait: one single/batch status command; no polling. Wait: 20m; work continues.")
+		fmt.Fprintln(out, "  Ctrl+C requests local cancellation. To cancel background work, use job cancel --operation-id <id>.")
+		fmt.Fprintln(out, "  Cancellation stops work where possible; a final publish submission or file installation that has started retains its actual outcome.")
 		if has("publish") {
 			fmt.Fprintln(out, "  Save accepted IDs; use returned status command. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")

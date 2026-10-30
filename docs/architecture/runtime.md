@@ -179,6 +179,7 @@ Local operation tracking and Tableau job tracking have different identities and 
 | Record | Owner | Meaning |
 | --- | --- | --- |
 | Local operation | [`operationrun.Record`](../../internal/operationrun/store.go) | Tracks a detached TADX publish or pull invocation, including batches and retained results. |
+| Local cancellation control | [`operationrun.CancelControl`](../../internal/operationrun/cancel.go) | Retains a cancellation request and worker acknowledgement independently of the operation outcome. |
 | Publication receipt | [`jobmonitor.Receipt`](../../internal/jobmonitor/store.go) | Retains an exact accepted Tableau job or publication result independently of terminal output. |
 | Last result | [`lastCapture`](../../internal/app/last_result.go) | Retains the most recent bounded command result for expansion. |
 
@@ -195,12 +196,28 @@ The parent waits for a bounded local startup acknowledgment.
 That acknowledgment proves worker startup, not Tableau acceptance or completion.
 With `--no-wait`, the parent returns after startup with the operation status command.
 Otherwise, it waits until completion or the shared 20-minute invocation limit.
-Interrupt or wait expiry ends foreground observation and leaves the worker responsible for its operation.
+Ctrl+C requests local cancellation through the same control path as `tadx job cancel --operation-id <id>`.
+The interrupted command retains the operation ID and reports whether cancellation was requested or acknowledged.
+A request or acknowledgement does not establish that every item stopped.
+Wait expiry or an observer deadline only ends foreground observation and leaves the worker responsible for its operation.
 
 [`Store.Lease`](../../internal/operationrun/store.go) prevents competing workers and rejects replay of an already-started interrupted operation.
 Records use atomic replacement, bounded JSON, revision numbers, immutable request identity, and separate worker and foreground leases.
 Their phases are `requested`, `running`, `remote_pending`, `completed`, and `failed`.
 An interrupted worker does not become permission to repeat the remote operation.
+
+Cancellation uses a separately versioned control file, preserving compatibility with existing operation records and older decoders.
+The parent prepares control before launch, and the worker advertises support while acquiring its lease.
+Requests made during startup remain durable until the worker observes them.
+Older workers without compatible control report unsupported cancellation and remain inspectable.
+Local cancellation requires no Tableau sign-in or site mutation consent; managed capability restrictions still apply.
+
+The worker cancels cooperative preparation and transfer work, removes temporary files, and retains completed or uncertain item results.
+[`commitguard.Admit`](../../internal/commitguard/guard.go) serializes final submission or local installation admission against the cancellation request.
+If cancellation wins, publishing reports that the final request was not attempted.
+If admission wins, the final publish request retains its actual response or unknown outcome despite later local cancellation.
+An admitted local installation finishes or recovers its directory transaction instead of stopping between rename steps.
+Cancellation never implies rollback of completed work or remote cancellation of a Tableau publication.
 
 [`runPublicationWorker`](../../internal/app/publication_worker.go) reconstructs the command and guards through `Run`.
 It saves compact and expanded results, bounded batch progress, and accepted receipt paths.
@@ -213,6 +230,7 @@ Workbook, datasource, and flow publishing are synchronous: TADX never requests a
 Local storage failure must not trigger resubmission to recover a receipt.
 
 [`Monitor.Wait`](../../internal/jobmonitor/monitor.go) observes accepted identities and never submits or cancels remote work.
+Ctrl+C during `job wait` stops observation without requesting cancellation of the accepted job.
 It stops automatic observation at the shared deadline or after three consecutive read failures while retaining the known identity.
 Observation rounds coordinate by opaque credential and exact site, pool eligible due receipts, and release PAT coordination between individual reads.
 Returned observations receive a separate local persistence budget when cancellation arrives at the response boundary.

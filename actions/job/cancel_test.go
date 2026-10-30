@@ -36,3 +36,21 @@ func TestExecutePreviewProjectsInspectedJob(t *testing.T) {
 		t.Fatalf("output=%+v error=%v", output, err)
 	}
 }
+
+func TestCancelRequiresOneExactSelector(t *testing.T) {
+	for _, tc := range []struct {
+		input jobactions.CancelInput
+		valid bool
+	}{
+		{jobactions.CancelInput{ID: "job-1"}, true},
+		{jobactions.CancelInput{OperationID: "run-1"}, true},
+		{jobactions.CancelInput{}, false},
+		{jobactions.CancelInput{ID: "job-1", OperationID: "run-1"}, false},
+		{jobactions.CancelInput{OperationID: " run-1"}, false},
+		{jobactions.CancelInput{OperationID: "run-1", Preview: true}, false},
+	} {
+		if got := jobactions.ValidateCancelInput(tc.input) == nil; got != tc.valid {
+			t.Errorf("input=%+v valid=%v", tc.input, got)
+		}
+	}
+}

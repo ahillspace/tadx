@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ahillspace/tadx/internal/commitguard"
 )
 
 const (
@@ -171,6 +173,9 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 	prepared = append(prepared, workbookPrepared)
 	workbookResult.Warnings = append(workbookRecoveryWarnings, workbookResult.Warnings...)
 
+	if _, err := commitguard.Admit(ctx); err != nil {
+		return WorkbookBundlePullResult{}, err
+	}
 	commitWarnings, err := commitPreparedDirectories(workspace, prepared, operations)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err

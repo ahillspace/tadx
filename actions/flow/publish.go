@@ -89,6 +89,12 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
+		if denied, ok := errors.AsType[interface {
+			error
+			NotAttempted() bool
+		}](err); ok && denied.NotAttempted() {
+			return output, &errs.Error{ID: "flow.publish.not_attempted", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "Publication was not submitted.", Cause: err, Retryable: new(false), Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		}
 		if known, ok := errors.AsType[*errs.Error](err); ok && known.Phase != "" {
 			if result != (PublishResult{}) {
 				output.Result = &result

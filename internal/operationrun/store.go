@@ -43,6 +43,8 @@ var (
 	// ErrWorkerInterrupted reports that a previously started worker did not
 	// publish a terminal or remote-pending result and cannot be replayed.
 	ErrWorkerInterrupted = errors.New("operation run worker was interrupted")
+	// ErrLeaseReleased reports commit admission through a released worker lease.
+	ErrLeaseReleased = errors.New("operation run worker lease is released")
 	// ErrForegroundBusy reports that another process owns the foreground wait
 	// marker for the operation.
 	ErrForegroundBusy = errors.New("operation run foreground wait is already owned")
@@ -320,6 +322,9 @@ func (s Store) Lease(id string, workerPID int) (*Lease, Record, error) {
 		if !record.StartedAt.IsZero() {
 			return ErrWorkerInterrupted
 		}
+		if err := advertiseCancelLocked(path, id); err != nil {
+			return err
+		}
 		record.StartedAt = time.Now().UTC()
 		record.Phase = PhaseRunning
 		record.WorkerPID = workerPID
@@ -337,6 +342,8 @@ type Lease struct {
 	store      Store
 	id         string
 	workerLock *lock.Handle
+	mu         sync.Mutex
+	released   bool
 	once       sync.Once
 	releaseErr error
 }
@@ -363,6 +370,9 @@ func (l *Lease) Release() error {
 		return nil
 	}
 	l.once.Do(func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.released = true
 		l.releaseErr = l.workerLock.Release()
 	})
 	return l.releaseErr

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ahillspace/tadx/internal/commitguard"
 )
 
 const (
@@ -229,6 +231,9 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResul
 	}
 	files := map[string][]byte{"metadata.json": metadataData, "lineage.json": lineageData, "view.md": []byte(flowView(input.Metadata, input.Lineage))}
 	if err := writeStagedArtifact(staging, files, m.operations); err != nil {
+		return FlowPullResult{}, err
+	}
+	if _, err := commitguard.Admit(ctx); err != nil {
 		return FlowPullResult{}, err
 	}
 	replaceWarnings, err := replaceDirectoryWithOperations(staging, target, m.operations)

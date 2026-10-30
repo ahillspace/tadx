@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ahillspace/tadx/internal/commitguard"
 	"github.com/ahillspace/tadx/internal/fsreplace"
 )
 
@@ -258,6 +259,9 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (_ Workb
 		return WorkbookPullResult{}, err
 	}
 	if err := writeStagedArtifact(staging, map[string][]byte{"metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(view)}, operations); err != nil {
+		return WorkbookPullResult{}, err
+	}
+	if _, err := commitguard.Admit(ctx); err != nil {
 		return WorkbookPullResult{}, err
 	}
 	replacementWarnings, err := replaceDirectoryWithOperations(staging, target, operations)

@@ -16,6 +16,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/commitguard"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/operationrun"
@@ -120,6 +121,9 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 	if err != nil {
 		return publicationWorkerError("store", "The operation could not be recorded; nothing was started.", err)
 	}
+	if err := store.PrepareCancel(record.ID); err != nil {
+		return publicationWorkerError("store", "Cancellation control could not be prepared; nothing was started.", err)
+	}
 	var waiting *operationrun.ForegroundLease
 	if !noWait {
 		waiting, err = store.TryAcquireForeground(record.ID)
@@ -144,6 +148,9 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 	// This is a local startup acknowledgement, not a Tableau completion probe.
 	ackDeadline := time.Now().Add(5 * time.Second)
 	for record.StartedAt.IsZero() {
+		if errors.Is(command.Context().Err(), context.Canceled) && !noWait {
+			return interruptPublication(store, record, capture)
+		}
 		if !time.Now().Before(ackDeadline) || command.Context().Err() != nil {
 			return clierr.WithOutput(publicationRunOutput{record: record}, publicationWorkerError("start_unknown", "Worker startup was not confirmed. Check this operation before submitting again.", command.Context().Err()))
 		}
@@ -153,10 +160,11 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 			timer.Stop()
 		case <-timer.C:
 		}
-		record, err = store.Read(record.ID)
-		if err != nil {
-			return err
+		latest, readErr := store.Read(record.ID)
+		if readErr != nil {
+			return publicationReadFailure(record, readErr)
 		}
+		record = latest
 	}
 	if noWait {
 		capture.value = publicationRunOutput{record: record}
@@ -167,29 +175,30 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 	deadline := record.RequestedAt.Add(publicationWaitLimit)
 	for {
 		if !record.FinishedAt.IsZero() {
-			capture.value = publicationRunOutput{record: record}
-			if record.ExitCode != nil && *record.ExitCode != 0 {
-				return clierr.Rendered(publicationWorkerError("failed", "The operation has one or more unsuccessful outcomes; inspect the saved results.", nil))
-			}
-			return nil
+			return completedPublication(record, capture)
+		}
+		if errors.Is(command.Context().Err(), context.Canceled) {
+			return interruptPublication(store, record, capture)
 		}
 		if command.Context().Err() != nil || !time.Now().Before(deadline) {
-			record, err = store.Update(record.ID, func(r *operationrun.Record) error { r.Detached = true; return nil })
-			if err != nil {
-				return err
+			latest, updateErr := store.Update(record.ID, func(r *operationrun.Record) error { r.Detached = true; return nil })
+			if updateErr != nil {
+				return publicationReadFailure(record, updateErr)
 			}
+			record = latest
 			capture.value = publicationRunOutput{record: record, stopped: true}
 			return nil
 		}
 		alive, err := store.Alive(record.ID)
 		if err != nil {
-			return err
+			return publicationReadFailure(record, err)
 		}
 		if !alive {
-			record, err = store.Read(record.ID)
-			if err != nil {
-				return err
+			latest, readErr := store.Read(record.ID)
+			if readErr != nil {
+				return publicationReadFailure(record, readErr)
 			}
+			record = latest
 			if !record.FinishedAt.IsZero() {
 				continue
 			}
@@ -204,11 +213,44 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 			timer.Stop()
 		case <-timer.C:
 		}
-		record, err = store.Read(record.ID)
-		if err != nil {
-			return err
+		latest, readErr := store.Read(record.ID)
+		if readErr != nil {
+			return publicationReadFailure(record, readErr)
 		}
+		record = latest
 	}
+}
+
+func publicationReadFailure(record operationrun.Record, err error) error {
+	return clierr.WithOutput(publicationRunOutput{record: record, stopped: true}, publicationWorkerError("status_unknown", "Operation status could not be read. The worker outcome is unconfirmed; inspect this operation before retrying.", err))
+}
+
+func completedPublication(record operationrun.Record, capture *lastCapture) error {
+	capture.value = publicationRunOutput{record: record}
+	if record.ExitCode == nil || *record.ExitCode != 0 {
+		return clierr.Rendered(publicationWorkerError("failed", "The operation has one or more unsuccessful or unconfirmed outcomes; inspect the saved results.", nil))
+	}
+	return nil
+}
+
+func interruptPublication(store operationrun.Store, record operationrun.Record, capture *lastCapture) error {
+	control, requestErr := store.RequestCancel(record.ID)
+	latest, readErr := store.Read(record.ID)
+	if readErr != nil {
+		return publicationReadFailure(record, errors.Join(requestErr, readErr))
+	}
+	if !latest.FinishedAt.IsZero() {
+		return completedPublication(latest, capture)
+	}
+	status := "cancellation_requested"
+	if !control.AcknowledgedAt.IsZero() {
+		status = "cancellation_acknowledged"
+	}
+	if requestErr != nil {
+		status = "cancellation_unconfirmed"
+	}
+	out := publicationRunOutput{record: latest, stopped: true, cancellation: status}
+	return clierr.WithOutput(out, publicationWorkerError("interrupted", "Foreground interrupted. Check the operation for the cancellation request and final outcome.", requestErr))
 }
 
 func runPublicationWorker(ctx context.Context, directory, id string, options Options) int {
@@ -225,6 +267,60 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		return 1
 	}
 	defer lease.Release()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	initialControl, controlErr := store.ReadCancel(id)
+	if controlErr != nil && !errors.Is(controlErr, operationrun.ErrCancelUnsupported) {
+		_, _ = lease.Update(func(r *operationrun.Record) error {
+			r.ExitCode = new(1)
+			r.FinishedAt = time.Now().UTC()
+			r.Phase = operationrun.PhaseFailed
+			r.Activity = controlFailureMessage("read", controlErr)
+			return nil
+		})
+		return 1
+	}
+	if controlErr == nil {
+		reportControlFailure := func(stage string, err error) {
+			_, _ = lease.Update(func(r *operationrun.Record) error { r.Activity = controlFailureMessage(stage, err); return nil })
+		}
+		ctx = commitguard.WithAdmission(ctx, func(context.Context) error { return lease.BeginCommit() })
+		if !initialControl.RequestedAt.IsZero() {
+			cancel()
+			if err := lease.AcknowledgeCancel(); err != nil {
+				reportControlFailure("acknowledge", err)
+			}
+		}
+		pollStop := make(chan struct{})
+		pollDone := make(chan struct{})
+		defer func() { close(pollStop); <-pollDone }()
+		go func() {
+			defer close(pollDone)
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				control, err := store.ReadCancel(id)
+				if err != nil {
+					cancel()
+					reportControlFailure("read", err)
+					return
+				}
+				if !control.RequestedAt.IsZero() {
+					cancel()
+					if err := lease.AcknowledgeCancel(); err == nil {
+						return
+					} else {
+						reportControlFailure("acknowledge", err)
+					}
+				}
+				select {
+				case <-pollStop:
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	}
 	control := &publicationExecution{operation: record.Operation}
 	control.receiptSaved = func(_ context.Context, path string) error {
 		_, err := lease.Update(func(r *operationrun.Record) error {
@@ -252,7 +348,9 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 				if len(r.ReceiptPaths) > 0 {
 					r.Phase = operationrun.PhaseRemotePending
 				}
-				r.Activity = "Final result could not be saved completely; inspect accepted identities before any retry"
+				if !strings.HasPrefix(r.Activity, controlFailurePrefix) {
+					r.Activity = "Final result could not be saved completely; inspect accepted identities before any retry"
+				}
 				return nil
 			})
 			return errors.Join(err, saveErr)
@@ -278,13 +376,17 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		}
 		_, _ = lease.Update(func(r *operationrun.Record) error {
 			r.LiveResults = compact
-			r.Activity = fmt.Sprintf("%s: %d completed, %d pending, %d failed", operationActivity(record.Operation), out.Succeeded, out.Pending, out.Failed)
+			if !strings.HasPrefix(r.Activity, controlFailurePrefix) {
+				r.Activity = fmt.Sprintf("%s: %d completed, %d pending, %d failed", operationActivity(record.Operation), out.Succeeded, out.Pending, out.Failed)
+			}
 			return nil
 		})
 	})
 	ctx = progress.WithObserver(ctx, func(label string) {
 		_, _ = lease.Update(func(r *operationrun.Record) error {
-			r.Activity = label
+			if !strings.HasPrefix(r.Activity, controlFailurePrefix) {
+				r.Activity = label
+			}
 			return nil
 		})
 	})
@@ -295,9 +397,16 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		if err := os.WriteFile(path, record.Request.BatchData, 0o600); err != nil {
 			return 1
 		}
+		defer os.Remove(path)
 		args = replacePublicationBatchPath(args, path)
 	}
 	return Run(ctx, args, io.Discard, options)
+}
+
+const controlFailurePrefix = "Cancellation control failure: "
+
+func controlFailureMessage(stage string, err error) string {
+	return controlFailurePrefix + stage + ": " + err.Error()
 }
 
 func replacePublicationBatchPath(args []string, path string) []string {
@@ -374,14 +483,22 @@ func publicationCheckCommand(record operationrun.Record) string {
 }
 
 type publicationRunOutput struct {
-	record  operationrun.Record
-	stopped bool
+	record       operationrun.Record
+	stopped      bool
+	cancellation string
 }
 
 func (o publicationRunOutput) CompactOutput() any {
-	return publicationSnapshot(o.record, false, o.stopped)
+	return o.snapshot(false)
 }
-func (o publicationRunOutput) FullOutput() any { return publicationSnapshot(o.record, true, o.stopped) }
+func (o publicationRunOutput) FullOutput() any { return o.snapshot(true) }
+func (o publicationRunOutput) snapshot(full bool) any {
+	result := publicationSnapshot(o.record, full, o.stopped).(map[string]any)
+	if o.cancellation != "" {
+		result["cancellation"] = o.cancellation
+	}
+	return result
+}
 
 func publicationSnapshot(record operationrun.Record, full, stopped bool) any {
 	data := record.CompactResult
@@ -399,6 +516,9 @@ func publicationSnapshot(record operationrun.Record, full, stopped bool) any {
 		result = map[string]any{}
 	}
 	result["operation_id"], result["operation"] = record.ID, record.Operation
+	if strings.HasPrefix(record.Activity, controlFailurePrefix) {
+		result["control_error"] = record.Activity
+	}
 	if _, ok := result["status"]; !ok {
 		state := "running"
 		if record.Phase == operationrun.PhaseRequested {

@@ -48,3 +48,28 @@ func TestPublishPublishPreservesTypedCommitOutcome(t *testing.T) {
 		t.Fatalf("output result = %#v", output.Result)
 	}
 }
+
+type admissionDenied struct{}
+
+func (admissionDenied) Error() string      { return "admission denied" }
+func (admissionDenied) Unwrap() error      { return context.Canceled }
+func (admissionDenied) NotAttempted() bool { return true }
+
+type deniedPrepared struct{}
+
+func (deniedPrepared) Commit(context.Context) (flowpublish.PublishResult, error) {
+	return flowpublish.PublishResult{}, admissionDenied{}
+}
+
+type deniedPublisher struct{}
+
+func (deniedPublisher) Prepare(context.Context, flowpublish.PublishRequest) (flowpublish.PreparedPublish, error) {
+	return deniedPrepared{}, nil
+}
+func TestPublishDeniedAdmissionIsNotAttempted(t *testing.T) {
+	_, err := flowpublish.NewPublish(publishArtifactReader{artifact: flowpublish.PublishArtifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, &publishResolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}, deniedPublisher{}).Execute(t.Context(), flowpublish.PublishInput{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, false)
+	var structured *errs.Error
+	if !errors.Is(err, context.Canceled) || !errors.As(err, &structured) || structured.Phase != errs.PhaseSetup || structured.Outcome != errs.OutcomeNotAttempted {
+		t.Fatalf("error = %#v", err)
+	}
+}

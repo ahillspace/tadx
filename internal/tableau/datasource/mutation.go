@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commitguard"
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
@@ -222,6 +223,11 @@ type preparedDatasourcePublish struct {
 // Commit sends the final publish request exactly once, then releases the publish
 // snapshot. A snapshot cleanup failure never changes the publish result.
 func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, error) {
+	ctx, err := commitguard.Admit(ctx)
+	if err != nil {
+		_ = p.snapshot.Close()
+		return PublishResult{}, err
+	}
 	if err := p.snapshot.Claim(); err != nil {
 		return PublishResult{}, fmt.Errorf("prepared datasource publish: %w", err)
 	}

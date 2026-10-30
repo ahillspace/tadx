@@ -478,3 +478,23 @@ func TestPublishApplyReportsUnknownOutcomeWithoutClaimingAcceptance(t *testing.T
 		t.Fatalf("summary claims acceptance: %q", structured.Summary)
 	}
 }
+
+type admissionDenied struct{}
+
+func (admissionDenied) Error() string      { return "admission denied" }
+func (admissionDenied) Unwrap() error      { return context.Canceled }
+func (admissionDenied) NotAttempted() bool { return true }
+
+func TestPublishDeniedAdmissionIsNotAttempted(t *testing.T) {
+	p := &publishPublisher{err: admissionDenied{}}
+	action := workbookops.NewPublish(publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "Finance", Filename: "Finance.twb", Name: "Finance"}}, publishResolver{project: workbookops.Project{LUID: "project-1", Path: "Ops"}}, p)
+	plan, err := action.Plan(t.Context(), workbookops.PublishInput{ArtifactPath: "Finance", Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = action.Apply(t.Context(), plan)
+	var structured *errs.Error
+	if !errors.Is(err, context.Canceled) || !errors.As(err, &structured) || structured.Phase != errs.PhaseSetup || structured.Outcome != errs.OutcomeNotAttempted {
+		t.Fatalf("error = %#v", err)
+	}
+}

@@ -300,3 +300,19 @@ func TestPublishPublishReportsAssignedContentURL(t *testing.T) {
 		t.Fatalf("output = %#v, err = %v", out, err)
 	}
 }
+
+type admissionDenied struct{}
+
+func (admissionDenied) Error() string      { return "admission denied" }
+func (admissionDenied) Unwrap() error      { return context.Canceled }
+func (admissionDenied) NotAttempted() bool { return true }
+
+func TestPublishDeniedAdmissionIsNotAttempted(t *testing.T) {
+	resolver := &publishPublishResolver{project: datasourceops.Project{LUID: "project-1", Path: "Analytics"}}
+	publisher := &publishOutcomePublisher{err: admissionDenied{}}
+	_, err := datasourceops.NewPublish(&publishPublishArtifactReader{artifact: publishComposedArtifact()}, resolver, publisher).Execute(t.Context(), datasourceops.PublishInput{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeCreate}, false)
+	var structured *errs.Error
+	if !errors.Is(err, context.Canceled) || !errors.As(err, &structured) || structured.Phase != errs.PhaseSetup || structured.Outcome != errs.OutcomeNotAttempted {
+		t.Fatalf("error = %#v", err)
+	}
+}

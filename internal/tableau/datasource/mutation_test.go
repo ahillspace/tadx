@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -11,9 +12,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/ahillspace/tadx/internal/commitguard"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
@@ -320,5 +323,43 @@ func TestPreparedDatasourcePublishKeepsSnapshotUntilCommit(t *testing.T) {
 	}
 	if snapshots() != 0 {
 		t.Fatal("Commit did not release the snapshot")
+	}
+}
+
+func TestPublishAdmissionDenialNeverSendsFinalRequest(t *testing.T) {
+	for _, chunked := range []bool{false, true} {
+		t.Run(strconv.FormatBool(chunked), func(t *testing.T) {
+			finalCalls := 0
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/fileUploads"):
+					w.WriteHeader(http.StatusCreated)
+					_, _ = io.WriteString(w, `<tsResponse><fileUpload uploadSessionId="up"/></tsResponse>`)
+				case strings.HasSuffix(r.URL.Path, "/fileUploads/up"):
+					_, _ = io.WriteString(w, `<tsResponse><fileUpload uploadSessionId="up"/></tsResponse>`)
+				default:
+					finalCalls++
+					http.Error(w, "unexpected final request", http.StatusInternalServerError)
+				}
+			}))
+			defer server.Close()
+			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			if chunked {
+				client.SetUploadThreshold(1)
+				client.SetUploadChunkSize(2)
+			}
+			path, fingerprint := publishFixture(t, "abcd")
+			request := tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1", Filename: "Sales.tds", ContentPath: path, ContentSize: 4, ExpectedFingerprint: fingerprint, Mode: tableaudatasource.PublishCreate}
+			prepared, err := client.Prepare(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := commitguard.WithAdmission(t.Context(), func(context.Context) error { return context.Canceled })
+			_, err = prepared.Commit(ctx)
+			var denied interface{ NotAttempted() bool }
+			if !errors.Is(err, context.Canceled) || !errors.As(err, &denied) || !denied.NotAttempted() || finalCalls != 0 {
+				t.Fatalf("denial error %v, final requests %d", err, finalCalls)
+			}
+		})
 	}
 }

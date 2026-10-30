@@ -370,6 +370,13 @@ func fileImports(root *os.Root, path string) ([]string, error) {
 }
 
 func forbiddenReason(file, imported, modulePath string) string {
+	if hasPathPrefix(file, "internal/commitguard") {
+		dependency, err := build.Default.Import(imported, "", build.FindOnly)
+		if err != nil || !dependency.Goroot {
+			return "commit admission must depend only on the standard library"
+		}
+		return ""
+	}
 	if hasPathPrefix(file, "internal/pulsecontract") {
 		dependency, err := build.Default.Import(imported, "", build.FindOnly)
 		if err != nil || !dependency.Goroot {
@@ -488,6 +495,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/cache",
 				"internal/config",
 				"internal/contentbatch",
+				"internal/commitguard",
 				"internal/errs",
 				"internal/identity",
 				"internal/jobmonitor",
@@ -513,6 +521,9 @@ func localImportAllowed(file, imported string) bool {
 	case layerResource:
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
+		if imported == "internal/commitguard" {
+			return matchesPrefix(file, "internal/tableau/workbook", "internal/tableau/datasource", "internal/tableau/flow")
+		}
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
 		// Metadata traversal consumes shared page records, never providers or actions.
@@ -585,7 +596,7 @@ func localImportAllowed(file, imported string) bool {
 		// installs staged directories through the leaf replace package.
 		// The neutral error contract supplies shared workspace-relative rendering.
 		if hasPathPrefix(file, "internal/artifact") {
-			return matchesExact(imported, "internal/errs", "internal/fsreplace", "internal/lock", "internal/pathspec")
+			return matchesExact(imported, "internal/commitguard", "internal/errs", "internal/fsreplace", "internal/lock", "internal/pathspec")
 		}
 		// The cache serializes first-time SQLite schema initialization across
 		// Store instances and tadx processes with the leaf lock package.
@@ -741,6 +752,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/contentbatch") ||
 		hasPathPrefix(file, "internal/batchspec") ||
 		hasPathPrefix(file, "internal/commandhint") ||
+		hasPathPrefix(file, "internal/commitguard") ||
 		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||
 		hasPathPrefix(file, "internal/config") ||
