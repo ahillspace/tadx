@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -49,5 +50,55 @@ func TestCapabilityMapMetadataMatchesRegistry(t *testing.T) {
 				t.Errorf("embedded capability metadata differs from the registry:\n got: %+v\nwant: %+v", actual, expected)
 			}
 		})
+	}
+}
+
+func TestCapabilityMapStaticCountsMatchRegistry(t *testing.T) {
+	document, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "capability-map.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	authored, _, found := strings.Cut(string(document), `<script id="capability-data" type="application/json">`)
+	if !found {
+		t.Fatal("capability map must contain one embedded registry snapshot")
+	}
+	var total, implemented, planned, blocked, remote int
+	for _, definition := range All() {
+		if definition.Owner != OwnerCLI {
+			continue
+		}
+		total++
+		switch definition.Implementation {
+		case ImplementationImplemented:
+			implemented++
+		case ImplementationPlanned:
+			planned++
+		}
+		if definition.Verification == VerificationBlocked {
+			blocked++
+		}
+		if definition.RemoteMutation {
+			remote++
+		}
+	}
+	for _, slot := range []struct {
+		id   string
+		want int
+	}{
+		{"sourceTotal", total}, {"totalCount", total}, {"footerTotal", total},
+		{"implementedCount", implemented}, {"plannedCount", planned}, {"blockedCount", blocked},
+		{"remoteMutationCount", remote},
+	} {
+		opening := ` id="` + slot.id + `">`
+		if strings.Count(authored, opening) != 1 {
+			t.Errorf("capability map must render %s exactly once before the registry snapshot", slot.id)
+			continue
+		}
+		_, rest, _ := strings.Cut(authored, opening)
+		literal, _, _ := strings.Cut(rest, "<")
+		got, err := strconv.Atoi(literal)
+		if err != nil || got != slot.want {
+			t.Errorf("capability map %s = %q; registry has %d CLI-owned; run go generate ./internal/capability", slot.id, literal, slot.want)
+		}
 	}
 }

@@ -48,7 +48,7 @@ The original map is preserved under `archived/docs/2026-10-30/reference/capabili
 Maintain only the canonical map; its published URL stays `capabilities.html`.
 The command tree, filters, and totals include only registry entries owned by the CLI.
 External entries remain in the complete JSON inventory; the page explains Tableau MCP querying and Desktop MCP authoring as companion tools.
-Keep the map's authored layout and styling separate from its generated `capability-data` script block.
+Keep the map's authored layout and styling separate from its generated `capability-data` script block and static command totals.
 Use `go generate ./internal/capability` when registry changes require a new snapshot.
 Repository-only references in the map must use published GitHub URLs; the public build does not copy Markdown guides.
 The allowlist excludes configuration, workspace files, repository source, and other local material from the website artifact.

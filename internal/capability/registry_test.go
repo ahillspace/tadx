@@ -232,6 +232,10 @@ func TestValidateRejectsEveryRegistryInvariant(t *testing.T) {
 			d.Implementation = ImplementationExternalDelegated
 			d.CommandPath = []string{"sample", "get"}
 		})}, want: "delegated capability has local command binding"},
+		{name: "CLI-owned delegated", defs: []Definition{with(valid, func(d *Definition) {
+			d.Disposition = DispositionDelegated
+			d.Implementation = ImplementationExternalDelegated
+		})}, want: "CLI-owned capability cannot be delegated"},
 		{name: "implemented CLI without binding", defs: []Definition{with(valid, func(d *Definition) { d.Implementation = ImplementationImplemented })}, want: "implemented CLI capability has no binding"},
 		{name: "blocked executable", defs: []Definition{with(implemented(valid, "sample", "get"), func(d *Definition) { d.Verification = VerificationBlocked; d.Blocker = BlockerB1 })}, want: "blocked capability is executable"},
 		{name: "invalid owner", defs: []Definition{with(valid, func(d *Definition) { d.Owner = Owner("unknown") })}, want: "invalid owner"},
