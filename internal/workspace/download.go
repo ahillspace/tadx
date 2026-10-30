@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/lock"
 )
 
@@ -16,15 +17,13 @@ import (
 // download in progress. It sits beside tmp so removing tmp keeps the lock.
 const downloadLockName = "tmp.lock"
 
-// Downloads stages one command's content downloads in a private directory
-// under the workspace's disposable .tadx/tmp state. Content streams there and
-// is renamed into its artifact, so it shares the workspace filesystem. The
-// directory is created by the first download, so resolution and previews leave
-// the workspace untouched, and Close removes it with any payload the artifact
-// layer did not install. `tadx workspace clean --class temporary` removes one
-// left by an interrupted command.
+// Downloads owns one command's private download directory. Installable content
+// shares the workspace filesystem so the artifact layer can rename its payload;
+// temporary-only inspection uses private OS temporary storage. The first file
+// creates the directory, and Close removes any payload not installed elsewhere.
 type Downloads struct {
 	root      string
+	temporary bool
 	held      *lock.Handle
 	directory string
 }
@@ -34,10 +33,30 @@ func NewDownloads(root string) *Downloads {
 	return &Downloads{root: root}
 }
 
+// NewTemporaryDownloads returns command-private staging for inspection that
+// must not create workspace state. Its files are not installed into artifacts.
+func NewTemporaryDownloads() *Downloads {
+	return &Downloads{temporary: true}
+}
+
 // File streams one content download into a new staged file and flushes it to
 // stable storage, so the artifact layer can install it by rename. A failed
 // download removes its partial file.
-func (d *Downloads) File(ctx context.Context, download func(io.Writer) error) (string, error) {
+func (d *Downloads) File(ctx context.Context, download func(io.Writer) error) (_ string, err error) {
+	defer func() {
+		root := d.root
+		if d.temporary {
+			root = d.directory
+			if root == "" {
+				root = os.TempDir()
+			}
+		}
+		absolute, _ := filepath.Abs(root)
+		err = errs.WithWorkspaceRelativePaths(err, root, absolute)
+	}()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if d.directory == "" {
 		if err := d.open(ctx); err != nil {
 			return "", err
@@ -75,6 +94,14 @@ func (d *Downloads) Close() {
 }
 
 func (d *Downloads) open(ctx context.Context) error {
+	if d.temporary {
+		directory, err := os.MkdirTemp("", "tadx-preview-download-")
+		if err != nil {
+			return fmt.Errorf("create temporary download directory: %w", err)
+		}
+		d.directory = directory
+		return nil
+	}
 	control, err := controlDirectory(d.root, true)
 	if err != nil {
 		return err

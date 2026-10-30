@@ -543,7 +543,12 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	}
 	input.SiteLUID = connection.session.SiteLUID()
 
-	downloads := workspacecore.NewDownloads(input.Workspace)
+	var downloads *workspacecore.Downloads
+	if input.Preview {
+		downloads = workspacecore.NewTemporaryDownloads()
+	} else {
+		downloads = workspacecore.NewDownloads(input.Workspace)
+	}
 	defer downloads.Close()
 	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage, downloads: downloads}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
 }
