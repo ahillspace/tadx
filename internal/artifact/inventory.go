@@ -250,6 +250,9 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 	var items []Item
 	for _, kind := range directManagedArtifactKinds {
 		kindRoot := filepath.Join(workspace, "artifacts", kind)
+		if err := validateArtifactDirectory(workspace, kind, kindRoot); err != nil {
+			return nil, false, err
+		}
 		entries, err := os.ReadDir(kindRoot)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -284,6 +287,9 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 	// Standalone lineage artifacts live one level deeper, under
 	// artifacts/lineage/<resourceKind>/<component>, so they are walked here.
 	lineageRoot := filepath.Join(workspace, "artifacts", "lineage")
+	if err := validateArtifactDirectory(workspace, "lineage", lineageRoot); err != nil {
+		return nil, false, err
+	}
 	resourceKinds, err := os.ReadDir(lineageRoot)
 	if errors.Is(err, os.ErrNotExist) {
 		return items, true, nil
@@ -299,9 +305,17 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 			continue
 		}
 		if resourceKind.Type()&os.ModeSymlink != 0 || !resourceKind.IsDir() {
+			if len(items) >= scanLimit {
+				return items, false, nil
+			}
+			relative := filepath.ToSlash(filepath.Join("artifacts", "lineage", resourceKind.Name()))
+			items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{"Managed artifact entry is not a regular directory."}})
 			continue
 		}
 		kindRoot := filepath.Join(lineageRoot, resourceKind.Name())
+		if err := validateArtifactDirectory(workspace, "lineage", kindRoot); err != nil {
+			return nil, false, err
+		}
 		entries, err := os.ReadDir(kindRoot)
 		if err != nil {
 			return nil, false, err
@@ -577,34 +591,42 @@ func validateWorkspaceRoot(workspace string) (string, error) {
 	return root, nil
 }
 
+// validateArtifactDirectory checks managed roots and artifact directories without
+// creating missing destinations. Every existing component below the selected
+// workspace must be a real directory; aliases above that workspace remain valid.
 func validateArtifactDirectory(workspace, kind, directory string) error {
-	info, err := os.Lstat(directory)
+	root := filepath.Join(workspace, "artifacts", kind)
+	relative, err := filepath.Rel(root, directory)
+	if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("artifact directory escapes its managed root")
+	}
+	if relative != "." {
+		segments := strings.Split(filepath.ToSlash(relative), "/")
+		if kind == "lineage" {
+			if len(segments) > 2 || len(segments) == 2 && !isLineageResourceKind(segments[0]) {
+				return errors.New("artifact directory escapes its managed root")
+			}
+		} else if len(segments) != 1 {
+			return errors.New("artifact directory escapes its managed root")
+		}
+	}
+	relative, err = filepath.Rel(workspace, directory)
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("managed artifact must be a real directory")
-	}
-	// Standalone lineage artifacts nest one level deeper, under
-	// artifacts/lineage/<resourceKind>/<component>, so containment is checked
-	// against artifacts/lineage with exactly one intermediate resource-kind
-	// segment. Every other managed kind lives directly under artifacts/<kind>.
-	if kind == "lineage" {
-		root := filepath.Join(workspace, "artifacts", "lineage")
-		relative, err := filepath.Rel(root, directory)
-		if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return errors.New("artifact directory escapes its managed root")
+	current := workspace
+	for segment := range strings.SplitSeq(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, segment)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
 		}
-		segments := strings.Split(filepath.ToSlash(relative), "/")
-		if len(segments) != 2 || !isLineageResourceKind(segments[0]) || segments[1] == "" {
-			return errors.New("artifact directory escapes its managed root")
+		if err != nil {
+			return err
 		}
-		return nil
-	}
-	root := filepath.Join(workspace, "artifacts", kind)
-	relative, err := filepath.Rel(root, directory)
-	if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || strings.Contains(relative, string(filepath.Separator)) {
-		return errors.New("artifact directory escapes its managed root")
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New("managed artifact directories must be real directories, not symbolic links")
+		}
 	}
 	return nil
 }
