@@ -312,16 +312,13 @@ func (c *CommandSessions) authenticate(ctx context.Context, origin sessionOrigin
 	if err := writeSignInEpoch(directory, identity, epoch); err != nil {
 		return nil, err
 	}
-	session, err := c.install(key, epoch, response, origin)
-	if err != nil {
-		return nil, err
-	}
+	// The command uses the new session only once no other command can end it.
 	if !c.saveSession(ctx, origin, identity, epoch, response) {
 		if err := c.withholdUse(directory, identity); err != nil {
 			return nil, err
 		}
 	}
-	return session, nil
+	return c.install(key, epoch, response, origin)
 }
 
 // adoptSavedSession installs the stored PAT's saved session when it belongs to
@@ -366,23 +363,26 @@ func (c *CommandSessions) useKey(origin sessionOrigin) string {
 // gate, so the command's authentication with other PATs proceeds meanwhile.
 func (c *CommandSessions) holdUse(ctx context.Context, directory, identity, key string) (*lock.Handle, error) {
 	for {
-		signing, err := lock.AcquireContext(ctx, filepath.Join(directory, identity+".lock"))
-		if err != nil {
-			return nil, patUnavailable(ctx, err)
-		}
-		held, err := c.useFor(directory, identity, key)
-		if err != nil || held {
+		signing, err := lock.TryAcquire(filepath.Join(directory, identity+".lock"))
+		switch {
+		case err == nil:
+			held, err := c.useFor(directory, identity, key)
+			if err == nil && held {
+				return signing, nil
+			}
+			_ = signing.Release()
 			if err != nil {
-				_ = signing.Release()
 				return nil, err
 			}
-			return signing, nil
-		}
-		_ = signing.Release()
-		if len(c.uses) > 0 {
-			// Waiting for one PAT while using another permits lock-order cycles
-			// between multi-target commands. Additional credentials fail promptly.
-			return nil, patUnavailable(ctx, lock.ErrLocked)
+			if len(c.uses) > 0 {
+				// Waiting for one PAT's use while using another permits lock-order
+				// cycles between multi-target commands. Additional credentials
+				// fail promptly. A sign-in lock is never held while waiting, so
+				// waiting for one cannot form a cycle.
+				return nil, patUnavailable(ctx, lock.ErrLocked)
+			}
+		case !errors.Is(err, lock.ErrLocked):
+			return nil, patUnavailable(ctx, err)
 		}
 		if err := c.waitForUse(ctx); err != nil {
 			return nil, patUnavailable(ctx, err)
@@ -457,27 +457,19 @@ func (c *CommandSessions) useFor(directory, identity, key string) (bool, error) 
 
 // withholdUse follows a sign-in whose session could not be saved: no other
 // command can adopt it, so none may join the PAT's use or sign in with it
-// until this command stops using the PAT. Commands already sharing the PAT
-// find the key changed and wait before their next sign-in.
+// until this command stops using the PAT. Clearing the key under the sign-in
+// lock keeps new commands out while the command's hold keeps others from
+// signing in; commands already sharing the PAT find the key changed and wait
+// before their next sign-in.
 func (c *CommandSessions) withholdUse(directory, identity string) error {
-	if c.uses[identity].key == "" {
+	held := c.uses[identity]
+	if held.key == "" {
 		return nil
 	}
 	if err := writeUseKey(directory, identity, ""); err != nil {
 		return err
 	}
-	if err := c.releaseUse(identity); err != nil {
-		return err
-	}
-	path := usePath(directory, identity)
-	held, err := lock.TryAcquire(path)
-	if errors.Is(err, lock.ErrLocked) {
-		held, err = lock.TryAcquireShared(path)
-	}
-	if err != nil {
-		return errors.New("credential coordination lock is unavailable")
-	}
-	c.uses[identity] = patUse{handle: held}
+	c.uses[identity] = patUse{handle: held.handle}
 	return nil
 }
 

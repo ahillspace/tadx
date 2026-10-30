@@ -244,3 +244,53 @@ func TestWaitingForOnePATDoesNotDelayAnother(t *testing.T) {
 		t.Fatal("unrelated PAT authenticated only at the deadline")
 	}
 }
+
+// blockedSigner holds its sign-in until release is closed.
+type blockedSigner struct {
+	signing chan struct{}
+	release chan struct{}
+}
+
+func (s blockedSigner) SignIn(ctx context.Context, request SignInRequest) (SignInResponse, error) {
+	close(s.signing)
+	<-s.release
+	return (&countingSigner{}).SignIn(ctx, request)
+}
+
+// TestWaitingForAPATSignInDoesNotDelayAnother has one command wait while
+// another command signs in with a PAT, and authenticate with an unrelated PAT
+// meanwhile.
+func TestWaitingForAPATSignInDoesNotDelayAnother(t *testing.T) {
+	directory := t.TempDir()
+	lookup := LookupEnvFunc(func(name string) (string, bool) { return "environment-" + name, true })
+	held := Target{ServerURL: savedSessionTarget.ServerURL, SiteContentURL: savedSessionTarget.SiteContentURL, PATNameVariable: "PAT_NAME", PATSecretVariable: "PAT_SECRET"}
+	unrelated := held
+	unrelated.PATSecretVariable = "OTHER_PAT_SECRET"
+	blocked := blockedSigner{signing: make(chan struct{}), release: make(chan struct{})}
+	holder := NewCommandSessions(lookup, nil, directory)
+	defer holder.Close()
+	signing := startCommand(t.Context(), holder, held, blocked)
+	<-blocked.signing
+	defer func() {
+		close(blocked.release)
+		<-signing
+	}()
+	waiter := NewCommandSessions(lookup, nil, directory)
+	defer waiter.Close()
+	waitCtx, stopWaiting := context.WithCancel(t.Context())
+	waiting := startCommand(waitCtx, waiter, held, &countingSigner{})
+	defer func() {
+		stopWaiting()
+		<-waiting
+	}()
+	select {
+	case err := <-waiting:
+		t.Fatalf("waiting command returned %v; want it to wait for the signing command", err)
+	case <-time.After(overlapWindow):
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), overlapWindow)
+	defer cancel()
+	if _, err := waiter.Authenticate(ctx, unrelated, &countingSigner{}); err != nil {
+		t.Fatalf("Authenticate() for an unrelated PAT = %v; want it to proceed while the command waits for another PAT's sign-in", err)
+	}
+}
