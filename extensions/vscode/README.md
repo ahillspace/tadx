@@ -181,9 +181,7 @@ The first release requires a separate real-site acceptance check before producti
 
 ## Package boundary
 
-The [implementation plan](../../docs/vscode-extension-plan.md) records the agreed scope and architecture.
 The [editor architecture guide](../../docs/architecture/editor-extension.md) traces current components, state, operations, and trust boundaries.
-The [architecture review](../../docs/architecture/review.md) records known contract defects and proposed improvements separately from implemented behavior.
 The extension has its own version and VSIX artifact while sharing the repository with its CLI contract.
 Packaging does not publish to the Marketplace.
 The [release guide](../../docs/vscode-extension-release.md) owns version preparation, validated packages, and explicit GitHub or Marketplace publication.

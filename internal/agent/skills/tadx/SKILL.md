@@ -26,7 +26,8 @@ Use project IDs for workbook, datasource, and flow lists or exact-name inspectio
 Use the returned immediate `tadx last --full` command to expand a saved result without rerunning the operation.
 The last-result envelope is one replaceable record; later commands, including recorded usage failures, can replace it.
 If saving failed, `last` may be stale; retain the current response's identities and do not replay a mutation to repair saving.
-Use supported batches for already-decided repeated work; preserve per-item successes when another item fails.
+Use same-action batches only for already-decided independent targets; they run in parallel and return outcomes in selection order.
+Preserve per-item successes when another item fails.
 
 Live reads are default; `--cache` is local-only and a miss does not prove remote absence.
 Use cached observations when freshness is acceptable, live evidence before consequential writes.
@@ -39,6 +40,8 @@ Capabilities describe local implementation, not site access or licensing; a Puls
 TADX uses PATs; never expose credentials or session tokens.
 Commands sharing a PAT are coordinated locally, not across machines or external tools.
 Use exact returned LUIDs after discovery; do not guess through ambiguity.
+For workbook rebinds, never infer mappings from names or artifact provenance; verify targets and provide an explicit `--datasource-binding` for every reference that should change.
+Read [Content lifecycle](references/content-lifecycle.md) for mapping identity details.
 Remote writes require selected-site consent plus applicable policy checks.
 Ask before changing site consent; name the server, exact site, and persisted scope.
 An operation request is not authorization.

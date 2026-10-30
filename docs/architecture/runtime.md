@@ -2,7 +2,7 @@
 
 This page explains the shared runtime in the repository source, including detached transfers, credential coordination, and retained results.
 It describes source behavior, not availability in a published release.
-The [architecture audit](review.md) records the examined revision, working-tree basis, coverage, and verification limits.
+Operation-specific coverage and validation limits are stated with each trace below.
 
 Start with the [package reference](../repository-structure.md) for dependency direction.
 Use the [security model](../security.md) for security limits, consent requirements, native credential backends, and managed-policy procedures.

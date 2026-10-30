@@ -123,7 +123,7 @@ When the selected configuration cannot be read, only the conventional names are 
 The automatic update notifier reads public release metadata from the GitHub API without GitHub authentication or Tableau credentials.
 It does not send Tableau information, download release binaries, or install updates.
 Its local cache contains update-check metadata, not credentials or Tableau content.
-Set `TADX_NO_UPDATE_NOTIFIER=1` to disable these automatic requests and notices; see [Getting started](getting-started.md#upgrade-or-remove) for eligibility and timing.
+Set `TADX_NO_UPDATE_NOTIFIER=1` to disable these automatic requests and notices; see [Getting started](getting-started.md#upgrade) for eligibility and timing.
 
 ## Operating guidance
 

@@ -6,8 +6,8 @@ The optional [VS Code extension](../extensions/vscode/README.md) is a separate T
 It consumes the installed CLI through JSON commands and has an independent build, test suite, version, and VSIX artifact.
 The [editor architecture](architecture/editor-extension.md) owns its component, state, and operation contracts.
 The [architecture guide](architecture/README.md) connects runtime, resources, state, dependencies, and delivery.
-The [architecture diagram](architecture/index.html) summarizes command flow and dependency wiring.
-The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](architecture/tadx-architecture.excalidraw) accompany the diagram.
+The [architecture diagram](architecture/tadx-architecture.svg) summarizes command flow and dependency wiring.
+The [editable Excalidraw source](architecture/tadx-architecture.excalidraw) accompanies the diagram.
 
 ## Package responsibilities
 

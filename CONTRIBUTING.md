@@ -4,7 +4,8 @@ Use the repository-local [tadx-build skill](.agents/skills/tadx-build/SKILL.md) 
 Select the skill's guidance that matches your change.
 
 Read the [architecture guide](docs/architecture/README.md) to understand package ownership, command execution, state, dependencies, and delivery.
-It links implementation owners, representative operation traces, and the [review coverage and limitations](docs/architecture/review.md).
+It links implementation owners, representative operation traces, and their verification limits.
+Use the [documentation index](docs/README.md) to find the maintained guide for your change.
 Use the existing action family and its contracts to place a change before adding a new layer.
 
 ## Start with your agent

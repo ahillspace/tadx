@@ -11,7 +11,11 @@ Workbook publish does not publish those dependencies automatically.
 Publishing those datasources elsewhere does not itself rebind the workbook to their new identities.
 Tableau binds each reference by its datasource content URL on the destination site, not by name or LUID.
 When that URL is already taken, Tableau assigns a suffixed URL such as `Sales_1`; datasource publish reports it and the workbook binding to use.
-Workbook publish leaves every reference to Tableau unless an explicit binding maps it to an exact destination datasource.
+Workbook publish leaves each reference to Tableau unless an explicit binding maps it to an exact destination datasource.
+Repeat `--datasource-binding <source content URL or unique exact caption>=<destination datasource LUID>` for each reference that should point to a different destination datasource.
+An exact source content URL takes precedence over a caption.
+Caption matching is exact, case-sensitive, and literal; ambiguous captions require a content URL.
+TADX reads the destination by LUID; matching names or artifact provenance never infer a binding.
 When Tableau rejects a publish because a referenced datasource is missing, the error lists each missing reference and exact same-name candidates; check a candidate before mapping to it.
 Inspect dependency and portability metadata before promising a cross-site working copy; do not treat downloaded files as proof that every connection will work at the destination.
 
@@ -31,20 +35,20 @@ Do not remove originals merely because a destination accepted a package.
 Preserve metadata sidecars when editing managed files.
 Dirty re-pull protection prevents accidental loss of local changes; overwrite is a deliberate replacement, not a repair strategy.
 Preview resolves scope and conflicts but does not prove native download validity, filesystem write access, or destination acceptance.
-Publication waits by default when the destination accepts asynchronous work.
-The default wait checks at 2 seconds for the first 30 seconds, 5 seconds through 10 minutes, and 15 seconds until the shared 20-minute invocation cutoff.
+Workbook, datasource, and flow publication use synchronous Tableau requests; TADX does not request Tableau jobs, and a job-shaped publish response leaves the outcome unknown.
+Explicit Tableau job monitoring polls every 2 seconds for the first 30 seconds, every 5 seconds through 10 minutes, then every 15 seconds, until the shared 20-minute invocation cutoff.
 At that cutoff TADX returns the known identity and recovery information while the remote work continues.
-When supported monitoring is available, TADX saves each accepted job identity and receipt before waiting.
-`--no-wait` is optional for publishing and returns after safe local handoff with one check-status command; it never polls remote jobs automatically.
-For a batch, that command identifies one aggregate local operation covering queued, accepted, completed, failed, skipped, and unknown items while each accepted job retains its own durable identity.
+Older accepted Tableau publication-job receipts remain available for recovery with `tadx job` commands; current content publishers do not create them.
+`--no-wait` returns after safe handoff to a detached local TADX operation with one status command; it does not submit or automatically poll a Tableau job.
+For a batch, the status command reports one aggregate local operation with selection-ordered per-item outcomes.
 Native pulls also support `--no-wait`: the local worker saves native files and metadata, returns one aggregate check-status command, and never polls remote jobs because downloads have no Tableau job identity.
 Default pulls show saved local progress until completion or the shared 20-minute cutoff; downloads continue after the cutoff.
 Background execution frees the terminal, but active uploads and downloads retain the shared PAT lease, so another remote command using that PAT may wait for the transfer to finish.
-Local operation inspection remains available during a transfer, and publication monitoring yields the credential between observations.
+Local operation inspection remains available during a transfer, and explicit Tableau job monitoring yields the credential between observations.
 Local cancellation or unavailable status does not cancel the remote write or establish failure.
-Use the saved receipt or exact job ID for recovery, never a second publish; exact job queries require administrator access.
-Where supported asynchronous observation is unavailable, TADX uses synchronous publication; flow publication remains synchronous.
-Publication jobs are not documented as cancellable through the job cancellation API.
+If an older Tableau job was accepted, use its saved receipt or exact job ID for recovery; never resubmit the publish. Exact job queries require administrator access.
+
+Previously accepted publication jobs are not documented as cancellable through the job cancellation API.
 An acknowledged destination LUID outranks a delayed name or Metadata lookup.
 Inspect native payloads only when their configuration matters; publication acknowledgement and metadata inspection alone do not prove native configuration correctness.
 
@@ -60,6 +64,7 @@ Published datasource schema describes fields and logical tables, not data values
 Embedded workbook sources are not independently published datasources.
 Use `content workbook schema --id <workbook-luid> --descriptions --tags` to inspect embedded and connected published fields together.
 Use `--datasource <exact-name>` to narrow ambiguous field identifiers; local overrides retain links to published source fields.
+This schema selector does not rebind published workbook dependencies; use `--datasource-binding` for that.
 Workbook schema is live-only; cached workbook inspection explicitly identifies datasource details not captured by the cache.
 Use `catalog audit --type workbook --id <workbook-luid>` for description and supported tag checks, separated into local and published-source groups.
 Field tags are not independently authored metadata; reported upstream column tags retain their source identity.

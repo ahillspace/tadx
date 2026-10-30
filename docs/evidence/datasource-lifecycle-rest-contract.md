@@ -76,4 +76,6 @@ Authorized disposable Tableau Cloud verification completed on 2026-09-02 for pul
 The native datasource package round trip preserved its authoritative identity and project provenance without exposing machine-specific paths in compact output.
 The live asynchronous check proved the HTTP 202 acceptance contract and Tableau's terminal job response without an embedded datasource identity.
 TADX resolved the completed publication through a bounded exact-name and exact-project lookup, returned one authoritative LUID, and deleted the temporary datasource.
-Asynchronous publication was later removed, so this check now describes only how v1.0.x receipts are recovered.
+That check covers a legacy Tableau `asJob` publication path and v1.0.x receipt recovery only.
+Current datasource publication is synchronous, and `--no-wait` runs the local operation in a detached TADX process; it does not request a Tableau job.
+Current command behavior is defined in `internal/cli/content/datasource_lifecycle.go` and the shared local worker runtime.

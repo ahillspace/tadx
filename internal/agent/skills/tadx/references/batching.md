@@ -16,4 +16,7 @@ File items cannot change commands or consume earlier results.
 When later steps depend on newly created identities, a short script can parse structured JSON results and pass the confirmed IDs onward.
 Check each exit code, preserve partial results, and pause when a new decision or authorization is needed.
 Do not scrape TOON or add a conversion tool for this purpose; TADX already emits JSON.
-Batching does not infer dependency order, rebind published datasource references, or grant mutation permission.
+For workbook publish, a `--batch-file` row can provide its own `datasource-binding` array.
+Repeated `--artifact` selectors share binding flags across items.
+Use per-item rows when workbooks need different mappings.
+Batching does not infer dependency order or datasource mappings, or grant mutation permission.

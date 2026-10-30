@@ -148,12 +148,14 @@ No publisher policy, repository variable, release, or Marketplace publication is
 If Marketplace publication fails after GitHub publication succeeds, rerun the failed job using the retained verified artifact.
 Do not rebuild and replace the already released version.
 
-## Current toolchain advisory
+## Check toolchain advisories
 
-The pinned `vsce` development toolchain currently includes an MSAL Node dependency affected by [GHSA-xcx6-jx8p-x3h5](https://github.com/advisories/GHSA-xcx6-jx8p-x3h5).
+The checked-in lockfile resolves `@azure/msal-node` to `6.0.1` through the `vsce` development toolchain.
+That version is affected by [GHSA-xcx6-jx8p-x3h5](https://github.com/advisories/GHSA-xcx6-jx8p-x3h5); the advisory identifies `7.1.0` as patched.
 The advisory concerns the authorization-code flow; the configured publishing job uses OIDC trusted publishing.
 These development dependencies are excluded from the VSIX runtime package.
-The current dependency ranges do not offer a patched compatible MSAL release, and `npm audit fix` does not resolve the report.
-Retain this verification limit until an upstream-compatible update is available; do not force an untested major dependency override or report a clean audit.
+Run `npm audit` when preparing a release and record its current findings.
+Check upstream-compatible dependency updates rather than assuming an earlier audit or repair attempt still describes the available versions.
+Retain unresolved findings as verification limits; do not force an untested major dependency override or report a clean audit.
 
 Configuration-page features remain deferred.

@@ -5,7 +5,7 @@ Give your agent an outcome, such as finding a workbook's dependencies or prepari
 Discoverable commands, compact results, and bundled agent skills reduce API plumbing and repeated setup, while previews and explicit site permissions keep changes under your control.
 
 TADX works with Tableau Cloud and Tableau Server.
-It is an independent, pre-1.0 project and is not supported by or associated with Tableau or Salesforce.
+It is an independent project and is not supported by or associated with Tableau or Salesforce.
 
 ## What you can do
 
@@ -25,6 +25,7 @@ TADX and Tableau MCP solve different parts of an agent's Tableau workflow.
 
 TADX owns lifecycle operations, artifacts, workspaces, administration, upstream metadata, configuration, and Pulse definition lifecycle.
 Tableau MCP is the complementary choice for analytical data queries, rendered view data and images, and current Pulse metric values and insights.
+[Tableau Desktop MCP](https://tableau.github.io/tableau-mcp/docs/configuration/mcp-config/env-vars#desktop) adds workbook authoring through a compatible local Desktop setup, so an agent can build content as well as query it.
 TADX does not configure, call, or proxy Tableau MCP, so the user or host agent remains responsible for that connection.
 
 ## Install
@@ -153,9 +154,11 @@ Read the [security guide](docs/security.md) for credential storage, mutation con
 
 ## Documentation
 
+Use the [documentation index](docs/README.md) for the maintained reading path and builder references.
+
 - [Roadmap](ROADMAP.md) tracks planned enhancements.
 - [Getting started](docs/getting-started.md) covers setup, credentials, content, caches, previews, Pulse, and updates.
-- [Capability reference](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html) describe the supported action inventory.
+- [Capability reference](docs/reference/capabilities.md) and the [hosted capability map](https://tadx.net/capabilities.html) describe the supported action inventory.
 - [Workspaces](docs/workspaces.md) covers local artifacts, paths, status, and cloning.
 - [Security](docs/security.md) explains authentication, credential storage, permission boundaries, and local data handling.
 - [Managed policies](docs/managed-policy.md) covers optional machine-wide controls, secure deployment, and recovery.

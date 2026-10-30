@@ -3,7 +3,6 @@
 TADX builds a Go CLI from [`cmd/tadx`](../../cmd/tadx/main.go) and a separate VS Code extension from [`extensions/vscode`](../../extensions/vscode).
 The CLI embeds its operating Guidance and bootstrap installers, so the released executable does not need a source checkout.
 The [runtime guide](runtime.md) explains command execution; this page owns dependency roles and the source-to-installation path.
-The [review record](review.md) identifies the examined working tree and verification limits.
 
 ## Toolchains and libraries
 
@@ -215,14 +214,13 @@ The validation boundaries are distinct:
 
 [`test-host.mjs`](../../extensions/vscode/scripts/test-host.mjs) defaults to stable VS Code and accepts an explicit version.
 It compiles a separate synthetic Go executable and retains failed-run artifacts for inspection.
-The [build validation record](../vscode-extension-validation.md) distinguishes historical Windows checks from later release validation and its limits.
+The [extension guide](../../extensions/vscode/README.md#develop-and-validate) owns current contributor checks and the limits of each check.
 The manual extension workflow gates publication on package, browser, host, source CLI, released CLI, and installer checks.
 It publishes the verified package without rebuilding it; GitHub release and Marketplace publication require an explicit selected action.
 The [release and upgrade guide](../vscode-extension-release.md) owns versioning, release channels, publishing identity, setup, and artifact verification.
-The [review record](review.md) preserves the original delivery finding and its 2026-10-25 resolution.
 
 ## Keep this map current
 
 Update this page when dependency roles, embedded inputs, supported distribution targets, or delivery ownership change.
 Keep exact dependency versions in the manifests and exact public command syntax in executable help.
-Update the [architecture index](README.md) and [review coverage](review.md) when adding a maintained ecosystem or a new process boundary.
+Update the [architecture index](README.md) when adding a maintained ecosystem or a new process boundary.

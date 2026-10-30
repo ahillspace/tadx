@@ -4,1024 +4,336 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#f3f3eb">
-<meta name="description" content="Interactive map of the current TADX CLI capability inventory and runtime defaults.">
-<title>TADX Capability Map</title>
+<meta name="description" content="Find TADX CLI commands, inspect execution context, and see how Tableau MCP tools complement lifecycle work.">
+<title>Capability map | TADX | v2</title>
 <style>
 :root {
   color-scheme: light;
-  --page: #f3f3eb;
-  --surface: #fafbf5;
-  --surface-2: #f3f3eb;
-  --surface-3: #e6ebdd;
-  --ink: #202720;
-  --muted: #646b5f;
-  --line: #d9dcd0;
-  --line-strong: #b8c1ad;
-  --brand: #202720;
-  --brand-2: #496641;
-  --focus: #496641;
-  --accent: #d3ed9e;
-  --implemented: #087f6b;
-  --implemented-bg: #d9f3ec;
-  --planned: #9a6700;
-  --planned-bg: #fff0c2;
-  --delegated: #6840b7;
-  --delegated-bg: #ede5ff;
-  --blocked: #b42318;
-  --blocked-bg: #fee4e2;
-  --remote: #9b2c78;
-  --remote-bg: #f9e2f1;
-  --local: #315ca8;
-  --local-bg: #e2ebfb;
-  --enabled: #10724f;
-  --enabled-bg: #dcf3e8;
-  --disabled: #6b7280;
-  --disabled-bg: #eceff2;
-  --shadow: 0 3px 12px rgba(32, 39, 32, 0.04);
-  --radius: 6px;
-  --radius-sm: 4px;
-  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --sans: "Inter Display", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+  --page: #f3f3eb; --surface: #fbfcf7; --surface-2: #eef0e7; --surface-3: #e5eadc;
+  --ink: #202c25; --muted: #5e685f; --line: #d6dcd0; --line-strong: #aebaaa;
+  --brand: #202c25; --brand-2: #375b3b; --focus: #375b3b; --accent: #d3ed9e;
+  --implemented: #37664c; --implemented-bg: #e6eee4;
+  --planned: #805f23; --planned-bg: #f4ecdb;
+  --blocked: #a13f2f; --blocked-bg: #f8e8e2;
+  --remote: #80593b; --remote-bg: #f3ece1; --local: #456475; --local-bg: #e7edf0;
+  --enabled: #37664c; --disabled: #5e685f;
+  --sans: "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: Consolas, "Liberation Mono", monospace;
 }
-
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0;
-  min-width: 320px;
-  background: var(--page);
-  color: var(--ink);
-  font-family: var(--sans);
-  line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
-}
-button, input, select { font: inherit; }
-button { color: inherit; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button, summary, select { cursor: pointer; }
+a { color: inherit; text-underline-offset: 4px; }
+a:hover { color: var(--brand-2); }
+button { appearance: none; }
 [hidden] { display: none !important; }
-
-.skip-link {
-  position: fixed;
-  z-index: 100;
-  left: 1rem;
-  top: 1rem;
-  padding: .7rem 1rem;
-  border-radius: 8px;
-  background: #fff;
-  color: var(--brand);
-  box-shadow: var(--shadow);
-  transform: translateY(-180%);
-}
-.skip-link:focus { transform: translateY(0); }
-
-.hero {
-  position: relative;
-  overflow: hidden;
-  padding: 2rem max(1rem, calc((100vw - 1540px) / 2));
-  background: var(--page);
-  color: var(--ink);
-}
-.hero::after {
-  content: none;
-  position: absolute;
-  width: 28rem;
-  height: 28rem;
-  right: -8rem;
-  top: -17rem;
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 50%;
-  box-shadow: 0 0 0 4rem rgba(255,255,255,.025), 0 0 0 8rem rgba(255,255,255,.018);
-}
-.hero-inner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 2rem;
-}
-.eyebrow {
-  margin: 0 0 .45rem;
-  color: var(--brand-2);
-  font: 700 .75rem/1 var(--mono);
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-h1 {
-  margin: 0;
-  font-size: clamp(2rem, 5vw, 4.3rem);
-  line-height: .98;
-  letter-spacing: -.045em;
-}
-.hero-copy {
-  max-width: 50rem;
-  margin: .85rem 0 0;
-  color: var(--muted);
-  font-size: clamp(.95rem, 1.4vw, 1.08rem);
-}
-.source-meta {
-  display: grid;
-  justify-items: end;
-  gap: .55rem;
-  min-width: 16rem;
-  color: var(--muted);
-  font-size: .82rem;
-}
-.source-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: .5rem;
-  padding: .52rem .72rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--surface-3);
-  backdrop-filter: blur(8px);
-}
-.source-chip strong { color: var(--ink); }
-.source-meta a,
-.footer a {
-  color: inherit;
-  text-underline-offset: .18em;
-}
-.source-meta a:hover { color: var(--brand-2); }
-.footer a:hover { color: var(--focus); }
-.live-dot {
-  width: .58rem;
-  height: .58rem;
-  border-radius: 50%;
-  background: #6ee7b7;
-  box-shadow: 0 0 0 4px rgba(110,231,183,.14);
-}
-
-.shell {
-  width: min(1540px, calc(100% - 2rem));
-  margin: 0 auto;
-  padding: 1.3rem 0 3rem;
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .8rem;
-  margin-top: 0;
-  position: relative;
-  z-index: 2;
-}
-.stat-card {
-  appearance: none;
-  width: 100%;
-  min-height: 7.2rem;
-  padding: 1rem 1.05rem;
-  border: 1px solid var(--line);
-  border-top: 4px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  text-align: left;
-  cursor: pointer;
-  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
-}
-.stat-card:hover { transform: translateY(-2px); border-color: var(--line-strong); }
-.stat-card:focus-visible { outline: 3px solid rgba(0,103,163,.28); outline-offset: 2px; }
-.stat-card[aria-pressed="true"] { box-shadow: 0 0 0 3px rgba(0,103,163,.18), var(--shadow); }
-.stat-card.implemented { border-top-color: var(--implemented); }
-.stat-card.planned { border-top-color: var(--planned); }
-.stat-card.blocked { border-top-color: var(--blocked); }
-.stat-card.delegated { border-top-color: var(--delegated); }
-.stat-number {
-  display: block;
-  font-size: 2.15rem;
-  font-weight: 780;
-  line-height: 1;
-  letter-spacing: -.04em;
-}
-.stat-label {
-  display: block;
-  margin-top: .46rem;
-  font-weight: 750;
-}
-.stat-note {
-  display: block;
-  margin-top: .25rem;
-  color: var(--muted);
-  font-size: .77rem;
-}
-
-.utility-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 1rem 0;
-  color: var(--muted);
-  font-size: .84rem;
-}
-.utility-bar strong { color: var(--ink); }
-.execution-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  padding: .42rem .68rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255,255,255,.72);
-}
-.execution-summary .status-light {
-  width: .5rem;
-  height: .5rem;
-  border-radius: 50%;
-  background: var(--enabled);
-}
-
-.workspace {
-  display: grid;
-  grid-template-columns: 255px minmax(430px, 1fr) minmax(340px, 430px);
-  gap: 1rem;
-  align-items: start;
-}
-
-.panel {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: 0 5px 18px rgba(18, 37, 52, .055);
-}
-.controls, .details {
-  position: sticky;
-  top: 1rem;
-  max-height: calc(100vh - 2rem);
-  overflow: auto;
-}
-.panel-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .75rem;
-  padding: 1rem 1rem .8rem;
-  border-bottom: 1px solid var(--line);
-}
-.panel-heading h2, .panel-heading h3 {
-  margin: 0;
-  font-size: .96rem;
-  letter-spacing: -.01em;
-}
-.kbd-hint {
-  color: var(--muted);
-  font: 600 .69rem/1 var(--mono);
-}
-kbd {
-  display: inline-block;
-  min-width: 1.4rem;
-  padding: .18rem .34rem;
-  border: 1px solid var(--line-strong);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  background: var(--surface-2);
-  color: var(--ink);
-  font: 600 .7rem/1 var(--mono);
-  text-align: center;
-}
-
-.filter-form { padding: .9rem 1rem 1rem; }
-.field { margin-bottom: .78rem; }
-.field label {
-  display: block;
-  margin-bottom: .3rem;
-  color: #344453;
-  font-size: .74rem;
-  font-weight: 760;
-  letter-spacing: .03em;
-  text-transform: uppercase;
-}
-.search-wrap { position: relative; }
-.search-wrap svg {
-  position: absolute;
-  left: .72rem;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  transform: translateY(-50%);
-  color: var(--muted);
-  pointer-events: none;
-}
-input[type="search"], select {
-  width: 100%;
-  min-height: 2.55rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--ink);
-  outline: none;
-}
-input[type="search"] { padding: .58rem .7rem .58rem 2.15rem; }
-select { padding: .5rem 2rem .5rem .68rem; }
-input[type="search"]:focus, select:focus {
-  border-color: var(--focus);
-  box-shadow: 0 0 0 3px rgba(0,103,163,.14);
-}
-.filter-actions {
-  display: flex;
-  gap: .55rem;
-  margin-top: .9rem;
-}
-.secondary-button, .tree-button, .copy-button {
-  appearance: none;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-}
-.secondary-button {
-  width: 100%;
-  padding: .55rem .7rem;
-  font-weight: 700;
-  font-size: .8rem;
-}
-.secondary-button:hover, .tree-button:hover, .copy-button:hover { background: var(--surface-3); }
-.secondary-button:focus-visible, .tree-button:focus-visible, .copy-button:focus-visible {
-  outline: 3px solid rgba(0,103,163,.22);
-  outline-offset: 2px;
-}
-
-.legend {
-  border-top: 1px solid var(--line);
-  padding: .8rem 1rem 1rem;
-}
-.legend summary {
-  cursor: pointer;
-  font-weight: 760;
-  font-size: .82rem;
-}
-.legend-grid {
-  display: grid;
-  gap: .45rem;
-  margin-top: .72rem;
-}
-.legend-row {
-  display: flex;
-  align-items: center;
-  gap: .55rem;
-  color: var(--muted);
-  font-size: .75rem;
-}
-.legend-divider {
-  height: 1px;
-  margin: .35rem 0;
-  background: var(--line);
-}
-
-.tree-panel { min-height: 66vh; overflow: hidden; }
-.tree-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: .75rem;
-  padding: .82rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(#fff, #fbfcfd);
-}
-.result-count { color: var(--muted); font-size: .82rem; }
-.result-count strong { color: var(--ink); }
-.tree-actions { display: flex; gap: .45rem; }
-.tree-button {
-  padding: .4rem .58rem;
-  font-size: .74rem;
-  font-weight: 700;
-}
-.tree-scroll {
-  padding: .7rem .7rem 1.2rem;
-  overflow-x: auto;
-}
-.tree-root, .tree-root ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.tree-root ul {
-  position: relative;
-  margin-left: 1.05rem;
-  padding-left: .55rem;
-  border-left: 1px solid var(--line);
-}
-.tree-root li { position: relative; }
-.tree-row {
-  appearance: none;
-  display: grid;
-  grid-template-columns: 1rem 1rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: .45rem;
-  width: 100%;
-  min-height: 2.35rem;
-  margin: .12rem 0;
-  padding: .36rem .45rem;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-.tree-row:hover { background: var(--surface-2); }
-.tree-row:focus-visible {
-  outline: 3px solid rgba(0,103,163,.22);
-  outline-offset: -1px;
-}
-.tree-row[aria-selected="true"] {
-  border-color: #8cb8cf;
-  background: #edf7fb;
-}
-.tree-row.leaf.state-implemented { box-shadow: inset 3px 0 var(--implemented); }
-.tree-row.leaf.state-planned { box-shadow: inset 3px 0 var(--planned); }
-.tree-row.leaf.state-external-delegated { box-shadow: inset 3px 0 var(--delegated); }
-.tree-row.leaf.is-blocked { border-right: 3px solid var(--blocked); }
-.chevron {
-  width: .85rem;
-  color: #60717f;
-  font-size: .76rem;
-  text-align: center;
-}
-.chevron.placeholder { opacity: .28; }
-.state-dot {
-  width: .65rem;
-  height: .65rem;
-  border: 2px solid transparent;
-  border-radius: 50%;
-  background: var(--line-strong);
-}
-.state-dot.implemented { background: var(--implemented); }
-.state-dot.planned { background: var(--planned); }
-.state-dot.external-delegated { background: var(--delegated); }
-.state-ring {
-  display: grid;
-  place-items: center;
-  width: .72rem;
-  height: .72rem;
-  border-radius: 50%;
-  background: var(--state-gradient, var(--line-strong));
-}
-.state-ring::after {
-  content: "";
-  width: .31rem;
-  height: .31rem;
-  border-radius: 50%;
-  background: #fff;
-}
-.node-main { min-width: 0; }
-.node-line {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  min-width: 0;
-}
-.node-label {
-  overflow: hidden;
-  color: var(--ink);
-  font-weight: 690;
-  font-size: .82rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.node-label.root-label {
-  color: var(--brand);
-  font: 780 .9rem/1 var(--mono);
-}
-.node-label.delegated-label { color: #4e278f; }
-.node-id {
-  display: block;
-  overflow: hidden;
-  margin-top: .08rem;
-  color: var(--muted);
-  font: 500 .67rem/1.25 var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.node-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: .28rem;
-  padding-left: .4rem;
-}
-.count-pill {
-  min-width: 1.7rem;
-  padding: .16rem .42rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--muted);
-  font: 700 .65rem/1 var(--mono);
-  text-align: center;
-}
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 1.35rem;
-  padding: .2rem .42rem;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  font: 760 .58rem/1 var(--mono);
-  letter-spacing: .035em;
-  white-space: nowrap;
-}
-.badge.remote { border-color: #e4a6ce; background: var(--remote-bg); color: #7c1d5d; }
-.badge.local { border-color: #aec5ec; background: var(--local-bg); color: #244b90; }
-.badge.delegated { border-color: #c8b6ef; background: var(--delegated-bg); color: #56329c; }
-.badge.blocked { border-color: #f0aaa4; background: var(--blocked-bg); color: var(--blocked); }
-.badge.apply { border-color: #e6c483; background: #fff5dc; color: #7a5200; }
-.exec-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: .3rem;
-  padding: .2rem .42rem;
-  border-radius: 999px;
-  font: 750 .58rem/1 var(--mono);
-  white-space: nowrap;
-}
-.exec-pill::before {
-  content: "";
-  width: .38rem;
-  height: .38rem;
-  border-radius: 50%;
-}
-.exec-pill.enabled { background: var(--enabled-bg); color: var(--enabled); }
-.exec-pill.enabled::before { background: var(--enabled); }
-.exec-pill.disabled { background: var(--disabled-bg); color: #5f6871; }
-.exec-pill.disabled::before { background: var(--disabled); }
-
-.empty-state {
-  margin: 1.2rem;
-  padding: 2rem 1rem;
-  border: 1px dashed var(--line-strong);
-  border-radius: 12px;
-  color: var(--muted);
-  text-align: center;
-}
-.empty-state strong { display: block; margin-bottom: .3rem; color: var(--ink); }
-
-.details { min-height: 31rem; }
-.detail-content { padding: 1rem; }
-.detail-kicker {
-  margin: 0 0 .35rem;
-  color: var(--muted);
-  font: 700 .67rem/1 var(--mono);
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-.detail-title {
-  margin: 0;
-  font-size: clamp(1.2rem, 2vw, 1.65rem);
-  line-height: 1.1;
-  letter-spacing: -.025em;
-  overflow-wrap: anywhere;
-}
-.breadcrumb {
-  margin-top: .45rem;
-  color: var(--muted);
-  font: 500 .7rem/1.45 var(--mono);
-  overflow-wrap: anywhere;
-}
-.detail-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .38rem;
-  margin: .8rem 0;
-}
-.command-box {
-  position: relative;
-  margin: .9rem 0 1rem;
-  padding: .78rem 3.2rem .78rem .8rem;
-  border: 1px solid #bfd0da;
-  border-radius: 10px;
-  background: #f4f8fa;
-}
-.command-label {
-  display: block;
-  margin-bottom: .32rem;
-  color: var(--muted);
-  font-size: .67rem;
-  font-weight: 760;
-  text-transform: uppercase;
-}
-.command-box code {
-  display: block;
-  color: #0f3044;
-  font: 650 .76rem/1.5 var(--mono);
-  overflow-wrap: anywhere;
-}
-.copy-button {
-  position: absolute;
-  top: .62rem;
-  right: .62rem;
-  padding: .33rem .48rem;
-  font-size: .68rem;
-  font-weight: 720;
-}
-.outcome {
-  margin: 0 0 1rem;
-  color: #334554;
-  font-size: .9rem;
-}
-.detail-section {
-  margin-top: .85rem;
-  padding-top: .85rem;
-  border-top: 1px solid var(--line);
-}
-.detail-section h3 {
-  margin: 0 0 .6rem;
-  font-size: .78rem;
-  letter-spacing: .03em;
-  text-transform: uppercase;
-}
-.fact-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: .55rem;
-}
-.fact {
-  min-width: 0;
-  padding: .58rem .62rem;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface-2);
-}
-.fact.full { grid-column: 1 / -1; }
-.fact dt {
-  margin: 0 0 .2rem;
-  color: var(--muted);
-  font-size: .65rem;
-  font-weight: 760;
-  letter-spacing: .025em;
-  text-transform: uppercase;
-}
-.fact dd {
-  margin: 0;
-  color: var(--ink);
-  font-size: .79rem;
-  overflow-wrap: anywhere;
-}
-.fact code { font-family: var(--mono); font-size: .73rem; }
-.value-good { color: var(--enabled); font-weight: 750; }
-.value-muted { color: var(--muted); }
-.value-danger { color: var(--blocked); font-weight: 750; }
-.callout {
-  margin-top: .6rem;
-  padding: .72rem .75rem;
-  border-left: 3px solid var(--focus);
-  border-radius: 4px 9px 9px 4px;
-  background: #edf7fb;
-  color: #264252;
-  font-size: .78rem;
-}
-.callout.blocker {
-  border-left-color: var(--blocked);
-  background: #fff2f1;
-  color: #67251f;
-}
-.source-details {
-  margin-top: .85rem;
-  border-top: 1px solid var(--line);
-  padding-top: .8rem;
-}
-.source-details summary {
-  cursor: pointer;
-  color: #344554;
-  font-size: .78rem;
-  font-weight: 750;
-}
-.source-details .fact-grid { margin-top: .65rem; }
-.group-state-list {
-  display: grid;
-  gap: .45rem;
-  margin-top: .8rem;
-}
-.group-state-row {
-  display: grid;
-  grid-template-columns: 7.5rem 1fr 2rem;
-  align-items: center;
-  gap: .55rem;
-  font-size: .75rem;
-}
-.group-state-row strong { text-align: right; font-family: var(--mono); }
-.group-bar {
-  height: .48rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--surface-3);
-}
-.group-bar span { display: block; height: 100%; border-radius: inherit; }
-.group-bar .implemented { background: var(--implemented); }
-.group-bar .planned { background: var(--planned); }
-.group-bar .external-delegated { background: var(--delegated); }
-
-.footer {
-  padding: 1.5rem 0 0;
-  color: var(--muted);
-  font-size: .75rem;
-  text-align: center;
-}
-
-@media (max-width: 1180px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(330px, .72fr);
-    grid-template-areas:
-      "controls controls"
-      "tree details";
-  }
-  .controls { grid-area: controls; position: static; max-height: none; }
-  .tree-panel { grid-area: tree; }
-  .details { grid-area: details; }
-  .filter-form {
-    display: grid;
-    grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(145px, 1fr)) auto;
-    align-items: end;
-    gap: .65rem;
-  }
-  .field { margin: 0; }
-  .filter-actions { margin: 0; }
-  .secondary-button { width: auto; min-height: 2.55rem; }
-  .legend { padding-top: .65rem; }
-  .legend-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
-}
-
-@media (max-width: 820px) {
-  .hero { padding-bottom: 3.6rem; }
-  .hero-inner { display: block; }
-  .source-meta { justify-items: start; margin-top: 1rem; }
-  .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .workspace {
-    grid-template-columns: 1fr;
-    grid-template-areas: "controls" "tree" "details";
-  }
-  .controls, .details { position: static; max-height: none; }
-  .filter-form { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .filter-form .field:first-child { grid-column: 1 / -1; }
-  .filter-actions { align-self: end; }
-  .legend-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .tree-panel { min-height: 28rem; }
-}
-
-@media (max-width: 540px) {
-  .shell { width: min(100% - 1rem, 1540px); }
-  .hero { padding-left: 1rem; padding-right: 1rem; }
-  .stats { gap: .55rem; }
-  .stat-card { min-height: 6.2rem; padding: .8rem; }
-  .stat-number { font-size: 1.75rem; }
-  .utility-bar { align-items: flex-start; flex-direction: column; gap: .5rem; }
-  .filter-form { grid-template-columns: 1fr; }
-  .filter-form .field:first-child { grid-column: auto; }
-  .filter-actions { width: 100%; }
-  .secondary-button { width: 100%; }
-  .legend-grid { grid-template-columns: 1fr; }
-  .tree-toolbar { align-items: flex-start; flex-direction: column; }
-  .tree-scroll { padding-left: .35rem; padding-right: .35rem; }
-  .tree-root ul { margin-left: .72rem; padding-left: .36rem; }
-  .tree-row {
-    grid-template-columns: .82rem .82rem minmax(0,1fr);
-    padding-right: .3rem;
-  }
-  .node-meta {
-    grid-column: 3;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    padding: .16rem 0 .05rem;
-  }
-  .fact-grid { grid-template-columns: 1fr; }
-  .fact.full { grid-column: auto; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    scroll-behavior: auto !important;
-    transition: none !important;
-  }
-}
-
-
-/* Updated behavior-model components */
-.runtime-model {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .8rem;
-  margin: 0 0 1rem;
-}
-.default-card {
-  min-width: 0;
-  padding: .95rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-}
-.default-card.search-default { border-top: 3px solid #006f8b; }
-.default-card.pull-default { border-top: 3px solid #315ca8; }
-.default-card.mutation-default { border-top: 3px solid #9b2c78; }
-.default-card.action-default { border-top: 3px solid #6840b7; }
-.default-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .6rem;
-  margin-bottom: .5rem;
-}
-.default-card h2 {
-  margin: 0;
-  color: var(--ink);
-  font-size: .86rem;
-  letter-spacing: -.01em;
-}
-.default-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: .76rem;
-}
-.default-card code { font: 650 .72rem/1.35 var(--mono); color: var(--brand-2); }
-.default-count {
-  flex: 0 0 auto;
-  min-width: 1.7rem;
-  padding: .2rem .42rem;
-  border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--ink);
-  font: 760 .66rem/1 var(--mono);
-  text-align: center;
-}
-.behavior-labels { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .65rem; }
-.badge.live { border-color: #95cbd8; background: #e0f3f7; color: #075b70; }
-.badge.cache { border-color: #b5c2cb; background: #eef2f5; color: #435563; }
-.badge.pull { border-color: #a9c0ea; background: #e3ebfa; color: #244b90; }
-.badge.preview { border-color: #d9bf76; background: #fff3cd; color: #765300; }
-.badge.gated { border-color: #dca6cb; background: #f8e5f2; color: #7b245f; }
-.badge.ready { border-color: #9bd3c8; background: var(--implemented-bg); color: var(--implemented); }
-.behavior-callout {
-  margin: .85rem 0 1rem;
-  padding: .8rem .82rem;
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--focus);
-  border-radius: var(--radius);
-  background: var(--surface-3);
-}
-.behavior-callout strong {
-  display: block;
-  margin-bottom: .2rem;
-  color: var(--ink);
-  font-size: .72rem;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.behavior-callout span { color: var(--muted); font-size: .875rem; }
-.source-note {
-  margin-top: .7rem;
-  color: var(--muted);
-  font-size: .69rem;
-}
-.stat-card.is-zero { opacity: .78; }
-
-@media (max-width: 1180px) {
-  .runtime-model { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .filter-form { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
-  .filter-form .field:first-child { grid-column: span 2; }
-}
-@media (max-width: 620px) {
-  .runtime-model { grid-template-columns: 1fr; }
-  .filter-form .field:first-child { grid-column: auto; }
-}
-
-/* Shared homepage identity; status colors retain their distinct meanings. */
 ::selection { background: var(--accent); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
-.site-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 91px; width: min(1540px, calc(100% - 2rem)); margin-inline: auto; border-bottom: 1px solid var(--line); }
-.site-nav a { color: var(--ink); text-decoration: none; }
-.site-nav a:hover { color: var(--brand-2); }
-.site-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 750; letter-spacing: -1px; }
-.site-brand svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.skip-link { position: fixed; top: 12px; left: 16px; z-index: 10; background: var(--ink); color: white; padding: 12px; transform: translateY(-160%); }
+.skip-link:focus { transform: translateY(0); }
+.page-width { width: min(1440px, calc(100% - 96px)); margin-inline: auto; }
+.site-nav { min-height: 80px; display: flex; justify-content: space-between; align-items: center; gap: 24px; border-bottom: 1px solid var(--line); }
+.site-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-size: 23px; font-weight: 650; letter-spacing: -1px; }
+.site-brand svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; }
 .site-brand .cursor { stroke: var(--brand-2); }
-.site-links { display: flex; align-items: center; gap: 1.5rem; font-size: .875rem; }
-.site-links [aria-current] { color: var(--brand-2); text-decoration: underline; text-underline-offset: 6px; }
-.hero { padding-block: 2rem 1rem; }
-h1 { font-weight: 540; }
-.stat-card:focus-visible { outline-color: var(--focus); }
-.stat-card[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--focus); }
-.stat-note, .default-card p, .default-card h2 { font-size: .875rem; }
-@media (max-width: 620px) {
-  .site-nav { min-height: 76px; flex-wrap: wrap; padding-block: 1rem; }
-  .site-links { gap: 1rem; }
+.nav-context { margin-left: 18px; border-left: 1px solid var(--line-strong); padding-left: 22px; font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.site-links { display: flex; gap: 28px; align-items: center; font-size: 12px; }
+.site-links a { text-decoration: none; padding-block: 8px; }
+.site-links [aria-current] { color: var(--brand-2); border-bottom: 1px solid var(--brand-2); }
+.hero { padding-top: 40px; padding-bottom: 32px; display: grid; grid-template-columns: 1fr 350px; align-items: end; gap: 48px; }
+.eyebrow, .section-label { margin: 0; font: 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--brand-2); }
+.eyebrow { display: flex; gap: 14px; align-items: center; margin-bottom: 17px; }
+.version { border: 1px solid var(--line-strong); padding: 2px 6px; font-size: 10px; letter-spacing: .02em; }
+h1 { margin: 0; font-size: clamp(42px, 4.5vw, 68px); font-weight: 400; line-height: 1.06; letter-spacing: -.055em; }
+.hero-copy { max-width: 520px; margin: 17px 0 0; font-size: 15px; color: var(--muted); }
+.source-meta { padding-left: 23px; border-left: 1px solid var(--line-strong); color: var(--muted); font-size: 12px; }
+.source-meta p { margin: 0 0 9px; }
+.source-meta p:last-child { margin: 0; }
+.source-meta strong { font-weight: 600; color: var(--ink); }
+.source-meta a { font: 11px var(--mono); }
+.inventory-band { display: flex; align-items: stretch; justify-content: space-between; gap: 24px; border-block: 1px solid var(--line); }
+.stats { display: flex; flex-wrap: wrap; gap: 28px; }
+.stat-card { display: inline-flex; align-items: baseline; gap: 8px; min-height: 59px; padding: 17px 0; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--muted); font-size: 12px; }
+.stat-card:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+.stat-card[aria-pressed="true"] { color: var(--brand-2); border-bottom-color: var(--brand-2); }
+.stat-number { font-size: 20px; font-weight: 500; letter-spacing: -.04em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.is-zero .stat-number { color: var(--muted); }
+.band-link { align-self: center; white-space: nowrap; font-size: 12px; }
+.browser { margin-top: 32px; border: 1px solid var(--line); background: var(--surface); }
+.search-bar { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+.search-wrap { position: relative; width: min(530px, 100%); }
+.search-wrap svg { width: 18px; height: 18px; position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+input[type="search"] { width: 100%; min-height: 46px; border: 1px solid var(--line-strong); border-radius: 2px; padding: 10px 50px 10px 43px; background: var(--surface); font-size: 14px; }
+input::placeholder { color: var(--muted); opacity: 1; }
+.search-wrap kbd { position: absolute; right: 13px; top: 13px; pointer-events: none; }
+kbd { display: inline-block; min-width: 19px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); font: 11px/1.5 var(--mono); text-align: center; }
+.result-count { color: var(--muted); font: 11px/1.5 var(--mono); }
+.result-count strong { color: var(--ink); font-weight: 500; }
+.workspace { display: grid; grid-template-columns: 196px minmax(0, 1.12fr) minmax(0, 1fr); }
+.controls { padding: 23px 20px; border-right: 1px solid var(--line); }
+.filter-disclosure > summary { display: none; }
+.filter-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 21px; }
+.filter-heading h2, .panel-heading h2 { margin: 0; font-size: 12px; font-weight: 600; }
+.secondary-button { background: none; border: 0; padding: 4px 0; font-size: 11px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.secondary-button:hover { color: var(--ink); }
+.field { min-width: 0; margin-bottom: 17px; }
+.field label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+select { width: 100%; min-height: 37px; padding: 7px 22px 7px 9px; border: 1px solid var(--line); border-radius: 2px; background: transparent; font-size: 12px; }
+select:hover { border-color: var(--line-strong); }
+.legend { margin-top: 25px; padding-top: 17px; border-top: 1px solid var(--line); }
+summary { font-size: 12px; font-weight: 500; }
+.legend-grid { display: grid; gap: 10px; padding-top: 14px; }
+.legend-row { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; }
+.tree-panel { min-width: 0; border-right: 1px solid var(--line); }
+.tree-toolbar, .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 66px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+.tree-toolbar h2 { margin: 0; font-size: 12px; font-weight: 600; }
+.tree-actions { display: flex; gap: 12px; }
+.tree-button { padding: 5px 0; border: 0; background: none; font-size: 11px; color: var(--muted); }
+.tree-button:hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 4px; }
+.tree-scroll { padding: 15px 14px 28px; max-height: 750px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.tree-root, .tree-root ul { list-style: none; margin: 0; padding: 0; }
+.tree-root ul { margin-left: 13px; padding-left: 9px; border-left: 1px solid var(--line); }
+.tree-row { display: grid; grid-template-columns: 10px 9px minmax(0,1fr) auto; gap: 8px; width: 100%; min-height: 43px; padding: 9px 10px; border: 1px solid transparent; border-radius: 2px; background: transparent; text-align: left; }
+.tree-row:hover { background: var(--surface-2); }
+.tree-row[aria-selected="true"] { background: var(--surface-3); border-color: #c6d2ba; }
+.tree-row:focus-visible { outline-offset: -2px; }
+.chevron { align-self: center; color: var(--muted); font-size: 8px; }
+.chevron.placeholder { visibility: hidden; }
+.state-dot, .state-ring { width: 6px; height: 6px; align-self: center; flex-shrink: 0; border-radius: 50%; background: var(--implemented); }
+.state-dot.planned { background: var(--planned); }
+.state-ring { background: none; border: 1px solid var(--line-strong); }
+.node-main { min-width: 0; align-self: center; }
+.node-label { display: block; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.root-label { font-family: var(--mono); font-weight: 600; }
+.node-id { display: block; font: 10px/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; margin-top: 3px; }
+.node-meta { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.node-meta .badge, .node-meta .exec-pill { display: none; }
+.node-meta .badge.blocked { display: inline-flex; }
+.tree-row.leaf { grid-template-columns: 10px 9px minmax(0,1fr); }
+.tree-row.leaf .node-meta:has(.badge.blocked) { grid-column: 3; justify-content: flex-start; }
+.count-pill { color: var(--muted); font: 11px/1.5 var(--mono); font-variant-numeric: tabular-nums; padding-left: 8px; }
+.details { min-width: 0; scroll-margin-top: 20px; }
+.panel-heading { color: var(--muted); }
+.panel-heading a { font-size: 11px; }
+.detail-content { padding: 30px 27px; max-height: 750px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.detail-content:has(.group-title) { max-height: none; overflow: visible; }
+.detail-kicker { margin: 0 0 10px; color: var(--brand-2); font: 10px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.detail-title { margin: 0 0 9px; font-weight: 450; font-size: 27px; line-height: 1.2; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.group-title { max-width: 280px; font-size: 37px; line-height: 1.08; letter-spacing: -.045em; margin-bottom: 19px; }
+.outcome { font-size: 13px; color: var(--muted); margin: 0 0 23px; }
+.breadcrumb { font: 10px/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.detail-badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 17px 0; }
+.badge, .exec-pill { display: inline-flex; align-items: center; padding: 4px 6px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface-2); color: var(--muted); font: 9px/1.4 var(--mono); letter-spacing: .01em; }
+.badge.remote, .badge.gated { background: var(--remote-bg); color: var(--remote); }
+.badge.local, .badge.pull { background: var(--local-bg); color: var(--local); }
+.badge.blocked { background: var(--blocked-bg); color: var(--blocked); }
+.badge.preview { background: var(--planned-bg); color: var(--planned); }
+.badge.live, .badge.ready { background: var(--implemented-bg); color: var(--implemented); }
+.command-box { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 12px; margin: 22px 0; padding: 16px; background: #25382b; color: #f2f4eb; border-radius: 2px; }
+.command-label { grid-column: 1; color: #bfccbb; font: 9px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+.command-box code { grid-column: 1 / -1; grid-row: 2; font: 11px/1.7 var(--mono); overflow-wrap: anywhere; }
+.copy-button { grid-column: 2; grid-row: 1; background: transparent; color: #e2eed5; border: 1px solid #7a9079; padding: 3px 8px; border-radius: 2px; font-size: 10px; }
+.copy-button:hover { background: #3b513e; }
+.command-box :focus-visible { outline-color: var(--accent); }
+.detail-section { padding-top: 21px; margin-top: 23px; border-top: 1px solid var(--line); }
+.detail-section h3 { font-size: 12px; font-weight: 600; margin: 0 0 14px; }
+.fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 15px 18px; margin: 0; }
+.fact { min-width: 0; }
+.fact.full { grid-column: 1 / -1; }
+.fact dt { font-size: 10px; color: var(--muted); margin: 0 0 4px; }
+.fact dd { font-size: 12px; margin: 0; overflow-wrap: anywhere; }
+.fact code { font: 11px/1.55 var(--mono); }
+.value-good { color: var(--implemented); }
+.value-muted { color: var(--muted); }
+.value-danger { color: var(--blocked); }
+.behavior-callout { border-left: 2px solid var(--line-strong); padding: 2px 0 2px 13px; margin: 20px 0; }
+.behavior-callout strong { display: block; font-size: 11px; font-weight: 600; margin-bottom: 5px; }
+.behavior-callout span { color: var(--muted); font-size: 12px; }
+.callout { padding: 13px 0 0; font-size: 11px; color: var(--muted); }
+.callout.blocker { color: var(--blocked); }
+.source-details { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 18px; }
+.source-details .fact-grid { margin-top: 18px; }
+.overview-counts { display: grid; grid-template-columns: 1fr 1fr; padding: 20px 0; margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.overview-counts div { display: flex; flex-direction: column-reverse; gap: 5px; }
+.overview-counts div + div { padding-left: 22px; border-left: 1px solid var(--line); }
+.overview-counts dt { font-size: 11px; color: var(--muted); }
+.overview-counts dd { margin: 0; font-size: 34px; font-weight: 400; line-height: 1.1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.scope-section { border-top: 0; margin-top: 0; padding-top: 23px; }
+.scope-row { display: flex; gap: 15px; margin-top: 18px; }
+.scope-marker { font: 10px/1.7 var(--mono); color: var(--brand-2); padding-top: 2px; }
+.scope-row h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
+.scope-row p { margin: 0; font-size: 12px; color: var(--muted); }
+.group-metrics { margin: 0; }
+.group-metrics div { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; }
+.group-metrics dt { font-size: 12px; color: var(--muted); }
+.group-metrics dd { margin: 0; font: 12px/1.6 var(--mono); }
+.authority-note { margin: 25px 0 0; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.empty-state { padding: 60px 24px; text-align: center; font-size: 13px; color: var(--muted); }
+.empty-state strong { display: block; font-weight: 500; color: var(--ink); margin-bottom: 10px; }
+.empty-state button { display: block; margin: 16px auto 0; }
+.reference-section { padding: 38px 0; }
+.reference-disclosure { border-block: 1px solid var(--line); }
+.reference-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 0; list-style: none; }
+.reference-disclosure > summary::-webkit-details-marker { display: none; }
+.reference-disclosure > summary::after { content: "+"; font: 22px var(--mono); color: var(--brand-2); }
+.reference-disclosure[open] > summary::after { content: "-"; }
+.reference-disclosure > summary span { font-size: 19px; font-weight: 400; letter-spacing: -.025em; }
+.reference-disclosure > summary small { font-size: 12px; color: var(--muted); margin-left: auto; font-weight: 400; }
+.runtime-model { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 27px; padding: 8px 0 30px; }
+.default-card { min-width: 0; }
+.default-card-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.default-card h3 { font-size: 13px; font-weight: 600; margin: 0; }
+.default-count { font: 11px var(--mono); color: var(--muted); }
+.default-card p { margin: 0; font-size: 12px; color: var(--muted); }
+code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
+.catalog-note { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; border-top: 1px solid var(--line); padding: 25px 0; }
+.catalog-note h3 { margin: 0; font-size: 17px; font-weight: 450; letter-spacing: -.02em; }
+.catalog-note p { margin: 0; color: var(--muted); font-size: 12px; }
+.mcp-companions { border-top: 1px solid var(--line); padding: 25px 0; }
+.mcp-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+.mcp-heading h3 { margin: 0; font-size: 17px; font-weight: 450; letter-spacing: -.02em; }
+.mcp-heading p, .mcp-boundary { margin: 0; color: var(--muted); font-size: 12px; }
+.mcp-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px; }
+.mcp-card { min-width: 0; padding-top: 13px; border-top: 1px solid var(--line); }
+.mcp-card h4 { margin: 0 0 9px; font-size: 13px; font-weight: 600; }
+.mcp-card p { margin: 0; color: var(--muted); font-size: 12px; }
+.mcp-boundary { padding-top: 17px; }
+.footer { display: grid; grid-template-columns: 1fr auto; gap: 30px; padding: 0 0 32px; font-size: 11px; color: var(--muted); }
+.footer p { margin: 0 0 9px; max-width: 720px; }
+.footer nav { display: flex; gap: 18px; align-items: start; }
+@media (min-width: 1600px) { .workspace { grid-template-columns: 220px minmax(0,1.15fr) minmax(0,1fr); } }
+@media (max-width: 1200px) { .page-width { width: calc(100% - 56px); } .workspace { grid-template-columns: 175px minmax(0,1fr) minmax(0,1fr); } .controls { padding-inline: 15px; } .detail-content { padding: 26px 21px; } .tree-toolbar { padding-inline: 16px; gap: 8px; flex-wrap: wrap; } .tree-actions { gap: 15px; } .hero { grid-template-columns: 1fr 290px; } .stats { gap: 20px; } }
+@media (max-width: 1000px) {
+  .workspace { grid-template-columns: 190px minmax(0,1fr); }
+  .controls { grid-row: 1 / 3; }
+  .tree-panel { border-right: 0; }
+  .tree-scroll { max-height: 500px; }
+  .details { grid-column: 2; border-top: 1px solid var(--line); }
+  .detail-content { padding: 28px; max-height: none; overflow: visible; }
+  .hero { grid-template-columns: 1fr; gap: 25px; }
+  .source-meta { display: flex; gap: 20px; border: 0; padding: 0; }
+  .source-meta p { margin: 0; max-width: 290px; }
+  .group-title { max-width: none; }
+  .runtime-model { grid-template-columns: 1fr 1fr; }
+  .mcp-heading { display: block; }
+  .mcp-heading p { margin-top: 8px; }
+  .footer { grid-template-columns: 1fr; gap: 14px; }
 }
+@media (max-width: 600px) {
+  .page-width { width: calc(100% - 32px); }
+  .site-nav { min-height: 70px; gap: 14px; }
+  .site-brand { font-size: 21px; gap: 6px; }
+  .site-brand svg { width: 23px; height: 23px; }
+  .nav-context { display: none; }
+  .site-links { gap: 17px; font-size: 11px; }
+  .site-links .start-link { display: none; }
+  .hero { padding-top: 30px; padding-bottom: 26px; gap: 22px; }
+  .eyebrow { font-size: 10px; margin-bottom: 15px; }
+  h1 { font-size: clamp(38px, 10vw, 55px); }
+  .hero-copy { font-size: 14px; margin-top: 14px; }
+  .source-meta { display: block; font-size: 11px; }
+  .source-meta p + p { margin-top: 7px; }
+  .mcp-grid { grid-template-columns: 1fr; gap: 18px; }
+  .inventory-band { display: block; }
+  .stats { gap: 0; justify-content: space-between; }
+  .stat-card { flex-direction: column; gap: 1px; font-size: 10px; min-height: 72px; padding-block: 12px; align-items: flex-start; }
+  .stat-number { font-size: 23px; }
+  .band-link { display: block; border-top: 1px solid var(--line); padding-block: 10px; font-size: 11px; }
+  .browser { margin-top: 24px; }
+  .search-bar { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px; }
+  input[type="search"] { font-size: 12px; padding-right: 28px; }
+  .search-wrap kbd { display: none; }
+  .workspace { display: flex; flex-direction: column; }
+  .controls { border-right: 0; border-bottom: 1px solid var(--line); padding: 17px 14px; }
+  .controls { position: relative; }
+  .filter-heading { margin: 0; }
+  .filter-heading h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .filter-heading .secondary-button { position: absolute; right: 14px; top: 14px; }
+  .filter-disclosure > summary { display: flex; gap: 10px; align-items: baseline; min-height: 24px; padding-right: 45px; font-size: 12px; }
+  .filter-disclosure > summary::before { content: "+"; font-family: var(--mono); color: var(--brand-2); }
+  .filter-disclosure[open] > summary::before { content: "-"; }
+  #filterActivity { font-size: 10px; color: var(--muted); }
+  .filter-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px 12px; margin-top: 17px; }
+  .field { margin: 0; }
+  select { min-height: 40px; font-size: 11px; }
+  .legend { margin-top: 17px; padding-top: 14px; }
+  .legend-grid { grid-template-columns: 1fr 1fr; gap: 12px 8px; }
+  .tree-toolbar { padding: 15px 14px; min-height: 64px; }
+  .tree-toolbar h2 { font-size: 12px; }
+  .tree-actions { gap: 12px; }
+  .tree-button { font-size: 10px; }
+  .tree-scroll { padding: 12px 7px 20px; max-height: 520px; }
+  .tree-root ul { margin-left: 7px; padding-left: 5px; }
+  .tree-row { padding: 9px 6px; gap: 6px; }
+  .panel-heading { padding: 17px 18px; }
+  .detail-content { padding: 25px 20px; }
+  .group-title { font-size: 34px; }
+  .detail-title:not(.group-title) { font-size: 25px; }
+  .fact-grid { gap: 15px 12px; }
+  .reference-section { padding: 28px 0; }
+  .reference-disclosure > summary { padding: 19px 0; }
+  .reference-disclosure > summary span { font-size: 18px; }
+  .reference-disclosure > summary small { display: none; }
+  .runtime-model { grid-template-columns: 1fr; gap: 25px; }
+  .catalog-note { grid-template-columns: 1fr; gap: 14px; }
+  .catalog-note h3 { font-size: 17px; }
+  .footer nav { flex-wrap: wrap; gap: 12px 20px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media print { .controls, .search-bar, .tree-actions, .site-links, .copy-button { display: none; } .page-width { width: 100%; } .workspace { grid-template-columns: 1fr 1fr; } .tree-scroll { max-height: none; } body { background: white; } }
 </style>
 </head>
 <body>
-<a class="skip-link" href="#capability-tree">Skip to capability tree</a>
-<nav class="site-nav" aria-label="Main navigation">
-  <a class="site-brand" href="https://tadx.net/" aria-label="TADX home"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 7l7 7-7 7"/><path class="cursor" d="M15 21h9"/></svg>TADX</a>
-  <div class="site-links"><a href="https://tadx.net/capabilities.html" aria-current="page">Docs</a><a href="https://github.com/ahillspace/tadx/blob/main/README.md">Get started</a><a href="https://github.com/ahillspace/tadx">GitHub</a></div>
+<a class="skip-link" href="#capability-tree">Skip to command browser</a>
+<nav class="site-nav page-width" aria-label="Main navigation">
+  <a class="site-brand" href="https://tadx.net/"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 7l7 7-7 7"/><path class="cursor" d="M15 21h9"/></svg>TADX<span class="nav-context">Documentation</span></a>
+  <div class="site-links"><a href="#browser" aria-current="page">Capabilities</a><a class="start-link" href="https://github.com/ahillspace/tadx/blob/main/README.md">Get started</a><a href="https://github.com/ahillspace/tadx">GitHub <span aria-hidden="true">↗</span></a></div>
 </nav>
-
-<header class="hero">
-  <div class="hero-inner">
+<main class="page-width">
+  <header class="hero">
     <div>
-      <p class="eyebrow">Command reference</p>
-      <h1>Explore TADX.</h1>
-      <p class="hero-copy">Explore the current action registry: content lifecycle, Tableau Catalog metadata and labels, local cache, administration, Pulse, and external tooling boundaries.</p>
+      <p class="eyebrow">TADX / Command reference <span class="version">V2</span></p>
+      <h1>Command map.</h1>
+      <p class="hero-copy">Every TADX CLI command, what it does, and its execution context.</p>
     </div>
-    <div class="source-meta" aria-label="Source metadata">
-      <span class="source-chip"><span class="live-dot" aria-hidden="true"></span><strong id="sourceTotal"></strong> current capabilities</span>
-      <span><strong id="bindingCount"></strong> implemented CLI capabilities</span>
-      <span>Static registry inventory: <strong>machine authority not evaluated</strong></span>
+    <div class="source-meta">
+      <p><strong id="sourceTotal">125</strong> TADX CLI commands.<br>Static inventory. Machine authority is not evaluated.</p>
+      <p><a href="capabilities.json">JSON inventory <span aria-hidden="true">↗</span></a></p>
     </div>
+  </header>
+  <div class="inventory-band">
+    <section class="stats" aria-label="Filter TADX CLI commands by registry status">
+      <button class="stat-card implemented" type="button" data-card-filter="state" data-card-value="implemented" aria-pressed="false" title="Filter implemented capabilities"><span class="stat-number" id="implementedCount">125</span><span>Implemented</span></button>
+      <button class="stat-card planned" type="button" data-card-filter="state" data-card-value="planned" aria-pressed="false" title="Filter planned capabilities"><span class="stat-number" id="plannedCount">0</span><span>Planned</span></button>
+      <button class="stat-card blocked" type="button" data-card-filter="blocker" data-card-value="blocked" aria-pressed="false" title="Filter verification-blocked capabilities"><span class="stat-number" id="blockedCount">0</span><span>Blocked</span></button>
+    </section>
+    <a class="band-link" href="#command-behavior">How commands behave <span aria-hidden="true">↓</span></a>
   </div>
-</header>
-
-<main class="shell">
-  <section class="stats" aria-label="Capability totals">
-    <button class="stat-card implemented" type="button" data-card-filter="state" data-card-value="implemented" aria-pressed="false">
-      <span class="stat-number" id="implementedCount">0</span>
-      <span class="stat-label">Implemented</span>
-      <span class="stat-note">Executable code is present</span>
-    </button>
-    <button class="stat-card planned" type="button" data-card-filter="state" data-card-value="planned" aria-pressed="false">
-      <span class="stat-number" id="plannedCount">0</span>
-      <span class="stat-label">Planned</span>
-      <span class="stat-note">No current planned-only rows</span>
-    </button>
-    <button class="stat-card blocked" type="button" data-card-filter="blocker" data-card-value="blocked" aria-pressed="false">
-      <span class="stat-number" id="blockedCount">0</span>
-      <span class="stat-label">Blocked</span>
-      <span class="stat-note">All current rows are ready</span>
-    </button>
-    <button class="stat-card delegated" type="button" data-card-filter="state" data-card-value="external/delegated" aria-pressed="false">
-      <span class="stat-number" id="delegatedCount">0</span>
-      <span class="stat-label">Delegated</span>
-      <span class="stat-note">Owned outside the TADX CLI</span>
-    </button>
-  </section>
-
-  <div class="utility-bar">
-    <span><strong>Current registry:</strong> native search and resource lists read live by default; <code>--cache</code> selects local-only reads.</span>
-    <span class="execution-summary"><span class="status-light" aria-hidden="true"></span><strong id="executionCount">0</strong> implemented CLI bindings. Check local policy, site consent, and Tableau permissions before execution.</span>
-  </div>
-
-  <section class="runtime-model" aria-label="Default command behavior">
-    <article class="default-card search-default">
-      <div class="default-card-head"><h2>Search</h2><span class="default-count" id="nativeSearchCount">0</span></div>
-      <p><code>tadx search</code> uses Tableau native content search for nonempty content terms. Admin and Pulse use dedicated live adapters. <code>--cache</code> is local-only.</p>
-      <div class="behavior-labels"><span class="badge live">NATIVE LIVE</span><span class="badge cache">--CACHE OPT-IN</span></div>
-    </article>
-    <article class="default-card action-default">
-      <div class="default-card-head"><h2>Resource lists</h2><span class="default-count" id="inventoryListCount">0</span></div>
-      <p>Resource lists use bounded live reads by default.
-      Explicit <code>--all</code> collects the matching inventory and renders it in memory, with best-effort cache persistence.
-      Filtered collections save observations; only complete unfiltered collections replace the resource scope.
-      <code>--cache</code> is local-only.</p>
-      <div class="behavior-labels"><span class="badge live">BOUNDED LIVE</span><span class="badge cache">--ALL OPT-IN</span><span class="badge cache">--CACHE OPT-IN</span></div>
-    </article>
-    <article class="default-card pull-default">
-      <div class="default-card-head"><h2>Pull operations</h2><span class="default-count" id="pullDefaultCount">0</span></div>
-      <p>Pull commands retrieve from Tableau and write managed artifacts by default. Use <code>--preview</code> where supported to inspect the planned artifact write.</p>
-      <div class="behavior-labels"><span class="badge pull">PULL NOW</span><span class="badge local">LOCAL ARTIFACT WRITE</span></div>
-    </article>
-    <article class="default-card mutation-default">
-      <div class="default-card-head"><h2>Remote mutations</h2><span class="default-count" id="remoteMutationCount">0</span></div>
-      <p>Remote writes require saved consent for the canonical server and exact site, plus permission under the machine's managed policy. Check <code>tadx mutation status --environment &lt;alias&gt;</code> and <code>tadx policy status</code>. Supported <code>--preview</code> operations remain read-only when their capability IDs are allowed.</p>
-      <div class="behavior-labels"><span class="badge gated">GATED</span><span class="badge preview">PREVIEW WHERE SUPPORTED</span></div>
-    </article>
-  </section>
-
-  <div class="behavior-callout">
-    <strong>Catalog is Tableau metadata. Cache is local state.</strong>
-    <span><code>tadx catalog</code> lists and inspects upstream databases, tables, and columns; updates descriptions and tags; and audits metadata coverage.
-    Datasource inspection includes upstream dependencies, while schema inspection exposes field metadata and requested descriptions.
-    <code>tadx catalog label</code> manages label attachments; <code>tadx admin label-value</code> and <code>tadx admin label-category</code> manage shared definitions.
-    The former local catalog commands now live under <code>tadx cache</code>, with <code>--cache</code> for supported local-only reads.</span>
-  </div>
-
-  <div class="workspace">
-    <aside class="panel controls" aria-labelledby="filters-heading">
-      <div class="panel-heading">
-        <h2 id="filters-heading">Search and filters</h2>
-        <span class="kbd-hint"><kbd>/</kbd> search</span>
+  <section class="browser" id="browser" aria-label="Command browser">
+    <div class="search-bar">
+      <div class="search-wrap">
+        <label class="sr-only" for="searchInput">Search commands</label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+        <input id="searchInput" type="search" placeholder="Search commands, tasks, or IDs" autocomplete="off" aria-keyshortcuts="/">
+        <kbd aria-hidden="true">/</kbd>
       </div>
-      <form class="filter-form" id="filterForm" autocomplete="off">
-        <div class="field">
-          <label for="searchInput">Search</label>
-          <div class="search-wrap">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
-            </svg>
-            <input id="searchInput" type="search" placeholder="ID, command, selector, safety…">
-          </div>
-        </div>
-        <div class="field">
+      <div class="result-count" role="status"><strong id="matchedCount">0</strong> / <span id="totalCount">125</span> commands shown</div>
+    </div>
+    <div class="workspace">
+      <aside class="controls" aria-labelledby="filters-heading">
+        <div class="filter-heading"><h2 id="filters-heading">Filter commands</h2><button class="secondary-button" id="clearFilters" type="button">Reset</button></div>
+        <details class="filter-disclosure" id="filterDisclosure" open>
+        <summary>Filter commands <span id="filterActivity">All commands</span></summary>
+        <form class="filter-form" onsubmit="return false">        <div class="field">
           <label for="stateFilter">State</label>
           <select id="stateFilter">
             <option value="">All states</option>
             <option value="implemented">Implemented</option>
             <option value="planned">Planned</option>
-            <option value="external/delegated">External / delegated</option>
           </select>
-        </div>
-        <div class="field">
-          <label for="ownerFilter">Owner</label>
-          <select id="ownerFilter"><option value="">All owners</option></select>
         </div>
         <div class="field">
           <label for="domainFilter">Domain</label>
@@ -1030,7 +342,7 @@ h1 { font-weight: 540; }
         <div class="field">
           <label for="mutationFilter">Mutation status</label>
           <select id="mutationFilter">
-            <option value="">All operations</option>
+            <option value="">All commands</option>
             <option value="remote">Remote mutation</option>
             <option value="not-remote">Not a remote mutation</option>
             <option value="local">Local write</option>
@@ -1060,70 +372,54 @@ h1 { font-weight: 540; }
             <option value="local-write">Local write</option>
           </select>
         </div>
-        <div class="filter-actions">
-          <button class="secondary-button" id="clearFilters" type="button">Clear</button>
-        </div>
-      </form>
-
-      <details class="legend" open>
-        <summary>Legend</summary>
-        <div class="legend-grid">
+</form>
+        <details class="legend"><summary>Reading the map</summary><div class="legend-grid">
           <div class="legend-row"><span class="state-dot implemented" aria-hidden="true"></span>Implemented</div>
           <div class="legend-row"><span class="state-dot planned" aria-hidden="true"></span>Planned</div>
-          <div class="legend-row"><span class="state-dot external-delegated" aria-hidden="true"></span>External / delegated</div>
-          <div class="legend-row"><span class="badge blocked">BLOCKED</span>Verification blocked</div>
-          <div class="legend-divider"></div>
-          <div class="legend-row"><span class="badge remote">REMOTE</span>Remote mutation</div>
-          <div class="legend-row"><span class="badge local">LOCAL</span>Local write</div>
-          <div class="legend-row"><span class="badge delegated">DELEGATED</span>External owner</div>
-          <div class="legend-row"><span class="badge live">LIVE</span>Live Tableau default</div>
-          <div class="legend-row"><span class="badge cache">CACHE</span>Local-only cache option</div>
-          <div class="legend-row"><span class="badge pull">PULL NOW</span>Writes artifact by default</div>
-          <div class="legend-row"><span class="badge preview">PREVIEW</span>No-write plan available</div>
-          <div class="legend-row"><span class="badge gated">GATED</span>Effective mutation policy</div>
-          <div class="legend-row"><span class="exec-pill enabled">ENABLED</span>Execution enabled</div>
-          <div class="legend-row"><span class="exec-pill disabled">DISABLED</span>Execution disabled</div>
+          <div class="legend-row"><span class="badge blocked">Blocked</span>Verification</div>
+        </div></details>
+        </details>
+      </aside>
+      <section class="tree-panel" aria-labelledby="tree-heading">
+        <div class="tree-toolbar"><h2 id="tree-heading">Command hierarchy</h2><div class="tree-actions"><button class="tree-button" id="expandAll" type="button">Expand all</button><button class="tree-button" id="collapseAll" type="button">Collapse</button></div></div>
+        <div class="tree-scroll">
+          <ul class="tree-root" id="capability-tree" role="tree" aria-label="TADX capability hierarchy"></ul>
+          <div class="empty-state" id="emptyState" hidden><strong>No matching commands.</strong>Try another term or reset the filters.<button class="secondary-button" type="button" onclick="document.getElementById('clearFilters').click(); document.getElementById('searchInput').focus()">Reset filters</button></div>
         </div>
-      </details>
-    </aside>
-
-    <section class="panel tree-panel" aria-labelledby="tree-heading">
-      <div class="tree-toolbar">
-        <div>
-          <h2 id="tree-heading" style="margin:0;font-size:.96rem">Capability hierarchy</h2>
-          <div class="result-count" aria-live="polite"><strong id="matchedCount">0</strong> of <span id="totalCount">0</span> capabilities shown</div>
-        </div>
-        <div class="tree-actions">
-          <button class="tree-button" id="expandAll" type="button">Expand all</button>
-          <button class="tree-button" id="collapseAll" type="button">Compact</button>
-        </div>
+      </section>
+      <aside class="details" id="detailsPanel" aria-labelledby="details-heading">
+        <div class="panel-heading"><h2 id="details-heading">Selection details</h2><a href="#capability-tree" class="back-to-tree">Back to map <span aria-hidden="true">↑</span></a></div>
+        <div class="detail-content" id="detailContent" tabindex="0" role="region" aria-label="Scrollable selection details"></div>
+      </aside>
+    </div>
+  </section>
+  <section class="reference-section" id="command-behavior" aria-label="Command behavior reference">
+    <details class="reference-disclosure" open>
+      <summary><span>How commands behave</span><small>Sources, side effects, and consent</small></summary>
+      <div class="runtime-model">
+        <article class="default-card"><div class="default-card-head"><h3>Search</h3><span class="default-count" id="nativeSearchCount">1</span></div><p><code>tadx search</code> uses Tableau native content search for nonempty content terms. Admin and Pulse use dedicated live adapters. <code>--cache</code> reads local state only.</p></article>
+        <article class="default-card"><div class="default-card-head"><h3>Resource lists</h3><span class="default-count" id="inventoryListCount">6</span></div><p>Bounded live reads by default. <code>--all</code> collects matching inventory in memory, with best-effort cache persistence. Filtered collections save observations; only complete, unfiltered collections replace resource scope. <code>--cache</code> is local-only.</p></article>
+        <article class="default-card"><div class="default-card-head"><h3>Pull operations</h3><span class="default-count" id="pullDefaultCount">0</span></div><p>Pull commands retrieve from Tableau and write managed artifacts by default. Where supported, <code>--preview</code> inspects the planned artifact write.</p></article>
+        <article class="default-card"><div class="default-card-head"><h3>Remote mutations</h3><span class="default-count" id="remoteMutationCount">0</span></div><p>Remote writes require saved consent for the canonical server and exact site, plus managed policy permission. Check <code>tadx mutation status --environment &lt;alias&gt;</code> and <code>tadx policy status</code>. Supported previews stay read-only when their capability IDs are allowed.</p></article>
       </div>
-      <div class="tree-scroll">
-        <ul class="tree-root" id="capability-tree" role="tree" aria-label="TADX capability hierarchy"></ul>
-        <div class="empty-state" id="emptyState" hidden>
-          <strong>No capabilities match.</strong>
-          Clear or broaden the current filters.
+      <section class="mcp-companions" aria-labelledby="mcp-companions-title">
+        <div class="mcp-heading"><h3 id="mcp-companions-title">Two useful companions to the lifecycle CLI</h3><p>TADX manages Tableau content and local artifacts. Use MCP tools when you want an agent to query data or author in Desktop.</p></div>
+        <div class="mcp-grid">
+          <article class="mcp-card"><h4><a href="https://tableau.github.io/tableau-mcp/docs/intro">Tableau MCP</a></h4><p>Query published data sources, inspect workbook view data and images, and explore Pulse metrics and insights. Pair it with TADX when analytical answers need to connect to content you manage through the CLI.</p></article>
+          <article class="mcp-card"><h4><a href="https://tableau.github.io/tableau-mcp/docs/configuration/mcp-config/env-vars">Tableau Desktop Authoring MCP</a></h4><p>Give a compatible agent access to Tableau Desktop authoring tools to build or edit workbooks. Pair it with TADX to organize, inspect, or publish the resulting content through lifecycle commands. Requires a compatible Tableau Desktop authoring setup.</p></article>
         </div>
-      </div>
-    </section>
-
-    <aside class="panel details" id="detailsPanel" aria-labelledby="details-heading">
-      <div class="panel-heading">
-        <h2 id="details-heading">Selection details</h2>
-        <span class="kbd-hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-      </div>
-      <div class="detail-content" id="detailContent"></div>
-    </aside>
-  </div>
-
+        <p class="mcp-boundary">These are separate integrations your agent environment may connect to. TADX does not call, configure, or grant access to them.</p>
+      </section>
+      <div class="catalog-note"><h3>Catalog is Tableau metadata.<br>Cache is local state.</h3><p><code>tadx catalog</code> inspects upstream databases, tables, and columns, updates descriptions and tags, and audits coverage. Datasource inspection includes upstream dependencies; schema inspection exposes fields and requested descriptions. <code>tadx catalog label</code> manages attachments; <code>tadx admin label-value</code> and <code>tadx admin label-category</code> manage definitions. Local catalog commands now live under <code>tadx cache</code>.</p></div>
+    </details>
+  </section>
   <footer class="footer">
-    <strong id="footerTotal">0</strong> capabilities. Download the <a href="capabilities.json">JSON inventory</a> or view <a href="https://github.com/ahillspace/tadx/tree/main/internal/capability">the executable registry</a>.
-    See the <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">text reference</a>, <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/shorthand.md">command shorthand</a>, and <a href="https://github.com/ahillspace/tadx/blob/main/docs/architecture/tadx-architecture.excalidraw">editable architecture map</a>.
-    CLI help: <code>tadx -h</code> is the roadmap; resource help such as <code>tadx content workbook -h</code> contains all its action syntax. Verb help repeats that reference.
-    Self-contained HTML with no external libraries or network calls.
+    <div><p>Source: <a href="https://github.com/ahillspace/tadx/tree/main/internal/capability">executable capability registry</a>. <span id="footerTotal">125</span> CLI commands in this snapshot. Self-contained; no external libraries or network requests.</p><p>Use <code>tadx -h</code> for the command index and resource help, such as <code>tadx content workbook -h</code>, for action syntax.</p></div>
+    <nav aria-label="Reference links"><a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">Text reference</a><a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/shorthand.md">Shorthand</a><a href="https://github.com/ahillspace/tadx/blob/main/docs/architecture/tadx-architecture.excalidraw">Architecture</a></nav>
   </footer>
+  <p id="copyStatus" class="sr-only" role="status"></p>
+  <noscript><p>This interactive map requires JavaScript. Use the <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">text capability reference</a> for the inventory.</p></noscript>
 </main>
-
 <script id="capability-data" type="application/json">
 [
   {
@@ -5022,13 +4318,13 @@ h1 { font-weight: 540; }
   "use strict";
 
   const rawCapabilities = JSON.parse(document.getElementById("capability-data").textContent);
+  const cliCapabilities = rawCapabilities.filter(cap => cap.owner === "cli");
   const inventoryListIDs = new Set([
     "admin.group.list", "admin.user.list", "datasource.list",
     "flow.list", "project.list", "workbook.list"
   ]);
 
   const defaultSource = cap => {
-    if (cap.owner !== "cli") return "Delegated external owner";
     if (cap.id === "search.run") return "Native Tableau search, dedicated live adapters, or local SQLite with --cache";
     if (inventoryListIDs.has(cap.id)) return "Bounded live reads by default; local-only SQLite with --cache or a legacy snapshot cursor.";
     if (cap.cache_opt_in) return "Live Tableau by default; local SQLite with --cache";
@@ -5037,7 +4333,6 @@ h1 { font-weight: 540; }
   };
 
   const defaultBehavior = cap => {
-    if (cap.owner !== "cli") return "Execution belongs to the named external owner and has no TADX command selectors.";
     if (cap.remote_mutation) return "Requires saved consent for the selected server and exact site, an allowed capability ID, and managed policy permission for remote mutations. Supported --preview remains read-only when the capability ID is allowed.";
     if (cap.pull_default) return cap.supports_preview ? "Retrieves from Tableau and writes the managed artifact by default; --preview inspects the plan without writing the artifact." : "Retrieves from Tableau and writes the managed artifact immediately; no --preview surface is registered.";
     if (cap.inventory_list) return cap.outcome;
@@ -5046,7 +4341,7 @@ h1 { font-weight: 540; }
     return "Performs a bounded read-only inspection or discovery operation.";
   };
 
-  const capabilities = rawCapabilities.map(cap => {
+  const capabilities = cliCapabilities.map(cap => {
     const parts = cap.command_path?.length ? cap.command_path : cap.id.split(".");
     const domain = parts[0];
     const resource = parts.length > 2 ? parts[1] : "";
@@ -5064,7 +4359,6 @@ h1 { font-weight: 540; }
       verification_readiness: cap.verification,
       selectors: [cap.selectors],
       blocker: cap.verification === "blocked" ? (cap.validation || "Verification blocked") : "",
-      mcp_overlap: "",
       command_available: cap.owner === "cli" && cap.implementation === "implemented" && cap.verification !== "blocked",
       cache_opt_in: cacheOptIn,
       inventory_list: inventoryListIDs.has(cap.id),
@@ -5082,7 +4376,6 @@ h1 { font-weight: 540; }
     result[value] = (result[value] || 0) + 1;
     return result;
   }, {});
-  const owners = countBy("owner");
   const domains = countBy("domain");
   const blockers = capabilities.filter(cap => cap.blocker).reduce((result, cap) => {
     result[cap.blocker] = (result[cap.blocker] || 0) + 1;
@@ -5090,28 +4383,20 @@ h1 { font-weight: 540; }
   }, {});
   const counts = {
     total: capabilities.length,
-    implemented: capabilities.filter(cap => cap.owner === "cli" && cap.implementation_state === "implemented").length,
+    implemented: capabilities.filter(cap => cap.implementation_state === "implemented").length,
     planned: capabilities.filter(cap => cap.implementation_state === "planned").length,
     blocked: capabilities.filter(cap => cap.verification_readiness === "blocked").length,
-    delegated: capabilities.filter(cap => cap.disposition === "delegated").length,
     command_available: capabilities.filter(cap => cap.command_available).length,
     native_search: capabilities.filter(cap => cap.native_search).length,
     pull_default: capabilities.filter(cap => cap.pull_default).length,
     remote_mutations: capabilities.filter(cap => cap.remote_mutation).length,
     inventory_lists: capabilities.filter(cap => cap.inventory_list).length
   };
-  const inventory = { capabilities, counts, owners, domains, blockers };
+  const inventory = { capabilities, counts, domains, blockers };
 
   const stateMeta = {
     "implemented": { label: "Implemented", className: "implemented" },
-    "planned": { label: "Planned", className: "planned" },
-    "external/delegated": { label: "External / delegated", className: "external-delegated" }
-  };
-  const ownerLabels = {
-    "cli": "CLI",
-    "mcp": "Tableau MCP",
-    "tableau/desktop-mcp": "Tableau Desktop / Desktop MCP",
-    "agent/skill": "Agent / skill"
+    "planned": { label: "Planned", className: "planned" }
   };
 
   const refs = {
@@ -5122,7 +4407,6 @@ h1 { font-weight: 540; }
     total: document.getElementById("totalCount"),
     search: document.getElementById("searchInput"),
     state: document.getElementById("stateFilter"),
-    owner: document.getElementById("ownerFilter"),
     domain: document.getElementById("domainFilter"),
     mutation: document.getElementById("mutationFilter"),
     blocker: document.getElementById("blockerFilter"),
@@ -5139,7 +4423,6 @@ h1 { font-weight: 540; }
   setText("implementedCount", counts.implemented);
   setText("plannedCount", counts.planned);
   setText("blockedCount", counts.blocked);
-  setText("delegatedCount", counts.delegated);
   setText("executionCount", counts.command_available);
   setText("nativeSearchCount", counts.native_search);
   setText("pullDefaultCount", counts.pull_default);
@@ -5158,7 +4441,6 @@ h1 { font-weight: 540; }
       select.appendChild(option);
     });
   };
-  appendOptions(refs.owner, Object.keys(inventory.owners), value => `${ownerLabels[value] || value} (${inventory.owners[value]})`);
   appendOptions(refs.domain, Object.keys(inventory.domains), value => `${value} (${inventory.domains[value]})`);
   appendOptions(refs.blocker, Object.keys(inventory.blockers), value => `${value} (${inventory.blockers[value]})`);
 
@@ -5178,15 +4460,15 @@ h1 { font-weight: 540; }
   const findRow = nodeID => [...refs.tree.querySelectorAll(".tree-row")].find(row => row.dataset.nodeId === nodeID) || null;
 
   const isFiltering = () => Boolean(
-    refs.search.value.trim() || refs.state.value || refs.owner.value || refs.domain.value ||
+    refs.search.value.trim() || refs.state.value || refs.domain.value ||
     refs.mutation.value || refs.blocker.value || refs.behavior.value
   );
 
   function searchableText(cap) {
     return normalize([
-      cap.id, cap.surface, cap.command, cap.outcome, cap.owner, cap.domain, cap.resource,
+      cap.id, cap.surface, cap.command, cap.outcome, cap.domain, cap.resource,
       cap.action, cap.selectors.join(" "), cap.safety_guard, cap.blocker, cap.validation,
-      cap.availability, cap.upstream_operation, cap.evidence, cap.mcp_overlap,
+      cap.availability, cap.upstream_operation, cap.evidence,
       cap.default_source, cap.default_behavior, cap.default_mode
     ].join(" "));
   }
@@ -5195,7 +4477,6 @@ h1 { font-weight: 540; }
     const query = normalize(refs.search.value);
     if (query && !searchableText(cap).includes(query)) return false;
     if (refs.state.value && cap.implementation_state !== refs.state.value) return false;
-    if (refs.owner.value && cap.owner !== refs.owner.value) return false;
     if (refs.domain.value && cap.domain !== refs.domain.value) return false;
 
     switch (refs.mutation.value) {
@@ -5246,7 +4527,7 @@ h1 { font-weight: 540; }
       .map(cap => makeNode(`cap:${cap.id}`, cap.tree_action, "action", [], cap));
   }
 
-  function buildDomainNodes(items, prefix, delegated = false) {
+  function buildDomainNodes(items, prefix) {
     const domains = groupBy(items, cap => cap.domain);
     return [...domains.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([domain, domainCaps]) => {
       const resources = groupBy(domainCaps, cap => cap.resource || "Direct actions");
@@ -5255,28 +4536,14 @@ h1 { font-weight: 540; }
         if (b === "Direct actions") return 1;
         return a.localeCompare(b);
       }).map(([resource, resourceCaps]) => makeNode(
-        `${prefix}:resource:${domain}:${resource}`, resource, "resource", buildLeaves(resourceCaps), null, { delegated }
+        `${prefix}:resource:${domain}:${resource}`, resource, "resource", buildLeaves(resourceCaps)
       ));
-      return makeNode(`${prefix}:domain:${domain}`, domain, "domain", resourceNodes, null, { delegated });
+      return makeNode(`${prefix}:domain:${domain}`, domain, "domain", resourceNodes);
     });
   }
 
   function buildTree(items) {
-    const cli = items.filter(cap => cap.owner === "cli");
-    const delegated = items.filter(cap => cap.owner !== "cli");
-    const children = buildDomainNodes(cli, "cli");
-    if (delegated.length) {
-      const owners = groupBy(delegated, cap => cap.owner);
-      const ownerNodes = [...owners.entries()]
-        .sort(([a], [b]) => (ownerLabels[a] || a).localeCompare(ownerLabels[b] || b))
-        .map(([owner, ownerCaps]) => makeNode(
-          `delegated:owner:${owner}`, ownerLabels[owner] || owner, "owner",
-          buildDomainNodes(ownerCaps, `delegated:${owner}`, true), null,
-          { owner, delegated: true }
-        ));
-      children.push(makeNode("delegated", "Delegated operations", "delegated-root", ownerNodes, null, { delegated: true }));
-    }
-    return makeNode("root", "tadx", "root", children);
+    return makeNode("root", "tadx", "root", buildDomainNodes(items, "cli"));
   }
 
   function indexNodes(node, parentID = "") {
@@ -5296,8 +4563,7 @@ h1 { font-weight: 540; }
     const totals = stateCounts(node);
     const total = node.capabilities.length || 1;
     const implementedEnd = (totals.implemented || 0) / total * 100;
-    const plannedEnd = implementedEnd + (totals.planned || 0) / total * 100;
-    return `conic-gradient(var(--implemented) 0 ${implementedEnd}%, var(--planned) ${implementedEnd}% ${plannedEnd}%, var(--delegated) ${plannedEnd}% 100%)`;
+    return `conic-gradient(var(--implemented) 0 ${implementedEnd}%, var(--planned) ${implementedEnd}% 100%)`;
   }
 
   function addBadge(container, label, className, title) {
@@ -5358,19 +4624,13 @@ h1 { font-weight: 540; }
     const label = document.createElement("span");
     label.className = "node-label";
     if (node.type === "root") label.classList.add("root-label");
-    if (node.delegated) label.classList.add("delegated-label");
-    label.textContent = node.label;
+    label.textContent = node.label === "Direct actions" ? "Actions" : node.label;
     line.appendChild(label);
     main.appendChild(line);
     if (node.cap) {
       const id = document.createElement("span");
       id.className = "node-id";
       id.textContent = node.cap.id;
-      main.appendChild(id);
-    } else if (node.type === "owner") {
-      const id = document.createElement("span");
-      id.className = "node-id";
-      id.textContent = `owner: ${node.owner}`;
       main.appendChild(id);
     }
     row.appendChild(main);
@@ -5386,25 +4646,23 @@ h1 { font-weight: 540; }
       if (cap.remote_mutation) addBadge(meta, "REMOTE", "remote", "Requires site consent and managed policy permission");
       if (cap.administrative) addBadge(meta, "ADMIN", "gated", "Administrative capability, explicitly classified by the registry");
       if (cap.local_write) addBadge(meta, "LOCAL", "local", "Local write");
-      if (cap.disposition === "delegated") addBadge(meta, "DELEGATED", "delegated", "External owner");
       if (cap.verification_readiness === "blocked") addBadge(meta, "BLOCKED", "blocked", `Blocked by ${cap.blocker}`);
       const execution = document.createElement("span");
       execution.className = "exec-pill disabled";
-      execution.textContent = cap.command_available ? "CHECK POLICY" : "NO CLI BINDING";
+      execution.textContent = cap.command_available ? "CLI" : "Unavailable";
       meta.appendChild(execution);
     } else {
-      if (node.type === "delegated-root") addBadge(meta, "DELEGATED", "delegated", "Operations owned outside the TADX CLI");
       const count = document.createElement("span");
       count.className = "count-pill";
       count.textContent = node.capabilities.length;
-      count.setAttribute("aria-label", `${node.capabilities.length} capabilities`);
+      count.setAttribute("aria-label", `${node.capabilities.length} commands`);
       meta.appendChild(count);
     }
     row.appendChild(meta);
 
-    row.setAttribute("aria-label", node.cap
+    row.setAttribute("aria-description", node.cap
       ? `${node.cap.id}, ${stateMeta[node.cap.implementation_state].label}, ${node.cap.command_available ? "local policy check required" : "no executable CLI binding"}`
-      : `${node.label}, ${node.capabilities.length} capabilities`);
+      : `${node.label}, ${node.capabilities.length} commands`);
 
     row.addEventListener("click", () => {
       focusedNodeId = node.id;
@@ -5413,9 +4671,13 @@ h1 { font-weight: 540; }
         if (expanded.has(node.id)) expanded.delete(node.id); else expanded.add(node.id);
       }
       render();
-      requestAnimationFrame(() => findRow(node.id)?.focus({ preventScroll: true }));
-      if (node.cap && window.matchMedia("(max-width: 820px)").matches) {
-        setTimeout(() => refs.detailsPanel.scrollIntoView({ behavior: "smooth", block: "start" }), 20);
+      {
+        const target = node.cap && window.matchMedia("(max-width: 1000px)").matches
+          ? document.getElementById("selection-title") : findRow(node.id);
+        target?.focus({ preventScroll: true });
+      }
+      if (node.cap && window.matchMedia("(max-width: 1000px)").matches) {
+        setTimeout(() => refs.detailsPanel.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }), 20);
       }
     });
 
@@ -5455,12 +4717,12 @@ h1 { font-weight: 540; }
       case "End": target = rows[rows.length - 1]; break;
       case "ArrowRight":
         if (node.children.length && current.getAttribute("aria-expanded") === "false" && !isFiltering()) {
-          expanded.add(node.id); render(); requestAnimationFrame(() => { const restored = findRow(node.id); if (restored) focusRow(restored); });
+          expanded.add(node.id); render(); const restored = findRow(node.id); if (restored) focusRow(restored);
         } else if (node.children.length) target = rows[index + 1] || current;
         break;
       case "ArrowLeft":
         if (node.children.length && current.getAttribute("aria-expanded") === "true" && !isFiltering()) {
-          expanded.delete(node.id); render(); requestAnimationFrame(() => { const restored = findRow(node.id); if (restored) focusRow(restored); });
+          expanded.delete(node.id); render(); const restored = findRow(node.id); if (restored) focusRow(restored);
         } else if (node.parentId) target = findRow(node.parentId);
         break;
       case "Enter":
@@ -5472,30 +4734,16 @@ h1 { font-weight: 540; }
   });
 
   function badgeHTML(cap) {
-    const badges = [];
     const state = stateMeta[cap.implementation_state];
-    const stateStyle = state.className === "implemented"
-      ? "background:var(--implemented-bg);color:var(--implemented);border-color:#9bd3c8"
-      : state.className === "planned"
-        ? "background:var(--planned-bg);color:var(--planned);border-color:#e6c878"
-        : "";
-    badges.push(`<span class="badge ${state.className === "external-delegated" ? "delegated" : ""}" style="${stateStyle}">${escapeHTML(state.label.toUpperCase())}</span>`);
-    if (cap.native_search) badges.push('<span class="badge live">NATIVE SEARCH</span><span class="badge cache">--CACHE</span>');
-    else if (cap.inventory_list) badges.push('<span class="badge live">BOUNDED LIVE</span><span class="badge cache">--ALL OPT-IN</span><span class="badge cache">--CACHE OPT-IN</span>');
-    else if (cap.cache_opt_in) badges.push('<span class="badge live">LIVE DEFAULT</span><span class="badge cache">--CACHE</span>');
-    if (cap.pull_default) badges.push('<span class="badge pull">PULL NOW</span>');
-    if (cap.remote_mutation) badges.push('<span class="badge remote">REMOTE MUTATION</span><span class="badge gated">GATED</span>');
-    if (cap.administrative) badges.push('<span class="badge gated">ADMINISTRATIVE</span>');
-    if (cap.local_write) badges.push('<span class="badge local">LOCAL WRITE</span>');
-    if (cap.supports_preview) badges.push('<span class="badge preview">SUPPORTS --PREVIEW</span>');
-    if (cap.disposition === "delegated") badges.push('<span class="badge delegated">DELEGATED</span>');
-    if (cap.verification_readiness === "blocked") badges.push('<span class="badge blocked">BLOCKED</span>');
-    badges.push(`<span class="exec-pill disabled">${cap.command_available ? "LOCAL POLICY CHECK REQUIRED" : "NO CLI BINDING"}</span>`);
+    const badges = [`<span class="badge ${state.className === "implemented" ? "ready" : "preview"}">${escapeHTML(state.label)}</span>`];
+    if (cap.remote_mutation) badges.push('<span class="badge remote">Remote mutation</span>');
+    else if (cap.local_write) badges.push('<span class="badge local">Local write</span>');
+    if (cap.supports_preview) badges.push('<span class="badge preview">Supports --preview</span>');
+    if (cap.verification_readiness === "blocked") badges.push('<span class="badge blocked">Verification blocked</span>');
     return badges.join("");
   }
 
   function executionReason(cap) {
-    if (cap.implementation_state === "external/delegated") return "Execution belongs to the delegated external owner, not the TADX CLI.";
     if (cap.verification_readiness === "blocked") return `Not executable because verification is blocked by ${cap.blocker}.`;
     if (cap.implementation_state !== "implemented") return "No executable command binding is present yet.";
     if (cap.remote_mutation) return "This static inventory does not grant authority. Remote writes require saved consent for the canonical server and exact site, plus managed policy permission. Inspect tadx mutation status --environment <alias> and tadx policy status. Agents need explicit permission before changing persisted site consent.";
@@ -5504,20 +4752,19 @@ h1 { font-weight: 540; }
   }
 
   function breadcrumbFor(cap) {
-    if (cap.owner !== "cli") return ["tadx", "delegated", cap.owner, cap.domain, cap.resource, cap.action].filter(Boolean).join(" / ");
     return ["tadx", cap.domain, cap.resource || "direct actions", cap.tree_action].filter(Boolean).join(" / ");
   }
 
   function renderCapabilityDetail(cap) {
-    const exactLabel = cap.owner === "cli" ? "Exact command surface" : "Delegated surface";
-    const binding = cap.command || "No TADX command binding";
-    const copyButton = cap.owner === "cli" && cap.surface.startsWith("tadx ")
+    const exactLabel = "Exact CLI command";
+    const binding = cap.command || "No executable TADX command binding";
+    const copyButton = cap.surface.startsWith("tadx ")
       ? '<button class="copy-button" id="copyCommand" type="button">Copy</button>' : "";
     const previewBasis = `<div class="fact"><dt>Preview behavior source</dt><dd>Executable registry</dd></div>`;
 
     refs.detail.innerHTML = `
       <p class="detail-kicker">Capability action</p>
-      <h2 class="detail-title">${escapeHTML(cap.id)}</h2>
+      <h2 class="detail-title" id="selection-title" tabindex="-1">${escapeHTML(cap.id)}</h2>
       <div class="breadcrumb">${escapeHTML(breadcrumbFor(cap))}</div>
       <div class="detail-badges">${badgeHTML(cap)}</div>
       ${cap.inventory_list ? "" : `<p class="outcome">${escapeHTML(cap.outcome)}</p>`}
@@ -5579,7 +4826,6 @@ h1 { font-weight: 540; }
         <summary>Source and verification metadata</summary>
         <dl class="fact-grid">
           <div class="fact"><dt>Evidence level</dt><dd>${escapeHTML(cap.evidence_level)}</dd></div>
-          <div class="fact"><dt>MCP overlap</dt><dd>${escapeHTML(cap.mcp_overlap || "None")}</dd></div>
           <div class="fact full"><dt>Upstream operation</dt><dd><code>${escapeHTML(cap.upstream_operation)}</code></dd></div>
           <div class="fact full"><dt>Evidence</dt><dd>${escapeHTML(cap.evidence)}</dd></div>
           <div class="fact full"><dt>Validation or blocker</dt><dd>${escapeHTML(cap.validation)}</dd></div>
@@ -5590,62 +4836,43 @@ h1 { font-weight: 540; }
     const copy = document.getElementById("copyCommand");
     if (copy) copy.addEventListener("click", async () => {
       const text = cap.surface;
-      try { await navigator.clipboard.writeText(text); }
+      let copied = false;
+      try { await navigator.clipboard.writeText(text); copied = true; }
       catch {
         const area = document.createElement("textarea");
         area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
-        document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove();
+        document.body.appendChild(area); area.select();
+        try { copied = document.execCommand("copy"); } catch { copied = false; }
+        area.remove(); copy.focus({ preventScroll: true });
       }
-      copy.textContent = "Copied"; setTimeout(() => copy.textContent = "Copy", 1200);
+      copy.textContent = copied ? "Copied" : "Copy failed";
+      document.getElementById("copyStatus").textContent = copied ? "Command copied." : "Copy unavailable. Select the command text to copy it manually.";
+      setTimeout(() => copy.textContent = "Copy", 1800);
     });
   }
 
   function renderGroupDetail(node) {
-    const totals = stateCounts(node);
-    const max = Math.max(node.capabilities.length, 1);
-    const rows = ["implemented", "planned", "external/delegated"].filter(state => totals[state]).map(state => {
-      const meta = stateMeta[state];
-      const width = totals[state] / max * 100;
-      return `<div class="group-state-row"><span>${escapeHTML(meta.label)}</span><span class="group-bar"><span class="${meta.className}" style="width:${width}%"></span></span><strong>${totals[state]}</strong></div>`;
-    }).join("");
-
-    const blocked = node.capabilities.filter(cap => cap.verification_readiness === "blocked").length;
-    const remote = node.capabilities.filter(cap => cap.remote_mutation).length;
-    const local = node.capabilities.filter(cap => cap.local_write).length;
-    const available = node.capabilities.filter(cap => cap.command_available).length;
-    const delegated = node.capabilities.filter(cap => cap.disposition === "delegated").length;
-    const cache = node.capabilities.filter(cap => cap.cache_opt_in).length;
-    const inventoryLists = node.capabilities.filter(cap => cap.inventory_list).length;
-    const nativeSearch = node.capabilities.filter(cap => cap.native_search).length;
-    const pulls = node.capabilities.filter(cap => cap.pull_default).length;
-    const preview = node.capabilities.filter(cap => cap.supports_preview).length;
-    const path = [];
-    let cursor = node;
-    while (cursor) { path.unshift(cursor.label); cursor = cursor.parentId ? nodeIndex.get(cursor.parentId) : null; }
-
+    const caps = node.capabilities;
+    const total = predicate => caps.filter(predicate).length;
+    const root = node.type === "root";
     refs.detail.innerHTML = `
-      <p class="detail-kicker">${node.type === "root" ? "Registry root" : "Capability group"}</p>
-      <h2 class="detail-title">${escapeHTML(node.label)}</h2>
-      <div class="breadcrumb">${escapeHTML(path.join(" / "))}</div>
-      <p class="outcome">${node.capabilities.length} matching capabilities are contained in this node. Select an action leaf for its exact command, default source, preview behavior, selectors, safety requirements, and execution state.</p>
+      <p class="detail-kicker">${root ? "The TADX registry" : "Capability group"}</p>
+      <h2 class="detail-title group-title">${root ? "Find the right command." : escapeHTML(node.label)}</h2>
+      <p class="outcome">${root ? "Browse a command family or search for a task. Select a command to inspect its syntax, behavior, and safety requirements." : caps.length + " matching commands. Expand the group and select a command for its requirements."}</p>
+      <dl class="overview-counts">
+        <div><dt>Commands in view</dt><dd>${caps.length}</dd></div>
+        <div><dt>Implemented</dt><dd>${total(cap => cap.implementation_state === "implemented")}</dd></div>
+      </dl>
       <section class="detail-section">
-        <h3>Group totals</h3>
-        <dl class="fact-grid">
-          <div class="fact"><dt>Capabilities</dt><dd>${node.capabilities.length}</dd></div>
-          <div class="fact"><dt>Implemented CLI bindings</dt><dd>${available}</dd></div>
-          <div class="fact"><dt>Blocked</dt><dd>${blocked}</dd></div>
-          <div class="fact"><dt>Delegated</dt><dd>${delegated}</dd></div>
-          <div class="fact"><dt>Remote mutations</dt><dd>${remote}</dd></div>
-          <div class="fact"><dt>Local writes</dt><dd>${local}</dd></div>
-          <div class="fact"><dt>Native search</dt><dd>${nativeSearch}</dd></div>
-          <div class="fact"><dt>Inventory lists</dt><dd>${inventoryLists}</dd></div>
-          <div class="fact"><dt>Cache opt-in reads</dt><dd>${cache}</dd></div>
-          <div class="fact"><dt>Execution-first pulls</dt><dd>${pulls}</dd></div>
-          <div class="fact"><dt>Preview supported</dt><dd>${preview}</dd></div>
+        <h3>Within this selection</h3>
+        <dl class="group-metrics">
+          <div><dt>Remote mutations</dt><dd>${total(cap => cap.remote_mutation)}</dd></div>
+          <div><dt>Local writes</dt><dd>${total(cap => cap.local_write)}</dd></div>
+          <div><dt>Preview supported</dt><dd>${total(cap => cap.supports_preview)}</dd></div>
+          <div><dt>Verification blocked</dt><dd>${total(cap => cap.verification_readiness === "blocked")}</dd></div>
         </dl>
-        <div class="group-state-list">${rows}</div>
       </section>
-      <div class="callout">Native search, bounded live resource lists, explicit --all collection, local-only cache reads, pull execution defaults, and mutation gating are independent behaviors.</div>
+      <p class="authority-note">Implementation is not authorization. This static reference cannot evaluate machine policy, site consent, or Tableau permissions.</p>
     `;
   }
 
@@ -5664,6 +4891,8 @@ h1 { font-weight: 540; }
 
   function render() {
     const filtered = capabilities.filter(matches);
+    const activeFilters = [refs.state, refs.domain, refs.mutation, refs.blocker, refs.behavior].filter(control => control.value).length;
+    document.getElementById("filterActivity").textContent = activeFilters ? activeFilters + " active" : "All commands";
     refs.matched.textContent = filtered.length;
     refs.empty.hidden = filtered.length !== 0;
     refs.tree.hidden = filtered.length === 0;
@@ -5684,11 +4913,11 @@ h1 { font-weight: 540; }
   }
 
   function clearFilters() {
-    [refs.search, refs.state, refs.owner, refs.domain, refs.mutation, refs.blocker, refs.behavior].forEach(control => control.value = "");
+    [refs.search, refs.state, refs.domain, refs.mutation, refs.blocker, refs.behavior].forEach(control => control.value = "");
     expanded = new Set(["root"]); selectedNodeId = "root"; focusedNodeId = "root"; render();
   }
 
-  [refs.search, refs.state, refs.owner, refs.domain, refs.mutation, refs.blocker, refs.behavior].forEach(control => {
+  [refs.search, refs.state, refs.domain, refs.mutation, refs.blocker, refs.behavior].forEach(control => {
     control.addEventListener(control === refs.search ? "input" : "change", () => {
       selectedNodeId = "root"; focusedNodeId = "root"; render();
     });
@@ -5716,6 +4945,16 @@ h1 { font-weight: 540; }
     }
   });
 
+  const phoneLayout = window.matchMedia("(max-width: 600px)");
+  const filterDisclosure = document.getElementById("filterDisclosure");
+  filterDisclosure.open = !phoneLayout.matches;
+  phoneLayout.addEventListener("change", event => { filterDisclosure.open = !event.matches; });
+  document.querySelector(".back-to-tree").addEventListener("click", event => {
+    event.preventDefault();
+    const row = findRow(selectedNodeId) || findRow("root");
+    row?.scrollIntoView({ block: "center", behavior: "instant" });
+    row?.focus({ preventScroll: true });
+  });
   render();
 })();
 </script>

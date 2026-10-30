@@ -11,9 +11,20 @@ The following aliases are supported by the CLI command tree.
 | Canonical | Alias | Meaning |
 | --- | --- | --- |
 | `admin` | `adm` | Administration command group. |
+| `audit` | `aud` | Catalog audit action. |
 | `policy` | `pol` | Managed policy command group. |
 | `samples` | `smp` | Create policy candidate samples. |
 | `validate` | `vld` | Validate a policy candidate. |
+| `catalog` | `cat` | Catalog command group. |
+| `database` | `db` | Catalog database resource. |
+| `table` | `tbl` | Catalog table resource. |
+| `column` | `col` | Catalog column resource. |
+| `label` | `lbl` | Catalog asset-label resource. |
+| `value` | `val` | Catalog metadata value action. |
+| `category` | `ctg` | Catalog metadata category action. |
+| `cancel` | `cnl` | Cancel a local operation. |
+| `subscription` | `sub` | Pulse subscription resource. |
+| `wait` | `wt` | Wait for a local operation. |
 | `group-member` | `gm` | Direct group membership resource. |
 | `label-value` | `lv` | Shared label value definitions. |
 | `label-category` | `lc` | Shared label categories. |
@@ -75,6 +86,8 @@ For example, `tadx con ds ls` is equivalent to `tadx content datasource list`.
 Use the canonical spelling when an alias is not listed or when command text is persisted for long-term use.
 Names already three characters or shorter stay unchanged.
 Built-in `help` retains its conventional spelling and `-h` flag; shell names and other argument values are not abbreviated.
+The current alias registry is maintained in [`internal/cli/shorthand.go`](../../internal/cli/shorthand.go).
+That registry and its command-tree validation define the executable aliases.
 
 ## Flag aliases
 
@@ -83,6 +96,33 @@ Word-like aliases use two dashes, even when the alias is short.
 
 | Canonical flag | Alias | Meaning |
 | --- | --- | --- |
+| `--fields` | `--fds` | Include field-level lineage. |
+| `--datasource` | `--ds` | Exact datasource group or selector. |
+| `--no-wait` | `--nwt` | Return local operation status without polling. |
+| `--operation-id` | `--opi` | Local operation identity. |
+| `--value` | `--val` | Metadata value. |
+| `--descriptions` | `--dcs` | Include descriptions. |
+| `--tags` | `--tgs` | Include tags. |
+| `--metadata-id` | `--mdi` | Metadata API identity. |
+| `--table-id` | `--tbi` | Table Metadata API identity. |
+| `--database-id` | `--dbi` | Database Metadata API identity. |
+| `--contact-id` | `--cti` | Contact Metadata API identity. |
+| `--add-tag` | `--atg` | Add a tag. |
+| `--remove-tag` | `--rtg` | Remove a tag. |
+| `--direct-only` | `--dro` | Restrict to direct permission rules. |
+| `--target-id` | `--tid` | Exact target identity. |
+| `--category` | `--ctg` | Category. |
+| `--message` | `--msg` | Message. |
+| `--active` | `--act` | Active state. |
+| `--elevated` | `--elv` | Elevated state. |
+| `--batch-file` | `--btf` | Per-item batch input file. |
+| `--json` | `--jsn` | Emit JSON encoding. |
+| `--username` | `--unm` | Exact username. |
+| `--principal-username` | `--pun` | Exact permission-principal username. |
+| `--datasource-binding` | `--dsb` | Map a workbook datasource reference to a target LUID. |
+| `--overwrite` | `--ovr` | Overwrite existing content. |
+| `--receipt` | `--rcp` | Operation receipt. |
+| `--version` | `-v` | Show installed TADX version. |
 | `--aggregation` | `--agg` | Aggregation. |
 | `--all` | `-a` | All matching records within the documented bound. |
 | `--append` | `--apd` | Append mode. |

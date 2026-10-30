@@ -87,7 +87,8 @@ Exact `name:in:[...]` requests for their captions, 25 names per request, supply 
 Captions containing a comma are not searched, because Tableau name filters cannot contain a comma.
 Neither request pages the site, so the cost is bounded by the workbook's references rather than site size.
 
-A live Tableau Cloud run on 2026-10-28 showed why publication avoids asynchronous jobs: a failed `PublishWorkbook` job for a missing published datasource returned `progress="100"` with `finishCode="1"` and an empty `<statusNotes/>`, so the job carried no reason or error code.
+A live Tableau Cloud probe on 2026-10-28 showed why the implementation avoids asynchronous workbook jobs: a failed `PublishWorkbook` job for a missing published datasource returned `progress="100"` with `finishCode="1"` and an empty `<statusNotes/>`, so the job carried no reason or error code.
+This probe records upstream job behavior; the current TADX workbook publisher does not submit `asJob` requests.
 The same run confirmed that a datasource published under a collided name received a `_<digits>` content URL and that a workbook published with `--datasource-binding` to that datasource was bound to it on pull.
 
 ## Workbook published datasource detection

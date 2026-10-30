@@ -32,7 +32,7 @@ Retain confirmed subscription identities when metadata enrichment is incomplete,
 Pull writes a local artifact; `--preview` checks bundle scope and local conflicts without writing it.
 Execution retrieves the specifications again and rechecks conflicts; preview does not prove filesystem write access.
 `--overwrite` can replace dirty local work; use it only when that replacement is intended.
-Publication is a recreation, with an explicit source-to-destination datasource mapping even on the same site.
+Publication is a recreation, with an explicit source-LUID-to-destination-LUID datasource mapping for every bundle datasource, even on the same site; mappings are never inferred.
 TADX Pulse exports are accepted as publication inputs, including saved variants and admitted configuration sections.
 Known bookkeeping metadata is converted to the create document, while unsupported sections fail locally instead of being silently dropped.
 Publish validates destination fields and creates new definition and metric identities, reporting their mapping and leaving originals untouched.

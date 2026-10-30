@@ -4,9 +4,7 @@ The extension presents cached site inventory, registered workspaces, and selecte
 It lives in `extensions/vscode` and produces a separately versioned VSIX.
 The CLI owns credentials, Tableau requests, cache persistence, artifact mutations, policy enforcement, and durable operation records.
 
-The [extension guide](../../extensions/vscode/README.md) owns setup, supported actions, and development commands.
-The [implementation plan](../vscode-extension-plan.md) records accepted scope.
-The [review record](review.md) separates current behavior from proposed repairs and identifies the examined working tree.
+The [extension guide](../../extensions/vscode/README.md) owns setup, supported actions, user-facing scope, and development commands.
 
 ## Components and dependencies
 
@@ -104,7 +102,6 @@ Disposal invalidates pending completions.
 That mechanism does not pin the separate CLI reads to one SQLite generation.
 `siteInventory` retains resource generation metadata but does not compare generation IDs before combining results.
 Concurrent cache refresh can therefore produce mixed observations without a consistency warning.
-The [review finding](review.md#preserve-cache-generation-evidence-in-combined-inventory) records the evidence and proposed boundary.
 
 **Reload Inventory** reads cache and workspace state.
 **Refresh Site Cache** explicitly runs `cache refresh` for projects, workbooks, datasources, and flows, then reloads the selected site.
@@ -118,7 +115,7 @@ List bounds and incomplete coverage remain distinct from the webview's 100-row d
 | Download | Resolve selected cached LUIDs; choose a registered workspace and options; preview; confirm; invoke pull with `--no-wait`. | CLI guards protect local changes and exact targets. Accepted work retains an operation ID. Cancellation does not roll back accepted work. |
 | Upload | Resolve exact local paths; choose environment, project LUID, and conflict mode; inspect consent; preview; confirm; publish with `--no-wait`. | Disabled consent or a reported restriction takes the read-only preview path. Execution rechecks CLI policy and current target state. |
 | Local move or delete | Resolve one managed artifact; select destination or acknowledge dirty deletion; preview; confirm; invoke the foreground CLI operation. | CLI filesystem and dirty-state guards remain authoritative. Successful actions reload affected workspace inventories. |
-| Status inspection | Select a retained operation ID; invoke `job inspect --operation-id`; display the retained snapshot; reload inventories after recognized success or partial completion. | Successful inspection retains a saved failure for the exact requested operation. Genuine inspection errors retain the prior ID; see the [resolved review finding](review.md#distinguish-status-inspection-from-the-saved-operation-outcome). |
+| Status inspection | Select a retained operation ID; invoke `job inspect --operation-id`; display the retained snapshot; reload inventories after recognized success or partial completion. | Successful inspection retains a saved failure for the exact requested operation. Genuine inspection errors retain the prior ID. |
 | Open or reveal | Resolve a local path through `workspaceFile`, or validate an authoritative remote URL through `tableauUrl`; invoke the VS Code host action. | Missing paths, traversal, resolved paths outside the workspace, and foreign-origin URLs fail before the host action. |
 
 [`Inventory.transferSelection`](../../extensions/vscode/src/inventory.ts) requires 1 to 100 unique transferable rows from one source.
@@ -225,6 +222,5 @@ The [source CLI runner](../../extensions/vscode/scripts/test-cli.mjs) and [pinne
 They complement synthetic host and parser tests without establishing live Tableau transfer behavior.
 
 The [contributor commands](../../extensions/vscode/README.md#develop-and-validate) cover type checking, lint, unit tests, browser scenarios, extension-host fixtures, and VSIX packaging.
-The [build validation record](../vscode-extension-validation.md) records earlier Windows checks and live-site and remote-host limits.
 The [delivery guide](dependencies-and-delivery.md#editor-integration) explains the separate package and release boundary.
-The original architecture refresh used source traces and synthetic probes; the [review](review.md) records its later compatibility and delivery resolutions separately.
+The CLI contract runners use isolated local fixtures; they do not establish live Tableau transfer behavior or remote-host acceptance.

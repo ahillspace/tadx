@@ -4,15 +4,17 @@ The website is plain static HTML served by GitHub Pages at `tadx.net`.
 Binaries and checksums remain GitHub Release assets; the website serves the bootstrap scripts, not a second binary distribution.
 The checked-in website and workflow prepare deployment, but do not enable Pages, change DNS, publish a release, or make the repository public.
 
-## Launch checklist
+## Publish the website
 
-1. Review and merge the combined installer, updater, overview, and Guidance changes.
-2. Publish a release containing those changes through the existing release workflow.
-3. When ready, make the repository public so unauthenticated installation can download release assets.
-4. Configure GitHub Pages to use GitHub Actions and set its custom domain to `tadx.net`.
-5. Verify domain ownership and configure DNS using GitHub's current instructions, then enable HTTPS after certificate provisioning.
-6. Run the manual Pages workflow from `main` with publication explicitly enabled, then verify the homepage and both installer URLs.
-7. Test a clean installation on Windows, macOS, and Linux before describing the public URLs as available.
+The [Pages workflow](../.github/workflows/pages.yml) runs manually.
+An ordinary push to `main` does not deploy the website.
+Run its build-only mode to inspect the allowlisted artifact without publishing.
+For an authorized deployment, run it from `main` with publication explicitly enabled, then verify the homepage, command browser, security page, and installer URLs.
+
+For an initial deployment, configure GitHub Pages to use GitHub Actions and select `tadx.net` as the custom domain.
+Verify domain ownership, configure DNS, and enable HTTPS after certificate provisioning.
+Public installation also requires a public repository and an existing release containing the binary archives, checksums, and installer assets.
+Test a clean installation on Windows, macOS, and Linux before treating those installation paths as validated.
 
 See GitHub's [custom workflow](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) and [custom domain](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site) instructions.
 A `CNAME` file alone does not configure a custom domain for an Actions deployment.
@@ -41,9 +43,14 @@ The homepage links to `security.html`, the packaged concise security overview.
 Its expandable details use native HTML and remain usable without JavaScript.
 Its authorization checks use a compact HTML table with no diagram assets or rendering dependencies.
 The security page links to the repository's detailed security and managed policy guides for more information.
-The build copies the authored `docs/reference/capability-map.html` and its generated `capabilities.json` inventory; no second command-browser source is maintained.
+The build copies the v2 command browser from the canonical `docs/reference/capability-map.html` to `capabilities.html`, alongside its generated `capabilities.json` inventory.
+The original map is preserved under `archived/docs/2026-10-30/reference/capability-map.html` and is excluded from the website build.
+Maintain only the canonical map; its published URL stays `capabilities.html`.
+The command tree, filters, and totals include only registry entries owned by the CLI.
+External entries remain in the complete JSON inventory; the page explains Tableau MCP querying and Desktop MCP authoring as companion tools.
 Keep the map's authored layout and styling separate from its generated `capability-data` script block.
 Use `go generate ./internal/capability` when registry changes require a new snapshot.
+Repository-only references in the map must use published GitHub URLs; the public build does not copy Markdown guides.
 The allowlist excludes configuration, workspace files, repository source, and other local material from the website artifact.
 The Pages workflow builds without publishing by default and permits publication only from `main` in a public repository.
 

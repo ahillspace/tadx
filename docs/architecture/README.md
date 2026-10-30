@@ -7,7 +7,7 @@ Tableau MCP remains a separate integration for analytical queries, rendered view
 The separately packaged VS Code extension consumes the CLI to present inventory and selected artifact operations.
 
 The documentation below describes the implemented source architecture.
-The [review record](review.md) identifies the examined revision, working-tree scope, evidence, simplification proposals, and validation limits.
+Each guide links directly to its implementation owners and states the limits of its coverage.
 
 ## Read the architecture
 
@@ -21,7 +21,7 @@ Follow this path for a first contribution:
 6. Use [CONTRIBUTING.md](../../CONTRIBUTING.md) for local setup and validation, then follow the guidance for your named implementation task.
 
 Each page links to implementation owners and representative tests.
-The review uses architecture-level traces across distinct operation families; it does not claim line-by-line correctness review of every command.
+The guides use architecture-level traces across distinct operation families; they do not claim line-by-line correctness review of every command.
 
 ## Understand the main boundaries
 
@@ -74,14 +74,13 @@ Their dependencies use focused interfaces, direct calls, or shared services acco
 
 The [search source map](search.md) traces native search, additional REST/Pulse inventories, cache search, and catalog metadata search.
 The [capability map](../reference/capability-map.html) answers a different question: which operations TADX provides.
-The [preserved HTML overview](index.html) includes a successful workbook-pull walkthrough at the logical action level.
-That walkthrough omits detached dispatch, foreground observation, and recovery; use the runtime guide for those process boundaries.
-Open either HTML file in a browser; GitHub displays its source rather than running the page.
+The [runtime guide](runtime.md) traces workbook pull through foreground observation and detached recovery.
+Open the SVG directly to zoom, or use the editable Excalidraw file to follow its source annotations.
 
 ## Maintain the documentation
 
 Keep package ownership in the package reference, shared execution guarantees in the runtime guide, and domain differences in the resource guide.
 Update links and agent entry points when moving an authoritative explanation.
-Keep proposed changes in the review record or an explicitly labeled proposal, separate from implemented behavior.
+Keep proposed changes explicitly labeled and separate from implemented behavior.
 Regenerate capability references through their generator and preserve existing human-authored evidence and decisions.
-Recheck the affected call paths and tests when source behavior changes; this audit is a dated baseline, not a permanent correctness guarantee.
+Recheck affected call paths and tests when source behavior changes; this guide does not replace implementation review.

@@ -48,13 +48,30 @@ Workspace create, clone, list, and status omit the registered root from compact 
 
 ## Move or delete local artifacts
 
-`workspace.move` transfers one exact managed artifact between two registered workspaces without changing its Tableau identity.
+`tadx workspace artifact move` transfers one exact managed artifact between two registered workspaces without changing its Tableau identity.
 Move requires explicit source and destination workspace names.
 The move fails on a destination collision or any concurrent payload, metadata, or sidecar change.
 
-`workspace.artifact.delete` removes one exact local artifact by default and supports `--preview`.
+A move or deletion can select an artifact by its workspace-relative path, or by kind and Tableau LUID.
+Use `--preview` to inspect the exact local change before applying it.
+
+`tadx workspace artifact delete` removes one exact local artifact.
 A dirty artifact also requires `--force`, and the artifact is revalidated atomically before removal.
 Remote content deletion remains a separate resource action.
+
+## Unregister, delete, and clean
+
+`tadx workspace unregister <name>` removes a registration while preserving the workspace directory and its contents.
+Use it when the registry entry is obsolete or the workspace root is unavailable.
+
+`tadx workspace delete <name>` removes the registered workspace and its root.
+It protects unrecognized or changed files as dirty state; inspect the preview and use `--force` only when you intend to remove that state.
+Deletion is blocked when the workspace is still configured as a default.
+
+`tadx workspace clean --workspace <name> --class <class>` removes disposable data under `.tadx/` while preserving managed artifacts.
+Classes are `temporary` (`tmp` and `staging`), `cache`, `logs`, and `all`.
+Use `--preview` to inspect the selected cleanup.
+Cleaning temporary data fails while a download is using it.
 
 ## Breaking changes
 

@@ -1,7 +1,7 @@
 # Resources and local state
 
 This page explains resource ownership, representative operations, and the state contracts those operations preserve.
-Its evidence comes from the examined working tree; the [architecture review](review.md) records the baseline and verification limits.
+Its operation-family traces and coverage limits describe source behavior, not live Tableau confirmation or a line-by-line review of every command.
 Read the [repository architecture](../repository-structure.md) first for dependency direction and command composition.
 Use [named workspaces](../workspaces.md), [security](../security.md), and the [search source map](search.md) for their canonical contracts.
 
@@ -57,7 +57,6 @@ A new phase obtains fresh state before consequential revalidation.
 Workbook dependency acquisition retains a second project-resolution path.
 [`pullReader.DownloadPublishedDatasource`](../../internal/app/app.go) calls `workbook.Adapter.ResolveProject` after the pull service supplies a display-path resolver.
 That resolver lacks the optional `ResolveProject` method, so the workbook adapter uses its private hierarchy collector and path index.
-The [review finding](review.md#require-the-shared-workbook-project-resolver) includes this production consumer in the proposed consolidation.
 
 Metadata IDs identify GraphQL objects and are distinct from REST LUIDs.
 [`value.MetadataIdentity`](../../internal/value/metadata.go) carries both namespaces without treating one as the other.
@@ -69,7 +68,8 @@ Three integration owners serve different metadata needs:
 - [`tableau/metadataassets`](../../internal/tableau/metadataassets) reads catalog and workbook metadata and performs supported descriptions, tags, and label operations.
 - [`tableau/fieldcatalog`](../../internal/tableau/fieldcatalog) normalizes datasource field identities, roles, formulas, dependencies, and logical-table facts.
 
-The [workbook metadata contract](../workbook-metadata-coverage.md) describes embedded and published group semantics, audit coverage, and optional field lineage.
+[`actions/workbook/schema.go`](../../actions/workbook/schema.go) and [`internal/tableau/metadata`](../../internal/tableau/metadata) own workbook schema and lineage acquisition.
+The [lineage metadata evidence](../evidence/lineage-metadata-contract.md) records upstream semantics and its limits.
 Unknown metadata remains distinct from confirmed missing metadata.
 An incomplete graph or permission-restricted response cannot establish the absence of upstream content.
 
@@ -297,7 +297,7 @@ Use this map to identify owners and existing regression coverage before editing:
 | --- | --- | --- |
 | Cached inventory field consumed by the editor | Resource `list_types.go`, normalized values, provider decoding and adapters, [REST cache collectors](../../internal/tableau/cache/collectors.go), [cached list readers](../../internal/app/cache_reads.go), then the [editor field path](editor-extension.md#change-placement-and-verification) | Workbook examples: [`list_test.go`](../../actions/workbook/list_test.go), [`workbook_inventory_test.go`](../../internal/app/workbook_inventory_test.go), provider and collector tests; extension parser, projection, and browser fixtures. |
 | Workbook inspect field or projection | [`inspect_types.go`](../../actions/workbook/inspect_types.go), [`value/content.go`](../../internal/value/content.go), [`app/workbook_inventory.go`](../../internal/app/workbook_inventory.go), provider decoding, and cache readers | [`inspect_test.go`](../../actions/workbook/inspect_test.go), [`workbook_inventory_test.go`](../../internal/app/workbook_inventory_test.go), [`workbook_inspect_metadata_cache_e2e_test.go`](../../internal/app/workbook_inspect_metadata_cache_e2e_test.go). |
-| Workbook publication or source republish | [`workbook/publish.go`](../../actions/workbook/publish.go), [`tableau/workbook/client.go`](../../internal/tableau/workbook/client.go), publication wiring | [`publish_project_phase_test.go`](../../actions/workbook/publish_project_phase_test.go), [`publish_visibility_test.go`](../../actions/workbook/publish_visibility_test.go), [`publish_test.go`](../../actions/workbook/publish_test.go). |
+| Workbook publication or source republish | [`workbook/publish.go`](../../actions/workbook/publish.go), [`tableau/workbook/client.go`](../../internal/tableau/workbook/client.go), publication wiring | [`publish_project_phase_test.go`](../../actions/workbook/publish_project_phase_test.go), [`publish_projection_test.go`](../../actions/workbook/publish_projection_test.go), [`publish_test.go`](../../actions/workbook/publish_test.go). |
 | Workbook dependency acquisition or lineage warnings | [`workbook/pull.go`](../../actions/workbook/pull.go), [`artifact/bundle.go`](../../internal/artifact/bundle.go) | [`workbook/pull_test.go`](../../actions/workbook/pull_test.go) and artifact transaction tests. |
 | Datasource fields or workbook published groups | [`fieldcatalog`](../../internal/tableau/fieldcatalog), [`resources/datasource/schema.go`](../../internal/resources/datasource/schema.go), [`workbook/schema.go`](../../actions/workbook/schema.go) | [`datasource/schema_test.go`](../../actions/datasource/schema_test.go), [`workbook/schema_test.go`](../../actions/workbook/schema_test.go), provider fixtures. |
 | Cache filtering, scope coverage, or freshness | [`cache/resources.go`](../../internal/cache/resources.go), [`cache/resource_scope.go`](../../internal/cache/resource_scope.go), [`app/cache_reads.go`](../../internal/app/cache_reads.go) | Existing `internal/cache` tests and [`actions/cache/refresh_test.go`](../../actions/cache/refresh_test.go). |
@@ -322,4 +322,3 @@ This page documents source-traced operation families and inventory-level ownersh
 It is not a line-by-line correctness review of every operation or a claim of live compatibility with every Tableau deployment.
 External access, licensing, version support, and site permissions can constrain available metadata independently of local implementation.
 Historical live checks and build-specific findings remain scoped to their original evidence.
-The [architecture review](review.md) distinguishes current validation, documentation gaps, and proposed simplifications from implemented behavior.
