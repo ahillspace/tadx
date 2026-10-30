@@ -127,7 +127,7 @@ func openNativeDefinition(ctx context.Context, file *os.File, size int64, kind s
 	if strings.EqualFold(filepath.Ext(file.Name()), nativePrimaryExtensions[kind]) {
 		return io.NopCloser(io.NewSectionReader(file, 0, size)), nil
 	}
-	archive, err := zip.NewReader(nativeDefinitionReaderAt{ctx: ctx, source: file}, size)
+	archive, err := zip.NewReader(contextReaderAt{ctx: ctx, source: file}, size)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -151,12 +151,12 @@ func openNativeDefinition(ctx context.Context, file *os.File, size int64, kind s
 	return stream, nil
 }
 
-type nativeDefinitionReaderAt struct {
+type contextReaderAt struct {
 	ctx    context.Context
 	source io.ReaderAt
 }
 
-func (r nativeDefinitionReaderAt) ReadAt(data []byte, offset int64) (int, error) {
+func (r contextReaderAt) ReadAt(data []byte, offset int64) (int, error) {
 	if err := r.ctx.Err(); err != nil {
 		return 0, err
 	}
