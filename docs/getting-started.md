@@ -173,6 +173,7 @@ Workbook publication does not publish dependencies automatically.
 Tableau binds each reference by its datasource content URL on the destination site.
 Datasource publish reports the `content_url` Tableau assigned, and `renamed_from` when it differs from the URL recorded in the file, such as when Tableau adds a suffix because that URL was taken.
 Map a reference whose destination URL differs with `--datasource-binding <source name or content URL>=<target LUID>`; only the upload copy is rebound.
+The source is a case-sensitive literal: an exact content URL takes precedence over a unique exact caption.
 A workbook preview lists each binding.
 When Tableau rejects a publish because a referenced datasource is missing, the error lists each missing reference and exact same-name candidates.
 Pulling with `--include-pds` saves direct datasource dependencies as separate artifacts; it does not make the workbook self-contained.

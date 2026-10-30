@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -528,5 +529,59 @@ func TestPreparedFlowPublishKeepsSnapshotUntilCommit(t *testing.T) {
 	}
 	if snapshots() != 0 {
 		t.Fatal("Commit did not release the snapshot")
+	}
+}
+
+func TestClientUploadsBeyondFormerBlockLimit(t *testing.T) {
+	content := bytes.Repeat([]byte("0123456789"), 1001)[:10001]
+	var received bytes.Buffer
+	appends, commits := 0, 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Body != nil {
+			defer request.Body.Close()
+		}
+		status, body := http.StatusOK, `<tsResponse><fileUpload uploadSessionId="large-upload"/></tsResponse>`
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):
+			status = http.StatusCreated
+		case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/fileUploads/large-upload"):
+			appends++
+			if got := request.URL.Query().Get("sequenceID"); got != strconv.Itoa(appends) {
+				t.Fatalf("sequenceID = %q, want %d", got, appends)
+			}
+			parts, err := readMultipart(request)
+			if err != nil || len(parts) != 2 || parts[0].name != "request_payload" || len(parts[0].content) != 0 || parts[1].name != "tableau_file" || len(parts[1].content) != 1 {
+				t.Fatalf("append parts = %#v, error = %v", parts, err)
+			}
+			received.Write(parts[1].content)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/flows"):
+			commits++
+			if got := request.URL.Query().Get("uploadSessionId"); got != "large-upload" {
+				t.Fatalf("uploadSessionId = %q", got)
+			}
+			parts, err := readMultipart(request)
+			if err != nil || len(parts) != 1 || parts[0].name != "request_payload" {
+				t.Fatalf("commit parts = %#v, error = %v", parts, err)
+			}
+			status = http.StatusCreated
+			body = `<tsResponse><flow id="created-large" name="Large"><project id="project-1"/></flow></tsResponse>`
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL)
+		}
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+	})}
+	client := tableauflow.NewClient(tableau.NewTransport(httpClient, "3.29", nil), session{}, "https://tableau.example")
+	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(1)
+	prepared, err := client.Prepare(t.Context(), tableauflow.PublishRequest{Name: "Large", ProjectLUID: "project-1", Filename: "Large.tflx", ContentPath: writePayload(t, "Large.tflx", content), ContentSize: int64(len(content)), ExpectedFingerprint: fingerprint(content)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := prepared.Commit(t.Context())
+	if err != nil || result.FlowLUID != "created-large" {
+		t.Fatalf("Commit() = %#v, error = %v", result, err)
+	}
+	if appends != len(content) || commits != 1 || !bytes.Equal(received.Bytes(), content) {
+		t.Fatalf("appends = %d, commits = %d, uploaded bytes = %d; want %d exact bytes", appends, commits, received.Len(), len(content))
 	}
 }

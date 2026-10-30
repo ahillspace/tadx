@@ -146,6 +146,9 @@ type FileUpload struct {
 // blocks, and returns the session ID the publish request references. REST API
 // 3.27 and later receive an explicit sequenceID for each block.
 func (u FileUpload) Upload(ctx context.Context, snapshot *PublishSnapshot) (string, error) {
+	if u.ChunkSize <= 0 {
+		return "", errors.New("upload chunk size must be positive")
+	}
 	ordered, err := APIVersionAtLeast(u.Transport.APIVersion(), 3, 27)
 	if err != nil {
 		return "", fmt.Errorf("interpret Tableau REST API version for chunked upload: %w", err)
@@ -159,7 +162,7 @@ func (u FileUpload) Upload(ctx context.Context, snapshot *PublishSnapshot) (stri
 	if err != nil {
 		return "", NewProtocolError(initiateOperation, response, fmt.Errorf("initiate file upload: %w", err), false)
 	}
-	for sequence, offset := 1, int64(0); offset < snapshot.size; sequence++ {
+	for sequence, offset := int64(1), int64(0); offset < snapshot.size; sequence++ {
 		blockSize := min(snapshot.size-offset, u.ChunkSize)
 		body, err := NewMultipartBody(RequestPayloadPart(nil), FilePart("tableau_file", u.Filename, snapshot.file, offset, blockSize))
 		if err != nil {
@@ -168,7 +171,7 @@ func (u FileUpload) Upload(ctx context.Context, snapshot *PublishSnapshot) (stri
 		offset += blockSize
 		query := url.Values{}
 		if ordered {
-			query.Set("sequenceID", strconv.Itoa(sequence))
+			query.Set("sequenceID", strconv.FormatInt(sequence, 10))
 		}
 		response, err := u.Transport.Do(ctx, u.Session, Request{Method: http.MethodPut, ServerURL: u.ServerURL, Path: u.path(sessionID), Query: query, Multipart: body, Accept: "application/xml", Operation: appendOperation, MaxResponseBytes: uploadResponseLimit})
 		if err != nil {

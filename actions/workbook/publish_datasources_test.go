@@ -105,7 +105,10 @@ func TestPublishPlanWithoutBindingsLeavesEveryReferenceToTableau(t *testing.T) {
 }
 
 func TestPublishPlanRejectsUnusableDatasourceBindings(t *testing.T) {
-	datasources := append([]workbookops.PublishDatasource{{Caption: "Orders", ContentURL: "OrdersArchive"}}, publishBindingDatasources...)
+	datasources := append([]workbookops.PublishDatasource{
+		{Caption: "Orders history", ContentURL: "OrdersArchive"},
+		{Caption: "Orders history", ContentURL: "OrdersCurrent"},
+	}, publishBindingDatasources...)
 	for _, test := range []struct {
 		name     string
 		bindings []workbookops.DatasourceBinding
@@ -113,7 +116,8 @@ func TestPublishPlanRejectsUnusableDatasourceBindings(t *testing.T) {
 	}{
 		{"no match", []workbookops.DatasourceBinding{{Source: "Sales", TargetLUID: "ds-name"}}, `"Sales" matches no published data source`},
 		{"similar name", []workbookops.DatasourceBinding{{Source: "sales & margin", TargetLUID: "ds-name"}}, "matches no published data source"},
-		{"ambiguous caption", []workbookops.DatasourceBinding{{Source: "Orders", TargetLUID: "ds-orders"}}, "OrdersArchive, Orders"},
+		{"wildcard is literal", []workbookops.DatasourceBinding{{Source: "Orders*", TargetLUID: "ds-orders"}}, "matches no published data source"},
+		{"ambiguous caption", []workbookops.DatasourceBinding{{Source: "Orders history", TargetLUID: "ds-orders"}}, "OrdersArchive, OrdersCurrent"},
 		{"conflicting targets", []workbookops.DatasourceBinding{{Source: "Sales & Margin", TargetLUID: "ds-name"}, {Source: "SalesMargin", TargetLUID: "ds-orders"}}, "both"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -125,6 +129,44 @@ func TestPublishPlanRejectsUnusableDatasourceBindings(t *testing.T) {
 			payload := errs.Structure(err).Error
 			if payload.Kind != errs.KindUsage || len(payload.Validation) != 1 || payload.Validation[0].Field != "datasource-binding" || !strings.Contains(payload.Summary, test.want) {
 				t.Fatalf("error = %#v", payload)
+			}
+		})
+	}
+}
+
+func TestPublishPlanResolvesDatasourceBindingsLiterally(t *testing.T) {
+	for _, test := range []struct {
+		name, source, want string
+		datasources        []workbookops.PublishDatasource
+	}{
+		{
+			name: "content URL takes precedence over duplicate captions", source: "Orders", want: "Orders",
+			datasources: []workbookops.PublishDatasource{{Caption: "Orders", ContentURL: "OrdersArchive"}, {Caption: "Orders", ContentURL: "Orders"}},
+		},
+		{
+			name: "caption metacharacters are literal", source: "Orders*[?]", want: "LiteralOrders",
+			datasources: []workbookops.PublishDatasource{{Caption: "Orders*[?]", ContentURL: "LiteralOrders"}, {Caption: "OrdersArchive", ContentURL: "Archive"}},
+		},
+		{
+			name: "content URL metacharacters are literal", source: "Orders*[?]", want: "Orders*[?]",
+			datasources: []workbookops.PublishDatasource{{Caption: "Orders", ContentURL: "Orders*[?]"}, {Caption: "Orders*[?]", ContentURL: "Archive"}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			publisher := &publishPublisher{}
+			action := workbookops.NewPublish(
+				publishArtifactReader{artifact: workbookops.PublishArtifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", Datasources: test.datasources}},
+				publishBindingResolver(), publisher,
+			)
+			plan, err := action.Plan(t.Context(), publishBindingInput(workbookops.DatasourceBinding{Source: test.source, TargetLUID: "ds-name"}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := action.Apply(t.Context(), plan); err != nil {
+				t.Fatal(err)
+			}
+			if want := map[string]string{test.want: "SalesMargin_1"}; !reflect.DeepEqual(publisher.input.DatasourceContentURLs, want) {
+				t.Fatalf("upload rewrite = %#v, want %#v", publisher.input.DatasourceContentURLs, want)
 			}
 		})
 	}
