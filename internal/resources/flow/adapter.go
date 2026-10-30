@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -21,7 +22,7 @@ const resolutionPageSize = 1000
 type Client interface {
 	List(context.Context, tableauflow.ListRequest) (tableauflow.Page, error)
 	Get(context.Context, string) (tableauflow.Flow, error)
-	Download(context.Context, string) (tableauflow.Download, error)
+	Download(context.Context, string, io.Writer) (tableauflow.Download, error)
 }
 
 // ProjectPathResolver supplies canonical hierarchy paths without a resource-package dependency.
@@ -176,12 +177,12 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 	return byLUID[string(resolved.LUID)], nil
 }
 
-// DownloadFlow returns unchanged TFL or TFLX bytes.
-func (a *Adapter) DownloadFlow(ctx context.Context, luid string) (tableauflow.Download, error) {
+// DownloadFlow streams unchanged TFL or TFLX bytes into destination.
+func (a *Adapter) DownloadFlow(ctx context.Context, luid string, destination io.Writer) (tableauflow.Download, error) {
 	if a == nil || a.client == nil || strings.TrimSpace(luid) == "" {
 		return tableauflow.Download{}, errors.New("flow LUID and configured client are required")
 	}
-	download, err := a.client.Download(ctx, luid)
+	download, err := a.client.Download(ctx, luid, destination)
 	if err != nil {
 		return tableauflow.Download{}, err
 	}

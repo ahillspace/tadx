@@ -1,9 +1,11 @@
 package datasource_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -16,6 +18,7 @@ import (
 type client struct {
 	metadata     tableaudatasource.Datasource
 	download     tableaudatasource.Download
+	content      string
 	getErr       error
 	downloadErr  error
 	calls        []string
@@ -288,10 +291,13 @@ func TestAdapterFindsExactDatasourceCollisionWhenNameCannotUseTableauFilterGramm
 	}
 }
 
-func (c *client) Download(_ context.Context, luid string, includeExtract *bool) (tableaudatasource.Download, error) {
+func (c *client) Download(_ context.Context, luid string, includeExtract *bool, destination io.Writer) (tableaudatasource.Download, error) {
 	c.calls = append(c.calls, "download:"+luid)
 	if includeExtract != nil {
 		panic("dependency acquisition must preserve the server's native extract behavior")
+	}
+	if _, err := io.WriteString(destination, c.content); err != nil {
+		return tableaudatasource.Download{}, err
 	}
 	return c.download, c.downloadErr
 }
@@ -299,24 +305,26 @@ func (c *client) Download(_ context.Context, luid string, includeExtract *bool) 
 func TestAdapterDownloadsOneAuthoritativeDatasourceArtifact(t *testing.T) {
 	c := &client{
 		metadata: tableaudatasource.Datasource{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Shared"},
-		download: tableaudatasource.Download{Filename: "Sales.tdsx", Content: []byte("native"), TableauRequestID: "request-1"},
+		download: tableaudatasource.Download{Filename: "Sales.tdsx", TableauRequestID: "request-1"},
+		content:  "native",
 	}
 
-	result, err := resourcedatasource.NewAdapter(c).DownloadDatasource(context.Background(), "ds-1")
+	var content bytes.Buffer
+	result, err := resourcedatasource.NewAdapter(c).DownloadDatasource(context.Background(), "ds-1", &content)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(c.calls, []string{"get:ds-1", "download:ds-1"}) {
 		t.Fatalf("calls = %v", c.calls)
 	}
-	if result.LUID != "ds-1" || result.Name != "Sales" || result.ProjectLUID != "project-1" || result.ProjectPath != "Shared" || result.Filename != "Sales.tdsx" || string(result.Content) != "native" || result.TableauRequestID != "request-1" {
+	if result.LUID != "ds-1" || result.Name != "Sales" || result.ProjectLUID != "project-1" || result.ProjectPath != "Shared" || result.Filename != "Sales.tdsx" || content.String() != "native" || result.TableauRequestID != "request-1" {
 		t.Fatalf("result = %#v", result)
 	}
 }
 
 func TestAdapterStopsBeforeDownloadWhenAuthoritativeReadFails(t *testing.T) {
 	c := &client{getErr: errors.New("not found")}
-	_, err := resourcedatasource.NewAdapter(c).DownloadDatasource(context.Background(), "ds-1")
+	_, err := resourcedatasource.NewAdapter(c).DownloadDatasource(context.Background(), "ds-1", io.Discard)
 	if err == nil || !reflect.DeepEqual(c.calls, []string{"get:ds-1"}) {
 		t.Fatalf("error = %v, calls = %v", err, c.calls)
 	}
@@ -330,7 +338,7 @@ func TestAdapterRejectsIncompleteDatasourceIdentity(t *testing.T) {
 		{LUID: "ds-1", Name: "Sales"},
 	} {
 		c := &client{metadata: metadata}
-		_, err := resourcedatasource.NewAdapter(c).DownloadDatasource(context.Background(), "ds-1")
+		_, err := resourcedatasource.NewAdapter(c).DownloadDatasource(context.Background(), "ds-1", io.Discard)
 		if err == nil || !reflect.DeepEqual(c.calls, []string{"get:ds-1"}) {
 			t.Fatalf("metadata = %#v, error = %v, calls = %v", metadata, err, c.calls)
 		}

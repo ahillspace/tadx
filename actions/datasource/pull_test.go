@@ -24,7 +24,7 @@ func (r *pullPullReader) ResolveDatasource(_ context.Context, selector identity.
 
 func (r *pullPullReader) DownloadDatasource(_ context.Context, luid string) (datasourceops.Download, error) {
 	r.calls = append(r.calls, "download:"+luid)
-	return datasourceops.Download{Filename: "Sales.tds", Content: []byte(`<datasource><relation datasource-url="parent-sales"/></datasource>`), TableauRequestID: "request-1"}, nil
+	return datasourceops.Download{Filename: "Sales.tds", Path: `<datasource><relation datasource-url="parent-sales"/></datasource>`, TableauRequestID: "request-1"}, nil
 }
 
 func (r *pullPullReader) CaptureLineage(_ context.Context, request datasourceops.LineageRequest) (datasourceops.Lineage, error) {
@@ -67,7 +67,7 @@ func TestPullPullPreservesNativePackageAndCompositionReferences(t *testing.T) {
 	if !reflect.DeepEqual(r.calls, []string{"resolve:ds-1", "download:ds-1", "lineage:ds-1"}) {
 		t.Fatalf("calls = %#v", r.calls)
 	}
-	if string(w.input.Content) != `<datasource><relation datasource-url="parent-sales"/></datasource>` || w.input.Filename != "Sales.tds" {
+	if w.input.Path != `<datasource><relation datasource-url="parent-sales"/></datasource>` || w.input.Filename != "Sales.tds" {
 		t.Fatalf("artifact input = %#v", w.input)
 	}
 	if output.Artifact.CompositionStatus != "composed" || !reflect.DeepEqual(output.Artifact.ParentDataSourceURLs, []string{"parent-sales"}) {

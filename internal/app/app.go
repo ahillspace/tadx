@@ -42,6 +42,7 @@ import (
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	updater "github.com/ahillspace/tadx/internal/update"
 	"github.com/ahillspace/tadx/internal/value"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 // Options contains process-level discovery settings.
@@ -542,13 +543,21 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	}
 	input.SiteLUID = connection.session.SiteLUID()
 
-	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
+	var downloads *workspacecore.Downloads
+	if input.Preview {
+		downloads = workspacecore.NewTemporaryDownloads()
+	} else {
+		downloads = workspacecore.NewDownloads(input.Workspace)
+	}
+	defer downloads.Close()
+	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage, downloads: downloads}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
 }
 
 type pullReader struct {
 	workbooks   *resourceworkbook.Adapter
 	datasources *resourcedatasource.Adapter
 	lineage     *resourcelineage.Adapter
+	downloads   *workspacecore.Downloads
 }
 
 func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookops.Record, error) {
@@ -557,13 +566,17 @@ func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selec
 }
 func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *bool) (workbookops.Download, error) {
 	progress.SetLabel(ctx, "Downloading workbook")
-	item, err := r.workbooks.DownloadWorkbook(ctx, luid, include)
-	return workbookops.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
+	var item tableauworkbook.Download
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
+		item, err = r.workbooks.DownloadWorkbook(ctx, luid, include, destination)
+		return err
+	})
+	return workbookops.Download{Filename: item.Filename, Path: path, TableauRequestID: item.TableauRequestID}, err
 }
 
 func (r pullReader) PublishedDatasources(ctx context.Context, download workbookops.Download) ([]workbookops.PublishedDatasource, error) {
 	progress.SetLabel(ctx, "Reading workbook dependencies")
-	references, err := artifact.ReadWorkbookDatasources(ctx, download.Filename, download.Content)
+	references, err := artifact.ReadWorkbookDatasources(ctx, download.Filename, download.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +600,11 @@ func (r pullReader) PublishedDatasources(ctx context.Context, download workbooko
 
 func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string) (workbookops.DatasourceDownload, error) {
 	progress.SetLabel(ctx, "Downloading workbook datasource dependency")
-	item, err := r.datasources.DownloadDatasource(ctx, luid)
+	var item resourcedatasource.Download
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
+		item, err = r.datasources.DownloadDatasource(ctx, luid, destination)
+		return err
+	})
 	if err != nil {
 		return workbookops.DatasourceDownload{}, err
 	}
@@ -595,7 +612,7 @@ func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string
 	if err != nil {
 		return workbookops.DatasourceDownload{}, fmt.Errorf("resolve datasource project %q: %w", item.ProjectLUID, err)
 	}
-	return workbookops.DatasourceDownload{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: project.Path, Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, nil
+	return workbookops.DatasourceDownload{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: project.Path, Filename: item.Filename, Path: path, TableauRequestID: item.TableauRequestID}, nil
 }
 
 func (r pullReader) CaptureWorkbookLineage(ctx context.Context, input workbookops.LineageRequest) (workbookops.LineageCapture, error) {
@@ -623,7 +640,7 @@ func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookops.Pul
 	for index, item := range input.PublishedDatasources {
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, SourceSite: item.SourceSite, LocalArtifactPath: item.LocalArtifactPath}
 	}
-	result, err := w.workbooks.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Lineage: workbookLineageDocument(input.Lineage), LineageCountsKnown: input.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, Portability: input.Portability, PublishedDatasources: references, DependenciesAcquired: input.DependenciesAcquired}})
+	result, err := w.workbooks.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, PayloadPath: input.Path, Overwrite: input.Overwrite, Lineage: workbookLineageDocument(input.Lineage), LineageCountsKnown: input.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, Portability: input.Portability, PublishedDatasources: references, DependenciesAcquired: input.DependenciesAcquired}})
 	return workbookops.PullArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, LineagePath: result.LineagePath, LineageStatus: result.LineageStatus, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
 }
 
@@ -634,11 +651,11 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookops.Pu
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, SourceSite: item.SourceSite}
 	}
 	bundle := artifact.WorkbookBundlePull{
-		Workbook:    artifact.WorkbookPull{Workspace: workbook.Workspace, Filename: workbook.Filename, Content: workbook.Content, Overwrite: workbook.Overwrite, Lineage: workbookLineageDocument(workbook.Lineage), LineageCountsKnown: workbook.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: workbook.Name, TableauID: workbook.TableauID, SourceServerOrigin: workbook.ServerOrigin, SourceSiteLUID: workbook.SiteLUID, SourceEnvironment: workbook.Environment, SourceSite: workbook.Site, SourceProjectName: workbook.ProjectName, SourceProjectID: workbook.ProjectID, Portability: workbook.Portability, PublishedDatasources: references, DependenciesAcquired: true}},
+		Workbook:    artifact.WorkbookPull{Workspace: workbook.Workspace, Filename: workbook.Filename, PayloadPath: workbook.Path, Overwrite: workbook.Overwrite, Lineage: workbookLineageDocument(workbook.Lineage), LineageCountsKnown: workbook.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: workbook.Name, TableauID: workbook.TableauID, SourceServerOrigin: workbook.ServerOrigin, SourceSiteLUID: workbook.SiteLUID, SourceEnvironment: workbook.Environment, SourceSite: workbook.Site, SourceProjectName: workbook.ProjectName, SourceProjectID: workbook.ProjectID, Portability: workbook.Portability, PublishedDatasources: references, DependenciesAcquired: true}},
 		Datasources: make([]artifact.DatasourcePull, len(datasources)),
 	}
 	for index, item := range datasources {
-		bundle.Datasources[index] = artifact.DatasourcePull{Workspace: item.Workspace, Filename: item.Filename, Content: item.Content, Overwrite: item.Overwrite, Metadata: artifact.DatasourceMetadata{Kind: "datasource", Name: item.Name, TableauID: item.TableauID, SourceServerOrigin: item.ServerOrigin, SourceSiteLUID: item.SiteLUID, SourceEnvironment: item.Environment, SourceSite: item.Site, SourceProjectName: item.ProjectName, SourceProjectID: item.ProjectID}}
+		bundle.Datasources[index] = artifact.DatasourcePull{Workspace: item.Workspace, Filename: item.Filename, PayloadPath: item.Path, Overwrite: item.Overwrite, Metadata: artifact.DatasourceMetadata{Kind: "datasource", Name: item.Name, TableauID: item.TableauID, SourceServerOrigin: item.ServerOrigin, SourceSiteLUID: item.SiteLUID, SourceEnvironment: item.Environment, SourceSite: item.Site, SourceProjectName: item.ProjectName, SourceProjectID: item.ProjectID}}
 	}
 	result, err := w.bundles.Pull(ctx, bundle)
 	if err != nil {

@@ -15,6 +15,12 @@ func Rename(from, to string) error {
 	return os.Rename(from, to)
 }
 
+// CrossDevice reports whether err is a rename that failed because its paths
+// are on different filesystems.
+func CrossDevice(err error) bool {
+	return errors.Is(err, syscall.EXDEV)
+}
+
 // RenameIn renames from to to within root, which confines both paths to an
 // opened directory. Like Rename, it never retries.
 func RenameIn(root *os.Root, from, to string) error {

@@ -16,7 +16,7 @@ func TestMovePreservesIdentityBytesAndRelativePath(t *testing.T) {
 	destination := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	created, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-		Workspace: source, Filename: "Finance.twbx", Content: []byte("payload"), Metadata: validMetadata("Finance", "wb-1"),
+		Workspace: source, Filename: "Finance.twbx", PayloadPath: artifact.PayloadFile(t, []byte("payload")), Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestMoveRejectsDestinationCollision(t *testing.T) {
 	destination := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	for _, root := range []string{source, destination} {
-		if _, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", Content: []byte("payload"), Metadata: validMetadata("Finance", "wb-1")}); err != nil {
+		if _, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: artifact.PayloadFile(t, []byte("payload")), Metadata: validMetadata("Finance", "wb-1")}); err != nil {
 			t.Fatal(err)
 		}
 	}

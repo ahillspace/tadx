@@ -1,8 +1,10 @@
 package flow_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -15,6 +17,7 @@ type flowClient struct {
 	pages      map[int]tableauflow.Page
 	byLUID     map[string]tableauflow.Flow
 	download   tableauflow.Download
+	content    string
 	listInputs []tableauflow.ListRequest
 }
 
@@ -29,8 +32,9 @@ func (c flowClient) Get(_ context.Context, luid string) (tableauflow.Flow, error
 	}
 	return item, nil
 }
-func (c flowClient) Download(context.Context, string) (tableauflow.Download, error) {
-	return c.download, nil
+func (c flowClient) Download(_ context.Context, _ string, destination io.Writer) (tableauflow.Download, error) {
+	_, err := io.WriteString(destination, c.content)
+	return c.download, err
 }
 
 type paths map[string]string
@@ -95,12 +99,13 @@ func TestAdapterRejectsIncompleteFlowIdentity(t *testing.T) {
 }
 
 func TestAdapterPreservesNativeFlowBytes(t *testing.T) {
-	client := &flowClient{download: tableauflow.Download{Filename: "Daily.tflx", Content: []byte("native\x00flow"), TableauRequestID: "request-1"}}
-	download, err := resourceflow.NewAdapter(client, paths{}).DownloadFlow(context.Background(), "f-1")
+	client := &flowClient{download: tableauflow.Download{Filename: "Daily.tflx", TableauRequestID: "request-1"}, content: "native\x00flow"}
+	var content bytes.Buffer
+	download, err := resourceflow.NewAdapter(client, paths{}).DownloadFlow(context.Background(), "f-1", &content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if download.Filename != "Daily.tflx" || string(download.Content) != "native\x00flow" {
+	if download.Filename != "Daily.tflx" || content.String() != "native\x00flow" {
 		t.Fatalf("download = %#v", download)
 	}
 }

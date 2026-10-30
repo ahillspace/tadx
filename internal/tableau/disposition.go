@@ -1,9 +1,11 @@
 package tableau
 
 import (
+	"fmt"
 	"mime"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -37,6 +39,24 @@ func DispositionFilename(value string) string {
 		}
 	}
 	return ""
+}
+
+// DownloadFilename returns the validated filename of a content download
+// response for kind, such as "workbook", whose extension must be one of
+// extensions. A missing, unsafe, or unsupported name is a retryable protocol
+// error for operation.
+func DownloadFilename(operation, kind string, response Response, extensions ...string) (string, error) {
+	filename := DispositionFilename(response.Header.Get("Content-Disposition"))
+	if filename == "" {
+		return "", NewProtocolError(operation, response, fmt.Errorf("%s download response omitted filename", kind), true)
+	}
+	if !ValidFilename(filename) {
+		return "", NewProtocolError(operation, response, fmt.Errorf("%s download returned invalid filename %q", kind, filename), true)
+	}
+	if !slices.Contains(extensions, strings.ToLower(filepath.Ext(filename))) {
+		return "", NewProtocolError(operation, response, fmt.Errorf("%s download returned unsupported filename %q", kind, filename), true)
+	}
+	return filename, nil
 }
 
 // ValidFilename reports whether filename is a single local path component.

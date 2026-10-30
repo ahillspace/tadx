@@ -373,7 +373,7 @@ func TestClientPreservesProtocolResponseContext(t *testing.T) {
 		}))
 		defer server.Close()
 		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-		_, err := client.Download(context.Background(), "wb-1", nil)
+		_, err := client.Download(context.Background(), "wb-1", nil, io.Discard)
 		assertProtocolContext(t, err, http.StatusOK, "download-request")
 	})
 
@@ -423,11 +423,12 @@ func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
 			defer server.Close()
 
 			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			download, err := client.Download(context.Background(), "wb-1", test.includeExtract)
+			var content bytes.Buffer
+			download, err := client.Download(context.Background(), "wb-1", test.includeExtract, &content)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if download.Filename != "Finance.twbx" || !bytes.Equal(download.Content, []byte("twbx-bytes")) {
+			if download.Filename != "Finance.twbx" || content.String() != "twbx-bytes" {
 				t.Fatalf("download = %#v", download)
 			}
 		})
@@ -950,10 +951,14 @@ func TestClientDecodesAndValidatesWorkbookDownloadFilename(t *testing.T) {
 			defer server.Close()
 
 			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			download, err := client.Download(context.Background(), "wb-1", nil)
+			var destination bytes.Buffer
+			download, err := client.Download(context.Background(), "wb-1", nil, &destination)
 			if test.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 					t.Fatalf("error = %v, want substring %q", err, test.wantErr)
+				}
+				if destination.Len() != 0 {
+					t.Fatalf("a rejected download wrote %q", destination.String())
 				}
 				return
 			}

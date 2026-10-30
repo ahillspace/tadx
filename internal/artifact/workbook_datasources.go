@@ -43,12 +43,8 @@ type RewrittenWorkbook struct {
 }
 
 // ReadWorkbookDatasources reports the live published datasource connections in
-// a downloaded .twb or .twbx payload.
-func ReadWorkbookDatasources(ctx context.Context, filename string, content []byte) ([]WorkbookDatasource, error) {
-	return readWorkbookDatasources(ctx, bytes.NewReader(content), int64(len(content)), filename)
-}
-
-func readWorkbookDatasourceFile(ctx context.Context, path string) ([]WorkbookDatasource, error) {
+// the .twb or .twbx payload at path, using filename to choose its format.
+func ReadWorkbookDatasources(ctx context.Context, filename, path string) ([]WorkbookDatasource, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -58,7 +54,7 @@ func readWorkbookDatasourceFile(ctx context.Context, path string) ([]WorkbookDat
 	if err != nil {
 		return nil, err
 	}
-	return readWorkbookDatasources(ctx, file, info.Size(), path)
+	return readWorkbookDatasources(ctx, file, info.Size(), filename)
 }
 
 func readWorkbookDatasources(ctx context.Context, source io.ReaderAt, size int64, filename string) ([]WorkbookDatasource, error) {

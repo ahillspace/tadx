@@ -113,24 +113,31 @@ func readDatasourceDefinitionStream(definition io.Reader) datasourceDefinition {
 	return metadata.definition()
 }
 
-// readDatasourceContentURL reports the repository location recorded in one
-// datasource file, or empty when the file records none.
-func readDatasourceContentURL(ctx context.Context, path string) (string, error) {
+// readDatasourceFile reads the datasource definition at path, using filename
+// to distinguish the original TDS or TDSX name from a temporary staging name.
+func readDatasourceFile(ctx context.Context, filename, path string) (datasourceDefinition, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return datasourceDefinition{}, err
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return datasourceDefinition{}, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return "", err
+		return datasourceDefinition{}, err
 	}
-	parsed := readDatasourceDefinitionContext(ctx, path, file, info.Size())
+	parsed := readDatasourceDefinitionContext(ctx, filename, file, info.Size())
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return datasourceDefinition{}, err
 	}
-	return parsed.ContentURL, nil
+	return parsed, nil
+}
+
+// readDatasourceContentURL reports the repository location recorded in one
+// datasource file, or empty when the file records none.
+func readDatasourceContentURL(ctx context.Context, path string) (string, error) {
+	parsed, err := readDatasourceFile(ctx, path, path)
+	return parsed.ContentURL, err
 }

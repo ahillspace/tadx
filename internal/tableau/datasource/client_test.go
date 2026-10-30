@@ -78,7 +78,7 @@ func TestClientRejectsUnconfiguredDatasourceReads(t *testing.T) {
 			return err
 		}},
 		{name: "download", call: func() error {
-			_, err := client.Download(context.Background(), "ds-1", nil)
+			_, err := client.Download(context.Background(), "ds-1", nil, io.Discard)
 			return err
 		}},
 		{name: "list", call: func() error {
@@ -357,11 +357,12 @@ func TestClientDownloadsNativeDatasourceAndFilename(t *testing.T) {
 			defer server.Close()
 
 			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			download, err := client.Download(context.Background(), "ds-1", test.includeExtract)
+			var content bytes.Buffer
+			download, err := client.Download(context.Background(), "ds-1", test.includeExtract, &content)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if download.Filename != test.filename || download.ContentType != "application/octet-stream" || !bytes.Equal(download.Content, []byte("native-datasource")) || download.TableauRequestID != "datasource-download-request" {
+			if download.Filename != test.filename || download.ContentType != "application/octet-stream" || content.String() != "native-datasource" || download.TableauRequestID != "datasource-download-request" {
 				t.Fatalf("download = %#v", download)
 			}
 		})
@@ -389,32 +390,16 @@ func TestClientRejectsInvalidDatasourceDownloadFilename(t *testing.T) {
 			defer server.Close()
 
 			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			_, err := client.Download(context.Background(), "ds-1", nil)
+			var destination bytes.Buffer
+			_, err := client.Download(context.Background(), "ds-1", nil, &destination)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want substring %q", err, test.want)
 			}
+			if destination.Len() != 0 {
+				t.Fatalf("a rejected download wrote %q", destination.String())
+			}
 			assertProtocolContext(t, err, http.StatusOK, "datasource-filename-request")
 		})
-	}
-}
-
-func TestClientBoundsDatasourceDownloadAndPreservesRequestID(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.Header().Set("Content-Disposition", `name="tableau_datasource"; filename="Sales.tdsx"`)
-		writer.Header().Set("X-Tableau-Request-Id", "datasource-large-request")
-		_, _ = writer.Write([]byte("too-large"))
-	}))
-	defer server.Close()
-
-	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	client.SetMaxDownloadBytes(4)
-	_, err := client.Download(context.Background(), "ds-1", nil)
-	if err == nil || !strings.Contains(err.Error(), "exceeded 4-byte limit") {
-		t.Fatalf("error = %v", err)
-	}
-	var status interface{ HTTPStatus() int }
-	if !errors.As(err, &status) || status.HTTPStatus() != http.StatusOK || tableau.RequestID(err) != "datasource-large-request" {
-		t.Fatalf("bounded download error = %#v", err)
 	}
 }
 
@@ -450,7 +435,7 @@ func TestClientDecodesFormEncodedDatasourceDownloadFilename(t *testing.T) {
 	defer server.Close()
 
 	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	download, err := client.Download(context.Background(), "ds-1", nil)
+	download, err := client.Download(context.Background(), "ds-1", nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

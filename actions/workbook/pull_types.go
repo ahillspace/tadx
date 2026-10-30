@@ -31,10 +31,10 @@ type PullInput struct {
 	Overwrite      bool
 }
 
-// Download preserves native bytes before local storage.
+// Download is native content streamed to a local file before storage.
 type Download struct {
 	Filename         string
-	Content          []byte
+	Path             string
 	TableauRequestID string
 }
 
@@ -98,7 +98,7 @@ type DatasourceDownload struct {
 	ProjectLUID      string
 	ProjectPath      string
 	Filename         string
-	Content          []byte
+	Path             string
 	TableauRequestID string
 }
 
@@ -106,7 +106,7 @@ type DatasourceDownload struct {
 type DatasourceArtifact struct {
 	Workspace        string
 	Filename         string
-	Content          []byte
+	Path             string
 	Name             string
 	TableauID        string
 	Environment      string
@@ -133,7 +133,7 @@ type DependencyArtifactResult struct {
 type PullArtifact struct {
 	Workspace            string
 	Filename             string
-	Content              []byte
+	Path                 string
 	Name                 string
 	TableauID            string
 	Environment          string

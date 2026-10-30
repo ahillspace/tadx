@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"io"
 	"reflect"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func (c *datasourceInventoryClient) Get(context.Context, string) (tableaudatasou
 	return c.item, nil
 }
 
-func (*datasourceInventoryClient) Download(context.Context, string, *bool) (tableaudatasource.Download, error) {
+func (*datasourceInventoryClient) Download(context.Context, string, *bool, io.Writer) (tableaudatasource.Download, error) {
 	return tableaudatasource.Download{}, errors.New("not used")
 }
 

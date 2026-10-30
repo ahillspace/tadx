@@ -74,7 +74,7 @@ func TestWorkspaceDeletionProtectsUnmanagedArtifactFilesThroughCLI(t *testing.T)
 				}
 			}
 			pulled, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{
-				Workspace: root, Filename: "Finance.twb", Content: []byte("<workbook/>"),
+				Workspace: root, Filename: "Finance.twb", PayloadPath: app.PayloadFile(t, []byte("<workbook/>")),
 				Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.test", SourceSiteLUID: "site-1", SourceEnvironment: "dev", SourceSite: "sandbox", SourceProjectName: "Ops", SourceProjectID: "project-1"},
 			})
 			if err != nil {

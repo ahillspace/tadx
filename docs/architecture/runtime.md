@@ -156,9 +156,12 @@ Tableau rejects the session before processing the request, so the rejected attem
 A renewal failure is reported after the original rejection, and no other failure is retried.
 It rejects authenticated cleartext requests, cross-origin redirects, and HTTPS downgrade redirects.
 It attaches the session through `Session.Authorize`, adds a command correlation ID, and sanitizes request IDs and upstream diagnostics.
-It buffers ordinary request bodies and response bodies; the shared response ceiling is 256 MiB, and callers can request smaller bounds.
+It buffers ordinary request bodies and API response bodies; the shared API response ceiling is 256 MiB, and callers can request smaller bounds.
+Content downloads set `Request.OpenResponseBody`, which checks the response headers before any body byte is read and returns the destination.
+A successful download body streams to that destination under the stall watchdog without a size ceiling, while an error body is buffered under a fixed 4 MiB bound and decoded.
+The rejected attempt of a session renewal writes nothing, so the replayed download writes one complete body.
 Multipart uploads instead stream from a fingerprint-verified snapshot copy of the artifact through [`MultipartBody`](../../internal/tableau/multipart.go), which buffers only part framing, sends an exact `Content-Length`, and can reopen the body when the HTTP client replays a request.
-These are implementation limits, not a promise that every command accepts content of that size.
+The API response ceiling is an implementation limit, not a promise that every command accepts a response of that size.
 
 Transport errors expose retry advice, upstream status, request identity, and available `Retry-After` guidance.
 `SubmissionAttempted` distinguishes errors reached after a request attempt from failures before submission.

@@ -15,7 +15,7 @@ import (
 func TestManagedPublishSelectionHasNoSnapshotEntryLimit(t *testing.T) {
 	root := createMoveTestWorkspace(t, "large-artifact")
 	manager := NewWorkbookManager(time.Now)
-	created, err := manager.Pull(t.Context(), WorkbookPull{Workspace: root, Filename: "Finance.twb", Content: []byte("<workbook/>"), Metadata: moveTestMetadata()})
+	created, err := manager.Pull(t.Context(), WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: PayloadFile(t, []byte("<workbook/>")), Metadata: moveTestMetadata()})
 	if err != nil {
 		t.Fatal(err)
 	}

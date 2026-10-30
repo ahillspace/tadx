@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -25,12 +26,11 @@ const (
 
 // RESTClient implements the released Tableau flow REST contract.
 type RESTClient struct {
-	transport        *tableau.Transport
-	session          auth.Session
-	serverURL        string
-	uploadThreshold  int64
-	uploadChunkSize  int64
-	maxDownloadBytes int64
+	transport       *tableau.Transport
+	session         auth.Session
+	serverURL       string
+	uploadThreshold int64
+	uploadChunkSize int64
 }
 
 // NewClient creates an authenticated flow REST client.
@@ -38,13 +38,6 @@ func NewClient(transport *tableau.Transport, session auth.Session, serverURL str
 	return &RESTClient{
 		transport: transport, session: session, serverURL: serverURL,
 		uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize,
-	}
-}
-
-// SetMaxDownloadBytes bounds the buffered native flow download.
-func (c *RESTClient) SetMaxDownloadBytes(limit int64) {
-	if c != nil && limit > 0 {
-		c.maxDownloadBytes = limit
 	}
 }
 
@@ -134,30 +127,28 @@ func (c *RESTClient) Get(ctx context.Context, flowLUID string) (Flow, error) {
 	return result, nil
 }
 
-// Download preserves the native TFL or TFLX bytes unchanged.
-func (c *RESTClient) Download(ctx context.Context, flowLUID string) (Download, error) {
+// Download streams the native TFL or TFLX bytes unchanged into destination
+// and returns the filename. On error destination may hold a partial body.
+func (c *RESTClient) Download(ctx context.Context, flowLUID string, destination io.Writer) (Download, error) {
 	if strings.TrimSpace(flowLUID) == "" {
 		return Download{}, errors.New("flow LUID is required")
 	}
 	if err := c.validate(); err != nil {
 		return Download{}, err
 	}
-	response, err := c.do(ctx, http.MethodGet, c.sitePath("flows", flowLUID, "content"), nil, nil, "", "flow.pull", c.maxDownloadBytes)
+	var filename string
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{
+		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("flows", flowLUID, "content"),
+		Accept: "application/xml", Operation: "flow.pull", OpenResponseBody: func(response tableau.Response) (io.Writer, error) {
+			var err error
+			filename, err = tableau.DownloadFilename("flow.pull", "flow", response, ".tfl", ".tflx")
+			return destination, err
+		},
+	})
 	if err != nil {
 		return Download{}, err
 	}
-	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
-	if filename == "" {
-		return Download{}, tableau.NewProtocolError("flow.pull", response, errors.New("flow download response omitted filename"), true)
-	}
-	if !tableau.ValidFilename(filename) {
-		return Download{}, tableau.NewProtocolError("flow.pull", response, fmt.Errorf("flow download returned invalid filename %q", filename), true)
-	}
-	extension := strings.ToLower(filepath.Ext(filename))
-	if extension != ".tfl" && extension != ".tflx" {
-		return Download{}, tableau.NewProtocolError("flow.pull", response, fmt.Errorf("flow download returned unsupported filename %q", filename), true)
-	}
-	return Download{Filename: filename, Content: response.Body, TableauRequestID: response.TableauRequestID}, nil
+	return Download{Filename: filename, TableauRequestID: response.TableauRequestID}, nil
 }
 
 // Prepare snapshots and, when needed, uploads native flow bytes without final publication.

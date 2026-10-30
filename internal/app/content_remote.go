@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	flowops "github.com/ahillspace/tadx/actions/flow"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -25,6 +26,7 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 type remoteContentCommands struct{ runtime *runtimeDependencies }
@@ -378,7 +380,9 @@ func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowops.Pull
 		return flowops.PullOutput{}, remoteSetupError("flow.pull", input.Environment, input.Site, connection.environment, err)
 	}
 
-	reader := flowPullReader{Adapter: connection.flows, lineage: connection.lineage}
+	downloads := workspacecore.NewDownloads(input.Workspace)
+	defer downloads.Close()
+	reader := flowPullReader{Adapter: connection.flows, lineage: connection.lineage, downloads: downloads}
 	return flowops.Pull(ctx, reader, flowArtifactWriter{artifact.NewFlowManager(c.runtime.now)}, input)
 }
 
@@ -620,13 +624,18 @@ func (r flowListReader) ListFlows(ctx context.Context, input flowops.ListPageReq
 
 type flowPullReader struct {
 	*resourceflow.Adapter
-	lineage *resourcelineage.Adapter
+	lineage   *resourcelineage.Adapter
+	downloads *workspacecore.Downloads
 }
 
 func (r flowPullReader) DownloadFlow(ctx context.Context, luid string) (flowops.PullDownload, error) {
 	progress.SetLabel(ctx, "Downloading flow")
-	item, err := r.Adapter.DownloadFlow(ctx, luid)
-	return flowops.PullDownload{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
+	var item tableauflow.Download
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
+		item, err = r.Adapter.DownloadFlow(ctx, luid, destination)
+		return err
+	})
+	return flowops.PullDownload{Filename: item.Filename, Path: path, TableauRequestID: item.TableauRequestID}, err
 }
 
 func (r flowPullReader) CaptureLineage(ctx context.Context, input flowops.PullLineageRequest) (flowops.PullLineage, error) {
@@ -666,7 +675,7 @@ func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowops.PullArt
 	if depth == 0 {
 		depth = 1
 	}
-	result, err := w.manager.Pull(ctx, artifact.FlowPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.FlowMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, FileType: input.FileType}, Lineage: artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)}})
+	result, err := w.manager.Pull(ctx, artifact.FlowPull{Workspace: input.Workspace, Filename: input.Filename, PayloadPath: input.Path, Overwrite: input.Overwrite, Metadata: artifact.FlowMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, FileType: input.FileType}, Lineage: artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)}})
 	if err != nil {
 		return flowops.PullArtifactResult{}, err
 	}

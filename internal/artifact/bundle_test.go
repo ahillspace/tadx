@@ -13,7 +13,7 @@ import (
 func TestWorkbookBundleRejectsLaterDirtyDependencyWithoutChangingAnyArtifact(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewWorkbookBundleManager(func() time.Time { return time.Date(2026, 8, 31, 20, 0, 0, 0, time.UTC) })
-	initial, err := manager.Pull(context.Background(), validWorkbookBundle(workspace, "v1"))
+	initial, err := manager.Pull(context.Background(), validWorkbookBundle(t, workspace, "v1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestWorkbookBundleRejectsLaterDirtyDependencyWithoutChangingAnyArtifact(t *
 		t.Fatal(err)
 	}
 
-	refresh := validWorkbookBundle(workspace, "v2")
+	refresh := validWorkbookBundle(t, workspace, "v2")
 	refresh.Workbook.Overwrite = true
 	_, err = manager.Pull(context.Background(), refresh)
 	if err == nil || !strings.Contains(err.Error(), "dirty") {
@@ -37,7 +37,7 @@ func TestWorkbookBundleRejectsLaterDirtyDependencyWithoutChangingAnyArtifact(t *
 
 func TestWorkbookBundlePersistsWorkbookLineageInSameTransaction(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
-	input := validWorkbookBundle(workspace, "v1")
+	input := validWorkbookBundle(t, workspace, "v1")
 	input.Workbook.Lineage = LineageDocument{
 		Complete: true, Direction: "both", Depth: 1,
 		Nodes: []LineageNode{{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1"}},
@@ -68,11 +68,11 @@ func TestWorkbookBundlePersistsWorkbookLineageInSameTransaction(t *testing.T) {
 
 func TestWorkbookBundleClassifiesAcquiredDatasourceForRepublish(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
-	input := validWorkbookBundle(workspace, "v1")
+	input := validWorkbookBundle(t, workspace, "v1")
 	input.Workbook.Metadata.PublishedDatasources = input.Workbook.Metadata.PublishedDatasources[:1]
 	input.Datasources = input.Datasources[:1]
 	input.Datasources[0].Filename = "Sales.tds"
-	input.Datasources[0].Content = []byte(`<datasource><connection class="sqlserver"/></datasource>`)
+	input.Datasources[0].PayloadPath = PayloadFile(t, []byte(`<datasource><connection class="sqlserver"/></datasource>`))
 
 	result, err := NewWorkbookBundleManager(time.Now).Pull(context.Background(), input)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestWorkbookBundleClassifiesAcquiredDatasourceForRepublish(t *testing.T) {
 	if stored.CompositionStatus != CompositionStatusOrdinary || len(stored.ParentDataSourceURLs) != 0 {
 		t.Fatalf("acquired datasource composition = %q, parents = %#v", stored.CompositionStatus, stored.ParentDataSourceURLs)
 	}
-	if string(input.Datasources[0].Content) != `<datasource><connection class="sqlserver"/></datasource>` {
+	if installed, err := os.ReadFile(result.Datasources[0].CanonicalPath); err != nil || string(installed) != `<datasource><connection class="sqlserver"/></datasource>` {
 		t.Fatal("dependency classification changed native datasource bytes")
 	}
 }
@@ -93,7 +93,7 @@ func TestWorkbookBundleClassifiesAcquiredDatasourceForRepublish(t *testing.T) {
 func TestWorkbookBundleRestoresEveryArtifactWhenLaterInstallFails(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewWorkbookBundleManager(time.Now)
-	initial, err := manager.Pull(context.Background(), validWorkbookBundle(workspace, "v1"))
+	initial, err := manager.Pull(context.Background(), validWorkbookBundle(t, workspace, "v1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestWorkbookBundleRestoresEveryArtifactWhenLaterInstallFails(t *testing.T) 
 		}
 		return realRename(oldPath, newPath)
 	}
-	_, err = manager.Pull(context.Background(), validWorkbookBundle(workspace, "v2"))
+	_, err = manager.Pull(context.Background(), validWorkbookBundle(t, workspace, "v2"))
 	if err == nil || !strings.Contains(err.Error(), "injected later install failure") {
 		t.Fatalf("Pull error = %v", err)
 	}
@@ -130,7 +130,7 @@ func TestWorkbookBundleRestoresEveryArtifactWhenLaterInstallFails(t *testing.T) 
 func TestWorkbookBundleCleansEveryStageWhenPreflightRejectsDuplicateDatasource(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewWorkbookBundleManager(time.Now)
-	input := validWorkbookBundle(workspace, "v1")
+	input := validWorkbookBundle(t, workspace, "v1")
 	input.Datasources[1].Metadata.TableauID = input.Datasources[0].Metadata.TableauID
 
 	_, err := manager.Pull(context.Background(), input)
@@ -312,7 +312,7 @@ func writeBundleFixture(t *testing.T, directory, content string) {
 	}
 }
 
-func validWorkbookBundle(workspace, version string) WorkbookBundlePull {
+func validWorkbookBundle(t testing.TB, workspace, version string) WorkbookBundlePull {
 	workbookMetadata := WorkbookMetadata{
 		Kind: "workbook", Name: "Finance", TableauID: "wb-1",
 		SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1",
@@ -322,10 +322,10 @@ func validWorkbookBundle(workspace, version string) WorkbookBundlePull {
 	}
 	datasource := func(name, luid string) DatasourcePull {
 		metadata := validDatasourceMetadata(name, luid)
-		return DatasourcePull{Workspace: workspace, Filename: name + ".tdsx", Content: []byte("datasource-" + strings.TrimPrefix(luid, "ds-") + "-" + version), Metadata: metadata}
+		return DatasourcePull{Workspace: workspace, Filename: name + ".tdsx", PayloadPath: PayloadFile(t, []byte("datasource-"+strings.TrimPrefix(luid, "ds-")+"-"+version)), Metadata: metadata}
 	}
 	return WorkbookBundlePull{
-		Workbook:    WorkbookPull{Workspace: workspace, Filename: "Finance.twbx", Content: []byte("workbook-" + version), Metadata: workbookMetadata},
+		Workbook:    WorkbookPull{Workspace: workspace, Filename: "Finance.twbx", PayloadPath: PayloadFile(t, []byte("workbook-"+version)), Metadata: workbookMetadata},
 		Datasources: []DatasourcePull{datasource("Sales", "ds-1"), datasource("Inventory", "ds-2")},
 	}
 }

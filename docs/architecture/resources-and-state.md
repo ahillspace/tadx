@@ -95,6 +95,13 @@ Without explicit dependency acquisition, failed parent discovery leaves portabil
 With `--include-pds`, incomplete discovery or a failed dependency download fails the explicit acquisition request.
 Acquiring published datasources does not rewrite workbook references or prove cross-site publication readiness.
 
+Materializing pulls stage downloads under the workspace's `.tadx/tmp`, using [`workspace.Downloads`](../../internal/workspace/download.go) to keep payloads on the artifact filesystem.
+Artifact managers install each payload by rename, keeping package size off the heap and the workspace lock off the network.
+Commands remove their staging directories on exit, including failed or partial downloads.
+`tadx workspace clean --class temporary` removes workspace staging left by interrupted processes.
+Workspace staging holds `.tadx/tmp.lock` shared; temporary cleanup takes it exclusively and refuses with retryable advice while a download is active.
+Dependency previews use private OS temporary staging, owned and removed by the command, so inspecting a workbook leaves the selected workspace unchanged.
+
 [`WorkbookManager.Pull`](../../internal/artifact/workbook.go) matches existing local content by server origin, site LUID, and workbook LUID.
 It protects local edits with the saved baseline fingerprint and requires overwrite before replacing dirty native bytes.
 [`WorkbookBundleManager.Pull`](../../internal/artifact/bundle.go) stages the workbook and datasources, journals the installation, and recovers interrupted bundle transactions.

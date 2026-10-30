@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/identity"
@@ -22,7 +23,7 @@ func (c lineageDatasourceClient) List(context.Context, tableaudatasource.ListReq
 	return c.page, nil
 }
 
-func (c lineageDatasourceClient) Download(context.Context, string, *bool) (tableaudatasource.Download, error) {
+func (c lineageDatasourceClient) Download(context.Context, string, *bool, io.Writer) (tableaudatasource.Download, error) {
 	return tableaudatasource.Download{}, errors.New("unexpected download")
 }
 

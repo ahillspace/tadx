@@ -1,7 +1,10 @@
 // Package flow defines the docs-only Tableau flow client seam.
 package flow
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // Parameter is one bounded flow parameter projection.
 type Parameter struct {
@@ -55,10 +58,9 @@ type Page struct {
 	TableauRequestID string
 }
 
-// Download is one unchanged TFL or TFLX response.
+// Download describes one TFL or TFLX response streamed to a destination.
 type Download struct {
 	Filename         string
-	Content          []byte
 	TableauRequestID string
 }
 
@@ -66,7 +68,7 @@ type Download struct {
 type Client interface {
 	List(context.Context, ListRequest) (Page, error)
 	Get(context.Context, string) (Flow, error)
-	Download(context.Context, string) (Download, error)
+	Download(context.Context, string, io.Writer) (Download, error)
 }
 
 // PublishRequest contains explicit native flow publication choices.

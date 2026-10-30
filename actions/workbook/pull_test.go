@@ -118,7 +118,7 @@ func (w *pullWriter) WriteBundle(_ context.Context, workbook workbookops.PullArt
 func TestPullActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.T) {
 	r := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		download: workbookops.Download{Filename: "Finance.twbx", Path: "native-workbook"},
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
@@ -138,7 +138,7 @@ func TestPullActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.
 	if r.referenceCalls != 1 || len(r.datasourceCalls) != 0 || len(w.datasourceInputs) != 0 {
 		t.Fatalf("calls: references=%d remote=%v writes=%d", r.referenceCalls, r.datasourceCalls, len(w.datasourceInputs))
 	}
-	if string(w.input.Content) != "native-workbook" || w.input.Portability != "portable" {
+	if w.input.Path != "native-workbook" || w.input.Portability != "portable" {
 		t.Fatalf("workbook artifact input = %#v", w.input)
 	}
 	var compact bytes.Buffer
@@ -153,7 +153,7 @@ func TestPullActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.
 func TestPullActionCapturesBoundedWorkbookLineageAutomatically(t *testing.T) {
 	r := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		download: workbookops.Download{Filename: "Finance.twbx", Path: "native-workbook"},
 		lineage: workbookops.LineageCapture{
 			RootMetadataID: "meta-wb-1",
 			Complete:       true,
@@ -196,7 +196,7 @@ func TestPullActionCapturesBoundedWorkbookLineageAutomatically(t *testing.T) {
 func TestPullActionPreservesDownloadWhenLineageCaptureIsUnavailable(t *testing.T) {
 	r := &pullReader{
 		workbook:   workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download:   workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		download:   workbookops.Download{Filename: "Finance.twbx", Path: "native-workbook"},
 		lineageErr: errors.New("credential secret and unbounded upstream diagnostic"),
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
@@ -226,7 +226,7 @@ func TestPullActionPreservesDownloadWhenLineageCaptureIsUnavailable(t *testing.T
 func TestPullActionPreservesPartialWorkbookLineageWhenCaptureFails(t *testing.T) {
 	r := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		download: workbookops.Download{Filename: "Finance.twbx", Path: "native-workbook"},
 		lineage: workbookops.LineageCapture{
 			RootMetadataID: "meta-wb-1",
 			Nodes: []workbookops.LineageNode{
@@ -261,14 +261,14 @@ func TestPullActionPreservesPartialWorkbookLineageWhenCaptureFails(t *testing.T)
 func TestPullActionAcquiresPublishedDatasourcesInLUIDOrderWhenRequested(t *testing.T) {
 	r := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		download: workbookops.Download{Filename: "Finance.twbx", Path: "native-workbook"},
 		publishedDatasources: []workbookops.PublishedDatasource{
 			{LUID: "ds-2", Name: "Inventory", ContentURL: "Inventory"},
 			{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"},
 		},
 		datasourceDownloads: map[string]workbookops.DatasourceDownload{
-			"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-sales")},
-			"ds-2": {LUID: "ds-2", Name: "Inventory", ProjectLUID: "project-1", ProjectPath: "Shared", Filename: "Inventory.tds", Content: []byte("native-inventory")},
+			"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Shared", Filename: "Sales.tdsx", Path: "native-sales"},
+			"ds-2": {LUID: "ds-2", Name: "Inventory", ProjectLUID: "project-1", ProjectPath: "Shared", Filename: "Inventory.tds", Path: "native-inventory"},
 		},
 	}
 	w := &pullWriter{
@@ -289,7 +289,7 @@ func TestPullActionAcquiresPublishedDatasourcesInLUIDOrderWhenRequested(t *testi
 	if strings.Join(r.datasourceCalls, ",") != "ds-1,ds-2" {
 		t.Fatalf("datasource download order = %v", r.datasourceCalls)
 	}
-	if w.bundleCalls != 1 || w.calls != 0 || len(w.datasourceInputs) != 2 || string(w.datasourceInputs[0].Content) != "native-sales" || string(w.datasourceInputs[1].Content) != "native-inventory" {
+	if w.bundleCalls != 1 || w.calls != 0 || len(w.datasourceInputs) != 2 || w.datasourceInputs[0].Path != "native-sales" || w.datasourceInputs[1].Path != "native-inventory" {
 		t.Fatalf("datasource artifact inputs = %#v", w.datasourceInputs)
 	}
 	if w.datasourceInputs[0].Overwrite || w.datasourceInputs[1].Overwrite {
@@ -301,7 +301,7 @@ func TestPullActionAcquiresPublishedDatasourcesInLUIDOrderWhenRequested(t *testi
 	if len(result.Artifact.PublishedDatasources) != 2 || result.Artifact.PublishedDatasources[0].LUID != "ds-1" || result.Artifact.PublishedDatasources[0].ContentURL != "Sales" || result.Artifact.PublishedDatasources[0].LocalArtifactPath != "artifacts/datasource/Sales-ds1" {
 		t.Fatalf("references = %#v", result.Artifact.PublishedDatasources)
 	}
-	if r.downloadCalls != 1 || len(r.detectedDownloads) != 1 || string(r.detectedDownloads[0].Content) != "native-workbook" {
+	if r.downloadCalls != 1 || len(r.detectedDownloads) != 1 || r.detectedDownloads[0].Path != "native-workbook" {
 		t.Fatalf("detection did not read the downloaded workbook: downloads=%d detected=%#v", r.downloadCalls, r.detectedDownloads)
 	}
 	if !w.input.DependenciesAcquired || len(w.input.PublishedDatasources) != 2 {
@@ -312,7 +312,7 @@ func TestPullActionAcquiresPublishedDatasourcesInLUIDOrderWhenRequested(t *testi
 func TestPullActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *testing.T) {
 	r := &pullReader{
 		workbook:                workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download:                workbookops.Download{Filename: "Finance.twbx", Content: []byte("native")},
+		download:                workbookops.Download{Filename: "Finance.twbx", Path: "native"},
 		publishedDatasourcesErr: errors.New("datasource lookup denied"),
 	}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
@@ -335,7 +335,7 @@ func TestPullActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *
 func TestPullActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testing.T) {
 	r := &pullReader{
 		workbook:                workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download:                workbookops.Download{Filename: "Finance.twbx", Content: []byte("native")},
+		download:                workbookops.Download{Filename: "Finance.twbx", Path: "native"},
 		publishedDatasourcesErr: pullRetryableReadError{},
 	}
 	w := &pullWriter{}
@@ -365,7 +365,7 @@ func (w *pullPreviewWriter) PreviewWorkbook(_ context.Context, input workbookops
 func TestPullPreviewDetectsPublishedDatasourcesFromTheWorkbookWithoutExtracts(t *testing.T) {
 	r := &pullReader{
 		workbook:             workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download:             workbookops.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		download:             workbookops.Download{Filename: "Finance.twbx", Path: "native-workbook"},
 		publishedDatasources: []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"}},
 	}
 	w := &pullPreviewWriter{}
@@ -377,7 +377,7 @@ func TestPullPreviewDetectsPublishedDatasourcesFromTheWorkbookWithoutExtracts(t 
 	if output.Status != "preview" || w.calls != 1 || w.pullWriter.calls != 0 || w.bundleCalls != 0 {
 		t.Fatalf("preview output=%#v previews=%d writes=%d bundles=%d", output, w.calls, w.pullWriter.calls, w.bundleCalls)
 	}
-	if r.downloadCalls != 1 || r.includeRequests[0] == nil || *r.includeRequests[0] || len(r.detectedDownloads) != 1 || string(r.detectedDownloads[0].Content) != "native-workbook" {
+	if r.downloadCalls != 1 || r.includeRequests[0] == nil || *r.includeRequests[0] || len(r.detectedDownloads) != 1 || r.detectedDownloads[0].Path != "native-workbook" {
 		t.Fatalf("preview download=%d include=%v detected=%#v", r.downloadCalls, r.includeRequests, r.detectedDownloads)
 	}
 	if len(w.references) != 1 || w.references[0] != (workbookops.PublishedDatasource{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"}) || len(r.datasourceCalls) != 0 {
@@ -400,7 +400,7 @@ func TestPullPreviewDetectsPublishedDatasourcesFromTheWorkbookWithoutExtracts(t 
 }
 
 func TestPullQuietPullPreservesNativeArtifactWarnings(t *testing.T) {
-	r := &pullReader{workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"}, download: workbookops.Download{Filename: "Finance.twb", Content: []byte("native")}, lineageErr: errors.New("unavailable"), publishedDatasourcesErr: errors.New("unavailable")}
+	r := &pullReader{workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"}, download: workbookops.Download{Filename: "Finance.twb", Path: "native"}, lineageErr: errors.New("unavailable"), publishedDatasourcesErr: errors.New("unavailable")}
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: "artifact", Warnings: []string{"Local edits were replaced because --overwrite was set."}}}
 	output, err := workbookops.Pull(context.Background(), r, w, workbookops.PullInput{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
 	if err != nil {
@@ -419,7 +419,7 @@ func TestPullActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 	w := &pullWriter{result: workbookops.PullArtifactResult{Path: filepath.FromSlash("C:/workspace/artifacts/workbook/Finance"), BaselineFingerprint: "sha256:abc"}}
 	actionReader, actionWriter := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
-		download: workbookops.Download{Filename: "Finance.twbx", Content: []byte("native")},
+		download: workbookops.Download{Filename: "Finance.twbx", Path: "native"},
 	}, w
 	include := false
 	output, err := workbookops.Pull(context.Background(), actionReader, actionWriter, workbookops.PullInput{
@@ -481,7 +481,7 @@ func TestPullActionPreservesRetryAdviceForWorkbookReads(t *testing.T) {
 func TestPullActionCompletesArtifactWriteErrorAdvice(t *testing.T) {
 	actionReader, actionWriter := &pullReader{
 		workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"},
-		download: workbookops.Download{Filename: "Finance.twb", Content: []byte("native")},
+		download: workbookops.Download{Filename: "Finance.twb", Path: "native"},
 	}, &pullWriter{err: errors.New("artifact is dirty")}
 	_, err := workbookops.Pull(context.Background(), actionReader, actionWriter, workbookops.PullInput{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
 	payload := errs.Structure(err).Error
@@ -496,10 +496,10 @@ func TestPullActionGoldenOutput(t *testing.T) {
 
 		context.Background(), &pullReader{
 			workbook:             workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
-			download:             workbookops.Download{Filename: "Finance.twbx", Content: []byte("native"), TableauRequestID: "request-1"},
+			download:             workbookops.Download{Filename: "Finance.twbx", Path: "native", TableauRequestID: "request-1"},
 			publishedDatasources: []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales", ContentURL: "Sales"}},
 			datasourceDownloads: map[string]workbookops.DatasourceDownload{
-				"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "datasource-project", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-datasource")},
+				"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "datasource-project", ProjectPath: "Shared", Filename: "Sales.tdsx", Path: "native-datasource"},
 			},
 		}, &pullWriter{result: workbookops.PullArtifactResult{
 

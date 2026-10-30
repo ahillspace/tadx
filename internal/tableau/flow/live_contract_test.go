@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,8 +23,6 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 )
 
-const liveFlowDownloadLimit = 256 * 1024 * 1024
-
 func TestLiveFlowLifecycleContract(t *testing.T) {
 	sourceFlowLUID := requiredLiveFlowValue(t, "TADX_LIVE_FLOW_LUID")
 	sourceProjectLUID := requiredLiveFlowValue(t, "TADX_LIVE_FLOW_PROJECT_LUID")
@@ -33,7 +33,6 @@ func TestLiveFlowLifecycleContract(t *testing.T) {
 
 	environment, session, transport := liveFlowConnection(t)
 	client := tableauflow.NewClient(transport, session, environment.URL)
-	client.SetMaxDownloadBytes(liveFlowDownloadLimit)
 	ctx := context.Background()
 
 	source, err := client.Get(ctx, sourceFlowLUID)
@@ -44,7 +43,15 @@ func TestLiveFlowLifecycleContract(t *testing.T) {
 		t.Fatal("source flow identity did not match the configured flow and project LUIDs")
 	}
 
-	download, err := client.Download(ctx, sourceFlowLUID)
+	payload, err := os.CreateTemp(t.TempDir(), "payload")
+	if err != nil {
+		fatalLiveFlow(t, "stage downloaded flow", err)
+	}
+	sourceDigest := sha256.New()
+	download, err := client.Download(ctx, sourceFlowLUID, io.MultiWriter(payload, sourceDigest))
+	if closeErr := payload.Close(); err == nil && closeErr != nil {
+		err = closeErr
+	}
 	if err != nil {
 		fatalLiveFlow(t, "download source flow", err)
 	}
@@ -52,9 +59,13 @@ func TestLiveFlowLifecycleContract(t *testing.T) {
 	if extension != ".tfl" && extension != ".tflx" {
 		t.Fatalf("source flow returned unsupported extension %q", extension)
 	}
-	sourceHash := flowFingerprint(download.Content)
-	payloadPath := filepath.Join(t.TempDir(), "payload"+extension)
-	if err := os.WriteFile(payloadPath, download.Content, 0o600); err != nil {
+	sourceHash := flowFingerprint(sourceDigest)
+	payloadPath := payload.Name() + extension
+	if err := os.Rename(payload.Name(), payloadPath); err != nil {
+		fatalLiveFlow(t, "stage downloaded flow", err)
+	}
+	payloadInfo, err := os.Stat(payloadPath)
+	if err != nil {
 		fatalLiveFlow(t, "stage downloaded flow", err)
 	}
 
@@ -83,7 +94,7 @@ func TestLiveFlowLifecycleContract(t *testing.T) {
 		ProjectLUID:         sourceProjectLUID,
 		Filename:            "payload" + extension,
 		ContentPath:         payloadPath,
-		ContentSize:         int64(len(download.Content)),
+		ContentSize:         payloadInfo.Size(),
 		ExpectedFingerprint: sourceHash,
 	})
 	if err != nil {
@@ -105,14 +116,15 @@ func TestLiveFlowLifecycleContract(t *testing.T) {
 	if publishedFlow.LUID != disposableLUID || publishedFlow.Name != disposableName || publishedFlow.ProjectLUID != sourceProjectLUID {
 		t.Fatal("published flow read did not preserve the exact flow identity")
 	}
-	reDownloaded, err := client.Download(ctx, disposableLUID)
+	publishedDigest := sha256.New()
+	reDownloaded, err := client.Download(ctx, disposableLUID, publishedDigest)
 	if err != nil {
 		fatalLiveFlow(t, "download published flow", err)
 	}
 	if got := strings.ToLower(filepath.Ext(reDownloaded.Filename)); got != extension {
 		t.Fatalf("published flow extension = %q, want %q", got, extension)
 	}
-	publishedHash := flowFingerprint(reDownloaded.Content)
+	publishedHash := flowFingerprint(publishedDigest)
 	if publishedHash != sourceHash {
 		t.Fatal("published flow content hash did not match the unchanged source payload")
 	}
@@ -154,7 +166,7 @@ func TestLiveFlowLifecycleContract(t *testing.T) {
 		hashFlowID(sourceProjectLUID),
 		hashFlowID(finalProjectLUID),
 		extension,
-		len(download.Content),
+		payloadInfo.Size(),
 		sourceHash,
 		moveCount,
 	)
@@ -204,9 +216,8 @@ func uniqueLiveFlowName(t *testing.T) string {
 	return fmt.Sprintf("tadx-live-flow-%s-%x", time.Now().UTC().Format("20060102T150405Z"), nonce[:])
 }
 
-func flowFingerprint(content []byte) string {
-	sum := sha256.Sum256(content)
-	return "sha256:" + hex.EncodeToString(sum[:])
+func flowFingerprint(digest hash.Hash) string {
+	return "sha256:" + hex.EncodeToString(digest.Sum(nil))
 }
 
 func fatalLiveFlow(t *testing.T, operation string, err error) {

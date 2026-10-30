@@ -22,9 +22,9 @@ func TestAmbiguousArtifactCLIReportsExactCandidates(t *testing.T) {
 		{luid: "wb-b", environment: "staging", site: "sandbox", siteLUID: "site-b"},
 	} {
 		_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
-			Workspace: workspace,
-			Filename:  fmt.Sprintf("Finance-%s.twb", candidate.luid),
-			Content:   []byte("<workbook/>"),
+			Workspace:   workspace,
+			Filename:    fmt.Sprintf("Finance-%s.twb", candidate.luid),
+			PayloadPath: app.PayloadFile(t, []byte("<workbook/>")),
 			Metadata: artifact.WorkbookMetadata{
 				Name:               candidateName,
 				TableauID:          candidate.luid,

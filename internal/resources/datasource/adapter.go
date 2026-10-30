@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"slices"
 	"sort"
@@ -19,7 +20,7 @@ import (
 type Client interface {
 	Get(context.Context, string) (tableaudatasource.Datasource, error)
 	List(context.Context, tableaudatasource.ListRequest) (tableaudatasource.Page, error)
-	Download(context.Context, string, *bool) (tableaudatasource.Download, error)
+	Download(context.Context, string, *bool, io.Writer) (tableaudatasource.Download, error)
 }
 
 // ProjectPathResolver supplies canonical project paths without coupling resource packages.
@@ -45,14 +46,14 @@ type Page struct {
 	RequestID string
 }
 
-// Download is one authoritative datasource and its unchanged native package.
+// Download is one authoritative datasource whose unchanged native package
+// was streamed to the caller's destination.
 type Download struct {
 	LUID             string
 	Name             string
 	ProjectLUID      string
 	ProjectPath      string
 	Filename         string
-	Content          []byte
 	TableauRequestID string
 }
 
@@ -445,8 +446,8 @@ func normalizeDatasource(item tableaudatasource.Datasource, path string) Datasou
 	}
 }
 
-// DownloadDatasource reads authoritative identity before downloading native content.
-func (a *Adapter) DownloadDatasource(ctx context.Context, luid string) (Download, error) {
+// DownloadDatasource reads authoritative identity before streaming native content into destination.
+func (a *Adapter) DownloadDatasource(ctx context.Context, luid string, destination io.Writer) (Download, error) {
 	if a == nil || a.client == nil {
 		return Download{}, errors.New("datasource adapter is not configured")
 	}
@@ -467,12 +468,12 @@ func (a *Adapter) DownloadDatasource(ctx context.Context, luid string) (Download
 	if strings.TrimSpace(item.ProjectLUID) == "" {
 		return Download{}, fmt.Errorf("datasource %q omitted its authoritative project LUID", luid)
 	}
-	content, err := a.client.Download(ctx, luid, nil)
+	content, err := a.client.Download(ctx, luid, nil, destination)
 	if err != nil {
 		return Download{}, err
 	}
 	return Download{
 		LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectName,
-		Filename: content.Filename, Content: content.Content, TableauRequestID: content.TableauRequestID,
+		Filename: content.Filename, TableauRequestID: content.TableauRequestID,
 	}, nil
 }

@@ -32,7 +32,7 @@ type pullFlow struct {
 
 type PullDownload struct {
 	Filename         string
-	Content          []byte
+	Path             string
 	TableauRequestID string
 }
 type PullLineageRequest struct {
@@ -51,10 +51,9 @@ type PullLineage struct {
 	Warnings  []string
 }
 type PullArtifact struct {
-	Workspace, Filename, Name, TableauID, Environment, Site, ServerOrigin, SiteLUID, ProjectName, ProjectID, FileType string
-	Content                                                                                                           []byte
-	Lineage                                                                                                           PullLineage
-	Overwrite                                                                                                         bool
+	Workspace, Filename, Name, TableauID, Environment, Site, ServerOrigin, SiteLUID, ProjectName, ProjectID, FileType, Path string
+	Lineage                                                                                                                 PullLineage
+	Overwrite                                                                                                               bool
 }
 type PullArtifactResult struct {
 	Path                string   `json:"path"`

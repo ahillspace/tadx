@@ -23,10 +23,10 @@ func (i *PullInput) SetSelector(luid, name, projectPath string) {
 	i.Selector = identity.Selector{LUID: identity.LUID(luid), Name: name, ProjectPath: projectPath}
 }
 
-// Download contains unchanged native datasource bytes.
+// Download is unchanged native datasource content streamed to a local file.
 type Download struct {
 	Filename         string
-	Content          []byte
+	Path             string
 	TableauRequestID string
 }
 
@@ -52,10 +52,9 @@ type Lineage struct {
 
 // PullArtifact is the complete datasource persistence request.
 type PullArtifact struct {
-	Workspace, Filename, Name, TableauID, Environment, Site, ServerOrigin, SiteLUID, ProjectName, ProjectID string
-	Content                                                                                                 []byte
-	Lineage                                                                                                 Lineage
-	Overwrite                                                                                               bool
+	Workspace, Filename, Name, TableauID, Environment, Site, ServerOrigin, SiteLUID, ProjectName, ProjectID, Path string
+	Lineage                                                                                                       Lineage
+	Overwrite                                                                                                     bool
 }
 
 // PullArtifactResult identifies one materialized datasource artifact.

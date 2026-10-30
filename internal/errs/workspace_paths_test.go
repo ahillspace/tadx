@@ -1,4 +1,4 @@
-package artifact
+package errs
 
 import (
 	"errors"
@@ -20,7 +20,7 @@ func TestWorkspaceRelativeErrorRendersPathsUnderTheWorkspaceRoot(t *testing.T) {
 	backup := filepath.Join(root, "artifacts", "workbook", ".tadx-backup-Sales")
 	pathErr := &fs.PathError{Op: "mkdir", Path: stage, Err: fs.ErrPermission}
 	cause := fmt.Errorf("install workbook artifact: %w; restore previous workbook artifact from %q: %v", pathErr, backup, &os.LinkError{Op: "rename", Old: backup, New: filepath.Join(root, "artifacts", "workbook", "Sales"), Err: fs.ErrExist})
-	err := withWorkspaceRelativePaths(cause, root)
+	err := WithWorkspaceRelativePaths(cause, root)
 	message := err.Error()
 	for _, private := range []string{root, filepath.ToSlash(root), strings.Trim(strconv.Quote(root), `"`)} {
 		if strings.Contains(message, private) {
@@ -35,8 +35,8 @@ func TestWorkspaceRelativeErrorRendersPathsUnderTheWorkspaceRoot(t *testing.T) {
 	if !errors.Is(err, fs.ErrPermission) {
 		t.Fatal("relative rendering broke errors.Is classification")
 	}
-	var unwrapped *fs.PathError
-	if !errors.As(err, &unwrapped) || unwrapped.Path != stage {
+	unwrapped, ok := errors.AsType[*fs.PathError](err)
+	if !ok || unwrapped.Path != stage {
 		t.Fatalf("relative rendering broke errors.As: %#v", unwrapped)
 	}
 }
@@ -53,7 +53,7 @@ func TestWorkspaceRelativeErrorHandlesResolvedRootsAndLeavesOtherPaths(t *testin
 	}
 	outside := filepath.Join(filepath.Dir(base), "elsewhere", "file.twbx")
 	cause := fmt.Errorf("open %s: denied; root %s; outside %s", filepath.Join(resolved, "workspace", "tadx.yaml"), root, outside)
-	message := withWorkspaceRelativePaths(cause, root).Error()
+	message := WithWorkspaceRelativePaths(cause, root).Error()
 	if strings.Contains(message, filepath.Join(resolved, "workspace")) || strings.Contains(message, root) {
 		t.Fatalf("message %q still renders a workspace root form", message)
 	}
@@ -63,11 +63,11 @@ func TestWorkspaceRelativeErrorHandlesResolvedRootsAndLeavesOtherPaths(t *testin
 	if !strings.Contains(message, outside) {
 		t.Fatalf("message %q changed a path outside the workspace", message)
 	}
-	if withWorkspaceRelativePaths(nil, root) != nil {
+	if WithWorkspaceRelativePaths(nil, root) != nil {
 		t.Fatal("nil error must stay nil")
 	}
 	plain := errors.New("no paths here")
-	if got := withWorkspaceRelativePaths(plain, root); got != plain {
+	if got := WithWorkspaceRelativePaths(plain, root); got != plain {
 		t.Fatalf("an error without workspace paths should be returned unchanged, got %#v", got)
 	}
 }

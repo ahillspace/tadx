@@ -128,3 +128,12 @@ func TestRenameInMovesDirectoryAfterTransientHandleInsideCloses(t *testing.T) {
 		t.Fatalf("moved file = %q, want content", got)
 	}
 }
+
+func TestCrossDeviceRecognizesARenameAcrossVolumes(t *testing.T) {
+	if !CrossDevice(&os.LinkError{Op: "rename", Old: "a", New: "b", Err: windows.ERROR_NOT_SAME_DEVICE}) {
+		t.Fatal("CrossDevice() = false for ERROR_NOT_SAME_DEVICE")
+	}
+	if CrossDevice(&os.LinkError{Op: "rename", Old: "a", New: "b", Err: windows.ERROR_ACCESS_DENIED}) {
+		t.Fatal("CrossDevice() = true for ERROR_ACCESS_DENIED")
+	}
+}

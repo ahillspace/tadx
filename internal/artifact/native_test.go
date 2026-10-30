@@ -116,3 +116,25 @@ func TestReadNativeDatasourceReportsItsContentURL(t *testing.T) {
 		t.Fatalf("native=%#v err=%v", native, err)
 	}
 }
+
+func TestReadNativeAcceptsAFileLargerThanOneGiB(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "extract.hyper")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 1<<30 + 1
+	if err := file.Truncate(size); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ReadNative(context.Background(), path, "datasource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Size != size || result.Fingerprint == "" {
+		t.Fatalf("result=%#v", result)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"reflect"
 	"sort"
@@ -24,7 +25,7 @@ type Client interface {
 	Get(context.Context, string) (tableauworkbook.Workbook, error)
 	List(context.Context, int, int) (tableauworkbook.WorkbookPage, error)
 	ListProjects(context.Context, int, int) (tableauworkbook.ProjectPage, error)
-	Download(context.Context, string, *bool) (tableauworkbook.Download, error)
+	Download(context.Context, string, *bool, io.Writer) (tableauworkbook.Download, error)
 	Prepare(context.Context, tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error)
 }
 
@@ -525,12 +526,12 @@ func (i *projectPathIndex) path(id string, visiting map[string]bool) (string, er
 	return path, nil
 }
 
-// DownloadWorkbook downloads one authoritative workbook.
-func (a *Adapter) DownloadWorkbook(ctx context.Context, luid string, includeExtract *bool) (tableauworkbook.Download, error) {
+// DownloadWorkbook streams one authoritative workbook into destination.
+func (a *Adapter) DownloadWorkbook(ctx context.Context, luid string, includeExtract *bool, destination io.Writer) (tableauworkbook.Download, error) {
 	if luid == "" {
 		return tableauworkbook.Download{}, errors.New("workbook LUID is required")
 	}
-	return a.client.Download(ctx, luid, includeExtract)
+	return a.client.Download(ctx, luid, includeExtract, destination)
 }
 
 // PrepareWorkbook uploads and validates content before the final publish request.

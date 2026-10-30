@@ -117,7 +117,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 				return PullOutput{}, &errs.Error{ID: "workbook.pull.dependency-identity", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: reference.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource dependency returned an invalid authoritative identity.", Cause: fmt.Errorf("datasource download returned LUID %q, expected %q", dependency.LUID, reference.LUID), Retryable: new(false), CorrectiveAction: "Refresh Tableau metadata and retry the workbook pull."}
 			}
 			datasourceArtifacts = append(datasourceArtifacts, DatasourceArtifact{
-				Workspace: input.Workspace, Filename: dependency.Filename, Content: dependency.Content,
+				Workspace: input.Workspace, Filename: dependency.Filename, Path: dependency.Path,
 				Name: dependency.Name, TableauID: dependency.LUID, Environment: input.Environment, Site: input.Site,
 				ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: dependency.ProjectPath,
 				ProjectID: dependency.ProjectLUID, Overwrite: false, TableauRequestID: dependency.TableauRequestID,
@@ -127,7 +127,7 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 	}
 	dependenciesAcquired := input.IncludePDS && len(references) > 0
 	workbookArtifact := PullArtifact{
-		Workspace: input.Workspace, Filename: download.Filename, Content: download.Content,
+		Workspace: input.Workspace, Filename: download.Filename, Path: download.Path,
 		Name: workbook.Name, TableauID: workbook.LUID, Environment: input.Environment, Site: input.Site,
 		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID,
 		ProjectName: workbook.ProjectPath, ProjectID: workbook.ProjectLUID, Portability: portability,
