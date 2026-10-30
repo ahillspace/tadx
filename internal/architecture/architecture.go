@@ -564,9 +564,10 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/operationrun") {
 			return matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
-		// Authentication holds the leaf advisory lock for a command's PAT session.
+		// Authentication serializes PAT sign-ins with the leaf advisory lock and
+		// replaces the shared sign-in epoch atomically.
 		if hasPathPrefix(file, "internal/auth") {
-			return matchesExact(imported, "internal/lock")
+			return matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
 		// The batch runner invokes supplied operations and aggregates their
 		// structured outcomes without depending on actions or remote adapters.

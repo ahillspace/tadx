@@ -105,13 +105,20 @@ func TestForegroundCancellationStopsRealWorkerBeforeSubmission(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("foreground did not react to explicit context cancellation")
 	}
-	var receipt map[string]any
-	if err := json.Unmarshal([]byte(result.output), &receipt); err != nil {
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(result.output), &envelope); err != nil {
 		t.Fatalf("parent output: %v %s", err, result.output)
 	}
-	receipt, _ = receipt["output"].(map[string]any)
+	// The worker observes the request promptly and can record its outcome before
+	// the foreground reads the operation again; the foreground then reports that
+	// outcome instead of an unfinished operation.
+	receipt, _ := envelope["output"].(map[string]any)
 	id, _ := receipt["operation_id"].(string)
-	if result.code == 0 || id == "" || receipt["waiting_stopped"] != true {
+	stopped := receipt["waiting_stopped"] == true
+	if !stopped {
+		id, _ = envelope["operation_id"].(string)
+	}
+	if result.code == 0 || id == "" || !stopped && envelope["status"] != "failed" {
 		t.Fatalf("cancel result: exit=%d output=%s", result.code, result.output)
 	}
 	store := operationrun.Store{Directory: options.OperationDirectory}

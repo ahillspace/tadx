@@ -247,7 +247,7 @@ func (c *jobCommands) observer(connection authenticatedTableau) func(context.Con
 		results := make([]jobmonitor.CheckResult, len(jobs))
 		sessions := c.runtime.commandSessions()
 		for i, receipt := range jobs {
-			session, err := sessions.AuthenticateMonitor(ctx, authTarget(connection), tableauauth.NewClient(connection.transport))
+			session, err := sessions.Authenticate(ctx, authTarget(connection), tableauauth.NewClient(connection.transport))
 			if err == nil {
 				client := tableaujob.NewClient(connection.transport, session, connection.environment.URL)
 				if normalizeServer(receipt.Server) != normalizeServer(connection.environment.URL) || receipt.SiteID != session.SiteLUID() {
@@ -259,7 +259,7 @@ func (c *jobCommands) observer(connection authenticatedTableau) func(context.Con
 					}
 				}
 			}
-			// Foreground requests may enter between individual exact observations.
+			// Commands waiting for an unshared PAT may enter between observations.
 			results[i].Err = errors.Join(err, sessions.Suspend(context.WithoutCancel(ctx)))
 		}
 		return results

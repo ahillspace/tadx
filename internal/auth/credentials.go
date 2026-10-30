@@ -397,7 +397,7 @@ func (s *patStore) SaveSession(ctx context.Context, reference CredentialReferenc
 }
 
 // lockReference serializes mutations of a PAT and its session across processes.
-// It is never held while acquiring a command's longer-lived PAT lock.
+// It is never held while acquiring a PAT's lock.
 func (s *patStore) lockReference(ctx context.Context, reference CredentialReference, operation string) (*lock.Handle, error) {
 	if err := credentialContextError(ctx, operation); err != nil {
 		return nil, err

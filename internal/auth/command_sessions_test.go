@@ -105,7 +105,7 @@ func TestCommandSessionSuspendReusesSessionWhenEpochIsUnchanged(t *testing.T) {
 	if err := manager.Suspend(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	monitor, err := manager.AuthenticateMonitor(context.Background(), target, signer)
+	monitor, err := manager.Authenticate(context.Background(), target, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestCommandSessionMonitorSignsInAgainAfterSharedEpochChanges(t *testing.T) 
 	if err := secondManager.Suspend(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	monitor, err := firstManager.AuthenticateMonitor(context.Background(), target, signer)
+	monitor, err := firstManager.Authenticate(context.Background(), target, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestCommandCredentialLockWaitIsCancelableAndDifferentPATIndependent(t *test
 			}
 			continue
 		}
-		identity := strings.TrimSuffix(strings.TrimSuffix(file.Name(), ".lock"), ".admission")
+		identity := strings.TrimSuffix(file.Name(), ".lock")
 		if len(identity) != 64 || !strings.HasSuffix(file.Name(), ".lock") || strings.Contains(file.Name(), "test-") {
 			t.Fatalf("nonopaque lock name=%q", file.Name())
 		}

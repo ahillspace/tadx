@@ -215,27 +215,91 @@ func TestRenewSignsInOnceAndUpdatesTheSharedSession(t *testing.T) {
 	}
 }
 
-func TestRenewTakesTheCredentialLockAgainAfterSuspend(t *testing.T) {
+// TestCommandsRenewingTheSameStoredPATConvergeOnOneSignIn has two separate
+// commands share a stored PAT's session. When Tableau rejects it, the first
+// command signs in again and the second adopts that saved sign-in instead of
+// signing in a second time, which would end the first command's session.
+func TestCommandsRenewingTheSameStoredPATConvergeOnOneSignIn(t *testing.T) {
 	fixture := newStoredPATFixture(t)
 	signer := &countingSigner{}
-	sessions := NewCommandSessions(nil, fixture.store, fixture.directory)
-	defer sessions.Close()
-	current, err := sessions.Authenticate(t.Context(), fixture.target, signer)
+	first := NewCommandSessions(nil, fixture.store, fixture.directory)
+	defer first.Close()
+	second := NewCommandSessions(nil, fixture.store, fixture.directory)
+	defer second.Close()
+	// A command holding the PAT for its whole run would block the second.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	firstSession, err := first.Authenticate(ctx, fixture.target, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sessions.Suspend(t.Context()); err != nil {
+	secondSession, err := second.Authenticate(ctx, fixture.target, signer)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := current.Renew(t.Context(), rejectedWith(current)); err != nil {
+	rejected := rejectedWith(firstSession)
+	if sentToken(secondSession) != rejected.Get(TableauAuthHeader) || signer.signIns() != 1 {
+		t.Fatalf("sign-ins = %d; want the second command to reuse the first command's session", signer.signIns())
+	}
+	var renewals sync.WaitGroup
+	for _, current := range []Session{firstSession, secondSession} {
+		renewals.Go(func() {
+			if err := current.Renew(ctx, rejected); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	renewals.Wait()
+	if signer.signIns() != 2 || sentToken(firstSession) != sentToken(secondSession) || sentToken(firstSession) == rejected.Get(TableauAuthHeader) {
+		t.Fatalf("sign-ins = %d, tokens %q and %q; want both commands on one renewed session", signer.signIns(), sentToken(firstSession), sentToken(secondSession))
+	}
+}
+
+// TestStoredPATHoldsItsLockOnlyWhileSigningIn lets another command sign in
+// with the same stored PAT while the first command is still running.
+func TestStoredPATHoldsItsLockOnlyWhileSigningIn(t *testing.T) {
+	fixture := newStoredPATFixture(t)
+	signer := &countingSigner{}
+	first := NewCommandSessions(nil, fixture.store, fixture.directory)
+	defer first.Close()
+	if _, _, err := first.SignIn(t.Context(), fixture.target, signer); err != nil {
 		t.Fatal(err)
 	}
-	other := NewCommandSessions(nil, fixture.store, fixture.directory)
-	defer other.Close()
+	second := NewCommandSessions(nil, fixture.store, fixture.directory)
+	defer second.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if _, _, err := second.SignIn(ctx, fixture.target, signer); err != nil {
+		t.Fatalf("second command SignIn() = %v; want the first command to have released the PAT", err)
+	}
+}
+
+// TestEnvironmentPATCommandsDoNotEndEachOthersSessions keeps a second command
+// from signing in with an environment-variable PAT while the first command is
+// still using its unsaved session, because that sign-in would end it.
+func TestEnvironmentPATCommandsDoNotEndEachOthersSessions(t *testing.T) {
+	fixture := newStoredPATFixture(t)
+	target := fixture.target
+	target.CredentialReference, target.PATNameVariable, target.PATSecretVariable = "", "PAT_NAME", "PAT_SECRET"
+	lookup := LookupEnvFunc(func(name string) (string, bool) { return "environment-" + name, true })
+	signer := &countingSigner{}
+	first := NewCommandSessions(lookup, fixture.store, fixture.directory)
+	defer first.Close()
+	if _, err := first.Authenticate(t.Context(), target, signer); err != nil {
+		t.Fatal(err)
+	}
+	second := NewCommandSessions(lookup, fixture.store, fixture.directory)
+	defer second.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := other.Authenticate(ctx, fixture.target, signer); err == nil || !strings.Contains(err.Error(), "in use by another command") {
-		t.Fatalf("other command Authenticate() = %v, want the renewing command to hold the PAT", err)
+	if _, err := second.Authenticate(ctx, target, signer); err == nil || !strings.Contains(err.Error(), "in use by another command") || signer.signIns() != 1 {
+		t.Fatalf("second command Authenticate() = %v after %d sign-ins; want it to wait for the first command", err, signer.signIns())
+	}
+	if err := first.Suspend(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Authenticate(t.Context(), target, signer); err != nil {
+		t.Fatal(err)
 	}
 }
 

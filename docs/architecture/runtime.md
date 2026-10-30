@@ -109,11 +109,16 @@ Credential-bearing request and response types redact formatting and omit secrets
 
 [`CommandSessions`](../../internal/auth/command_sessions.go) owns credential resolution, session reuse, and PAT coordination for one command.
 It captures configured environment-variable values, including missing values, once per variable during that command.
-It resolves each source tuple once and coordinates authenticated use by actual PAT and normalized server.
+It resolves each source tuple once and coordinates sign-ins by actual PAT and normalized server.
 
-The coordination lock spans sites because another sign-in with the same PAT can invalidate earlier sessions.
+Each sign-in holds the PAT's lock and advances the PAT's shared numeric sign-in epoch, which spans sites because another sign-in with the same PAT can invalidate earlier sessions.
 Session reuse additionally requires the exact site.
-`authenticate` reads the shared numeric sign-in epoch, signs in when the command's session for the site is older than the epoch, and advances the epoch after success.
+`authenticate` reuses the command's session while its epoch is current, otherwise adopts the session saved by the PAT's latest sign-in, and otherwise signs in.
+After taking the lock it rereads the epoch and the saved session, so commands that waited for another command's sign-in adopt it instead of signing in again.
+The epoch file is replaced atomically because commands read it without the lock.
+A stored PAT holds the lock only while signing in, so separate commands with the same stored PAT run in parallel on one session.
+An environment-variable PAT's session is never saved, so another command cannot adopt it, and signing in again would end it.
+A command therefore leases that PAT's lock until `Suspend` or `Close`, and another command waits for it.
 A command keeps one session per PAT and site and refreshes it in place, so every client holding it sends the new token.
 The epoch and lock names retain opaque credential-derived identity, not an authenticating credential.
 
@@ -122,7 +127,7 @@ The saved record holds the target fingerprint, the opaque PAT identity digest, t
 A later command reuses it only when the target, the digest, and the epoch all match, so a replaced PAT for the same site or a newer sign-in with the same PAT for another site signs in instead.
 `ReplacePAT`, `DeletePAT`, and session persistence share a short, stable credential-reference lock; PAT replacement and deletion also remove the saved session.
 `SaveSession` checks the current PAT's exact target and identity while holding that lock, preventing stale saves after replacement or deletion.
-Callers acquire configuration or long-lived PAT-digest locks before the reference lock, never in reverse.
+Callers acquire configuration or PAT-digest locks before the reference lock, never in reverse.
 Sessions from environment-variable PATs are never saved.
 Session loading failures fall back to authentication; session saving is best effort and leaves the current authenticated command usable.
 `SignIn`, used by `tadx auth check`, always signs in and saves the new session, because the check exists to validate the PAT.
@@ -131,15 +136,16 @@ Session loading failures fall back to authentication; session saving is best eff
 Each shared session permits one in-flight renewal, sharing its success or failure among callers rejected with the same token.
 Each caller can cancel independently; cancellation of the last waiter cancels the attempt, and a later call can retry.
 A request rejected with an already-renewed token resends without another sign-in.
-It reacquires the PAT lock if the command suspended it, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
+Renewal holds the PAT lock and first adopts a saved session newer than the rejected token, so concurrent commands renewing one stored PAT converge on one sign-in.
+Otherwise it signs in, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
 
-`Suspend` releases PAT locks while retaining command-local credentials and sessions.
+`Suspend` releases PAT leases while retaining command-local credentials and sessions.
 Later authentication checks the epoch before reusing those sessions.
-Job-monitor authentication yields to queued foreground authentication and releases coordination between individual observations.
-`Close` releases remaining locks and discards cached credentials and sessions.
+Job waits suspend before waiting and between individual observations, so other commands can use an environment-variable PAT meanwhile.
+`Close` releases remaining leases and discards cached credentials and sessions.
 
-Returning control to the terminal does not guarantee that the same PAT is available for another remote command.
-An active transfer worker can still hold its coordination lease.
+Returning control to the terminal does not guarantee that the same environment-variable PAT is available for another remote command.
+An active transfer worker can still hold its lease.
 The [security model](../security.md#authentication-and-credentials) explains the protection limits of credentials and same-user processes.
 
 ## REST negotiation and request bounds
@@ -283,7 +289,7 @@ The following files help locate representative changes and existing regression c
 | --- | --- | --- |
 | Startup, result capture, or wiring | [`app.Run`](../../internal/app/app.go), [`main`](../../cmd/tadx/main.go) | [`last_e2e_test.go`](../../internal/app/last_e2e_test.go), [`main_notice_test.go`](../../cmd/tadx/main_notice_test.go). |
 | Consent or indirect capability enforcement | [`applyMutationExecutionPolicy`](../../internal/cli/root.go), [`bindManagedPolicy`](../../internal/app/managed_policy.go) | [`managed_policy_e2e_test.go`](../../internal/app/managed_policy_e2e_test.go), including worker and preview denials; [`mutation_setting_e2e_test.go`](../../internal/app/mutation_setting_e2e_test.go). |
-| PAT reuse or monitor admission | [`CommandSessions`](../../internal/auth/command_sessions.go) | [`command_sessions_cross_site_test.go`](../../internal/auth/command_sessions_cross_site_test.go), [`command_sessions_priority_test.go`](../../internal/auth/command_sessions_priority_test.go). |
+| PAT reuse or sign-in coordination | [`CommandSessions`](../../internal/auth/command_sessions.go) | [`command_sessions_cross_site_test.go`](../../internal/auth/command_sessions_cross_site_test.go), [`command_sessions_saved_test.go`](../../internal/auth/command_sessions_saved_test.go), [`session_reuse_e2e_test.go`](../../internal/app/session_reuse_e2e_test.go). |
 | HTTP timing, redaction, or redirects | [`Transport.Do`](../../internal/tableau/transport.go), [`NegotiateAPIVersion`](../../internal/tableau/version.go) | [`transport_test.go`](../../internal/tableau/transport_test.go), [`version_test.go`](../../internal/tableau/version_test.go). |
 | Detached execution or receipt recovery | [`publication_worker.go`](../../internal/app/publication_worker.go), [`publication_status.go`](../../internal/app/publication_status.go), [`operationrun.Store`](../../internal/operationrun/store.go) | [`publication_worker_e2e_test.go`](../../internal/app/publication_worker_e2e_test.go), [`publication_interrupted_e2e_test.go`](../../internal/app/publication_interrupted_e2e_test.go), [`store_test.go`](../../internal/operationrun/store_test.go). |
 | Observation limits or job pooling | [`Monitor`](../../internal/jobmonitor/monitor.go) | [`monitor_test.go`](../../internal/jobmonitor/monitor_test.go), [`foreground_test.go`](../../internal/jobmonitor/foreground_test.go). |

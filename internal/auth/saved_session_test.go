@@ -6,13 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	keyring "github.com/zalando/go-keyring"
 )
 
-// mapKeyring keeps every entry so PAT and session records can coexist.
+// mapKeyring keeps every entry so PAT and session records can coexist. It is
+// safe for concurrent commands, like the native credential store.
 type mapKeyring struct {
+	mu        sync.Mutex
 	entries   map[string]string
 	deleteErr map[string]error
 	setErr    error
@@ -23,6 +26,8 @@ func newMapKeyring() *mapKeyring {
 }
 
 func (k *mapKeyring) Set(service, account, value string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if k.setErr != nil {
 		return k.setErr
 	}
@@ -31,6 +36,8 @@ func (k *mapKeyring) Set(service, account, value string) error {
 }
 
 func (k *mapKeyring) Get(service, account string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	value, ok := k.entries[service+"/"+account]
 	if !ok {
 		return "", keyring.ErrNotFound
@@ -39,6 +46,8 @@ func (k *mapKeyring) Get(service, account string) (string, error) {
 }
 
 func (k *mapKeyring) Delete(service, account string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if err := k.deleteErr[account]; err != nil {
 		return err
 	}
