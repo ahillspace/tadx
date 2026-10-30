@@ -78,7 +78,7 @@ Changes to those embedded inputs require rebuilding the executable.
 
 [`internal/capability/definitions.go`](../../internal/capability/definitions.go) and [`metadata_definitions.go`](../../internal/capability/metadata_definitions.go) own capability facts.
 [`registry.go`](../../internal/capability/registry.go) validates those facts and declares generation through [`cmd/gencapdocs`](../../cmd/gencapdocs/main.go).
-The generator writes the Markdown and JSON references and updates the capability-map data block.
+The generator writes the Markdown and JSON references and updates the capability-map data block and static command totals.
 Run its maintained generation path rather than editing generated references by hand.
 The architecture explanations and diagram assets are maintained separately; capability generation does not update architectural prose.
 

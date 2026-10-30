@@ -85,6 +85,9 @@ func Validate(definitions []Definition) error {
 		if definition.Owner != OwnerCLI && definition.Disposition != DispositionDelegated {
 			return fmt.Errorf("%s: non-CLI owner must be delegated", prefix)
 		}
+		if definition.Owner == OwnerCLI && definition.Disposition == DispositionDelegated {
+			return fmt.Errorf("%s: CLI-owned capability cannot be delegated", prefix)
+		}
 		if definition.Implementation == ImplementationImplemented && definition.Owner == OwnerCLI && len(definition.CommandPath) == 0 {
 			return fmt.Errorf("%s: implemented CLI capability has no binding", prefix)
 		}
