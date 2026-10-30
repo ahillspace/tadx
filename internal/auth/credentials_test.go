@@ -55,7 +55,7 @@ func TestPATStoreUsesOpaqueReferenceAndBoundedTargetBoundRecord(t *testing.T) {
 	t.Parallel()
 
 	backend := &recordingKeyring{}
-	store := newPATStore(backend, fixedReader(0xab))
+	store := newPATStore(backend, fixedReader(0xab), t.TempDir())
 	reference, err := store.StorePAT(context.Background(), CredentialTarget{
 		ServerURL:      "HTTPS://Example.COM:443/",
 		SiteContentURL: "Sales",
@@ -105,7 +105,7 @@ func TestPATStoreBindsCredentialsToNormalizedOriginAndExactSite(t *testing.T) {
 	t.Parallel()
 
 	backend := &recordingKeyring{}
-	store := newPATStore(backend, fixedReader(1))
+	store := newPATStore(backend, fixedReader(1), t.TempDir())
 	reference, err := store.StorePAT(context.Background(), CredentialTarget{
 		ServerURL: "https://example.com:443/", SiteContentURL: "Sales",
 	}, "name", "secret")
@@ -129,7 +129,7 @@ func TestPATStoreBindsCredentialsToNormalizedServerBasePath(t *testing.T) {
 	t.Parallel()
 
 	backend := &recordingKeyring{}
-	store := newPATStore(backend, fixedReader(3))
+	store := newPATStore(backend, fixedReader(3), t.TempDir())
 	reference, err := store.StorePAT(context.Background(), CredentialTarget{ServerURL: "https://example.com/tableau/"}, "name", "secret")
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +145,7 @@ func TestPATStoreSupportsTheDefaultSiteAndDeletesOnlyItsOpaqueReference(t *testi
 	t.Parallel()
 
 	backend := newMapKeyring()
-	store := newPATStore(backend, fixedReader(2))
+	store := newPATStore(backend, fixedReader(2), t.TempDir())
 	target := CredentialTarget{ServerURL: "https://example.com", SiteContentURL: ""}
 	other, err := store.StorePAT(context.Background(), target, "other", "other-secret")
 	if err != nil {
@@ -173,7 +173,7 @@ func TestPATStoreReplacesCredentialAtTheSameOpaqueReference(t *testing.T) {
 	t.Parallel()
 
 	backend := newMapKeyring()
-	store := newPATStore(backend, fixedReader(4))
+	store := newPATStore(backend, fixedReader(4), t.TempDir())
 	target := CredentialTarget{ServerURL: "https://example.com", SiteContentURL: "Sales"}
 	reference, err := store.StorePAT(context.Background(), target, "old-name", "old-secret")
 	if err != nil {
@@ -205,7 +205,7 @@ func TestPATStoreRejectsInvalidTargetsBeforeKeyringAccess(t *testing.T) {
 		{ServerURL: "https://example.com", SiteContentURL: " Sales "},
 	} {
 		backend := &recordingKeyring{}
-		store := newPATStore(backend, fixedReader(1))
+		store := newPATStore(backend, fixedReader(1), t.TempDir())
 		_, err := store.StorePAT(context.Background(), target, "name", "secret")
 		var storeErr *CredentialStoreError
 		if !errors.As(err, &storeErr) || storeErr.Kind != CredentialStoreInvalid {
@@ -221,7 +221,7 @@ func TestPATStoreRejectsOversizeAndMalformedRecords(t *testing.T) {
 	t.Parallel()
 
 	backend := &recordingKeyring{}
-	store := newPATStore(backend, fixedReader(1))
+	store := newPATStore(backend, fixedReader(1), t.TempDir())
 	_, err := store.StorePAT(context.Background(), CredentialTarget{ServerURL: "https://example.com"}, "name", strings.Repeat("s", maxPATRecordBytes))
 	assertStoreErrorKind(t, err, CredentialStoreTooLarge)
 	if backend.setCalls != 0 {
@@ -296,7 +296,7 @@ func TestPATStoreClassifiesBackendFailuresWithoutLeakingRawErrors(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			backend := &recordingKeyring{getErr: test.err}
-			store := newPATStore(backend, fixedReader(1))
+			store := newPATStore(backend, fixedReader(1), t.TempDir())
 			_, err := store.LoadPAT(context.Background(), CredentialReference("cred_01010101010101010101010101010101"), CredentialTarget{ServerURL: "https://example.com"})
 			assertStoreErrorKind(t, err, test.kind)
 			if strings.Contains(fmt.Sprintf("%v %#v", err, err), "highly-secret") {
@@ -310,7 +310,7 @@ func TestPATStoreRejectsInvalidReferenceAndCanceledContextBeforeKeyringAccess(t 
 	t.Parallel()
 
 	backend := &recordingKeyring{}
-	store := newPATStore(backend, fixedReader(1))
+	store := newPATStore(backend, fixedReader(1), t.TempDir())
 	_, err := store.LoadPAT(context.Background(), "dev", CredentialTarget{ServerURL: "https://example.com"})
 	assertStoreErrorKind(t, err, CredentialStoreInvalid)
 

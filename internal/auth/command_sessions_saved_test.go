@@ -43,7 +43,7 @@ type storedPATFixture struct {
 
 func newStoredPATFixture(t *testing.T) storedPATFixture {
 	t.Helper()
-	fixture := storedPATFixture{store: newPATStore(newMapKeyring(), fixedReader(0xab)), directory: t.TempDir()}
+	fixture := storedPATFixture{store: newPATStore(newMapKeyring(), fixedReader(0xab), t.TempDir()), directory: t.TempDir()}
 	fixture.backend = fixture.store.backend.(*mapKeyring)
 	reference, err := fixture.store.StorePAT(t.Context(), savedSessionTarget, "agent-name", "highly-secret")
 	if err != nil {

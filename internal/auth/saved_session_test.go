@@ -52,13 +52,13 @@ func (k *mapKeyring) Delete(service, account string) error {
 var savedSessionTarget = CredentialTarget{ServerURL: "https://example.com", SiteContentURL: "Sales"}
 
 func testSavedSession() SavedSession {
-	return SavedSession{Credential: strings.Repeat("c", 64), Epoch: 7, Token: "session-token-value", SiteLUID: "site-luid", UserLUID: "user-luid"}
+	return SavedSession{Credential: credentialIdentity(savedSessionTarget.ServerURL, PATCredentials{Name: "agent-name", Secret: "highly-secret"}), Epoch: 7, Token: "session-token-value", SiteLUID: "site-luid", UserLUID: "user-luid"}
 }
 
 func storeWithPAT(t *testing.T) (*patStore, *mapKeyring, CredentialReference) {
 	t.Helper()
 	backend := newMapKeyring()
-	store := newPATStore(backend, fixedReader(0xab))
+	store := newPATStore(backend, fixedReader(0xab), t.TempDir())
 	reference, err := store.StorePAT(t.Context(), savedSessionTarget, "agent-name", "highly-secret")
 	if err != nil {
 		t.Fatal(err)

@@ -120,13 +120,17 @@ The epoch and lock names retain opaque credential-derived identity, not an authe
 A session signed in with a stored PAT is saved beside that PAT in the native credential store, in its own entry for the same credential reference.
 The saved record holds the target fingerprint, the opaque PAT identity digest, the sign-in epoch, the token, and the site and user LUIDs.
 A later command reuses it only when the target, the digest, and the epoch all match, so a replaced PAT for the same site or a newer sign-in with the same PAT for another site signs in instead.
-`ReplacePAT` and `DeletePAT` also remove the saved session.
+`ReplacePAT`, `DeletePAT`, and session persistence share a short, stable credential-reference lock; PAT replacement and deletion also remove the saved session.
+`SaveSession` checks the current PAT's exact target and identity while holding that lock, preventing stale saves after replacement or deletion.
+Callers acquire configuration or long-lived PAT-digest locks before the reference lock, never in reverse.
 Sessions from environment-variable PATs are never saved.
-Saving or loading a session never fails a command; any store failure signs in.
+Session loading failures fall back to authentication; session saving is best effort and leaves the current authenticated command usable.
 `SignIn`, used by `tadx auth check`, always signs in and saves the new session, because the check exists to validate the PAT.
 
 `Session.Renew` signs in again after Tableau rejects a session, whether it expired, was superseded by a sign-in outside TADX, or was never valid.
-Renewal compares the rejected token with the current one, so concurrent rejections sign in once and a request rejected with an already-renewed token resends without signing in.
+Each shared session permits one in-flight renewal, sharing its success or failure among callers rejected with the same token.
+Each caller can cancel independently; cancellation of the last waiter cancels the attempt, and a later call can retry.
+A request rejected with an already-renewed token resends without another sign-in.
 It reacquires the PAT lock if the command suspended it, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
 
 `Suspend` releases PAT locks while retaining command-local credentials and sessions.
