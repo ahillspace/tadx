@@ -123,7 +123,7 @@ func updateMap(path string, data []byte, counts []mapCount) error {
 func replaceCounts(head []byte, counts []mapCount) ([]byte, error) {
 	updated := append([]byte(nil), head...)
 	for _, count := range counts {
-		opening := []byte(`id="` + count.id + `">`)
+		opening := []byte(` id="` + count.id + `">`)
 		if occurrences := bytes.Count(updated, opening); occurrences != 1 {
 			return nil, fmt.Errorf("capability map must contain exactly one %s total before the registry snapshot; found %d", count.id, occurrences)
 		}

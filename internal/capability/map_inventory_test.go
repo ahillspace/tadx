@@ -89,7 +89,7 @@ func TestCapabilityMapStaticCountsMatchRegistry(t *testing.T) {
 		{"implementedCount", implemented}, {"plannedCount", planned}, {"blockedCount", blocked},
 		{"remoteMutationCount", remote},
 	} {
-		opening := `id="` + slot.id + `">`
+		opening := ` id="` + slot.id + `">`
 		if strings.Count(authored, opening) != 1 {
 			t.Errorf("capability map must render %s exactly once before the registry snapshot", slot.id)
 			continue

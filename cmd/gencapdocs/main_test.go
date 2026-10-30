@@ -54,6 +54,7 @@ func TestUpdateMapRejectsMalformedPageWithoutWriting(t *testing.T) {
 	nonNumericSlot := strings.Replace(authoredSlots, `<span id="blockedCount">0</span>`, `<span id="blockedCount">none</span>`, 1)
 	emptySlot := strings.Replace(authoredSlots, `<span id="footerTotal">0</span>`, `<span id="footerTotal"></span>`, 1)
 	slotAfterMarker := missingSlot + marker + "[]</script>" + `<span id="footerTotal">0</span>`
+	dataAttributeSlot := strings.Replace(authoredSlots, `<span id="footerTotal">`, `<span data-id="footerTotal">`, 1)
 	for _, content := range []string{
 		"<html></html>",
 		authoredSlots + marker + "[]",
@@ -63,6 +64,7 @@ func TestUpdateMapRejectsMalformedPageWithoutWriting(t *testing.T) {
 		nonNumericSlot + marker + "[]</script>",
 		emptySlot + marker + "[]</script>",
 		slotAfterMarker,
+		dataAttributeSlot + marker + "[]</script>",
 	} {
 		path := filepath.Join(t.TempDir(), "map.html")
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
