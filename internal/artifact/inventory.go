@@ -304,12 +304,16 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 		if strings.HasPrefix(resourceKind.Name(), ".tadx-") {
 			continue
 		}
-		if resourceKind.Type()&os.ModeSymlink != 0 || !resourceKind.IsDir() {
+		if resourceKind.Type()&os.ModeSymlink != 0 || !resourceKind.IsDir() || !isLineageResourceKind(resourceKind.Name()) {
 			if len(items) >= scanLimit {
 				return items, false, nil
 			}
+			warning := "Managed artifact entry is not a regular directory."
+			if resourceKind.Type()&os.ModeSymlink == 0 && resourceKind.IsDir() {
+				warning = "Managed artifact entry is not a supported lineage resource kind."
+			}
 			relative := filepath.ToSlash(filepath.Join("artifacts", "lineage", resourceKind.Name()))
-			items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{"Managed artifact entry is not a regular directory."}})
+			items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{warning}})
 			continue
 		}
 		kindRoot := filepath.Join(lineageRoot, resourceKind.Name())

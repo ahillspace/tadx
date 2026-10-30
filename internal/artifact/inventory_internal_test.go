@@ -206,7 +206,7 @@ func linkArtifactTestDirectory(t *testing.T, link, target string) {
 }
 
 func TestInventoryReportsStrayLineageResourceKindEntries(t *testing.T) {
-	for _, stray := range []string{"symlink", "file"} {
+	for _, stray := range []string{"symlink", "file", "directory"} {
 		t.Run(stray, func(t *testing.T) {
 			workspace := createMoveTestWorkspace(t, "workspace")
 			pullSampleLineage(t, workspace)
@@ -216,6 +216,10 @@ func TestInventoryReportsStrayLineageResourceKindEntries(t *testing.T) {
 			path := filepath.Join(workspace, "artifacts", "lineage", "stray")
 			if stray == "symlink" {
 				linkArtifactTestDirectory(t, path, t.TempDir())
+			} else if stray == "directory" {
+				if err := os.Mkdir(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
 			} else if err := os.WriteFile(path, []byte("local notes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
