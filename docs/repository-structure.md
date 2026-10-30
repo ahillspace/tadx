@@ -77,6 +77,7 @@ Actions do not import concrete resource adapters, Tableau clients, Cobra, or `ne
 Resource adapters do not import actions or use HTTP directly.
 Tableau clients own request and response mechanics.
 Shared value types in `internal/value` depend only on the standard library.
+Artifact and workspace storage share workspace-relative error rendering through the standard-library-only `internal/errs` contract, which has no local dependencies.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.

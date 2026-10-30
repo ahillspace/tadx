@@ -574,7 +574,8 @@ func localImportAllowed(file, imported string) bool {
 			// Workspace recovery quotes local selectors with the same leaf helper.
 			// Download staging and temporary cleanup share the leaf lock package,
 			// so cleanup never removes a download another process is writing.
-			return matchesExact(imported, "internal/config", "internal/commandhint", "internal/fsreplace", "internal/lock")
+			// The neutral error contract renders local paths without importing runtime state.
+			return matchesExact(imported, "internal/config", "internal/commandhint", "internal/errs", "internal/fsreplace", "internal/lock")
 		}
 		// The artifact manager owns the workspace mutation critical section and
 		// serializes it against other tadx processes via the leaf lock package. It
@@ -582,8 +583,9 @@ func localImportAllowed(file, imported string) bool {
 		// paths cannot escape the workspace root, using the OS-independent pathspec
 		// predicates as defense in depth over the upstream Resolve invariant. It
 		// installs staged directories through the leaf replace package.
+		// The neutral error contract supplies shared workspace-relative rendering.
 		if hasPathPrefix(file, "internal/artifact") {
-			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/pathspec")
+			return matchesExact(imported, "internal/errs", "internal/fsreplace", "internal/lock", "internal/pathspec")
 		}
 		// The cache serializes first-time SQLite schema initialization across
 		// Store instances and tadx processes with the leaf lock package.
