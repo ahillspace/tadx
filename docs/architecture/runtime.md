@@ -111,16 +111,20 @@ Credential-bearing request and response types redact formatting and omit secrets
 It captures configured environment-variable values, including missing values, once per variable during that command.
 It resolves each source tuple once and coordinates sign-ins by actual PAT and normalized server.
 
-Each sign-in holds the PAT's lock and advances the PAT's shared numeric sign-in epoch, which spans sites because another sign-in with the same PAT can invalidate earlier sessions.
+Each sign-in holds the PAT's sign-in lock and advances the PAT's shared numeric sign-in epoch, which spans sites because another sign-in with the same PAT can invalidate earlier sessions.
 Session reuse additionally requires the exact site.
-`authenticate` reuses the command's session while its epoch is current, otherwise adopts the session saved by the PAT's latest sign-in, and otherwise signs in.
-After taking the lock it rereads the epoch and the saved session, so commands that waited for another command's sign-in adopt it instead of signing in again.
-The epoch file is replaced atomically because commands read it without the lock.
-A stored PAT holds the lock only while signing in, so separate commands with the same stored PAT run in parallel on one session.
-An environment-variable PAT's session is never saved, so another command cannot adopt it, and signing in again would end it.
-A command therefore leases that PAT's lock until `Suspend` or `Close`, and another command waits for it.
+`authenticate` takes the sign-in lock, then reuses the command's session while its epoch is current, otherwise adopts the session saved by the PAT's latest sign-in, and otherwise signs in.
+Commands that waited for another command's sign-in therefore adopt it instead of signing in again.
+The epoch file is replaced atomically, so a command that stops while writing never leaves a partial epoch.
+A command also holds the PAT's use lock until `Suspend` or `Close`, so that no other command signs in and ends a session it cannot replace.
+Commands using the same stored credential reference for the same site hold the use lock shared, because each can adopt the others' saved sessions, so they run in parallel on one session.
+The use key file names which commands may share the lock; it changes, and the use lock is taken, only under the sign-in lock.
+Every other use of the PAT holds the use lock alone: an environment-variable PAT, whose session is never saved, a stored PAT at another site or through another reference, and any command whose session could not be saved.
+Such a command waits for the others to finish, polling with the command gate released, so the command's authentication with other PATs proceeds meanwhile.
+A command that already uses one PAT fails promptly instead of waiting for another, which prevents lock-order cycles between multi-target commands.
+`tadx auth login` signs in only to validate the PAT and releases its use immediately.
 A command keeps one session per PAT and site and refreshes it in place, so every client holding it sends the new token.
-The epoch and lock names retain opaque credential-derived identity, not an authenticating credential.
+The epoch, use key, and lock names retain opaque credential-derived identity, not an authenticating credential.
 
 A session signed in with a stored PAT is saved beside that PAT in the native credential store, in its own entry for the same credential reference.
 The saved record holds the target fingerprint, the opaque PAT identity digest, the sign-in epoch, the token, and the site and user LUIDs.
@@ -129,17 +133,17 @@ A later command reuses it only when the target, the digest, and the epoch all ma
 `SaveSession` checks the current PAT's exact target and identity while holding that lock, preventing stale saves after replacement or deletion.
 Callers acquire configuration or PAT-digest locks before the reference lock, never in reverse.
 Sessions from environment-variable PATs are never saved.
-Session loading failures fall back to authentication; session saving is best effort and leaves the current authenticated command usable.
+Session loading failures fall back to authentication; a failed save leaves the current authenticated command usable and makes it hold the PAT's use lock alone.
 `SignIn`, used by `tadx auth check`, always signs in and saves the new session, because the check exists to validate the PAT.
 
 `Session.Renew` signs in again after Tableau rejects a session, whether it expired, was superseded by a sign-in outside TADX, or was never valid.
 Each shared session permits one in-flight renewal, sharing its success or failure among callers rejected with the same token.
 Each caller can cancel independently; cancellation of the last waiter cancels the attempt, and a later call can retry.
 A request rejected with an already-renewed token resends without another sign-in.
-Renewal holds the PAT lock and first adopts a saved session newer than the rejected token, so concurrent commands renewing one stored PAT converge on one sign-in.
+Renewal holds the sign-in lock and first adopts a saved session newer than the rejected token, so concurrent commands renewing one stored PAT converge on one sign-in.
 Otherwise it signs in, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
 
-`Suspend` releases PAT leases while retaining command-local credentials and sessions.
+`Suspend` releases the command's use locks while retaining command-local credentials and sessions.
 Later authentication checks the epoch before reusing those sessions.
 Job waits suspend before waiting and between individual observations, so other commands can use an environment-variable PAT meanwhile.
 `Close` releases remaining leases and discards cached credentials and sessions.

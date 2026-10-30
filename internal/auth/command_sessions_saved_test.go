@@ -290,7 +290,7 @@ func TestEnvironmentPATCommandsDoNotEndEachOthersSessions(t *testing.T) {
 	}
 	second := NewCommandSessions(lookup, fixture.store, fixture.directory)
 	defer second.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
 	defer cancel()
 	if _, err := second.Authenticate(ctx, target, signer); err == nil || !strings.Contains(err.Error(), "in use by another command") || signer.signIns() != 1 {
 		t.Fatalf("second command Authenticate() = %v after %d sign-ins; want it to wait for the first command", err, signer.signIns())

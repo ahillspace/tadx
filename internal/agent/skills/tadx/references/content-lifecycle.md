@@ -43,7 +43,7 @@ Older accepted Tableau publication-job receipts remain available for recovery wi
 For a batch, the status command reports one aggregate local operation with selection-ordered per-item outcomes.
 Native pulls also support `--no-wait`: the local worker saves native files and metadata, returns one aggregate check-status command, and never polls remote jobs because downloads have no Tableau job identity.
 Default pulls show saved local progress until completion or the shared 20-minute cutoff; downloads continue after the cutoff.
-Background execution frees the terminal, but active uploads and downloads retain the shared PAT lease, so another remote command using that PAT may wait for the transfer to finish.
+Background execution frees the terminal, but active uploads and downloads keep using their PAT, so another remote command using that PAT waits for the transfer to finish unless it uses the same stored credential for the same site.
 Local operation inspection remains available during a transfer, and explicit Tableau job monitoring yields the credential between observations.
 Local cancellation or unavailable status does not cancel the remote write or establish failure.
 If an older Tableau job was accepted, use its saved receipt or exact job ID for recovery; never resubmit the publish. Exact job queries require administrator access.
