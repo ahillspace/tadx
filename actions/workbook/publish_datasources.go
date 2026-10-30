@@ -15,15 +15,20 @@ import (
 const unmappedDatasourceExplanation = "This can happen when there are naming conflicts on the Tableau Site and should be resolved by using --datasource-binding <source name or content URL>=<target LUID>, where the source name or content URL are the data sources in your workbook and the LUID is the LUID of the published data source on the Tableau Site. Here are the data sources that need mapping along with suggested candidates found by searching the Tableau Site:"
 
 // matchDatasourceBindings resolves each binding source to exactly one workbook
-// datasource content URL. The returned bindings carry that content URL as
-// their source so later rewrites and commands are unambiguous.
+// datasource content URL. An exact content URL takes precedence over captions.
+// The returned bindings carry that content URL as their source so later
+// rewrites and commands are unambiguous.
 func matchDatasourceBindings(bindings []DatasourceBinding, datasources []PublishDatasource) ([]DatasourceBinding, error) {
 	var matched []DatasourceBinding
 	for _, binding := range bindings {
 		var urls []string
-		for _, datasource := range datasources {
-			if (datasource.Caption == binding.Source || datasource.ContentURL == binding.Source) && !slices.Contains(urls, datasource.ContentURL) {
-				urls = append(urls, datasource.ContentURL)
+		if exact := slices.IndexFunc(datasources, func(datasource PublishDatasource) bool { return datasource.ContentURL == binding.Source }); exact >= 0 {
+			urls = []string{datasources[exact].ContentURL}
+		} else {
+			for _, datasource := range datasources {
+				if datasource.Caption == binding.Source && !slices.Contains(urls, datasource.ContentURL) {
+					urls = append(urls, datasource.ContentURL)
+				}
 			}
 		}
 		switch len(urls) {

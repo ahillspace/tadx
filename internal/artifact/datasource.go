@@ -311,7 +311,7 @@ func (m *DatasourceManager) Read(ctx context.Context, path string) (DatasourceAr
 	if err != nil {
 		return DatasourceArtifact{}, fmt.Errorf("fingerprint canonical datasource: %w", err)
 	}
-	contentURL, err := readDatasourceContentURL(canonical)
+	contentURL, err := readDatasourceContentURL(ctx, canonical)
 	if err != nil {
 		return DatasourceArtifact{}, fmt.Errorf("read canonical datasource definition: %w", err)
 	}

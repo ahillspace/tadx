@@ -35,7 +35,8 @@ If Tableau nevertheless returns a job for a publish, TADX reports the outcome as
 There is no user-facing job-mode option.
 The error message names the job, the error retains the request ID, and it does not advise an automatic retry.
 The capture disagrees on a 1,000-block versus 10,000-block upload limit.
-TADX applies the conservative 1,000-block limit.
+TADX streams upload blocks without imposing a local block-count ceiling; Tableau reports any server-enforced rejection.
+Native validation and fingerprinting also stream without local file-size, definition-size, or package-entry ceilings.
 
 ## Workbook delete contract
 

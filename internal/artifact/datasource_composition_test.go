@@ -3,7 +3,9 @@ package artifact
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -118,4 +120,49 @@ func TestReadDatasourceDefinitionReportsItsOwnRepositoryLocation(t *testing.T) {
 
 func classifyTestDefinition(filename string, content []byte) datasourceDefinition {
 	return readDatasourceDefinition(filename, bytes.NewReader(content), int64(len(content)))
+}
+
+func TestClassifyPackagedDatasourceReadsCompleteLargeDefinition(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		valid bool
+	}{{"complete XML", true}, {"invalid XML after metadata", false}} {
+		t.Run(test.name, func(t *testing.T) {
+			var content bytes.Buffer
+			archive := zip.NewWriter(&content)
+			definition, err := archive.Create("large.tds")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.WriteString(definition, "<datasource>"); err != nil {
+				t.Fatal(err)
+			}
+			block := strings.Repeat("<column/>", 4096)
+			for range 17*1024*1024/len(block) + 1 {
+				if _, err := io.WriteString(definition, block); err != nil {
+					t.Fatal(err)
+				}
+			}
+			footer := `<repository-location id="LateSource"/><relation datasource-url="late-parent"/></datasource>`
+			if !test.valid {
+				footer += "<broken>"
+			}
+			if _, err := io.WriteString(definition, footer); err != nil {
+				t.Fatal(err)
+			}
+			if err := archive.Close(); err != nil {
+				t.Fatal(err)
+			}
+			got := classifyTestDefinition("large.tdsx", content.Bytes())
+			if !test.valid {
+				if got.CompositionStatus != CompositionStatusUnknown || got.ContentURL != "" || len(got.ParentDataSourceURLs) != 0 {
+					t.Fatalf("invalid definition retained partial metadata: %#v", got)
+				}
+				return
+			}
+			if got.CompositionStatus != CompositionStatusComposed || got.ContentURL != "LateSource" || !reflect.DeepEqual(got.ParentDataSourceURLs, []string{"late-parent"}) {
+				t.Fatalf("large definition metadata = %#v", got)
+			}
+		})
+	}
 }
