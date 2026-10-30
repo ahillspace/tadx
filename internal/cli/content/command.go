@@ -265,7 +265,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding workbook")
-	command.Flags().StringArrayVar(&bindings, "datasource-binding", nil, "bind a workbook published data source, by exact caption or content URL, to a destination data source LUID as <source>=<luid>; repeatable")
+	command.Flags().StringArrayVar(&bindings, "datasource-binding", nil, "bind a workbook published data source to a destination LUID as <source>=<luid>; exact content URL takes precedence over unique exact caption; case-sensitive and literal; repeatable")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	command.Flags().Bool("no-wait", false, "start publication in the background and return a check-status command without polling")
 	command.MarkFlagsMutuallyExclusive("preview", "no-wait")

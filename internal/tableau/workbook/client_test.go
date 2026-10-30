@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -723,25 +724,6 @@ func TestClientRejectsChangedArtifactBeforeStartingPublish(t *testing.T) {
 	}
 }
 
-func TestClientRejectsExcessUploadBlocksBeforeSnapshot(t *testing.T) {
-	payloadDirectory := t.TempDir()
-	client := tableauworkbook.NewClient(tableau.NewTransport(nil, "3.29", nil), session{}, "https://tableau.example")
-	client.SetUploadThreshold(1)
-	client.SetUploadChunkSize(1)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := client.Publish(ctx, tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
-		ContentPath: filepath.Join(payloadDirectory, "Finance.twbx"), ContentSize: 1001, ExpectedFingerprint: "sha256:planned",
-	})
-	if err == nil || !strings.Contains(err.Error(), "1001 upload blocks") {
-		t.Fatalf("Publish() error = %v", err)
-	}
-	if snapshots, globErr := filepath.Glob(filepath.Join(payloadDirectory, ".tadx-publish-snapshot-*")); globErr != nil || len(snapshots) != 0 {
-		t.Fatalf("publish snapshots = %v, error = %v", snapshots, globErr)
-	}
-}
-
 func TestClientEscapesMultipartFilenames(t *testing.T) {
 	t.Run("direct publish", func(t *testing.T) {
 		filename := `Finance "Q1".twbx`
@@ -1051,4 +1033,54 @@ func withPayload(t *testing.T, request tableauworkbook.PublishRequest, content [
 	digest := sha256.Sum256(content)
 	request.ContentSize, request.ExpectedFingerprint = int64(len(content)), "sha256:"+hex.EncodeToString(digest[:])
 	return request
+}
+
+func TestClientUploadsBeyondFormerBlockLimit(t *testing.T) {
+	content := bytes.Repeat([]byte("0123456789"), 101)[:1001]
+	var received bytes.Buffer
+	appends, commits := 0, 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Body != nil {
+			defer request.Body.Close()
+		}
+		status, body := http.StatusOK, `<tsResponse><fileUpload uploadSessionId="large-upload"/></tsResponse>`
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):
+			status = http.StatusCreated
+		case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/fileUploads/large-upload"):
+			appends++
+			if got := request.URL.Query().Get("sequenceID"); got != strconv.Itoa(appends) {
+				t.Fatalf("sequenceID = %q, want %d", got, appends)
+			}
+			parts, err := readMultipart(request)
+			if err != nil || len(parts) != 2 || parts[0].name != "request_payload" || len(parts[0].content) != 0 || parts[1].name != "tableau_file" || len(parts[1].content) != 1 {
+				t.Fatalf("append parts = %#v, error = %v", parts, err)
+			}
+			received.Write(parts[1].content)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/workbooks"):
+			commits++
+			if got := request.URL.Query().Get("uploadSessionId"); got != "large-upload" {
+				t.Fatalf("uploadSessionId = %q", got)
+			}
+			parts, err := readMultipart(request)
+			if err != nil || len(parts) != 1 || parts[0].name != "request_payload" {
+				t.Fatalf("commit parts = %#v, error = %v", parts, err)
+			}
+			status = http.StatusCreated
+			body = `<tsResponse><workbook id="created-large" name="Large"><project id="project-1"/></workbook></tsResponse>`
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL)
+		}
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+	})}
+	client := tableauworkbook.NewClient(tableau.NewTransport(httpClient, "3.29", nil), session{}, "https://tableau.example")
+	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(1)
+	result, err := client.Publish(t.Context(), withPayload(t, tableauworkbook.PublishRequest{Name: "Large", ProjectLUID: "project-1", Filename: "Large.twbx"}, content))
+	if err != nil || result.WorkbookLUID != "created-large" {
+		t.Fatalf("Publish() = %#v, error = %v", result, err)
+	}
+	if appends != len(content) || commits != 1 || !bytes.Equal(received.Bytes(), content) {
+		t.Fatalf("appends = %d, commits = %d, uploaded bytes = %d; want %d exact bytes", appends, commits, received.Len(), len(content))
+	}
 }

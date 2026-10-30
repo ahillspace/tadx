@@ -229,7 +229,7 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 	if err != nil {
 		return preparedDirectory{}, DatasourcePullResult{}, fmt.Errorf("fingerprint downloaded datasource: %w", err)
 	}
-	definition, err := readDatasourceFile(filename, input.PayloadPath)
+	definition, err := readDatasourceFile(ctx, filename, input.PayloadPath)
 	if err != nil {
 		return preparedDirectory{}, DatasourcePullResult{}, fmt.Errorf("read downloaded datasource: %w", err)
 	}

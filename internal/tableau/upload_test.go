@@ -61,3 +61,11 @@ func testSnapshot(t *testing.T, content string) *PublishSnapshot {
 	}
 	return snapshot
 }
+
+func TestFileUploadRejectsNonpositiveChunkSize(t *testing.T) {
+	for _, size := range []int64{0, -1} {
+		if _, err := (FileUpload{ChunkSize: size}).Upload(t.Context(), nil); err == nil || err.Error() != "upload chunk size must be positive" {
+			t.Fatalf("chunk size %d: error = %v", size, err)
+		}
+	}
+}

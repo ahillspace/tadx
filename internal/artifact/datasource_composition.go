@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/xml"
 	"io"
 	"os"
@@ -9,8 +10,6 @@ import (
 	"sort"
 	"strings"
 )
-
-const maxDatasourceDefinitionBytes = 16 * 1024 * 1024
 
 // datasourceDefinition is what TADX reads from a serialized datasource
 // definition. ContentURL is the definition's own repository location, which
@@ -22,21 +21,60 @@ type datasourceDefinition struct {
 	ContentURL           string
 }
 
+// datasourceDefinitionCollector keeps only the metadata needed by push and pull
+// while their definition readers enforce their own validation contracts.
+type datasourceDefinitionCollector struct {
+	parents    map[string]struct{}
+	contentURL string
+}
+
+func (c *datasourceDefinitionCollector) observe(start xml.StartElement, depth int) {
+	for _, attribute := range start.Attr {
+		if attribute.Name.Local == "datasource-url" {
+			if value := strings.TrimSpace(attribute.Value); value != "" {
+				if c.parents == nil {
+					c.parents = make(map[string]struct{})
+				}
+				c.parents[value] = struct{}{}
+			}
+		}
+		if depth == 2 && start.Name.Local == "repository-location" && attribute.Name.Local == "id" {
+			c.contentURL = attribute.Value
+		}
+	}
+}
+
+func (c *datasourceDefinitionCollector) definition() datasourceDefinition {
+	if len(c.parents) == 0 {
+		return datasourceDefinition{CompositionStatus: CompositionStatusOrdinary, ContentURL: c.contentURL}
+	}
+	values := make([]string, 0, len(c.parents))
+	for value := range c.parents {
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return datasourceDefinition{CompositionStatus: CompositionStatusComposed, ParentDataSourceURLs: values, ContentURL: c.contentURL}
+}
+
 // readDatasourceDefinition reads only the serialized datasource definition.
 // It never rewrites the native package and reports unknown composition for an
 // unreadable package so a pull can still preserve the authoritative Tableau
 // download.
 func readDatasourceDefinition(filename string, source io.ReaderAt, size int64) datasourceDefinition {
+	return readDatasourceDefinitionContext(context.Background(), filename, source, size)
+}
+
+func readDatasourceDefinitionContext(ctx context.Context, filename string, source io.ReaderAt, size int64) datasourceDefinition {
 	unknown := datasourceDefinition{CompositionStatus: CompositionStatusUnknown}
+	source = nativeDefinitionReaderAt{ctx: ctx, source: source}
 	definition := io.Reader(io.NewSectionReader(source, 0, size))
-	var packaged *io.LimitedReader
 	if strings.EqualFold(filepath.Ext(filename), ".tdsx") {
 		reader, err := zip.NewReader(source, size)
 		if err != nil {
 			return unknown
 		}
 		selected, err := primaryPackageEntry(reader, "datasource")
-		if err != nil || selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
+		if err != nil || selected == nil {
 			return unknown
 		}
 		stream, err := selected.Open()
@@ -44,20 +82,22 @@ func readDatasourceDefinition(filename string, source io.ReaderAt, size int64) d
 			return unknown
 		}
 		defer stream.Close()
-		packaged = &io.LimitedReader{R: stream, N: maxDatasourceDefinitionBytes + 1}
-		definition = packaged
+		definition = stream
 	}
+	return readDatasourceDefinitionStream(&contextReader{ctx: ctx, reader: definition})
+}
+
+func readDatasourceDefinitionStream(definition io.Reader) datasourceDefinition {
 	decoder := xml.NewDecoder(definition)
-	parents := map[string]struct{}{}
-	var contentURL string
+	var metadata datasourceDefinitionCollector
 	depth := 0
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
 			break
 		}
-		if err != nil || (packaged != nil && packaged.N <= 0) {
-			return unknown
+		if err != nil {
+			return datasourceDefinition{CompositionStatus: CompositionStatusUnknown}
 		}
 		if _, ok := token.(xml.EndElement); ok {
 			depth--
@@ -68,32 +108,17 @@ func readDatasourceDefinition(filename string, source io.ReaderAt, size int64) d
 			continue
 		}
 		depth++
-		for _, attribute := range start.Attr {
-			if attribute.Name.Local == "datasource-url" {
-				value := strings.TrimSpace(attribute.Value)
-				if value != "" {
-					parents[value] = struct{}{}
-				}
-			}
-			if depth == 2 && start.Name.Local == "repository-location" && attribute.Name.Local == "id" {
-				contentURL = attribute.Value
-			}
-		}
+		metadata.observe(start, depth)
 	}
-	values := make([]string, 0, len(parents))
-	for value := range parents {
-		values = append(values, value)
-	}
-	sort.Strings(values)
-	if len(values) == 0 {
-		return datasourceDefinition{CompositionStatus: CompositionStatusOrdinary, ContentURL: contentURL}
-	}
-	return datasourceDefinition{CompositionStatus: CompositionStatusComposed, ParentDataSourceURLs: values, ContentURL: contentURL}
+	return metadata.definition()
 }
 
-// readDatasourceFile reads the definition of the datasource file at path,
-// using filename to choose between TDS and TDSX handling.
-func readDatasourceFile(filename, path string) (datasourceDefinition, error) {
+// readDatasourceFile reads the datasource definition at path, using filename
+// to distinguish the original TDS or TDSX name from a temporary staging name.
+func readDatasourceFile(ctx context.Context, filename, path string) (datasourceDefinition, error) {
+	if err := ctx.Err(); err != nil {
+		return datasourceDefinition{}, err
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return datasourceDefinition{}, err
@@ -103,5 +128,16 @@ func readDatasourceFile(filename, path string) (datasourceDefinition, error) {
 	if err != nil {
 		return datasourceDefinition{}, err
 	}
-	return readDatasourceDefinition(filename, file, info.Size()), nil
+	parsed := readDatasourceDefinitionContext(ctx, filename, file, info.Size())
+	if err := ctx.Err(); err != nil {
+		return datasourceDefinition{}, err
+	}
+	return parsed, nil
+}
+
+// readDatasourceContentURL reports the repository location recorded in one
+// datasource file, or empty when the file records none.
+func readDatasourceContentURL(ctx context.Context, path string) (string, error) {
+	parsed, err := readDatasourceFile(ctx, path, path)
+	return parsed.ContentURL, err
 }

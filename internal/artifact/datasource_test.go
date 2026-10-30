@@ -361,10 +361,7 @@ func TestDatasourceManagerInstallsTheDownloadedPayloadByRename(t *testing.T) {
 	if err := os.WriteFile(download, []byte("native-package"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	downloaded, err := os.Stat(download)
-	if err != nil {
-		t.Fatal(err)
-	}
+	downloaded := downloadedPayloadIdentity(t, download)
 	result, err := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Finance.tdsx", PayloadPath: download, Metadata: validDatasourceMetadata("Finance", "ds-1")})
 	if err != nil {
 		t.Fatal(err)

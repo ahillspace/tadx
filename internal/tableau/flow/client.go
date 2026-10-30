@@ -22,7 +22,6 @@ const (
 	metadataResponseLimit  = 4 * 1024 * 1024
 	defaultUploadThreshold = 64 * 1024 * 1024
 	defaultUploadChunkSize = 64 * 1024 * 1024
-	maximumUploadBlocks    = 10_000
 )
 
 // RESTClient implements the released Tableau flow REST contract.
@@ -159,9 +158,6 @@ func (c *RESTClient) Prepare(ctx context.Context, input PublishRequest) (Prepare
 	}
 	extension, err := validatePublishRequest(input)
 	if err != nil {
-		return nil, err
-	}
-	if err := validateUploadBlockCount(input.ContentSize, c.uploadChunkSize); err != nil {
 		return nil, err
 	}
 	snapshot, err := tableau.SnapshotPublishPayload(ctx, input.ContentPath, input.ContentSize, input.ExpectedFingerprint)
@@ -428,20 +424,6 @@ func validatePublishRequest(input PublishRequest) (string, error) {
 		return "", errors.New("flow publish requires a native payload path, positive size, and planned fingerprint")
 	}
 	return extension, nil
-}
-
-func validateUploadBlockCount(size, chunkSize int64) error {
-	if size <= 0 || chunkSize <= 0 {
-		return errors.New("invalid flow publish payload size")
-	}
-	blocks := size / chunkSize
-	if size%chunkSize != 0 {
-		blocks++
-	}
-	if blocks > maximumUploadBlocks {
-		return fmt.Errorf("flow requires %d upload blocks, exceeding limit %d", blocks, maximumUploadBlocks)
-	}
-	return nil
 }
 
 func publishPayload(name, projectLUID string) ([]byte, error) {

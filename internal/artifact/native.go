@@ -2,7 +2,6 @@ package artifact
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -29,8 +28,8 @@ type Native struct {
 	Datasources []WorkbookDatasource
 }
 
-// ReadNative validates bounded native structure and fingerprints the original file.
-// Publishing adapters recheck the fingerprint before committing its bytes.
+// ReadNative streams native structure validation and fingerprints the original
+// file. Publishing adapters recheck the fingerprint before committing its bytes.
 func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	if err := ctx.Err(); err != nil {
 		return Native{}, err
@@ -50,116 +49,195 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
 		return Native{}, errors.New("native file must be a nonempty regular file")
 	}
-	var definition []byte
-	if !isHyper {
-		if extension == primary {
-			if info.Size() > maxDatasourceDefinitionBytes {
-				return Native{}, errors.New("native definition exceeds 16 MiB")
-			}
-			definition, err = io.ReadAll(io.LimitReader(file, maxDatasourceDefinitionBytes+1))
-		} else {
-			archive, archiveErr := zip.NewReader(file, info.Size())
-			if archiveErr != nil {
-				return Native{}, errors.New("native definition could not be read within its bound")
-			}
-			if len(archive.File) > 10000 {
-				return Native{}, errors.New("native package exceeds 10000 entries")
-			}
-			selected, selectErr := primaryPackageEntry(archive, kind)
-			if selectErr != nil {
-				return Native{}, selectErr
-			}
-			if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
-				return Native{}, errors.New("native package requires one top-level primary definition no larger than 16 MiB")
-			}
-			stream, openErr := selected.Open()
-			if openErr != nil {
-				return Native{}, errors.New("native definition could not be read within its bound")
-			}
-			definition, err = io.ReadAll(io.LimitReader(stream, maxDatasourceDefinitionBytes+1))
-			closeErr := stream.Close()
-			if err == nil {
-				err = closeErr
-			}
-		}
-		if err != nil || len(definition) > maxDatasourceDefinitionBytes {
-			return Native{}, errors.New("native definition could not be read within its bound")
+	result := Native{Path: path, Filename: filepath.Base(path), Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Size: info.Size()}
+	if isHyper {
+		result.CompositionStatus = CompositionStatusOrdinary
+	} else {
+		definition, err := openNativeDefinition(ctx, file, info.Size(), kind)
+		if err != nil {
+			return Native{}, err
 		}
 		if kind == "flow" {
-			var object map[string]json.RawMessage
-			if err := json.Unmarshal(definition, &object); err != nil || object == nil {
-				return Native{}, errors.New("native flow definition must be a JSON object")
-			}
+			err = validateNativeFlow(ctx, definition)
 		} else {
-			decoder := xml.NewDecoder(bytes.NewReader(definition))
-			depth, roots := 0, 0
-			for {
-				token, decodeErr := decoder.Token()
-				if decodeErr == io.EOF {
-					break
-				}
-				if decodeErr != nil {
-					return Native{}, errors.New("native definition contains invalid XML")
-				}
-				switch token := token.(type) {
-				case xml.StartElement:
-					if depth == 0 {
-						roots++
-						if token.Name.Local != kind {
-							return Native{}, fmt.Errorf("native definition requires a %s root", kind)
-						}
-					}
-					depth++
-				case xml.EndElement:
-					depth--
-				case xml.CharData:
-					if depth == 0 && strings.TrimSpace(string(token)) != "" {
-						return Native{}, errors.New("native definition contains text outside its root")
-					}
-				}
+			var parsed datasourceDefinition
+			parsed, err = validateNativeXML(ctx, definition, kind)
+			if kind == "datasource" {
+				result.CompositionStatus, result.ParentDataSourceURLs, result.ContentURL = parsed.CompositionStatus, parsed.ParentDataSourceURLs, parsed.ContentURL
 			}
-			if roots != 1 || depth != 0 {
-				return Native{}, errors.New("native definition requires one complete root")
+		}
+		closeErr := definition.Close()
+		if err != nil {
+			return Native{}, err
+		}
+		if closeErr != nil {
+			return Native{}, errors.New("native definition could not be read")
+		}
+		if kind == "workbook" {
+			definition, err = openNativeDefinition(ctx, file, info.Size(), kind)
+			if err != nil {
+				return Native{}, err
+			}
+			result.Datasources, err = readNativeWorkbookDatasources(ctx, definition)
+			if err != nil {
+				return Native{}, err
 			}
 		}
 	}
-	if _, err = file.Seek(0, io.SeekStart); err != nil {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return Native{}, errors.New("native file fingerprint failed")
 	}
 	hash := sha256.New()
-	buffer := make([]byte, 1024*1024)
-	var size int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return Native{}, err
+	size, err := io.CopyBuffer(hash, &contextReader{ctx: ctx, reader: file}, make([]byte, 1024*1024))
+	if err != nil {
+		if ctx.Err() != nil {
+			return Native{}, ctx.Err()
 		}
-		n, readErr := file.Read(buffer)
-		size += int64(n)
-		hash.Write(buffer[:n])
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return Native{}, errors.New("native file fingerprint failed")
-		}
+		return Native{}, errors.New("native file fingerprint failed")
 	}
 	after, err := file.Stat()
 	if err != nil || size != info.Size() || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
 		return Native{}, errors.New("native file changed during validation; retry")
 	}
-	fingerprint := "sha256:" + hex.EncodeToString(hash.Sum(nil))
-	result := Native{Path: path, Filename: filepath.Base(path), Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Size: info.Size(), Fingerprint: fingerprint}
-	if isHyper {
-		result.CompositionStatus = "ordinary"
-	} else if kind == "datasource" {
-		parsed := readDatasourceDefinition("definition.tds", bytes.NewReader(definition), int64(len(definition)))
-		result.CompositionStatus, result.ParentDataSourceURLs, result.ContentURL = parsed.CompositionStatus, parsed.ParentDataSourceURLs, parsed.ContentURL
-	} else if kind == "workbook" {
-		if result.Datasources, err = walkWorkbookDefinition(ctx, bytes.NewReader(definition), nil, nil); err != nil {
-			return Native{}, err
+	result.Fingerprint = "sha256:" + hex.EncodeToString(hash.Sum(nil))
+	return result, nil
+}
+
+func readNativeWorkbookDatasources(ctx context.Context, definition io.ReadCloser) ([]WorkbookDatasource, error) {
+	datasources, err := walkWorkbookDefinition(ctx, &contextReader{ctx: ctx, reader: definition}, nil, nil)
+	closeErr := definition.Close()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, errors.New("native definition could not be read")
+	}
+	return datasources, nil
+}
+
+// openNativeDefinition opens the one primary definition without materializing
+// its bytes or imposing a ceiling on the package or definition size.
+func openNativeDefinition(ctx context.Context, file *os.File, size int64, kind string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if strings.EqualFold(filepath.Ext(file.Name()), nativePrimaryExtensions[kind]) {
+		return io.NopCloser(io.NewSectionReader(file, 0, size)), nil
+	}
+	archive, err := zip.NewReader(nativeDefinitionReaderAt{ctx: ctx, source: file}, size)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("native package could not be read")
+	}
+	selected, err := primaryPackageEntry(archive, kind)
+	if err != nil {
+		return nil, err
+	}
+	if selected == nil {
+		return nil, errors.New("native package requires one top-level primary definition")
+	}
+	stream, err := selected.Open()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("native definition could not be read")
+	}
+	return stream, nil
+}
+
+type nativeDefinitionReaderAt struct {
+	ctx    context.Context
+	source io.ReaderAt
+}
+
+func (r nativeDefinitionReaderAt) ReadAt(data []byte, offset int64) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.source.ReadAt(data, offset)
+}
+
+func validateNativeXML(ctx context.Context, source io.Reader, kind string) (datasourceDefinition, error) {
+	decoder := xml.NewDecoder(&contextReader{ctx: ctx, reader: source})
+	var metadata datasourceDefinitionCollector
+	depth, roots := 0, 0
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return datasourceDefinition{}, ctx.Err()
+			}
+			return datasourceDefinition{}, errors.New("native definition contains invalid XML")
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				roots++
+				if token.Name.Local != kind {
+					return datasourceDefinition{}, fmt.Errorf("native definition requires a %s root", kind)
+				}
+			}
+			depth++
+			if kind == "datasource" {
+				metadata.observe(token, depth)
+			}
+		case xml.EndElement:
+			depth--
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(token)) != "" {
+				return datasourceDefinition{}, errors.New("native definition contains text outside its root")
+			}
 		}
 	}
-	return result, nil
+	if roots != 1 || depth != 0 {
+		return datasourceDefinition{}, errors.New("native definition requires one complete root")
+	}
+	return metadata.definition(), nil
+}
+
+func validateNativeFlow(ctx context.Context, source io.Reader) error {
+	decoder := json.NewDecoder(&contextReader{ctx: ctx, reader: source})
+	decoder.UseNumber()
+	first, err := decoder.Token()
+	if err != nil || first != json.Delim('{') {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("native flow definition must be a JSON object")
+	}
+	for depth := 1; depth > 0; {
+		token, err := decoder.Token()
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.New("native flow definition must be one complete JSON object")
+		}
+		if delimiter, ok := token.(json.Delim); ok {
+			switch delimiter {
+			case '{', '[':
+				depth++
+			case '}', ']':
+				depth--
+			}
+		}
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("native flow definition must be one complete JSON object")
+	}
+	return nil
 }
 
 // primaryPackageEntry selects the one primary definition at a package's root,

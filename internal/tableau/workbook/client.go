@@ -25,7 +25,6 @@ const (
 	metadataResponseLimit  = 4 * 1024 * 1024
 	defaultUploadThreshold = 64 * 1024 * 1024
 	defaultUploadChunkSize = 64 * 1024 * 1024
-	maxUploadBlocks        = 1000
 )
 
 // Page is the normalized classic REST page.
@@ -426,11 +425,6 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (*PreparedPu
 	if extension != "twb" && extension != "twbx" {
 		return nil, fmt.Errorf("unsupported workbook type %q", extension)
 	}
-	if input.ContentSize > int64(c.uploadThreshold) {
-		if err := validateUploadBlocks(input.ContentSize, c.uploadChunkSize); err != nil {
-			return nil, err
-		}
-	}
 	snapshot, err := tableau.SnapshotPublishPayload(ctx, input.ContentPath, input.ContentSize, input.ExpectedFingerprint)
 	if err != nil {
 		return nil, fmt.Errorf("prepare workbook publish payload: %w", err)
@@ -504,20 +498,6 @@ func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 
 // Close releases the publish snapshot when Commit never runs.
 func (p *PreparedPublish) Close() error { return p.snapshot.Close() }
-
-func validateUploadBlocks(size int64, chunkSize int) error {
-	if size < 0 || chunkSize <= 0 {
-		return errors.New("invalid workbook publish payload size")
-	}
-	blocks := size / int64(chunkSize)
-	if size%int64(chunkSize) != 0 {
-		blocks++
-	}
-	if blocks > maxUploadBlocks {
-		return fmt.Errorf("workbook requires %d upload blocks, exceeding conservative limit %d", blocks, maxUploadBlocks)
-	}
-	return nil
-}
 
 func (c *Client) validateWorkbook(ctx context.Context, filename string, snapshot *tableau.PublishSnapshot) ([]ValidationIssue, error) {
 	body, err := tableau.NewMultipartBody(tableau.FilePart("tableau_workbook", filename, snapshot.File(), 0, snapshot.Size()))

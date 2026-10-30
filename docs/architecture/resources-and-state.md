@@ -135,7 +135,8 @@ Datasource and flow actions share the publication boundary but preserve differen
 
 Preparation can create a server-side upload, so its placement is part of each resource's recovery design.
 Do not substitute one generic mutation sequence for these explicit differences.
-[`ReadNative`](../../internal/artifact/native.go) validates supported standalone XML or ZIP packages and bounds their input before publication.
+[`ReadNative`](../../internal/artifact/native.go) streams supported XML, JSON, and ZIP-packaged definitions and fingerprints the original file before publication.
+It validates format, primary-definition identity, and source consistency without local payload-size or package-entry ceilings.
 Managed artifact publication instead resolves the selected workspace artifact and its provenance.
 
 The composition root can hand workbook, datasource, and flow transfers to a detached instance of the same binary.

@@ -22,11 +22,27 @@ func downloadedPayload(t *testing.T, workspace, name, content string) (string, o
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(path)
+	return path, downloadedPayloadIdentity(t, path)
+}
+
+// downloadedPayloadIdentity captures identity through a handle before moving
+// the file. On Windows, path-based Stat defers its file ID lookup until SameFile
+// runs, when the original path has already been removed by the rename.
+func downloadedPayloadIdentity(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	file, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return path, info
+	info, statErr := file.Stat()
+	closeErr := file.Close()
+	if statErr != nil {
+		t.Fatal(statErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	return info
 }
 
 // standaloneWorkbook is a workbook pull without acquired dependencies.

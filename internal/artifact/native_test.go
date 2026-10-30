@@ -36,7 +36,7 @@ func TestReadNativeValidatesWithoutWritingOrRewriting(t *testing.T) {
 	}
 }
 
-func TestReadNativePackageRequiresUnambiguousBoundedDefinition(t *testing.T) {
+func TestReadNativePackageRequiresUnambiguousDefinition(t *testing.T) {
 	for _, count := range []int{0, 1, 2} {
 		var data bytes.Buffer
 		archive := zip.NewWriter(&data)
