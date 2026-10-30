@@ -7,7 +7,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+
+	"github.com/ahillspace/tadx/internal/lock"
 )
 
 // CleanResult is a bounded receipt for disposable workspace state removal.
@@ -24,6 +27,20 @@ var cleanClasses = map[string][]string{
 	"all":       {"tmp", "staging", "cache", "logs"},
 }
 
+// downloadsInUseError reports temporary state that a running command is
+// still downloading into.
+type downloadsInUseError struct{}
+
+func (downloadsInUseError) Error() string {
+	return "workspace temporary state is in use by a running download"
+}
+func (downloadsInUseError) Retryable() bool { return true }
+func (downloadsInUseError) CorrectiveAction() string {
+	return "Retry the cleanup after the running pull finishes."
+}
+
+var errDownloadsInUse error = downloadsInUseError{}
+
 // Clean removes only admitted children of the workspace control directory.
 func Clean(ctx context.Context, root, class string) (CleanResult, error) {
 	return clean(ctx, root, class, false)
@@ -39,20 +56,22 @@ func clean(ctx context.Context, root, class string, preview bool) (CleanResult, 
 	if !ok {
 		return CleanResult{}, fmt.Errorf("unsupported workspace cleanup class %q", class)
 	}
-	absoluteRoot, err := filepath.Abs(root)
-	if err != nil {
-		return CleanResult{}, fmt.Errorf("resolve workspace root: %w", err)
-	}
-	control := filepath.Join(absoluteRoot, ".tadx")
-	info, err := os.Lstat(control)
-	if os.IsNotExist(err) {
+	control, err := controlDirectory(root, false)
+	if errors.Is(err, fs.ErrNotExist) {
 		return CleanResult{}, nil
 	}
 	if err != nil {
-		return CleanResult{}, fmt.Errorf("inspect workspace control directory: %w", err)
+		return CleanResult{}, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return CleanResult{}, errors.New("workspace control path must be a real directory")
+	if !preview && slices.Contains(children, "tmp") {
+		held, err := lock.TryAcquire(filepath.Join(control, downloadLockName))
+		if errors.Is(err, lock.ErrLocked) {
+			return CleanResult{}, errDownloadsInUse
+		}
+		if err != nil {
+			return CleanResult{}, fmt.Errorf("lock workspace download state: %w", err)
+		}
+		defer held.Release()
 	}
 
 	result := CleanResult{}

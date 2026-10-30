@@ -26,6 +26,7 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 type remoteContentCommands struct{ runtime *runtimeDependencies }
@@ -379,7 +380,7 @@ func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowops.Pull
 		return flowops.PullOutput{}, remoteSetupError("flow.pull", input.Environment, input.Site, connection.environment, err)
 	}
 
-	downloads := newDownloadStaging(input.Workspace)
+	downloads := workspacecore.NewDownloads(input.Workspace)
 	defer downloads.Close()
 	reader := flowPullReader{Adapter: connection.flows, lineage: connection.lineage, downloads: downloads}
 	return flowops.Pull(ctx, reader, flowArtifactWriter{artifact.NewFlowManager(c.runtime.now)}, input)
@@ -624,13 +625,13 @@ func (r flowListReader) ListFlows(ctx context.Context, input flowops.ListPageReq
 type flowPullReader struct {
 	*resourceflow.Adapter
 	lineage   *resourcelineage.Adapter
-	downloads *downloadStaging
+	downloads *workspacecore.Downloads
 }
 
 func (r flowPullReader) DownloadFlow(ctx context.Context, luid string) (flowops.PullDownload, error) {
 	progress.SetLabel(ctx, "Downloading flow")
 	var item tableauflow.Download
-	path, err := r.downloads.file(func(destination io.Writer) (err error) {
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
 		item, err = r.Adapter.DownloadFlow(ctx, luid, destination)
 		return err
 	})

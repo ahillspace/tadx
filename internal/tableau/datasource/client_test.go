@@ -390,9 +390,13 @@ func TestClientRejectsInvalidDatasourceDownloadFilename(t *testing.T) {
 			defer server.Close()
 
 			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			_, err := client.Download(context.Background(), "ds-1", nil, io.Discard)
+			var destination bytes.Buffer
+			_, err := client.Download(context.Background(), "ds-1", nil, &destination)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+			if destination.Len() != 0 {
+				t.Fatalf("a rejected download wrote %q", destination.String())
 			}
 			assertProtocolContext(t, err, http.StatusOK, "datasource-filename-request")
 		})

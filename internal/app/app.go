@@ -42,6 +42,7 @@ import (
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	updater "github.com/ahillspace/tadx/internal/update"
 	"github.com/ahillspace/tadx/internal/value"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 // Options contains process-level discovery settings.
@@ -542,7 +543,7 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	}
 	input.SiteLUID = connection.session.SiteLUID()
 
-	downloads := newDownloadStaging(input.Workspace)
+	downloads := workspacecore.NewDownloads(input.Workspace)
 	defer downloads.Close()
 	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage, downloads: downloads}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
 }
@@ -551,7 +552,7 @@ type pullReader struct {
 	workbooks   *resourceworkbook.Adapter
 	datasources *resourcedatasource.Adapter
 	lineage     *resourcelineage.Adapter
-	downloads   *downloadStaging
+	downloads   *workspacecore.Downloads
 }
 
 func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookops.Record, error) {
@@ -561,7 +562,7 @@ func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selec
 func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *bool) (workbookops.Download, error) {
 	progress.SetLabel(ctx, "Downloading workbook")
 	var item tableauworkbook.Download
-	path, err := r.downloads.file(func(destination io.Writer) (err error) {
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
 		item, err = r.workbooks.DownloadWorkbook(ctx, luid, include, destination)
 		return err
 	})
@@ -595,7 +596,7 @@ func (r pullReader) PublishedDatasources(ctx context.Context, download workbooko
 func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string) (workbookops.DatasourceDownload, error) {
 	progress.SetLabel(ctx, "Downloading workbook datasource dependency")
 	var item resourcedatasource.Download
-	path, err := r.downloads.file(func(destination io.Writer) (err error) {
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
 		item, err = r.datasources.DownloadDatasource(ctx, luid, destination)
 		return err
 	})

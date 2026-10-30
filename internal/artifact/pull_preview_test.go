@@ -109,19 +109,19 @@ func createPreviewArtifact(t *testing.T, input PullPreview) string {
 	ctx := context.Background()
 	switch input.Kind {
 	case "workbook":
-		result, err := NewWorkbookManager(nil).Pull(ctx, WorkbookPull{Workspace: input.Workspace, Filename: "Example.twb", PayloadPath: payloadFile(t, []byte("<workbook/>")), Metadata: WorkbookMetadata{Name: input.Name, TableauID: input.LUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: "dev", SourceSite: "test", SourceProjectName: "Shared", SourceProjectID: "project-1"}})
+		result, err := NewWorkbookManager(nil).Pull(ctx, WorkbookPull{Workspace: input.Workspace, Filename: "Example.twb", PayloadPath: PayloadFile(t, []byte("<workbook/>")), Metadata: WorkbookMetadata{Name: input.Name, TableauID: input.LUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: "dev", SourceSite: "test", SourceProjectName: "Shared", SourceProjectID: "project-1"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return result.CanonicalPath
 	case "datasource":
-		result, err := NewDatasourceManager(nil).Pull(ctx, DatasourcePull{Workspace: input.Workspace, Filename: "Example.tds", PayloadPath: payloadFile(t, []byte("<datasource/>")), Metadata: DatasourceMetadata{Name: input.Name, TableauID: input.LUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: "dev", SourceSite: "test", SourceProjectName: "Shared", SourceProjectID: "project-1"}, Lineage: LineageDocument{Direction: "both", Depth: 1}})
+		result, err := NewDatasourceManager(nil).Pull(ctx, DatasourcePull{Workspace: input.Workspace, Filename: "Example.tds", PayloadPath: PayloadFile(t, []byte("<datasource/>")), Metadata: DatasourceMetadata{Name: input.Name, TableauID: input.LUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: "dev", SourceSite: "test", SourceProjectName: "Shared", SourceProjectID: "project-1"}, Lineage: LineageDocument{Direction: "both", Depth: 1}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return result.CanonicalPath
 	case "flow":
-		result, err := NewFlowManager(nil).Pull(ctx, FlowPull{Workspace: input.Workspace, Filename: "Example.tfl", PayloadPath: payloadFile(t, []byte("native")), Metadata: FlowMetadata{Name: input.Name, TableauID: input.LUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: "dev", SourceSite: "test", SourceProjectName: "Shared", SourceProjectID: "project-1", FileType: "tfl"}, Lineage: LineageDocument{Direction: "both", Depth: 1}})
+		result, err := NewFlowManager(nil).Pull(ctx, FlowPull{Workspace: input.Workspace, Filename: "Example.tfl", PayloadPath: PayloadFile(t, []byte("native")), Metadata: FlowMetadata{Name: input.Name, TableauID: input.LUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: "dev", SourceSite: "test", SourceProjectName: "Shared", SourceProjectID: "project-1", FileType: "tfl"}, Lineage: LineageDocument{Direction: "both", Depth: 1}})
 		if err != nil {
 			t.Fatal(err)
 		}

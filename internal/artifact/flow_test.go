@@ -14,7 +14,7 @@ func TestFlowManagerPreservesNativePackageAndLineage(t *testing.T) {
 	workspace := createFlowWorkspace(t)
 	content := []byte("native\x00tflx")
 	result, err := NewFlowManager(func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) }).Pull(context.Background(), FlowPull{
-		Workspace: workspace, Filename: "Daily.tflx", PayloadPath: payloadFile(t, content),
+		Workspace: workspace, Filename: "Daily.tflx", PayloadPath: PayloadFile(t, content),
 		Metadata: FlowMetadata{Name: "Daily", TableauID: "f-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "dev", SourceSite: "sandbox", SourceProjectName: "Department/Ops", SourceProjectID: "p-1", FileType: "tflx"},
 		Lineage:  LineageDocument{Complete: true, Direction: "both", Depth: 1, Nodes: []LineageNode{{MetadataID: "m-1", Kind: "flow", RESTLUID: "f-1"}}},
 	})
@@ -41,7 +41,7 @@ func TestFlowManagerPreservesNativePackageAndLineage(t *testing.T) {
 func TestFlowManagerProtectsDirtyNativePackage(t *testing.T) {
 	workspace := createFlowWorkspace(t)
 	manager := NewFlowManager(time.Now)
-	input := FlowPull{Workspace: workspace, Filename: "Daily.tfl", PayloadPath: payloadFile(t, []byte("v1")), Metadata: validFlowMetadata(), Lineage: LineageDocument{Complete: true, Direction: "both", Depth: 1}}
+	input := FlowPull{Workspace: workspace, Filename: "Daily.tfl", PayloadPath: PayloadFile(t, []byte("v1")), Metadata: validFlowMetadata(), Lineage: LineageDocument{Complete: true, Direction: "both", Depth: 1}}
 	first, err := manager.Pull(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -49,14 +49,14 @@ func TestFlowManagerProtectsDirtyNativePackage(t *testing.T) {
 	if err := os.WriteFile(first.CanonicalPath, []byte("local edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	input.PayloadPath = payloadFile(t, []byte("v2"))
+	input.PayloadPath = PayloadFile(t, []byte("v2"))
 	if _, err := manager.Pull(context.Background(), input); err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestFlowManagerRejectsUnsupportedExtensionAndOversizedLineage(t *testing.T) {
-	input := FlowPull{Workspace: createFlowWorkspace(t), Filename: "Daily.zip", PayloadPath: payloadFile(t, []byte("native")), Metadata: validFlowMetadata(), Lineage: LineageDocument{Complete: true, Direction: "both", Depth: 1}}
+	input := FlowPull{Workspace: createFlowWorkspace(t), Filename: "Daily.zip", PayloadPath: PayloadFile(t, []byte("native")), Metadata: validFlowMetadata(), Lineage: LineageDocument{Complete: true, Direction: "both", Depth: 1}}
 	if _, err := NewFlowManager(time.Now).Pull(context.Background(), input); err == nil {
 		t.Fatal("expected extension error")
 	}

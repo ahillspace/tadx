@@ -33,21 +33,13 @@ func streamingDatasourceServer(t *testing.T, packages map[string]string) http.Ha
 				http.Error(writer, "unexpected datasource", http.StatusNotFound)
 				return
 			}
-			writer.Header().Set("Content-Disposition", fmt.Sprintf(`name="tableau_datasource"; filename="%s.tdsx"`, luid))
 			if source == "" {
+				writer.Header().Set("Content-Disposition", fmt.Sprintf(`name="tableau_datasource"; filename="%s.tdsx"`, luid))
 				writer.Header().Set("Content-Length", "1048576")
 				_, _ = io.WriteString(writer, "partial package")
 				return
 			}
-			file, err := os.Open(source)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			defer file.Close()
-			info, _ := file.Stat()
-			writer.Header().Set("Content-Length", fmt.Sprint(info.Size()))
-			_, _ = io.Copy(writer, file)
+			servePackage(t, writer, source, luid+".tdsx")
 		case strings.Contains(path, "/datasources/"):
 			luid := filepath.Base(path)
 			_, _ = fmt.Fprintf(writer, `<tsResponse><datasource id="%s" name="Sales %s"><project id="project-1" name="Analytics"/></datasource></tsResponse>`, luid, luid)
@@ -60,19 +52,26 @@ func streamingDatasourceServer(t *testing.T, packages map[string]string) http.Ha
 // datasourcePackage writes a .tdsx whose stored extract makes it extractBytes
 // larger than its definition, and returns its path and size.
 func datasourcePackage(t *testing.T, extractBytes int64) (string, int64) {
+	return contentPackage(t, "source.tdsx", "Sales.tds", `<datasource><connection class="hyper"/></datasource>`, "Data/Extracts/sales.hyper", extractBytes)
+}
+
+// contentPackage writes a native package holding definition under
+// definitionName and a stored member of extractBytes, and returns its path and
+// size.
+func contentPackage(t *testing.T, filename, definitionName, definition, storedName string, extractBytes int64) (string, int64) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "source.tdsx")
+	path := filepath.Join(t.TempDir(), filename)
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	archive := zip.NewWriter(file)
-	definition, err := archive.Create("Sales.tds")
+	member, err := archive.Create(definitionName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = io.WriteString(definition, `<datasource><connection class="hyper"/></datasource>`)
-	extract, err := archive.CreateHeader(&zip.FileHeader{Name: "Data/Extracts/sales.hyper", Method: zip.Store})
+	_, _ = io.WriteString(member, definition)
+	extract, err := archive.CreateHeader(&zip.FileHeader{Name: storedName, Method: zip.Store})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +94,36 @@ func datasourcePackage(t *testing.T, extractBytes int64) (string, int64) {
 		t.Fatal(err)
 	}
 	return path, info.Size()
+}
+
+// servePackage streams the file at source as a content download named filename.
+func servePackage(t *testing.T, writer http.ResponseWriter, source, filename string) {
+	t.Helper()
+	file, err := os.Open(source)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer file.Close()
+	info, _ := file.Stat()
+	writer.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	writer.Header().Set("Content-Length", fmt.Sprint(info.Size()))
+	_, _ = io.Copy(writer, file)
+}
+
+// payloadSize returns the size of the one payload named filename in the
+// artifacts of kind.
+func payloadSize(t *testing.T, workspace, kind, filename string) int64 {
+	t.Helper()
+	matches, _ := filepath.Glob(filepath.Join(workspace, "artifacts", kind, "*", filename))
+	if len(matches) != 1 {
+		t.Fatalf("%s payloads named %s = %v", kind, filename, matches)
+	}
+	info, err := os.Stat(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Size()
 }
 
 func pulledPayloadSizes(t *testing.T, workspace string) map[string]int64 {
@@ -127,7 +156,7 @@ func assertNoDownloadStaging(t *testing.T, workspace string) {
 }
 
 func TestDatasourcePullStreamsContentLargerThanTheBufferedResponseLimit(t *testing.T) {
-	source, size := datasourcePackage(t, 256*1024*1024+1)
+	source, size := datasourcePackage(t, largeDownloadBytes)
 	server := tableauFixtureServer(t, streamingDatasourceServer(t, map[string]string{"ds-1": source}))
 	defer server.Close()
 	options := cacheResilienceOptions(t, server)
@@ -159,6 +188,82 @@ func TestDatasourceBatchPullStreamsEachItemAndDiscardsAFailedDownload(t *testing
 	sizes := pulledPayloadSizes(t, workspace)
 	if len(sizes) != 2 || sizes["ds-1"] != firstSize || sizes["ds-2"] != secondSize {
 		t.Fatalf("pulled payload sizes = %v", sizes)
+	}
+	assertNoDownloadStaging(t, workspace)
+}
+
+const largeDownloadBytes = 256*1024*1024 + 1
+
+func TestWorkbookPullWithPublishedDatasourcesStreamsEachPackage(t *testing.T) {
+	workbook, workbookSize := contentPackage(t, "source.twbx", "Bound Book.twb", boundWorkbook, "Data/Extracts/book.hyper", largeDownloadBytes)
+	datasource, datasourceSize := datasourcePackage(t, largeDownloadBytes)
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		switch request.URL.Path {
+		case "/api/3.29/auth/signin":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case "/api/3.29/sites/site-1/workbooks/wb-bound":
+			_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-bound" name="Bound Book"><project id="project-1" name="Analytics"/><owner id="user-1"/></workbook></tsResponse>`)
+		case "/api/3.29/sites/site-1/projects":
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`)
+		case "/api/3.29/sites/site-1/workbooks/wb-bound/content":
+			servePackage(t, writer, workbook, "Bound Book.twbx")
+		case "/api/3.29/sites/site-1/datasources":
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="1"/><datasources><datasource id="ds-1" name="Sales" contentUrl="Sales"><project id="project-1" name="Analytics"/></datasource></datasources></tsResponse>`)
+		case "/api/3.29/sites/site-1/datasources/ds-1":
+			_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-1" name="Sales"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
+		case "/api/3.29/sites/site-1/datasources/ds-1/content":
+			servePackage(t, writer, datasource, "Sales.tdsx")
+		default:
+			http.Error(writer, "metadata unavailable", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	options := cacheResilienceOptions(t, server)
+	workspace := createNamedWorkspace(t, options.ConfigPath, "work")
+
+	var output strings.Builder
+	if exit := app.Run(context.Background(), []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "work", "--id", "wb-bound", "--include-pds"}, &output, options); exit != 0 {
+		t.Fatalf("exit=%d output=%s", exit, output.String())
+	}
+	if size := payloadSize(t, workspace, "workbook", "Bound Book.twbx"); size != workbookSize {
+		t.Fatalf("workbook payload = %d bytes, want %d", size, workbookSize)
+	}
+	if size := payloadSize(t, workspace, "datasource", "Sales.tdsx"); size != datasourceSize {
+		t.Fatalf("datasource payload = %d bytes, want %d", size, datasourceSize)
+	}
+	assertNoDownloadStaging(t, workspace)
+}
+
+func TestFlowPullStreamsContentLargerThanTheBufferedResponseLimit(t *testing.T) {
+	flow, flowSize := contentPackage(t, "source.tflx", "flow", `{"nodes":{}}`, "Data/input.hyper", largeDownloadBytes)
+	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		switch request.URL.Path {
+		case "/api/3.29/auth/signin":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case "/api/3.29/sites/site-1/flows/flow-1":
+			_, _ = io.WriteString(writer, `<tsResponse><flow id="flow-1" name="Daily Prep" fileType="tflx"><project id="project-1" name="Analytics"/><owner id="user-1"/></flow></tsResponse>`)
+		case "/api/3.29/sites/site-1/projects":
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`)
+		case "/api/3.29/sites/site-1/flows/flow-1/content":
+			servePackage(t, writer, flow, "Daily Prep.tflx")
+		default:
+			http.Error(writer, "metadata unavailable", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	options := cacheResilienceOptions(t, server)
+	workspace := createNamedWorkspace(t, options.ConfigPath, "work")
+
+	var output strings.Builder
+	if exit := app.Run(context.Background(), []string{"content", "flow", "pull", "--environment", "production", "--workspace", "work", "--id", "flow-1"}, &output, options); exit != 0 {
+		t.Fatalf("exit=%d output=%s", exit, output.String())
+	}
+	if size := payloadSize(t, workspace, "flow", "Daily Prep.tflx"); size != flowSize {
+		t.Fatalf("flow payload = %d bytes, want %d", size, flowSize)
 	}
 	assertNoDownloadStaging(t, workspace)
 }

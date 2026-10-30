@@ -952,6 +952,9 @@ func writeFileSync(path string, data []byte, perm os.FileMode) error {
 func stagePayload(staging, filename, payloadPath string, operations directoryOperations) error {
 	operations = operations.withDefaults()
 	if err := operations.rename(payloadPath, filepath.Join(staging, filename)); err != nil {
+		if fsreplace.CrossDevice(err) {
+			return fmt.Errorf("move downloaded %s into artifact staging: the workspace's .tadx and artifacts directories are on different filesystems; keep both on one filesystem: %w", filename, err)
+		}
 		return fmt.Errorf("move downloaded %s into artifact staging: %w", filename, err)
 	}
 	return nil

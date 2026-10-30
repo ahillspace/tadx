@@ -259,7 +259,7 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 	workspace := createNamedWorkspace(t, configPath, "authentication")
-	pulled, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("<workbook/>")), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: server.URL, SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
+	pulled, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: app.PayloadFile(t, []byte("<workbook/>")), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: server.URL, SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
 	if err != nil {
 		t.Fatal(err)
 	}

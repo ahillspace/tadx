@@ -109,7 +109,7 @@ func TestMultipleEnvironmentsRejectOmittedTargetDespiteDefaultAndArtifactSource(
 	t.Setenv("MULTI_TARGET_PAT_NAME", "fixture-pat")
 	t.Setenv("MULTI_TARGET_PAT_SECRET", "fixture-secret")
 	workspace := createNamedWorkspace(t, configPath, "source-artifacts")
-	stored, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Source.twb", PayloadPath: payloadFile(t, []byte("<workbook/>")), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Source", TableauID: "source-workbook", SourceServerOrigin: server.URL, SourceSiteLUID: "source-site-id", SourceEnvironment: "one", SourceSite: "source-site", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
+	stored, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Source.twb", PayloadPath: app.PayloadFile(t, []byte("<workbook/>")), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Source", TableauID: "source-workbook", SourceServerOrigin: server.URL, SourceSiteLUID: "source-site-id", SourceEnvironment: "one", SourceSite: "source-site", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -72,7 +72,7 @@ func TestWorkbookBundleClassifiesAcquiredDatasourceForRepublish(t *testing.T) {
 	input.Workbook.Metadata.PublishedDatasources = input.Workbook.Metadata.PublishedDatasources[:1]
 	input.Datasources = input.Datasources[:1]
 	input.Datasources[0].Filename = "Sales.tds"
-	input.Datasources[0].PayloadPath = payloadFile(t, []byte(`<datasource><connection class="sqlserver"/></datasource>`))
+	input.Datasources[0].PayloadPath = PayloadFile(t, []byte(`<datasource><connection class="sqlserver"/></datasource>`))
 
 	result, err := NewWorkbookBundleManager(time.Now).Pull(context.Background(), input)
 	if err != nil {
@@ -322,10 +322,10 @@ func validWorkbookBundle(t testing.TB, workspace, version string) WorkbookBundle
 	}
 	datasource := func(name, luid string) DatasourcePull {
 		metadata := validDatasourceMetadata(name, luid)
-		return DatasourcePull{Workspace: workspace, Filename: name + ".tdsx", PayloadPath: payloadFile(t, []byte("datasource-"+strings.TrimPrefix(luid, "ds-")+"-"+version)), Metadata: metadata}
+		return DatasourcePull{Workspace: workspace, Filename: name + ".tdsx", PayloadPath: PayloadFile(t, []byte("datasource-"+strings.TrimPrefix(luid, "ds-")+"-"+version)), Metadata: metadata}
 	}
 	return WorkbookBundlePull{
-		Workbook:    WorkbookPull{Workspace: workspace, Filename: "Finance.twbx", PayloadPath: payloadFile(t, []byte("workbook-"+version)), Metadata: workbookMetadata},
+		Workbook:    WorkbookPull{Workspace: workspace, Filename: "Finance.twbx", PayloadPath: PayloadFile(t, []byte("workbook-"+version)), Metadata: workbookMetadata},
 		Datasources: []DatasourcePull{datasource("Sales", "ds-1"), datasource("Inventory", "ds-2")},
 	}
 }

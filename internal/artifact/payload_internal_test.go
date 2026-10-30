@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// payloadFile writes content as a downloaded payload, the way a pull hands
+// PayloadFile writes content as a downloaded payload, the way a pull hands
 // one to the artifact layer, and returns its path.
-func payloadFile(t testing.TB, content []byte) string {
+func PayloadFile(t testing.TB, content []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "payload")
 	if err := os.WriteFile(path, content, 0o600); err != nil {

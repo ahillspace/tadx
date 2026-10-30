@@ -118,7 +118,7 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedOutcomesUnderOneOperation(
 		if _, err := manager.Pull(t.Context(), artifact.WorkbookPull{
 			Workspace:   workspace,
 			Filename:    item.name + ".twb",
-			PayloadPath: payloadFile(t, []byte("<workbook/>")),
+			PayloadPath: PayloadFile(t, []byte("<workbook/>")),
 			Metadata: artifact.WorkbookMetadata{
 				Kind: "workbook", Name: item.name, TableauID: item.id,
 				SourceServerOrigin: server.URL, SourceSiteLUID: "site-1",

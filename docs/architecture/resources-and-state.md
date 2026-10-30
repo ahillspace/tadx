@@ -95,9 +95,10 @@ Without explicit dependency acquisition, failed parent discovery leaves portabil
 With `--include-pds`, incomplete discovery or a failed dependency download fails the explicit acquisition request.
 Acquiring published datasources does not rewrite workbook references or prove cross-site publication readiness.
 
-Pull services stream each download into a private directory under the workspace's `.tadx/tmp`, created by [`DownloadDir`](../../internal/workspace/download.go) on the first download, so previews leave the workspace unchanged.
+Pull services stream each download into a private directory under the workspace's `.tadx/tmp`, created by [`workspace.Downloads`](../../internal/workspace/download.go) on the first download, so previews leave the workspace unchanged.
 The artifact managers install a payload by renaming it from there, which keeps package size off the heap and the workspace lock off the network.
 The command removes the directory when it ends, including any failed or partial download; `tadx workspace clean --class temporary` removes one left by an interrupted process.
+A command staging downloads holds the shared `.tadx/tmp.lock`, and temporary cleanup takes it exclusively, so cleanup refuses with retryable advice instead of removing a download in progress.
 
 [`WorkbookManager.Pull`](../../internal/artifact/workbook.go) matches existing local content by server origin, site LUID, and workbook LUID.
 It protects local edits with the saved baseline fingerprint and requires overwrite before replacing dirty native bytes.

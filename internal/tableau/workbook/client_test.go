@@ -969,10 +969,14 @@ func TestClientDecodesAndValidatesWorkbookDownloadFilename(t *testing.T) {
 			defer server.Close()
 
 			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			download, err := client.Download(context.Background(), "wb-1", nil, io.Discard)
+			var destination bytes.Buffer
+			download, err := client.Download(context.Background(), "wb-1", nil, &destination)
 			if test.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 					t.Fatalf("error = %v, want substring %q", err, test.wantErr)
+				}
+				if destination.Len() != 0 {
+					t.Fatalf("a rejected download wrote %q", destination.String())
 				}
 				return
 			}

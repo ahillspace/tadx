@@ -10,7 +10,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -204,23 +203,17 @@ func (c *Client) Download(ctx context.Context, datasourceLUID string, includeExt
 	if includeExtract != nil {
 		query.Set("includeExtract", strconv.FormatBool(*includeExtract))
 	}
+	var filename string
 	response, err := c.transport.Do(ctx, c.session, tableau.Request{
 		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("datasources", datasourceLUID, "content"), Query: query,
-		Accept: "application/xml", Operation: "datasource.pull", MaxResponseBytes: maxListResponseBytes, ResponseBody: destination,
+		Accept: "application/xml", Operation: "datasource.pull", OpenResponseBody: func(response tableau.Response) (io.Writer, error) {
+			var err error
+			filename, err = tableau.DownloadFilename("datasource.pull", "datasource", response, ".tds", ".tdsx")
+			return destination, err
+		},
 	})
 	if err != nil {
 		return Download{}, err
-	}
-	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
-	if filename == "" {
-		return Download{}, tableau.NewProtocolError("datasource.pull", response, errors.New("datasource download response omitted filename"), true)
-	}
-	if !tableau.ValidFilename(filename) {
-		return Download{}, tableau.NewProtocolError("datasource.pull", response, fmt.Errorf("datasource download returned invalid filename %q", filename), true)
-	}
-	extension := strings.ToLower(filepath.Ext(filename))
-	if extension != ".tds" && extension != ".tdsx" {
-		return Download{}, tableau.NewProtocolError("datasource.pull", response, fmt.Errorf("datasource download returned unsupported filename %q", filename), true)
 	}
 	return Download{
 		Filename:         filename,

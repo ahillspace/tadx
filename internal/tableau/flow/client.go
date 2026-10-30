@@ -137,23 +137,17 @@ func (c *RESTClient) Download(ctx context.Context, flowLUID string, destination 
 	if err := c.validate(); err != nil {
 		return Download{}, err
 	}
+	var filename string
 	response, err := c.transport.Do(ctx, c.session, tableau.Request{
 		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("flows", flowLUID, "content"),
-		Accept: "application/xml", Operation: "flow.pull", MaxResponseBytes: metadataResponseLimit, ResponseBody: destination,
+		Accept: "application/xml", Operation: "flow.pull", OpenResponseBody: func(response tableau.Response) (io.Writer, error) {
+			var err error
+			filename, err = tableau.DownloadFilename("flow.pull", "flow", response, ".tfl", ".tflx")
+			return destination, err
+		},
 	})
 	if err != nil {
 		return Download{}, err
-	}
-	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
-	if filename == "" {
-		return Download{}, tableau.NewProtocolError("flow.pull", response, errors.New("flow download response omitted filename"), true)
-	}
-	if !tableau.ValidFilename(filename) {
-		return Download{}, tableau.NewProtocolError("flow.pull", response, fmt.Errorf("flow download returned invalid filename %q", filename), true)
-	}
-	extension := strings.ToLower(filepath.Ext(filename))
-	if extension != ".tfl" && extension != ".tflx" {
-		return Download{}, tableau.NewProtocolError("flow.pull", response, fmt.Errorf("flow download returned unsupported filename %q", filename), true)
 	}
 	return Download{Filename: filename, TableauRequestID: response.TableauRequestID}, nil
 }

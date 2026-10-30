@@ -15,6 +15,7 @@ import (
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func (c *remoteContentCommands) PullDatasource(ctx context.Context, input datasourceops.PullInput) (datasourceops.PullOutput, error) {
@@ -38,7 +39,7 @@ func (c *remoteContentCommands) PullDatasource(ctx context.Context, input dataso
 		return datasourceops.PullOutput{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
 	}
 
-	downloads := newDownloadStaging(input.Workspace)
+	downloads := workspacecore.NewDownloads(input.Workspace)
 	defer downloads.Close()
 	reader := datasourcePullReader{datasources: connection.datasources, lineage: connection.lineage, downloads: downloads}
 	return datasourceops.Pull(ctx, reader, datasourceArtifactWriter{artifact.NewDatasourceManager(c.runtime.now)}, input)
@@ -116,7 +117,7 @@ func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input data
 type datasourcePullReader struct {
 	datasources *resourcedatasource.Adapter
 	lineage     *resourcelineage.Adapter
-	downloads   *downloadStaging
+	downloads   *workspacecore.Downloads
 }
 
 func (r datasourcePullReader) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceops.Record, error) {
@@ -126,7 +127,7 @@ func (r datasourcePullReader) ResolveDatasource(ctx context.Context, selector id
 func (r datasourcePullReader) DownloadDatasource(ctx context.Context, luid string) (datasourceops.Download, error) {
 	progress.SetLabel(ctx, "Downloading datasource")
 	var item resourcedatasource.Download
-	path, err := r.downloads.file(func(destination io.Writer) (err error) {
+	path, err := r.downloads.File(ctx, func(destination io.Writer) (err error) {
 		item, err = r.datasources.DownloadDatasource(ctx, luid, destination)
 		return err
 	})

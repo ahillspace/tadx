@@ -20,6 +20,54 @@ func (w *countingWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
+func streamTo(destination io.Writer) func(Response) (io.Writer, error) {
+	return func(Response) (io.Writer, error) { return destination, nil }
+}
+
+func TestTransportStreamedRequestRejectedFromHeadersWritesNothing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Disposition", `attachment; filename="../escape.tdsx"`)
+		_, _ = io.WriteString(writer, "package bytes")
+	}))
+	defer server.Close()
+
+	rejected := errors.New("unsafe filename")
+	var destination bytes.Buffer
+	var seen string
+	_, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull",
+		OpenResponseBody: func(response Response) (io.Writer, error) {
+			seen = response.Header.Get("Content-Disposition")
+			return &destination, rejected
+		},
+	})
+	if !errors.Is(err, rejected) || seen != `attachment; filename="../escape.tdsx"` {
+		t.Fatalf("error = %v, header seen = %q", err, seen)
+	}
+	if destination.Len() != 0 {
+		t.Fatalf("a rejected download wrote %q", destination.String())
+	}
+}
+
+func TestTransportStreamedRequestBoundsTheErrorBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, _ = writer.Write(make([]byte, maxStreamedErrorBytes+1))
+	}))
+	defer server.Close()
+
+	_, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull",
+		MaxResponseBytes: defaultMaxResponseBytes, OpenResponseBody: func(Response) (io.Writer, error) {
+			t.Error("an error response opened the destination")
+			return io.Discard, nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "body exceeded 4194304-byte limit") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestTransportStreamsASuccessfulBodyLargerThanTheBufferedLimitWithoutHoldingIt(t *testing.T) {
 	const size = defaultMaxResponseBytes + 32*1024*1024
 	chunk := make([]byte, 1024*1024)
@@ -39,7 +87,7 @@ func TestTransportStreamsASuccessfulBodyLargerThanTheBufferedLimitWithoutHolding
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 	response, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), nil, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull", ResponseBody: destination,
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull", OpenResponseBody: streamTo(destination),
 	})
 	runtime.ReadMemStats(&after)
 	if err != nil {
@@ -66,7 +114,7 @@ func TestTransportStreamedRequestReturnsUpstreamErrorsWithoutWriting(t *testing.
 
 	var destination bytes.Buffer
 	_, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), nil, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull", ResponseBody: &destination,
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull", OpenResponseBody: streamTo(&destination),
 	})
 	upstream, ok := errors.AsType[*UpstreamError](err)
 	if !ok || upstream.StatusCode != http.StatusNotFound || upstream.Code != "404004" {
@@ -82,7 +130,7 @@ func TestTransportStreamedRequestRenewsARejectedSessionAndWritesOneBody(t *testi
 	session := newRenewingSession()
 	var destination bytes.Buffer
 	_, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), session, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/api/3.29/sites/site-luid/datasources/ds/content", Operation: "datasource.pull", ResponseBody: &destination,
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/api/3.29/sites/site-luid/datasources/ds/content", Operation: "datasource.pull", OpenResponseBody: streamTo(&destination),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +155,7 @@ func TestTransportStreamedRequestReportsAStalledBody(t *testing.T) {
 	transport.SetStallTimeout(50 * time.Millisecond)
 	var destination bytes.Buffer
 	_, err := transport.Do(t.Context(), nil, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "workbook.pull", ResponseBody: &destination,
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "workbook.pull", OpenResponseBody: streamTo(&destination),
 	})
 	if err == nil || !strings.Contains(err.Error(), "read Tableau workbook.pull response: no response body progress for 50ms") {
 		t.Fatalf("error = %v", err)
@@ -134,7 +182,7 @@ func TestTransportStreamedRequestReportsADisconnectedBody(t *testing.T) {
 
 	var destination bytes.Buffer
 	_, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), nil, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "flow.pull", ResponseBody: &destination,
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "flow.pull", OpenResponseBody: streamTo(&destination),
 	})
 	if _, ok := errors.AsType[*responseReadError](err); !ok || !strings.Contains(err.Error(), "read Tableau flow.pull response") {
 		t.Fatalf("error = %v", err)
@@ -152,7 +200,7 @@ func TestTransportStreamedRequestReportsADestinationFailureAsNotRetryable(t *tes
 	defer server.Close()
 
 	_, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), nil, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull", ResponseBody: failingWriter{},
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "datasource.pull", OpenResponseBody: streamTo(failingWriter{}),
 	})
 	if err == nil || err.Error() != "write Tableau datasource.pull response: no space left on device" {
 		t.Fatalf("error = %v", err)

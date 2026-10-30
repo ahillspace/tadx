@@ -27,6 +27,12 @@ func Rename(from, to string) error {
 	return retrySharing(func() error { return os.Rename(from, to) })
 }
 
+// CrossDevice reports whether err is a rename that failed because its paths
+// are on different volumes.
+func CrossDevice(err error) bool {
+	return errors.Is(err, windows.ERROR_NOT_SAME_DEVICE)
+}
+
 // RenameIn renames from to to within root, with the same bounded retry as
 // Rename, for writers that confine every path to an opened directory.
 func RenameIn(root *os.Root, from, to string) error {

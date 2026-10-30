@@ -572,7 +572,9 @@ func localImportAllowed(file, imported string) bool {
 		}
 		if hasPathPrefix(file, "internal/workspace") {
 			// Workspace recovery quotes local selectors with the same leaf helper.
-			return matchesExact(imported, "internal/config", "internal/commandhint", "internal/fsreplace")
+			// Download staging and temporary cleanup share the leaf lock package,
+			// so cleanup never removes a download another process is writing.
+			return matchesExact(imported, "internal/config", "internal/commandhint", "internal/fsreplace", "internal/lock")
 		}
 		// The artifact manager owns the workspace mutation critical section and
 		// serializes it against other tadx processes via the leaf lock package. It

@@ -14,7 +14,7 @@ func TestPublishArtifactExactNameAndSourceID(t *testing.T) {
 	root := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
 	for _, id := range []string{"book-1", "book-2"} {
-		_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("<workbook/>")), Metadata: validMetadata("Finance", id)})
+		_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: artifact.PayloadFile(t, []byte("<workbook/>")), Metadata: validMetadata("Finance", id)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +43,7 @@ func TestAmbiguousArtifactSelectorReturnsBoundedCandidates(t *testing.T) {
 		metadata.SourceEnvironment = "environment-" + string(rune('a'+index))
 		metadata.SourceSite = "site-" + string(rune('a'+index))
 		metadata.SourceSiteLUID = "site-luid-" + string(rune('a'+index))
-		if _, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance-" + metadata.TableauID + ".twb", PayloadPath: payloadFile(t, []byte("<workbook/>")), Metadata: metadata}); err != nil {
+		if _, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: root, Filename: "Finance-" + metadata.TableauID + ".twb", PayloadPath: artifact.PayloadFile(t, []byte("<workbook/>")), Metadata: metadata}); err != nil {
 			t.Fatal(err)
 		}
 	}

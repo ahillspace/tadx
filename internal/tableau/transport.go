@@ -22,7 +22,10 @@ import (
 )
 
 const (
-	defaultMaxResponseBytes    = 256 * 1024 * 1024
+	defaultMaxResponseBytes = 256 * 1024 * 1024
+	// maxStreamedErrorBytes bounds the error body of a streamed request, which
+	// is buffered and decoded while a successful body streams without a limit.
+	maxStreamedErrorBytes      = 4 * 1024 * 1024
 	maxUpstreamDiagnosticBytes = 16 * 1024
 	// defaultStallTimeout bounds how long one request may go without progress:
 	// sending body bytes, receiving response headers, or reading body bytes. A
@@ -48,10 +51,12 @@ type Request struct {
 	ContentType string
 	// MaxResponseBytes bounds the buffered body. Zero uses the shared 256 MiB limit.
 	MaxResponseBytes int64
-	// ResponseBody receives a successful response body as it arrives instead
-	// of buffering it, so package downloads have no size limit. Error bodies
-	// are still buffered under MaxResponseBytes and decoded as UpstreamError.
-	ResponseBody io.Writer
+	// OpenResponseBody streams a successful response body instead of buffering
+	// it, so package downloads have no size limit. It receives the response
+	// headers before any body byte and returns the destination, or an error
+	// that ends the request without reading the body. Error bodies are buffered
+	// under a fixed small bound and decoded as UpstreamError.
+	OpenResponseBody func(Response) (io.Writer, error)
 }
 
 // Response is a fully read successful Tableau REST response.
@@ -366,6 +371,9 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 	if err != nil {
 		return Response{}, nil, err
 	}
+	if input.OpenResponseBody != nil {
+		maxResponseBytes = maxStreamedErrorBytes
+	}
 	base, err := url.Parse(strings.TrimRight(input.ServerURL, "/"))
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return Response{}, nil, fmt.Errorf("invalid Tableau server URL %q", input.ServerURL)
@@ -454,28 +462,31 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 		StatusCode: response.StatusCode, Header: response.Header.Clone(), TableauRequestID: requestID,
 		redact: func(value string) string { return sanitizeDiagnostic(value, redactionSecrets) },
 	}
+	readFailure := func(err error) error {
+		if stall := watchdog.expired(); stall != nil {
+			err = stall
+		}
+		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
+		return &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+	}
 	success := response.StatusCode >= 200 && response.StatusCode < 300
-	if success && input.ResponseBody != nil {
-		destination := &destinationWriter{Writer: input.ResponseBody}
+	if success && input.OpenResponseBody != nil {
+		writer, err := input.OpenResponseBody(result)
+		if err != nil {
+			return Response{}, request.Header, err
+		}
+		destination := &destinationWriter{Writer: writer}
 		if _, err := io.Copy(destination, progressBody{ReadCloser: response.Body, watchdog: watchdog}); err != nil {
 			if destination.err != nil {
 				return Response{}, request.Header, fmt.Errorf("write Tableau %s response: %w", input.Operation, destination.err)
 			}
-			if stall := watchdog.expired(); stall != nil {
-				err = stall
-			}
-			retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
-			return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+			return Response{}, request.Header, readFailure(err)
 		}
 		return result, request.Header, nil
 	}
 	body, err := io.ReadAll(io.LimitReader(progressBody{ReadCloser: response.Body, watchdog: watchdog}, maxResponseBytes+1))
 	if err != nil {
-		if stall := watchdog.expired(); stall != nil {
-			err = stall
-		}
-		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
-		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+		return Response{}, request.Header, readFailure(err)
 	}
 	if int64(len(body)) > maxResponseBytes {
 		return Response{}, request.Header, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Narrow the request with filters or paging; content downloads stream to disk without this limit."}
@@ -606,8 +617,6 @@ func (w *stallWatchdog) stop() {
 	}
 }
 
-// progressBody reports each successful read to the stall watchdog. Reaching the
-// end of a request body moves the watchdog to waiting for response headers.
 // destinationWriter records a failure writing a streamed response, so a full
 // disk is not reported as a Tableau read failure.
 type destinationWriter struct {
@@ -623,6 +632,8 @@ func (w *destinationWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
+// progressBody reports each successful read to the stall watchdog. Reaching the
+// end of a request body moves the watchdog to waiting for response headers.
 type progressBody struct {
 	io.ReadCloser
 	watchdog *stallWatchdog

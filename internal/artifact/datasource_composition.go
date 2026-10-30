@@ -91,13 +91,6 @@ func readDatasourceDefinition(filename string, source io.ReaderAt, size int64) d
 	return datasourceDefinition{CompositionStatus: CompositionStatusComposed, ParentDataSourceURLs: values, ContentURL: contentURL}
 }
 
-// readDatasourceContentURL reports the repository location recorded in one
-// datasource file, or empty when the file records none.
-func readDatasourceContentURL(path string) (string, error) {
-	definition, err := readDatasourceFile(path, path)
-	return definition.ContentURL, err
-}
-
 // readDatasourceFile reads the definition of the datasource file at path,
 // using filename to choose between TDS and TDSX handling.
 func readDatasourceFile(filename, path string) (datasourceDefinition, error) {

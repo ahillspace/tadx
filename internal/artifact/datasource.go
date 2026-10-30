@@ -318,7 +318,7 @@ func (m *DatasourceManager) Read(ctx context.Context, path string) (DatasourceAr
 	if err != nil {
 		return DatasourceArtifact{}, fmt.Errorf("fingerprint canonical datasource: %w", err)
 	}
-	contentURL, err := readDatasourceContentURL(canonical)
+	definition, err := readDatasourceFile(canonical, canonical)
 	if err != nil {
 		return DatasourceArtifact{}, fmt.Errorf("read canonical datasource definition: %w", err)
 	}
@@ -343,7 +343,7 @@ func (m *DatasourceManager) Read(ctx context.Context, path string) (DatasourceAr
 		SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID,
 		CompositionStatus:    metadata.CompositionStatus,
 		ParentDataSourceURLs: append([]string(nil), metadata.ParentDataSourceURLs...),
-		ContentURL:           contentURL,
+		ContentURL:           definition.ContentURL,
 		Lineage:              lineage,
 	}, nil
 }

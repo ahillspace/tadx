@@ -393,23 +393,17 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 	if includeExtract != nil {
 		query.Set("includeExtract", strconv.FormatBool(*includeExtract))
 	}
+	var filename string
 	response, err := c.transport.Do(ctx, c.session, tableau.Request{
 		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("workbooks", workbookLUID, "content"),
-		Query: query, Accept: "application/xml", Operation: "workbook.pull", MaxResponseBytes: metadataResponseLimit, ResponseBody: destination,
+		Query: query, Accept: "application/xml", Operation: "workbook.pull", OpenResponseBody: func(response tableau.Response) (io.Writer, error) {
+			var err error
+			filename, err = tableau.DownloadFilename("workbook.pull", "workbook", response, ".twb", ".twbx")
+			return destination, err
+		},
 	})
 	if err != nil {
 		return Download{}, err
-	}
-	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
-	if filename == "" {
-		return Download{}, tableau.NewProtocolError("workbook.pull", response, errors.New("workbook download response omitted filename"), true)
-	}
-	if !tableau.ValidFilename(filename) {
-		return Download{}, tableau.NewProtocolError("workbook.pull", response, fmt.Errorf("workbook download returned invalid filename %q", filename), true)
-	}
-	extension := strings.ToLower(filepath.Ext(filename))
-	if extension != ".twb" && extension != ".twbx" {
-		return Download{}, tableau.NewProtocolError("workbook.pull", response, fmt.Errorf("workbook download returned unsupported filename %q", filename), true)
 	}
 	return Download{Filename: filename, ContentType: response.Header.Get("Content-Type"), TableauRequestID: response.TableauRequestID}, nil
 }

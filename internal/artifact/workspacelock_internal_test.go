@@ -26,7 +26,7 @@ func TestPullStopsWaitingForHeldWorkspaceLockWhenCanceled(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := NewWorkbookManager(time.Now).Pull(ctx, WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: payloadFile(t, []byte("payload")), Metadata: WorkbookMetadata{
+		_, err := NewWorkbookManager(time.Now).Pull(ctx, WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: PayloadFile(t, []byte("payload")), Metadata: WorkbookMetadata{
 			Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceProjectName: "Ops", SourceProjectID: "project-1",
 		}})
 		done <- err
