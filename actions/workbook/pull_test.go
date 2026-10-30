@@ -593,3 +593,38 @@ func TestPullFullOutputBoundsDatasourceDetailsAndWarnings(t *testing.T) {
 		}
 	}
 }
+
+func TestPullWriteAdmissionOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		denied bool
+	}{{"denied", admissionDenied{}, true}, {"ordinary", errors.New("disk failure"), false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &pullReader{workbook: workbookops.Record{LUID: "wb-1", Name: "Finance"}, download: workbookops.Download{Filename: "Finance.twb", Path: "native"}}
+			_, err := workbookops.Pull(t.Context(), r, &pullWriter{err: tc.cause}, workbookops.PullInput{Environment: "dev", Site: "site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
+			if !errors.Is(err, tc.cause) {
+				t.Fatalf("cause lost: %v", err)
+			}
+			got := errs.Structure(err).Error
+			if got.ID != "workbook.pull.write" || got.Resource != "wb-1" {
+				t.Fatalf("context lost: %+v", got)
+			}
+			if tc.denied {
+				denied, ok := errors.AsType[interface {
+					error
+					NotAttempted() bool
+				}](err)
+				if !ok || !denied.NotAttempted() {
+					t.Fatalf("denial marker lost: %v", err)
+				}
+			}
+			if tc.denied && (!errors.Is(err, context.Canceled) || got.Phase != errs.PhaseSetup || got.Outcome != errs.OutcomeNotAttempted) {
+				t.Fatalf("denied: %+v", got)
+			}
+			if !tc.denied && (got.Phase != "" || got.Outcome != "") {
+				t.Fatalf("ordinary: %+v", got)
+			}
+		})
+	}
+}

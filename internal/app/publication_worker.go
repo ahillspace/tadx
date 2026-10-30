@@ -394,10 +394,10 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 	if len(record.Request.BatchData) > 0 {
 		// A private immutable snapshot avoids rereading a caller-edited batch file.
 		path := filepath.Join(store.Directory, id+".batch.json")
+		defer os.Remove(path)
 		if err := os.WriteFile(path, record.Request.BatchData, 0o600); err != nil {
 			return 1
 		}
-		defer os.Remove(path)
 		args = replacePublicationBatchPath(args, path)
 	}
 	return Run(ctx, args, io.Discard, options)

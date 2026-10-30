@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"reflect"
 	"strings"
@@ -194,5 +195,44 @@ func TestPullPullNormalizesTraversalWithinWorkspaceAndRejectsEscapes(t *testing.
 		if err == nil || !strings.Contains(err.Error(), "escaping") {
 			t.Fatalf("path %q: error = %v, want escaping rejection", escaping, err)
 		}
+	}
+}
+
+type pullFailWriter struct{ err error }
+
+func (w pullFailWriter) WriteDatasource(context.Context, datasourceops.PullArtifact) (datasourceops.PullArtifactResult, error) {
+	return datasourceops.PullArtifactResult{}, w.err
+}
+func TestPullWriteAdmissionOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		denied bool
+	}{{"denied", admissionDenied{}, true}, {"ordinary", errors.New("disk failure"), false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := datasourceops.Pull(t.Context(), &pullPullReader{}, pullFailWriter{tc.cause}, datasourceops.PullInput{Environment: "dev", Site: "site", Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+			if !errors.Is(err, tc.cause) {
+				t.Fatalf("cause lost: %v", err)
+			}
+			got := errs.Structure(err).Error
+			if got.ID != "datasource.pull.write" || got.Resource != "ds-1" {
+				t.Fatalf("context lost: %+v", got)
+			}
+			if tc.denied {
+				denied, ok := errors.AsType[interface {
+					error
+					NotAttempted() bool
+				}](err)
+				if !ok || !denied.NotAttempted() {
+					t.Fatalf("denial marker lost: %v", err)
+				}
+			}
+			if tc.denied && (!errors.Is(err, context.Canceled) || got.Phase != errs.PhaseSetup || got.Outcome != errs.OutcomeNotAttempted) {
+				t.Fatalf("denied: %+v", got)
+			}
+			if !tc.denied && (got.Phase != "" || got.Outcome != "") {
+				t.Fatalf("ordinary: %+v", got)
+			}
+		})
 	}
 }

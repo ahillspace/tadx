@@ -143,7 +143,14 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 	}
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve local artifact conflicts, then retry the complete workbook pull.")
-		return PullOutput{}, &errs.Error{ID: "workbook.pull.write", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact transaction failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: download.TableauRequestID}
+		failure := &errs.Error{ID: "workbook.pull.write", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact transaction failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: download.TableauRequestID}
+		if denied, ok := errors.AsType[interface {
+			error
+			NotAttempted() bool
+		}](err); ok && denied.NotAttempted() {
+			failure.Phase, failure.Outcome = errs.PhaseSetup, errs.OutcomeNotAttempted
+		}
+		return PullOutput{}, failure
 	}
 	dependencies := artifact.Dependencies
 	if dependenciesAcquired {
