@@ -64,6 +64,17 @@ func commandEnvironmentLookup(name string) (string, bool) {
 	return "", false
 }
 
+// heldPATLookup supplies credential as an environment PAT, which a command
+// holds until it suspends or closes.
+func heldPATLookup(credential auth.PATCredentials) auth.LookupEnv {
+	return auth.LookupEnvFunc(func(name string) (string, bool) {
+		if name == "PAT_NAME" {
+			return credential.Name, true
+		}
+		return credential.Secret, name == "PAT_SECRET"
+	})
+}
+
 func commandEnvironmentTarget() auth.Target {
 	target := commandTarget()
 	target.PATNameVariable, target.PATSecretVariable = "PAT_NAME", "PAT_SECRET"
@@ -105,7 +116,7 @@ func TestCommandSessionSuspendReusesSessionWhenEpochIsUnchanged(t *testing.T) {
 	if err := manager.Suspend(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	monitor, err := manager.AuthenticateMonitor(context.Background(), target, signer)
+	monitor, err := manager.Authenticate(context.Background(), target, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +146,7 @@ func TestCommandSessionMonitorSignsInAgainAfterSharedEpochChanges(t *testing.T) 
 	if err := secondManager.Suspend(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	monitor, err := firstManager.AuthenticateMonitor(context.Background(), target, signer)
+	monitor, err := firstManager.Authenticate(context.Background(), target, signer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,12 +246,12 @@ func TestCommandEnvironmentCredentialSnapshotSpansTargets(t *testing.T) {
 
 func TestCommandCredentialLockWaitIsCancelableAndDifferentPATIndependent(t *testing.T) {
 	directory := t.TempDir()
-	first := auth.NewCommandSessions(nil, nil, directory)
+	first := auth.NewCommandSessions(heldPATLookup(commandCredential()), nil, directory)
 	defer first.Close()
 	second := auth.NewCommandSessions(nil, nil, directory)
 	defer second.Close()
 	signer := &commandSigner{}
-	if _, err := first.AuthenticateCredentials(context.Background(), commandTarget(), commandCredential(), signer); err != nil {
+	if _, err := first.Authenticate(context.Background(), commandEnvironmentTarget(), signer); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
@@ -279,8 +290,8 @@ func TestCommandCredentialLockWaitIsCancelableAndDifferentPATIndependent(t *test
 			}
 			continue
 		}
-		identity := strings.TrimSuffix(strings.TrimSuffix(file.Name(), ".lock"), ".admission")
-		if len(identity) != 64 || !strings.HasSuffix(file.Name(), ".lock") || strings.Contains(file.Name(), "test-") {
+		identity := strings.TrimSuffix(strings.TrimSuffix(file.Name(), ".lock"), ".use")
+		if len(identity) != 64 || len(file.Name()) != 68 && len(file.Name()) != 69 || strings.Contains(file.Name(), "test-") {
 			t.Fatalf("nonopaque lock name=%q", file.Name())
 		}
 		info, err := file.Info()
@@ -295,9 +306,9 @@ func TestCommandCredentialLockWaitIsCancelableAndDifferentPATIndependent(t *test
 
 func TestCommandCredentialLockAcrossProcesses(t *testing.T) {
 	if os.Getenv("TADX_COMMAND_LOCK_HELPER") == "1" {
-		manager := auth.NewCommandSessions(nil, nil, os.Getenv("TADX_COMMAND_LOCK_DIRECTORY"))
+		manager := auth.NewCommandSessions(heldPATLookup(commandCredential()), nil, os.Getenv("TADX_COMMAND_LOCK_DIRECTORY"))
 		defer manager.Close()
-		if _, err := manager.AuthenticateCredentials(context.Background(), commandTarget(), commandCredential(), &commandSigner{}); err != nil {
+		if _, err := manager.Authenticate(context.Background(), commandEnvironmentTarget(), &commandSigner{}); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(os.Getenv("TADX_COMMAND_LOCK_READY"), nil, 0600); err != nil {
@@ -355,17 +366,14 @@ func TestCommandCredentialLockAcrossProcesses(t *testing.T) {
 
 func TestCommandAdditionalCredentialContentionDoesNotDeadlock(t *testing.T) {
 	directory := t.TempDir()
-	first, second := auth.NewCommandSessions(nil, nil, directory), auth.NewCommandSessions(nil, nil, directory)
-	defer first.Close()
-	defer second.Close()
 	a, b := commandCredential(), commandCredential()
 	b.Secret = "independent-secret"
+	first, second := auth.NewCommandSessions(heldPATLookup(a), nil, directory), auth.NewCommandSessions(heldPATLookup(b), nil, directory)
+	defer first.Close()
+	defer second.Close()
 	signer := &commandSigner{}
-	for _, item := range []struct {
-		manager    *auth.CommandSessions
-		credential auth.PATCredentials
-	}{{first, a}, {second, b}} {
-		if _, err := item.manager.AuthenticateCredentials(context.Background(), commandTarget(), item.credential, signer); err != nil {
+	for _, manager := range []*auth.CommandSessions{first, second} {
+		if _, err := manager.Authenticate(context.Background(), commandEnvironmentTarget(), signer); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ahillspace/tadx/internal/commitguard"
 )
 
 const (
@@ -253,6 +255,9 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (_ D
 		"view.md":       []byte(datasourceView(metadata)),
 	}
 	if err := writeStagedArtifact(staging, files, operations); err != nil {
+		return DatasourcePullResult{}, err
+	}
+	if _, err := commitguard.Admit(ctx); err != nil {
 		return DatasourcePullResult{}, err
 	}
 	replaceWarnings, err := replaceDatasourceDirectory(staging, target, operations)

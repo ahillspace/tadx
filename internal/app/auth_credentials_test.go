@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	authops "github.com/ahillspace/tadx/actions/auth"
@@ -14,6 +15,7 @@ import (
 )
 
 type fakePATStore struct {
+	mu        sync.Mutex
 	next      coreauth.CredentialReference
 	records   map[coreauth.CredentialReference]coreauth.PATCredentials
 	deleted   []coreauth.CredentialReference
@@ -22,6 +24,8 @@ type fakePATStore struct {
 }
 
 func (s *fakePATStore) StorePAT(_ context.Context, _ coreauth.CredentialTarget, name, secret string) (coreauth.CredentialReference, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.records == nil {
 		s.records = make(map[coreauth.CredentialReference]coreauth.PATCredentials)
 	}
@@ -30,6 +34,8 @@ func (s *fakePATStore) StorePAT(_ context.Context, _ coreauth.CredentialTarget, 
 }
 
 func (s *fakePATStore) ReplacePAT(_ context.Context, reference coreauth.CredentialReference, _ coreauth.CredentialTarget, name, secret string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.records == nil {
 		s.records = make(map[coreauth.CredentialReference]coreauth.PATCredentials)
 	}
@@ -39,6 +45,8 @@ func (s *fakePATStore) ReplacePAT(_ context.Context, reference coreauth.Credenti
 }
 
 func (s *fakePATStore) LoadPAT(_ context.Context, reference coreauth.CredentialReference, _ coreauth.CredentialTarget) (coreauth.PATCredentials, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	credential, ok := s.records[reference]
 	if !ok {
 		return coreauth.PATCredentials{}, &coreauth.CredentialStoreError{Kind: coreauth.CredentialStoreNotFound, Operation: "load"}
@@ -47,6 +55,8 @@ func (s *fakePATStore) LoadPAT(_ context.Context, reference coreauth.CredentialR
 }
 
 func (s *fakePATStore) DeletePAT(_ context.Context, reference coreauth.CredentialReference) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}
@@ -60,6 +70,8 @@ func (s *fakePATStore) DeletePAT(_ context.Context, reference coreauth.Credentia
 }
 
 func (s *fakePATStore) LoadSession(_ context.Context, reference coreauth.CredentialReference, _ coreauth.CredentialTarget) (coreauth.SavedSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	saved, ok := s.sessions[reference]
 	if !ok {
 		return coreauth.SavedSession{}, &coreauth.CredentialStoreError{Kind: coreauth.CredentialStoreNotFound, Operation: "session load"}
@@ -68,6 +80,8 @@ func (s *fakePATStore) LoadSession(_ context.Context, reference coreauth.Credent
 }
 
 func (s *fakePATStore) SaveSession(_ context.Context, reference coreauth.CredentialReference, _ coreauth.CredentialTarget, saved coreauth.SavedSession) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.sessions == nil {
 		s.sessions = make(map[coreauth.CredentialReference]coreauth.SavedSession)
 	}

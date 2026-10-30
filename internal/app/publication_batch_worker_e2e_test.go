@@ -293,7 +293,7 @@ func operationJSONFiles(t *testing.T, directory string) []string {
 	}
 	var files []string
 	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) == ".json" && strings.Contains(entry.Name(), "-") {
+		if filepath.Ext(entry.Name()) == ".json" && strings.Contains(entry.Name(), "-") && !strings.HasSuffix(entry.Name(), ".control.json") {
 			files = append(files, fmt.Sprintf("%s/%s", directory, entry.Name()))
 		}
 	}

@@ -143,6 +143,9 @@ func operationSnapshot(snapshot any, operation OperationView, full bool) any {
 	if _, ok := result["status"]; !ok && operation.Status != "" {
 		result["status"] = operation.Status
 	}
+	if operation.Cancellation != "" {
+		result["cancellation"] = operation.Cancellation
+	}
 	if operation.CheckStatus != "" {
 		if _, ok := result["check_status"]; !ok {
 			result["check_status"] = operation.CheckStatus

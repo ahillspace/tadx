@@ -121,7 +121,7 @@ func TestCommandSessionCrossSiteMonitorReauthenticatesAfterSharedPATSignIn(t *te
 		t.Fatal(err)
 	}
 
-	resumed, err := firstManager.AuthenticateMonitor(t.Context(), firstTarget, signer)
+	resumed, err := firstManager.Authenticate(t.Context(), firstTarget, signer)
 	if err != nil {
 		t.Fatal(err)
 	}

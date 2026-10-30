@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/auth"
+	"github.com/ahillspace/tadx/internal/commitguard"
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
@@ -289,6 +290,11 @@ type preparedPublish struct {
 func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	if p == nil || p.client == nil {
 		return PublishResult{}, errors.New("flow publish is not prepared")
+	}
+	ctx, err := commitguard.Admit(ctx)
+	if err != nil {
+		_ = p.snapshot.Close()
+		return PublishResult{}, err
 	}
 	if err := p.snapshot.Claim(); err != nil {
 		return PublishResult{}, fmt.Errorf("prepared flow publish: %w", err)

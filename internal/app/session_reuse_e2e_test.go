@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
@@ -24,10 +25,17 @@ type sessionTableau struct {
 	current string
 	lists   int
 	patName string
+	// beforeList, when set, runs before each list is answered, outside the
+	// lock; false fails the list as if Tableau were unavailable.
+	beforeList func() bool
 }
 
 func (s *sessionTableau) handler(t *testing.T) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if s.beforeList != nil && request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/users" && !s.beforeList() {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		switch {
@@ -163,5 +171,39 @@ func TestCommandAfterReplacingThePATSignsInWithTheNewPAT(t *testing.T) {
 	defer tableau.mu.Unlock()
 	if tableau.signIns != 3 || tableau.patName != "replacement-name" {
 		t.Fatalf("sign-ins = %d, last PAT %q; want the command after login to sign in with the replacement PAT", tableau.signIns, tableau.patName)
+	}
+}
+
+// TestParallelCommandsWithAStoredPATShareOneSession runs two separate commands
+// on one PAT store at the same time. Tableau answers neither list until both
+// are in flight, so a command holding the PAT for its whole run blocks the other.
+func TestParallelCommandsWithAStoredPATShareOneSession(t *testing.T) {
+	tableau := &sessionTableau{}
+	both := make(chan struct{})
+	var arrived sync.WaitGroup
+	arrived.Add(2)
+	go func() { arrived.Wait(); close(both) }()
+	tableau.beforeList = func() bool {
+		arrived.Done()
+		select {
+		case <-both:
+			return true
+		case <-time.After(10 * time.Second):
+			return false
+		}
+	}
+	options, _ := storedPATEnvironment(t, tableau)
+	var commands sync.WaitGroup
+	for range 2 {
+		commands.Go(func() {
+			var output bytes.Buffer
+			if code := Run(t.Context(), []string{"admin", "user", "list", "--environment", "dev"}, &output, options); code != 0 {
+				t.Errorf("parallel command exit = %d, output = %s", code, output.String())
+			}
+		})
+	}
+	commands.Wait()
+	if signIns, lists := tableau.counts(); signIns != 1 || lists != 2 {
+		t.Fatalf("sign-ins = %d, lists = %d; want both commands to share one sign-in", signIns, lists)
 	}
 }

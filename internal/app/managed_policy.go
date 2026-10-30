@@ -160,7 +160,7 @@ func bindManagedPolicy(root *cobra.Command, r *runtimeDependencies) {
 				if err := r.checkManagedCapability(id); err != nil {
 					return err
 				}
-				if definition, ok := capability.Lookup(id); ok && definition.RemoteMutation && r.managedPolicy != nil {
+				if definition, ok := capability.Lookup(id); ok && definition.RemoteMutation && r.managedPolicy != nil && !cli.LocalOperationCancellation(c) {
 					preview, _ := c.Flags().GetBool("preview")
 					if !preview {
 						if err := r.managedPolicy.CheckRemoteMutation(); err != nil {

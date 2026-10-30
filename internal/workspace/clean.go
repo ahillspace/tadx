@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/lock"
 )
 
@@ -51,7 +52,11 @@ func PreviewClean(ctx context.Context, root, class string) (CleanResult, error) 
 	return clean(ctx, root, class, true)
 }
 
-func clean(ctx context.Context, root, class string, preview bool) (CleanResult, error) {
+func clean(ctx context.Context, root, class string, preview bool) (_ CleanResult, err error) {
+	defer func() {
+		absolute, _ := filepath.Abs(root)
+		err = errs.WithWorkspaceRelativePaths(err, root, absolute)
+	}()
 	children, ok := cleanClasses[class]
 	if !ok {
 		return CleanResult{}, fmt.Errorf("unsupported workspace cleanup class %q", class)

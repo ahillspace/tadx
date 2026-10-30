@@ -101,6 +101,18 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 		view.Items = items
 		result.Warnings = append(result.Warnings, warnings...)
 	}
+	control, controlErr := store.ReadCancel(record.ID)
+	if controlErr != nil && !errors.Is(controlErr, operationrun.ErrCancelUnsupported) {
+		result.Warnings = append(result.Warnings, controlFailureMessage("read", controlErr))
+	} else if controlErr == nil && !control.RequestedAt.IsZero() {
+		result.Operation.Cancellation = "cancellation_requested"
+		if !control.AcknowledgedAt.IsZero() {
+			result.Operation.Cancellation = "cancellation_acknowledged"
+		}
+	}
+	if strings.HasPrefix(record.Activity, controlFailurePrefix) {
+		result.Warnings = append(result.Warnings, record.Activity)
+	}
 	return result, nil
 }
 

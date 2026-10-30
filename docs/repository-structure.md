@@ -105,8 +105,11 @@ Persisted artifact paths are relative to the workspace and use forward slashes.
 Workbook, datasource, and flow publish and pull can hand execution to a detached instance of the same binary.
 This is a per-operation worker, not a resident service.
 The default foreground wait ends at completion or the shared 20-minute invocation limit; `--no-wait` returns after durable handoff with one status command for the single operation or batch.
+Ctrl+C during the default wait requests local cancellation through the same control path as `tadx job cancel --operation-id`.
+Wait expiry ends observation, while an admitted publish or local installation retains its actual outcome after cancellation.
 Publication receipts retain synchronous publish results, job receipts retain accepted Tableau job identities, and download workers save native files and metadata without inventing remote job IDs.
 Local operation records live outside the source checkout and are inspected through `tadx job inspect --operation-id`.
+Versioned cancellation control remains separate from operation records so older decoders can still read saved outcomes.
 Active transfers can hold the shared PAT lease; returning the terminal does not promise concurrent remote access with that credential.
 
 ## Capability metadata and documentation

@@ -66,7 +66,7 @@ func readDatasourceDefinition(filename string, source io.ReaderAt, size int64) d
 
 func readDatasourceDefinitionContext(ctx context.Context, filename string, source io.ReaderAt, size int64) datasourceDefinition {
 	unknown := datasourceDefinition{CompositionStatus: CompositionStatusUnknown}
-	source = nativeDefinitionReaderAt{ctx: ctx, source: source}
+	source = contextReaderAt{ctx: ctx, source: source}
 	definition := io.Reader(io.NewSectionReader(source, 0, size))
 	if strings.EqualFold(filepath.Ext(filename), ".tdsx") {
 		reader, err := zip.NewReader(source, size)

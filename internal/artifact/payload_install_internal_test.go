@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ahillspace/tadx/internal/commitguard"
 )
 
 // downloadedPayload writes content where a pull stages a download, inside the
@@ -193,6 +195,80 @@ func TestDirtyRefusalLeavesTheDownloadedPayloadAndNoStaging(t *testing.T) {
 	}
 	if content, err := os.ReadFile(download); err != nil || string(content) != "workbook-v2" {
 		t.Fatalf("a refused pull consumed its download: %q, %v", content, err)
+	}
+	assertNoArtifactStaging(t, workspace)
+}
+
+func TestWorkbookPullDeniedAtInstallCleansStaging(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	input := standaloneWorkbook(t, workspace)
+	ctx := commitguard.WithAdmission(t.Context(), func(context.Context) error { return context.Canceled })
+	_, err := NewWorkbookManager(time.Now).Pull(ctx, input)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("pull error: %v", err)
+	}
+	assertNoArtifactStaging(t, workspace)
+	assertNoInstalledArtifacts(t, workspace)
+}
+
+func TestOtherPullsDeniedAtInstallCleanStaging(t *testing.T) {
+	tests := map[string]func(context.Context, *testing.T, string) error{
+		"flow": func(ctx context.Context, t *testing.T, workspace string) error {
+			_, err := NewFlowManager(time.Now).Pull(ctx, FlowPull{Workspace: workspace, Filename: "Daily.tfl", PayloadPath: PayloadFile(t, []byte("flow")), Metadata: validFlowMetadata(), Lineage: LineageDocument{Complete: true, Direction: "both", Depth: 1}})
+			return err
+		},
+		"datasource": func(ctx context.Context, t *testing.T, workspace string) error {
+			_, err := NewDatasourceManager(time.Now).Pull(ctx, DatasourcePull{Workspace: workspace, Filename: "Sales.tdsx", PayloadPath: PayloadFile(t, []byte("datasource")), Metadata: validDatasourceMetadata("Sales", "ds-1")})
+			return err
+		},
+		"bundle": func(ctx context.Context, t *testing.T, workspace string) error {
+			_, err := NewWorkbookBundleManager(time.Now).Pull(ctx, validWorkbookBundle(t, workspace, "v1"))
+			return err
+		},
+	}
+	for name, pull := range tests {
+		t.Run(name, func(t *testing.T) {
+			workspace := createDatasourceWorkspace(t)
+			called := false
+			ctx := commitguard.WithAdmission(t.Context(), func(context.Context) error { called = true; return context.Canceled })
+			err := pull(ctx, t, workspace)
+			if !called || !errors.Is(err, context.Canceled) {
+				t.Fatalf("admission called %v, error %v", called, err)
+			}
+			assertNoArtifactStaging(t, workspace)
+			assertNoInstalledArtifacts(t, workspace)
+		})
+	}
+}
+
+func assertNoInstalledArtifacts(t *testing.T, workspace string) {
+	t.Helper()
+	for _, kind := range []string{"workbook", "datasource", "flow"} {
+		entries, err := os.ReadDir(filepath.Join(workspace, "artifacts", kind))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Errorf("unexpected installed %s artifacts: %v", kind, entries)
+		}
+	}
+}
+
+func TestWorkbookPullCompletesAdmittedInstallAfterCancellation(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	input := standaloneWorkbook(t, workspace)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctx = commitguard.WithAdmission(ctx, func(context.Context) error { cancel(); return nil })
+	result, err := NewWorkbookManager(time.Now).Pull(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(result.CanonicalPath); err != nil {
+		t.Fatal(err)
 	}
 	assertNoArtifactStaging(t, workspace)
 }

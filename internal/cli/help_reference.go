@@ -463,6 +463,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"admin group-member remove": {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
 		"job inspect":               {"Use --operation-id for a saved operation, or repeat --id for exact Tableau jobs. Running submissions report local status; after submission, inspection checks each unfinished job once."},
 		"job wait":                  {"Use --receipt to recover an accepted job, or --id to observe an exact job. Waiting never resubmits work and stops after twenty minutes. Accepted work continues; use the returned status command to check it."},
+		"job cancel":                {"Choose --operation-id for a local transfer, or --id for a supported Tableau job. Local cancellation needs no Tableau sign-in or site consent; environment, site, and preview flags apply only to Tableau jobs.", "A cancellation request is not a completed cancellation. Local work stops where possible; a final publish submission or file installation that has started retains its actual outcome. Inspect the returned operation ID."},
 		"workspace artifact delete": {"Local files only. --force: delete dirty artifacts."},
 		"workspace artifact move":   {"Source/destination: registered workspaces; destination artifact must not exist."},
 		"agent install":             {"--target auto detects installed harnesses. Installs current TADX-owned skills globally; --force is compatibility-only."},

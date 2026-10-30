@@ -99,9 +99,9 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 		}
 		return notes
 	case "publish":
-		notes := []string{"Source: workspace ID/name/relative artifact, or native file (no workspace). Project: destination; name: source default."}
+		notes := []string{"Workspace ID/name/path or native file. Project: destination."}
 		if resource == "workbook" || resource == "flow" {
-			notes = []string{"Workspace ID/name, or --artifact: TADX-managed artifact directory; --file: standalone native file (no workspace). Project: destination; name: source default."}
+			notes = []string{"--artifact: TADX-managed artifact directory; --file: standalone native file (no workspace)."}
 		}
 		if resource == "datasource" {
 			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.", "Output: content_url; renamed_from if not the file's URL.")
@@ -141,13 +141,14 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 		}
 		return false
 	}
-	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Project paths: /.")
+	fmt.Fprintln(out, "  Exact selectors; ambiguity fails. Projects: /.")
 	if has("list") {
 		fmt.Fprintln(out, "  list --all: <=10000; incomplete/overflow fails. Cache: unfiltered replaces scope; filtered merges; cache failures retain live results.")
 		fmt.Fprintln(out, "  Bounded lists never cache.")
 	}
 	if has("publish") || has("pull") {
-		fmt.Fprintln(out, "  --no-wait: one single/batch status command; no polling. Wait: 20m; work continues.")
+		fmt.Fprintln(out, "  --no-wait: one single/batch status command. Wait: 20m; expiry leaves work running.")
+		fmt.Fprintln(out, "  Cancel: Ctrl+C or job cancel --operation-id <id>; stops where possible.")
 		if has("publish") {
 			fmt.Fprintln(out, "  Save accepted IDs; use returned status command. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")

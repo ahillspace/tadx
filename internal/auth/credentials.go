@@ -13,9 +13,11 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/lock"
 	keyring "github.com/zalando/go-keyring"
 )
 
@@ -222,8 +224,9 @@ func (osKeyring) Delete(service, account string) error {
 }
 
 type patStore struct {
-	backend keyringBackend
-	random  io.Reader
+	backend       keyringBackend
+	random        io.Reader
+	lockDirectory string
 }
 
 type patRecord struct {
@@ -235,11 +238,11 @@ type patRecord struct {
 
 // NewOSPATStore creates a PAT store backed only by the native OS credential service.
 func NewOSPATStore() PATStore {
-	return newPATStore(osKeyring{}, rand.Reader)
+	return newPATStore(osKeyring{}, rand.Reader, "")
 }
 
-func newPATStore(backend keyringBackend, random io.Reader) *patStore {
-	return &patStore{backend: backend, random: random}
+func newPATStore(backend keyringBackend, random io.Reader, directory string) *patStore {
+	return &patStore{backend: backend, random: random, lockDirectory: directory}
 }
 
 func (s *patStore) StorePAT(ctx context.Context, target CredentialTarget, name, secret string) (CredentialReference, error) {
@@ -264,6 +267,11 @@ func (s *patStore) StorePAT(ctx context.Context, target CredentialTarget, name, 
 // then removes its saved session. A session left behind by a failed removal
 // is never reused, because it belongs to the previous PAT's digest.
 func (s *patStore) ReplacePAT(ctx context.Context, reference CredentialReference, target CredentialTarget, name, secret string) error {
+	held, err := s.lockReference(ctx, reference, "replace")
+	if err != nil {
+		return err
+	}
+	defer held.Release()
 	if err := s.writePAT(ctx, "replace", reference, target, name, secret); err != nil {
 		return err
 	}
@@ -324,6 +332,11 @@ func (s *patStore) DeletePAT(ctx context.Context, reference CredentialReference)
 	if s == nil || s.backend == nil || !validCredentialReference(reference) {
 		return &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: "delete"}
 	}
+	held, err := s.lockReference(ctx, reference, "delete")
+	if err != nil {
+		return err
+	}
+	defer held.Release()
 	// Remove the session first so a failure leaves the PAT for a retry that
 	// can still find and remove both entries.
 	if err := s.backend.Delete(credentialService, sessionAccount(reference)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
@@ -357,6 +370,22 @@ func (s *patStore) SaveSession(ctx context.Context, reference CredentialReferenc
 	if err != nil {
 		return err
 	}
+	held, err := s.lockReference(ctx, reference, "session save")
+	if err != nil {
+		return err
+	}
+	defer held.Release()
+	credentials, err := s.LoadPAT(ctx, reference, target)
+	if err != nil {
+		return err
+	}
+	server, err := normalizeCredentialServerTarget(target.ServerURL)
+	if err != nil {
+		return &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: "session save"}
+	}
+	if subtle.ConstantTimeCompare([]byte(credentialIdentity(server, credentials)), []byte(saved.Credential)) != 1 {
+		return &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: "session save"}
+	}
 	record, err := json.Marshal(sessionRecord{Version: sessionRecordVersion, TargetFingerprint: fingerprint, Credential: saved.Credential, Epoch: saved.Epoch, Token: saved.Token, SiteLUID: saved.SiteLUID, UserLUID: saved.UserLUID})
 	if err != nil || len(record) > maxSessionRecordBytes {
 		return &CredentialStoreError{Kind: CredentialStoreTooLarge, Operation: "session save"}
@@ -365,6 +394,36 @@ func (s *patStore) SaveSession(ctx context.Context, reference CredentialReferenc
 		return classifyCredentialBackendError("session save", err)
 	}
 	return nil
+}
+
+// lockReference serializes mutations of a PAT and its session across processes.
+// It is never held while acquiring a PAT's lock.
+func (s *patStore) lockReference(ctx context.Context, reference CredentialReference, operation string) (*lock.Handle, error) {
+	if err := credentialContextError(ctx, operation); err != nil {
+		return nil, err
+	}
+	if s == nil || s.backend == nil || !validCredentialReference(reference) {
+		return nil, &CredentialStoreError{Kind: CredentialStoreInvalid, Operation: operation}
+	}
+	directory := s.lockDirectory
+	if directory == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			return nil, &CredentialStoreError{Kind: CredentialStoreUnavailable, Operation: operation}
+		}
+		directory = filepath.Join(cache, "tadx", "credential-locks")
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return nil, &CredentialStoreError{Kind: CredentialStoreUnavailable, Operation: operation}
+	}
+	held, err := lock.AcquireContext(ctx, filepath.Join(directory, string(reference)+".reference.lock"))
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, &CredentialStoreError{Kind: CredentialStoreCanceled, Operation: operation}
+		}
+		return nil, &CredentialStoreError{Kind: CredentialStoreUnavailable, Operation: operation}
+	}
+	return held, nil
 }
 
 // LoadSession returns the saved session for one stored PAT and exact target.

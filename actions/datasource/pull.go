@@ -80,7 +80,14 @@ func Pull(ctx context.Context, reader PullReader, writer ArtifactWriter, input P
 		ProjectID: item.ProjectLUID, Lineage: lineage, Overwrite: input.Overwrite,
 	})
 	if err != nil {
-		return PullOutput{}, pullOperationError("datasource.pull.write", "Datasource artifact write failed.", "Review the workspace and artifact target, then pull again.", input, item.LUID, err)
+		failure := pullOperationError("datasource.pull.write", "Datasource artifact write failed.", "Review the workspace and artifact target, then pull again.", input, item.LUID, err)
+		if denied, ok := errors.AsType[interface {
+			error
+			NotAttempted() bool
+		}](err); ok && denied.NotAttempted() {
+			failure.Phase, failure.Outcome = errs.PhaseSetup, errs.OutcomeNotAttempted
+		}
+		return PullOutput{}, failure
 	}
 	if err := pullNormalizeArtifactPaths(&result); err != nil {
 		return PullOutput{}, err
@@ -127,7 +134,7 @@ func pullUsage(field, message string) error {
 	return &errs.Error{ID: "datasource.pull.usage", Kind: errs.KindUsage, Operation: "datasource.pull", Summary: message, Retryable: new(false), CorrectiveAction: "Correct the datasource pull input and retry.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}
 }
 
-func pullOperationError(id, summary, corrective string, input PullInput, resource string, cause error) error {
+func pullOperationError(id, summary, corrective string, input PullInput, resource string, cause error) *errs.Error {
 	retryable, action := errs.CompleteRetryAdvice(cause, corrective)
 	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "datasource.pull", Resource: resource, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: action, TableauRequestID: errs.TableauRequestID(cause)}
 }

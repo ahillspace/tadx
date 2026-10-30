@@ -276,7 +276,7 @@ func downloadOperationRecords(t *testing.T, store operationrun.Store) []operatio
 	}
 	var records []operationrun.Record
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" || strings.Contains(entry.Name(), ".batch.") {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" || strings.Contains(entry.Name(), ".batch.") || strings.HasSuffix(entry.Name(), ".control.json") {
 			continue
 		}
 		record, err := store.Read(strings.TrimSuffix(entry.Name(), ".json"))

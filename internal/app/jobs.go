@@ -14,6 +14,7 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
+	"github.com/ahillspace/tadx/internal/operationrun"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 	tableaujob "github.com/ahillspace/tadx/internal/tableau/job"
 )
@@ -111,6 +112,34 @@ func (c *jobCommands) Wait(ctx context.Context, input jobactions.WaitInput) (job
 }
 
 func (c *jobCommands) Cancel(ctx context.Context, input jobactions.CancelInput) (jobactions.CancelResult, error) {
+	if input.OperationID != "" {
+		result := jobactions.CancelResult{OperationID: input.OperationID, ControlStatus: "cancellation_unconfirmed"}
+		store, err := publicationOperationStore(c.runtime.operationDirectory)
+		if err != nil {
+			return result, err
+		}
+		control, err := store.RequestCancel(input.OperationID)
+		if err != nil && !errors.Is(err, operationrun.ErrTerminal) {
+			return result, err
+		}
+		record, readErr := store.Read(input.OperationID)
+		if readErr != nil {
+			return result, readErr
+		}
+		if !record.FinishedAt.IsZero() {
+			result.ControlStatus = "already_finished"
+			result.Outcome = publicationSnapshot(record, false, false)
+			return result, nil
+		}
+		if err != nil {
+			return result, err
+		}
+		result.ControlStatus = "cancellation_requested"
+		if !control.AcknowledgedAt.IsZero() {
+			result.ControlStatus = "cancellation_acknowledged"
+		}
+		return result, nil
+	}
 	connection, err := c.connection(ctx, input.Environment, input.Site, "job.cancel", input.ID)
 	if err != nil {
 		return jobactions.CancelResult{}, err
@@ -218,7 +247,7 @@ func (c *jobCommands) observer(connection authenticatedTableau) func(context.Con
 		results := make([]jobmonitor.CheckResult, len(jobs))
 		sessions := c.runtime.commandSessions()
 		for i, receipt := range jobs {
-			session, err := sessions.AuthenticateMonitor(ctx, authTarget(connection), tableauauth.NewClient(connection.transport))
+			session, err := sessions.Authenticate(ctx, authTarget(connection), tableauauth.NewClient(connection.transport))
 			if err == nil {
 				client := tableaujob.NewClient(connection.transport, session, connection.environment.URL)
 				if normalizeServer(receipt.Server) != normalizeServer(connection.environment.URL) || receipt.SiteID != session.SiteLUID() {
@@ -230,7 +259,7 @@ func (c *jobCommands) observer(connection authenticatedTableau) func(context.Con
 					}
 				}
 			}
-			// Foreground requests may enter between individual exact observations.
+			// Commands waiting for an unshared PAT may enter between observations.
 			results[i].Err = errors.Join(err, sessions.Suspend(context.WithoutCancel(ctx)))
 		}
 		return results

@@ -76,7 +76,14 @@ func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullI
 	result, err := writer.WriteFlow(ctx, PullArtifact{Workspace: input.Workspace, Filename: download.Filename, Path: download.Path, Name: flow.Name, TableauID: flow.LUID, Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: flow.ProjectPath, ProjectID: flow.ProjectLUID, FileType: flow.FileType, Lineage: lineage, Overwrite: input.Overwrite})
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the workspace and artifact target, then pull again.")
-		return PullOutput{}, &errs.Error{ID: "flow.pull.write", Kind: errs.KindOperation, Operation: "flow.pull", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+		failure := &errs.Error{ID: "flow.pull.write", Kind: errs.KindOperation, Operation: "flow.pull", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+		if denied, ok := errors.AsType[interface {
+			error
+			NotAttempted() bool
+		}](err); ok && denied.NotAttempted() {
+			failure.Phase, failure.Outcome = errs.PhaseSetup, errs.OutcomeNotAttempted
+		}
+		return PullOutput{}, failure
 	}
 	if err := pullNormalizeArtifactPaths(&result); err != nil {
 		return PullOutput{}, err

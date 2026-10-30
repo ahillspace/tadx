@@ -158,15 +158,12 @@ func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session,
 
 // providerRenewal signs a provider session in again with the PAT it was issued for.
 type providerRenewal struct {
-	mu          sync.Mutex
 	target      Target
 	credentials PATCredentials
 	signer      Signer
 }
 
 func (r *providerRenewal) renew(ctx context.Context, current *session, rejected string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if current.currentToken() != rejected {
 		return nil
 	}
@@ -214,6 +211,18 @@ type session struct {
 	siteLUID string
 	userLUID string
 	renewal  renewal
+	renewMu  sync.Mutex
+	flight   *renewalFlight
+}
+
+// renewalFlight shares one attempt among callers already waiting for it.
+type renewalFlight struct {
+	done      chan struct{}
+	cancel    context.CancelFunc
+	token     string
+	waiters   int
+	abandoned bool
+	err       error
 }
 
 // renewal signs a session in again after Tableau rejects its token.
@@ -232,7 +241,52 @@ func (s *session) Authorize(request *http.Request) {
 }
 
 func (s *session) Renew(ctx context.Context, rejected http.Header) error {
-	return s.renewal.renew(ctx, s, rejected.Get(TableauAuthHeader))
+	token := rejected.Get(TableauAuthHeader)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		s.renewMu.Lock()
+		flight := s.flight
+		if flight == nil {
+			attemptCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+			flight = &renewalFlight{done: make(chan struct{}), cancel: cancel, token: token}
+			s.flight = flight
+			go func() {
+				err := s.renewal.renew(attemptCtx, s, token)
+				s.renewMu.Lock()
+				flight.err = err
+				s.flight = nil
+				close(flight.done)
+				s.renewMu.Unlock()
+				cancel()
+			}()
+		}
+		joined := flight.token == token && !flight.abandoned
+		if joined {
+			flight.waiters++
+		}
+		s.renewMu.Unlock()
+
+		select {
+		case <-flight.done:
+			if joined {
+				return flight.err
+			}
+			// A different token or an abandoned attempt needs its own result.
+		case <-ctx.Done():
+			if joined {
+				s.renewMu.Lock()
+				flight.waiters--
+				if flight.waiters == 0 && s.flight == flight {
+					flight.abandoned = true
+					flight.cancel()
+				}
+				s.renewMu.Unlock()
+			}
+			return ctx.Err()
+		}
+	}
 }
 
 func (s *session) currentToken() string {

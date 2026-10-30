@@ -125,7 +125,7 @@ func newCancelCommand(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Cancel(command.Context(), input)
 			if err != nil {
-				if result.Job.ID != "" {
+				if result.Job.ID != "" || result.OperationID != "" {
 					return clierr.WithOutput(result, err)
 				}
 				return err
@@ -136,7 +136,7 @@ func newCancelCommand(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
 	command.Flags().StringVar(&input.Site, "site", "", "exact site content URL; must match the selected environment")
 	command.Flags().StringVarP(&input.ID, "id", "i", "", "exact Tableau job ID")
+	command.Flags().StringVar(&input.OperationID, "operation-id", "", "exact local operation ID")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect the supported cancellation plan without changing Tableau")
-	_ = command.MarkFlagRequired("id")
 	return command
 }

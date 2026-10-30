@@ -6,13 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	keyring "github.com/zalando/go-keyring"
 )
 
-// mapKeyring keeps every entry so PAT and session records can coexist.
+// mapKeyring keeps every entry so PAT and session records can coexist. It is
+// safe for concurrent commands, like the native credential store.
 type mapKeyring struct {
+	mu        sync.Mutex
 	entries   map[string]string
 	deleteErr map[string]error
 	setErr    error
@@ -23,6 +26,8 @@ func newMapKeyring() *mapKeyring {
 }
 
 func (k *mapKeyring) Set(service, account, value string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if k.setErr != nil {
 		return k.setErr
 	}
@@ -31,6 +36,8 @@ func (k *mapKeyring) Set(service, account, value string) error {
 }
 
 func (k *mapKeyring) Get(service, account string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	value, ok := k.entries[service+"/"+account]
 	if !ok {
 		return "", keyring.ErrNotFound
@@ -39,6 +46,8 @@ func (k *mapKeyring) Get(service, account string) (string, error) {
 }
 
 func (k *mapKeyring) Delete(service, account string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if err := k.deleteErr[account]; err != nil {
 		return err
 	}
@@ -52,13 +61,13 @@ func (k *mapKeyring) Delete(service, account string) error {
 var savedSessionTarget = CredentialTarget{ServerURL: "https://example.com", SiteContentURL: "Sales"}
 
 func testSavedSession() SavedSession {
-	return SavedSession{Credential: strings.Repeat("c", 64), Epoch: 7, Token: "session-token-value", SiteLUID: "site-luid", UserLUID: "user-luid"}
+	return SavedSession{Credential: credentialIdentity(savedSessionTarget.ServerURL, PATCredentials{Name: "agent-name", Secret: "highly-secret"}), Epoch: 7, Token: "session-token-value", SiteLUID: "site-luid", UserLUID: "user-luid"}
 }
 
 func storeWithPAT(t *testing.T) (*patStore, *mapKeyring, CredentialReference) {
 	t.Helper()
 	backend := newMapKeyring()
-	store := newPATStore(backend, fixedReader(0xab))
+	store := newPATStore(backend, fixedReader(0xab), t.TempDir())
 	reference, err := store.StorePAT(t.Context(), savedSessionTarget, "agent-name", "highly-secret")
 	if err != nil {
 		t.Fatal(err)

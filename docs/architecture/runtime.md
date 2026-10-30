@@ -109,33 +109,47 @@ Credential-bearing request and response types redact formatting and omit secrets
 
 [`CommandSessions`](../../internal/auth/command_sessions.go) owns credential resolution, session reuse, and PAT coordination for one command.
 It captures configured environment-variable values, including missing values, once per variable during that command.
-It resolves each source tuple once and coordinates authenticated use by actual PAT and normalized server.
+It resolves each source tuple once and coordinates sign-ins by actual PAT and normalized server.
 
-The coordination lock spans sites because another sign-in with the same PAT can invalidate earlier sessions.
+Each sign-in holds the PAT's sign-in lock and advances the PAT's shared numeric sign-in epoch, which spans sites because another sign-in with the same PAT can invalidate earlier sessions.
 Session reuse additionally requires the exact site.
-`authenticate` reads the shared numeric sign-in epoch, signs in when the command's session for the site is older than the epoch, and advances the epoch after success.
+`authenticate` takes the sign-in lock, then reuses the command's session while its epoch is current, otherwise adopts the session saved by the PAT's latest sign-in, and otherwise signs in.
+Commands that waited for another command's sign-in therefore adopt it instead of signing in again.
+The epoch file is replaced atomically, so a command that stops while writing never leaves a partial epoch.
+A command also holds the PAT's use lock until `Suspend` or `Close`, so that no other command signs in and ends a session it cannot replace.
+Commands using the same stored credential reference for the same site hold the use lock shared, because each can adopt the others' saved sessions, so they run in parallel on one session.
+The use key file names which commands may share the lock; it changes, and the use lock is taken, only under the sign-in lock.
+Every other use of the PAT holds the use lock alone: an environment-variable PAT, whose session is never saved, a stored PAT at another site or through another reference, and any command whose session could not be saved.
+Such a command waits for the others to finish, polling with the command gate released, so the command's authentication with other PATs proceeds meanwhile.
+A command that already uses one PAT fails promptly instead of waiting for another, which prevents lock-order cycles between multi-target commands.
+`tadx auth login` signs in only to validate the PAT and releases its use immediately.
 A command keeps one session per PAT and site and refreshes it in place, so every client holding it sends the new token.
-The epoch and lock names retain opaque credential-derived identity, not an authenticating credential.
+The epoch, use key, and lock names retain opaque credential-derived identity, not an authenticating credential.
 
 A session signed in with a stored PAT is saved beside that PAT in the native credential store, in its own entry for the same credential reference.
 The saved record holds the target fingerprint, the opaque PAT identity digest, the sign-in epoch, the token, and the site and user LUIDs.
 A later command reuses it only when the target, the digest, and the epoch all match, so a replaced PAT for the same site or a newer sign-in with the same PAT for another site signs in instead.
-`ReplacePAT` and `DeletePAT` also remove the saved session.
+`ReplacePAT`, `DeletePAT`, and session persistence share a short, stable credential-reference lock; PAT replacement and deletion also remove the saved session.
+`SaveSession` checks the current PAT's exact target and identity while holding that lock, preventing stale saves after replacement or deletion.
+Callers acquire configuration or PAT-digest locks before the reference lock, never in reverse.
 Sessions from environment-variable PATs are never saved.
-Saving or loading a session never fails a command; any store failure signs in.
+Session loading failures fall back to authentication; a failed save leaves the current authenticated command usable and makes it hold the PAT's use lock alone.
 `SignIn`, used by `tadx auth check`, always signs in and saves the new session, because the check exists to validate the PAT.
 
 `Session.Renew` signs in again after Tableau rejects a session, whether it expired, was superseded by a sign-in outside TADX, or was never valid.
-Renewal compares the rejected token with the current one, so concurrent rejections sign in once and a request rejected with an already-renewed token resends without signing in.
-It reacquires the PAT lock if the command suspended it, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
+Each shared session permits one in-flight renewal, sharing its success or failure among callers rejected with the same token.
+Each caller can cancel independently; cancellation of the last waiter cancels the attempt, and a later call can retry.
+A request rejected with an already-renewed token resends without another sign-in.
+Renewal holds the sign-in lock and first adopts a saved session newer than the rejected token, so concurrent commands renewing one stored PAT converge on one sign-in.
+Otherwise it signs in, advances the epoch, saves the session, and rejects a sign-in that returns a different site or user.
 
-`Suspend` releases PAT locks while retaining command-local credentials and sessions.
+`Suspend` releases the command's use locks while retaining command-local credentials and sessions.
 Later authentication checks the epoch before reusing those sessions.
-Job-monitor authentication yields to queued foreground authentication and releases coordination between individual observations.
-`Close` releases remaining locks and discards cached credentials and sessions.
+Job waits suspend before waiting and between individual observations, so other commands can use an environment-variable PAT meanwhile.
+`Close` releases remaining leases and discards cached credentials and sessions.
 
-Returning control to the terminal does not guarantee that the same PAT is available for another remote command.
-An active transfer worker can still hold its coordination lease.
+Returning control to the terminal does not guarantee that the same environment-variable PAT is available for another remote command.
+An active transfer worker can still hold its lease.
 The [security model](../security.md#authentication-and-credentials) explains the protection limits of credentials and same-user processes.
 
 ## REST negotiation and request bounds
@@ -175,6 +189,7 @@ Local operation tracking and Tableau job tracking have different identities and 
 | Record | Owner | Meaning |
 | --- | --- | --- |
 | Local operation | [`operationrun.Record`](../../internal/operationrun/store.go) | Tracks a detached TADX publish or pull invocation, including batches and retained results. |
+| Local cancellation control | [`operationrun.CancelControl`](../../internal/operationrun/cancel.go) | Retains a cancellation request and worker acknowledgement independently of the operation outcome. |
 | Publication receipt | [`jobmonitor.Receipt`](../../internal/jobmonitor/store.go) | Retains an exact accepted Tableau job or publication result independently of terminal output. |
 | Last result | [`lastCapture`](../../internal/app/last_result.go) | Retains the most recent bounded command result for expansion. |
 
@@ -191,12 +206,28 @@ The parent waits for a bounded local startup acknowledgment.
 That acknowledgment proves worker startup, not Tableau acceptance or completion.
 With `--no-wait`, the parent returns after startup with the operation status command.
 Otherwise, it waits until completion or the shared 20-minute invocation limit.
-Interrupt or wait expiry ends foreground observation and leaves the worker responsible for its operation.
+Ctrl+C requests local cancellation through the same control path as `tadx job cancel --operation-id <id>`.
+The interrupted command retains the operation ID and reports whether cancellation was requested or acknowledged.
+A request or acknowledgement does not establish that every item stopped.
+Wait expiry or an observer deadline only ends foreground observation and leaves the worker responsible for its operation.
 
 [`Store.Lease`](../../internal/operationrun/store.go) prevents competing workers and rejects replay of an already-started interrupted operation.
 Records use atomic replacement, bounded JSON, revision numbers, immutable request identity, and separate worker and foreground leases.
 Their phases are `requested`, `running`, `remote_pending`, `completed`, and `failed`.
 An interrupted worker does not become permission to repeat the remote operation.
+
+Cancellation uses a separately versioned control file, preserving compatibility with existing operation records and older decoders.
+The parent prepares control before launch, and the worker advertises support while acquiring its lease.
+Requests made during startup remain durable until the worker observes them.
+Older workers without compatible control report unsupported cancellation and remain inspectable.
+Local cancellation requires no Tableau sign-in or site mutation consent; managed capability restrictions still apply.
+
+The worker cancels cooperative preparation and transfer work, removes temporary files, and retains completed or uncertain item results.
+[`commitguard.Admit`](../../internal/commitguard/guard.go) serializes final submission or local installation admission against the cancellation request.
+If cancellation wins, publishing reports that the final request was not attempted.
+If admission wins, the final publish request retains its actual response or unknown outcome despite later local cancellation.
+An admitted local installation finishes or recovers its directory transaction instead of stopping between rename steps.
+Cancellation never implies rollback of completed work or remote cancellation of a Tableau publication.
 
 [`runPublicationWorker`](../../internal/app/publication_worker.go) reconstructs the command and guards through `Run`.
 It saves compact and expanded results, bounded batch progress, and accepted receipt paths.
@@ -209,6 +240,7 @@ Workbook, datasource, and flow publishing are synchronous: TADX never requests a
 Local storage failure must not trigger resubmission to recover a receipt.
 
 [`Monitor.Wait`](../../internal/jobmonitor/monitor.go) observes accepted identities and never submits or cancels remote work.
+Ctrl+C during `job wait` stops observation without requesting cancellation of the accepted job.
 It stops automatic observation at the shared deadline or after three consecutive read failures while retaining the known identity.
 Observation rounds coordinate by opaque credential and exact site, pool eligible due receipts, and release PAT coordination between individual reads.
 Returned observations receive a separate local persistence budget when cancellation arrives at the response boundary.
@@ -261,7 +293,7 @@ The following files help locate representative changes and existing regression c
 | --- | --- | --- |
 | Startup, result capture, or wiring | [`app.Run`](../../internal/app/app.go), [`main`](../../cmd/tadx/main.go) | [`last_e2e_test.go`](../../internal/app/last_e2e_test.go), [`main_notice_test.go`](../../cmd/tadx/main_notice_test.go). |
 | Consent or indirect capability enforcement | [`applyMutationExecutionPolicy`](../../internal/cli/root.go), [`bindManagedPolicy`](../../internal/app/managed_policy.go) | [`managed_policy_e2e_test.go`](../../internal/app/managed_policy_e2e_test.go), including worker and preview denials; [`mutation_setting_e2e_test.go`](../../internal/app/mutation_setting_e2e_test.go). |
-| PAT reuse or monitor admission | [`CommandSessions`](../../internal/auth/command_sessions.go) | [`command_sessions_cross_site_test.go`](../../internal/auth/command_sessions_cross_site_test.go), [`command_sessions_priority_test.go`](../../internal/auth/command_sessions_priority_test.go). |
+| PAT reuse or sign-in coordination | [`CommandSessions`](../../internal/auth/command_sessions.go) | [`command_sessions_cross_site_test.go`](../../internal/auth/command_sessions_cross_site_test.go), [`command_sessions_saved_test.go`](../../internal/auth/command_sessions_saved_test.go), [`session_reuse_e2e_test.go`](../../internal/app/session_reuse_e2e_test.go). |
 | HTTP timing, redaction, or redirects | [`Transport.Do`](../../internal/tableau/transport.go), [`NegotiateAPIVersion`](../../internal/tableau/version.go) | [`transport_test.go`](../../internal/tableau/transport_test.go), [`version_test.go`](../../internal/tableau/version_test.go). |
 | Detached execution or receipt recovery | [`publication_worker.go`](../../internal/app/publication_worker.go), [`publication_status.go`](../../internal/app/publication_status.go), [`operationrun.Store`](../../internal/operationrun/store.go) | [`publication_worker_e2e_test.go`](../../internal/app/publication_worker_e2e_test.go), [`publication_interrupted_e2e_test.go`](../../internal/app/publication_interrupted_e2e_test.go), [`store_test.go`](../../internal/operationrun/store_test.go). |
 | Observation limits or job pooling | [`Monitor`](../../internal/jobmonitor/monitor.go) | [`monitor_test.go`](../../internal/jobmonitor/monitor_test.go), [`foreground_test.go`](../../internal/jobmonitor/foreground_test.go). |

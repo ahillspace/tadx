@@ -62,8 +62,11 @@ func readWorkbookDatasources(ctx context.Context, source io.ReaderAt, size int64
 	case ".twb":
 		return walkWorkbookDefinition(ctx, io.NewSectionReader(source, 0, size), nil, nil)
 	case ".twbx":
-		archive, err := zip.NewReader(source, size)
+		archive, err := zip.NewReader(contextReaderAt{ctx: ctx, source: source}, size)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			return nil, errors.New("workbook package could not be read")
 		}
 		entry, err := primaryPackageEntry(archive, "workbook")
@@ -75,6 +78,9 @@ func readWorkbookDatasources(ctx context.Context, source io.ReaderAt, size int64
 		}
 		stream, err := entry.Open()
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			return nil, errors.New("workbook definition could not be read")
 		}
 		defer stream.Close()
@@ -127,7 +133,7 @@ func RewriteWorkbookDatasources(ctx context.Context, request WorkbookDatasourceR
 	}()
 	hash := sha256.New()
 	counter := &countingWriter{}
-	buffered := bufio.NewWriter(io.MultiWriter(output, hash, counter))
+	buffered := bufio.NewWriter(contextWriter{ctx: ctx, writer: io.MultiWriter(output, hash, counter)})
 	var seen []WorkbookDatasource
 	if extension == ".twb" {
 		seen, err = walkWorkbookDefinition(ctx, io.NewSectionReader(file, 0, info.Size()), buffered, target)
@@ -156,14 +162,20 @@ func RewriteWorkbookDatasources(ctx context.Context, request WorkbookDatasourceR
 	if err != nil || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
 		return RewrittenWorkbook{}, errors.New("workbook file changed during rewrite; retry")
 	}
+	if err := ctx.Err(); err != nil {
+		return RewrittenWorkbook{}, err
+	}
 	keep = true
 	result.Size, result.Fingerprint = counter.n, "sha256:"+hex.EncodeToString(hash.Sum(nil))
 	return result, nil
 }
 
 func rewriteWorkbookPackage(ctx context.Context, source io.ReaderAt, size int64, output io.Writer, target *datasourceRebinding) ([]WorkbookDatasource, error) {
-	archive, err := zip.NewReader(source, size)
+	archive, err := zip.NewReader(contextReaderAt{ctx: ctx, source: source}, size)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, errors.New("workbook package could not be read")
 	}
 	selected, err := primaryPackageEntry(archive, "workbook")
@@ -173,9 +185,12 @@ func rewriteWorkbookPackage(ctx context.Context, source io.ReaderAt, size int64,
 	if selected == nil {
 		return nil, errors.New("workbook package has no top-level workbook definition")
 	}
-	writer := zip.NewWriter(output)
+	writer := zip.NewWriter(contextWriter{ctx: ctx, writer: output})
 	var seen []WorkbookDatasource
 	for _, entry := range archive.File {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if entry != selected {
 			if err := writer.Copy(entry); err != nil {
 				return nil, fmt.Errorf("copy workbook package entry %q: %w", entry.Name, err)
@@ -190,6 +205,9 @@ func rewriteWorkbookPackage(ctx context.Context, source io.ReaderAt, size int64,
 		}
 		stream, err := entry.Open()
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			return nil, errors.New("workbook definition could not be read")
 		}
 		seen, err = walkWorkbookDefinition(ctx, stream, definition, target)
@@ -207,7 +225,26 @@ func rewriteWorkbookPackage(ctx context.Context, source io.ReaderAt, size int64,
 	if err := writer.Close(); err != nil {
 		return nil, fmt.Errorf("write workbook package: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return seen, nil
+}
+
+type contextWriter struct {
+	ctx    context.Context
+	writer io.Writer
+}
+
+func (w contextWriter) Write(data []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := w.writer.Write(data)
+	if err == nil {
+		err = w.ctx.Err()
+	}
+	return n, err
 }
 
 // datasourceRebinding holds the destination facts applied to mapped datasources.
@@ -286,7 +323,10 @@ const (
 // When output is non-nil, it copies every byte unchanged except the spans of
 // datasources whose content URL target maps.
 func walkWorkbookDefinition(ctx context.Context, source io.Reader, output io.Writer, target *datasourceRebinding) ([]WorkbookDatasource, error) {
-	recorder := &recordingReader{reader: bufio.NewReader(source)}
+	recorder := &recordingReader{reader: bufio.NewReader(&contextReader{ctx: ctx, reader: source})}
+	if output != nil {
+		output = contextWriter{ctx: ctx, writer: output}
+	}
 	decoder := xml.NewDecoder(recorder)
 	var (
 		stack       []string
@@ -333,6 +373,9 @@ func walkWorkbookDefinition(ctx context.Context, source io.Reader, output io.Wri
 			break
 		}
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			return nil, errors.New("workbook definition contains invalid XML")
 		}
 		end := decoder.InputOffset()
@@ -419,6 +462,9 @@ func walkWorkbookDefinition(ctx context.Context, source io.Reader, output io.Wri
 		if _, err := output.Write(recorder.take(recorder.unclaimed())); err != nil {
 			return nil, err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return datasources, nil
 }

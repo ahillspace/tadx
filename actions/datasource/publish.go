@@ -83,6 +83,12 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
+		if denied, ok := errors.AsType[interface {
+			error
+			NotAttempted() bool
+		}](err); ok && denied.NotAttempted() {
+			return out, &errs.Error{ID: "datasource.publish.not_attempted", Kind: errs.KindOperation, Operation: "datasource.publish", Environment: input.Environment, Site: input.Site, Summary: "Publication was not submitted.", Cause: err, Retryable: new(false), Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		}
 		requestID := result.TableauRequestID
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)

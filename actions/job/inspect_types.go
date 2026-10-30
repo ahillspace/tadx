@@ -40,6 +40,7 @@ type OperationView struct {
 	Status       string          `json:"status,omitempty"`
 	Phase        string          `json:"phase"`
 	Alive        bool            `json:"alive"`
+	Cancellation string          `json:"cancellation,omitempty"`
 	Activity     string          `json:"activity,omitempty"`
 	Environment  string          `json:"environment,omitempty"`
 	Site         string          `json:"site,omitempty"`

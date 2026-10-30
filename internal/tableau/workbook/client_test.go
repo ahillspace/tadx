@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ahillspace/tadx/internal/commitguard"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
@@ -1082,5 +1083,60 @@ func TestClientUploadsBeyondFormerBlockLimit(t *testing.T) {
 	}
 	if appends != len(content) || commits != 1 || !bytes.Equal(received.Bytes(), content) {
 		t.Fatalf("appends = %d, commits = %d, uploaded bytes = %d; want %d exact bytes", appends, commits, received.Len(), len(content))
+	}
+}
+
+func TestPublishAdmissionProtectsFinalRequest(t *testing.T) {
+	for _, chunked := range []bool{false, true} {
+		t.Run(strconv.FormatBool(chunked), func(t *testing.T) {
+			calls := 0
+			var cancel context.CancelFunc
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/xml")
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/fileUploads"):
+					w.WriteHeader(http.StatusCreated)
+					_, _ = io.WriteString(w, `<tsResponse><fileUpload uploadSessionId="up"/></tsResponse>`)
+				case strings.Contains(r.URL.Path, "/fileUploads/up"):
+					_, _ = io.WriteString(w, `<tsResponse><fileUpload uploadSessionId="up"/></tsResponse>`)
+				case strings.HasSuffix(r.URL.Path, "/workbooks"):
+					calls++
+					cancel()
+					w.WriteHeader(http.StatusCreated)
+					_, _ = io.WriteString(w, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
+				default:
+					http.Error(w, "unexpected", http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			if chunked {
+				client.SetUploadThreshold(1)
+				client.SetUploadChunkSize(3)
+			}
+			request := withPayload(t, tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx"}, []byte("abc"))
+			prepared, err := client.Prepare(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			denied := commitguard.WithAdmission(t.Context(), func(context.Context) error { return context.Canceled })
+			_, err = prepared.Commit(denied)
+			var notAttempted interface{ NotAttempted() bool }
+			if !errors.Is(err, context.Canceled) || !errors.As(err, &notAttempted) || !notAttempted.NotAttempted() || calls != 0 {
+				t.Fatalf("denied: calls %d error %v", calls, err)
+			}
+			prepared, err = client.Prepare(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, stop := context.WithCancel(t.Context())
+			cancel = stop
+			defer stop()
+			admitted := commitguard.WithAdmission(ctx, func(context.Context) error { return nil })
+			result, err := prepared.Commit(admitted)
+			if err != nil || result.WorkbookLUID != "wb-1" || calls != 1 {
+				t.Fatalf("result %#v, calls %d, error %v", result, calls, err)
+			}
+		})
 	}
 }
