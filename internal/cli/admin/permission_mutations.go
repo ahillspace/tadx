@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -34,7 +35,16 @@ func newPermissionCreate(deps Dependencies) *cobra.Command {
 			return err
 		}
 		in.Capability = capabilities[0]
-		return permission.ValidateCreateInput(in)
+		if err := permission.ValidateCreateInput(in); err != nil {
+			return err
+		}
+		if err := batchinput.User(cmd.Context(), deps.BatchTargets, in.Environment, &in.PrincipalLUID, &in.PrincipalUsername); err != nil {
+			return err
+		}
+		for _, capability := range capabilities {
+			batchinput.Record(cmd.Context(), batchinput.Target{Environment: in.Environment, ResourceKind: in.ResourceKind, ResourceID: in.ResourceLUID, PrincipalType: in.PrincipalType, PrincipalID: in.PrincipalLUID, Collection: in.DefaultFor, Capability: capability})
+		}
+		return nil
 	}, func(cmd *cobra.Command) error {
 		return runPermissionCapabilities(cmd.Context(), "admin.permission.create", capabilities, deps.Renderer, func(ctx context.Context, capability string) (permission.Output, error) {
 			item := in
@@ -72,7 +82,16 @@ func newPermissionDelete(deps Dependencies) *cobra.Command {
 			return err
 		}
 		in.Capability = capabilities[0]
-		return permission.ValidateDeleteInput(in)
+		if err := permission.ValidateDeleteInput(in); err != nil {
+			return err
+		}
+		if err := batchinput.User(cmd.Context(), deps.BatchTargets, in.Environment, &in.PrincipalLUID, &in.PrincipalUsername); err != nil {
+			return err
+		}
+		for _, capability := range capabilities {
+			batchinput.Record(cmd.Context(), batchinput.Target{Environment: in.Environment, ResourceKind: in.ResourceKind, ResourceID: in.ResourceLUID, PrincipalType: in.PrincipalType, PrincipalID: in.PrincipalLUID, Collection: in.DefaultFor, Capability: capability})
+		}
+		return nil
 	}, func(cmd *cobra.Command) error {
 		return runPermissionCapabilities(cmd.Context(), "admin.permission.delete", capabilities, deps.Renderer, func(ctx context.Context, capability string) (permission.Output, error) {
 			item := in

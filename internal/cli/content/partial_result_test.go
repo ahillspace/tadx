@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
+	"path"
 	"strings"
 	"testing"
 )
@@ -32,7 +33,10 @@ func TestPublishPreviewDisplaysConsequentialWarningWithoutFull(t *testing.T) {
 	}
 }
 
-func (p partialPublisher) Execute(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
+func (p partialPublisher) Execute(_ context.Context, input workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
+	if preview {
+		return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: input.ArtifactPath, WorkbookName: path.Base(input.ArtifactPath), Target: workbookops.PublishTarget{Environment: input.Environment, Site: "site", ProjectLUID: input.ProjectLUID}}}, nil
+	}
 	result := &workbookops.PublishResult{Status: "created", WorkbookLUID: "created-workbook", TableauRequestID: "readback-request"}
 	if p.unknown {
 		result = &workbookops.PublishResult{Status: "unknown"}
@@ -55,7 +59,7 @@ func TestPublishCLIRespectsPartialAndUnknownResultsThroughSingleAndBatchRenderin
 		for _, full := range []bool{false, true} {
 			for _, unknown := range []bool{false, true} {
 				var rendered bytes.Buffer
-				command := newPublish(Dependencies{Publisher: partialPublisher{unknown}, Renderer: partialRenderer{&rendered, full}})
+				command := newPublish(Dependencies{Publisher: partialPublisher{unknown}, Renderer: partialRenderer{&rendered, full}, BatchTargets: &batchCalls{}})
 				command.SilenceErrors, command.SilenceUsage = true, true
 				args := []string{"--environment", "chosen", "--project-id", "project", "--artifact", "artifacts/workbook/one"}
 				if batch {

@@ -147,7 +147,7 @@ func TestRemovalRejectsDefaultReferences(t *testing.T) {
 					t.Fatal(err)
 				}
 				if operation == "delete" {
-					_, err = manager.Delete(context.Background(), record)
+					_, err = manager.Delete(context.Background(), workspace.DeleteRequest{Expected: record})
 				} else {
 					_, err = manager.Unregister(context.Background(), "TARGET")
 				}
@@ -189,7 +189,7 @@ func TestDeleteRechecksNestedRegistrationUnderConfigurationLock(t *testing.T) {
 	_, err = config.Update(configPath, false, func(c config.Config) (config.Config, error) {
 		go func() {
 			close(started)
-			_, deleteErr := manager.Delete(context.Background(), parent)
+			_, deleteErr := manager.Delete(context.Background(), workspace.DeleteRequest{Expected: parent})
 			deleted <- deleteErr
 		}()
 		<-started
@@ -227,10 +227,10 @@ func TestDeleteRejectsNestedRegistrationAndRemovesExactRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Delete(context.Background(), parent); err == nil || !strings.Contains(err.Error(), "contains registered workspace") {
+	if _, err := manager.Delete(context.Background(), workspace.DeleteRequest{Expected: parent}); err == nil || !strings.Contains(err.Error(), "contains registered workspace") {
 		t.Fatalf("Delete(parent) error = %v", err)
 	}
-	if _, err := manager.Delete(context.Background(), child); err != nil {
+	if _, err := manager.Delete(context.Background(), workspace.DeleteRequest{Expected: child}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(child.Root); !os.IsNotExist(err) {

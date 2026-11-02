@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,9 @@ import (
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/readsource"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -99,6 +103,13 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteResolved = connection.environment.Alias, connection.environment.SiteContentURL, true
+	cloud := config.IsTableauCloud(connection.environment.URL)
+	if !cloud {
+		if input.Type != "" && (slices.Contains(types, "definition") || slices.Contains(types, "metric")) {
+			return searchaction.Output{}, &errs.Error{ID: "search.unsupported_type", Kind: errs.KindUsage, Operation: "search", Environment: input.Environment, Site: input.Site, Summary: "Pulse search is available only on Tableau Cloud.", Retryable: errs.Bool(false), CorrectiveAction: "Select a Tableau Cloud environment, or search supported Server content, groups, and users.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
+		}
+		types = slices.DeleteFunc(types, func(kind string) bool { return kind == "definition" || kind == "metric" })
+	}
 	lister, err := newLiveSearchLister(connection, c.runtime.checkManagedCapability)
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
@@ -108,7 +119,11 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
 	datasourceResolver := resourcedatasource.NewAdapter(tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL))
-	return searchaction.Execute(ctx, globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}, input, types)
+	out, err := searchaction.Execute(ctx, globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}, input, types)
+	if err == nil && !cloud && input.Type == "" {
+		out.Warnings = output.BoundWarnings(append([]string{"Search scope: Server content, groups, and users. Pulse search is available only on Tableau Cloud."}, out.Warnings...))
+	}
+	return out, err
 }
 
 type appSearchAdapter interface {
@@ -139,7 +154,7 @@ func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input
 	if contentSearchSelector(input.Type) {
 		return executeAppSearch(ctx, s.native, resourceInput)
 	}
-	return s.searchAll(ctx, input)
+	return s.searchAll(ctx, input, types)
 }
 
 func completeListSearchSelector(selector string) bool {
@@ -200,13 +215,19 @@ type invalidCombinedSearchCursor struct{}
 func (invalidCombinedSearchCursor) Error() string             { return "combined live search cursor is invalid" }
 func (invalidCombinedSearchCursor) InvalidSearchCursor() bool { return true }
 
-func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
+func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
 	if s.native == nil || s.dedicated == nil {
 		return searchaction.Result{}, errors.New("live search adapters are not configured")
 	}
 	state, err := decodeCombinedSearchCursor(input.Cursor, input)
 	if err != nil {
 		return searchaction.Result{}, err
+	}
+	dedicatedTypes := make([]string, 0, len(types))
+	for _, kind := range types {
+		if dedicatedSearchSelector(kind) {
+			dedicatedTypes = append(dedicatedTypes, kind)
+		}
 	}
 	if state.Phase == combinedSearchContent {
 		page, err := s.native.Search(ctx, resourcesearch.Input{
@@ -233,7 +254,7 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 		state.Source = ""
 		remaining := input.Limit - len(page.Items)
 		dedicatedPage, err := executeBoundedAppSearch(ctx, s.dedicated, resourcesearch.Input{
-			Types: []string{"definition", "group", "metric", "user"}, Terms: input.Terms,
+			Types: dedicatedTypes, Terms: input.Terms,
 			ProjectPath: input.ProjectPath, Owner: input.Owner, Limit: input.Limit,
 		}, remaining)
 		if err != nil {
@@ -254,7 +275,7 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 		return searchResult(page, nil), nil
 	}
 	page, err := s.dedicated.Search(ctx, resourcesearch.Input{
-		Types: []string{"definition", "group", "metric", "user"}, Terms: input.Terms,
+		Types: dedicatedTypes, Terms: input.Terms,
 		ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: state.Source, Limit: input.Limit,
 	})
 	if err != nil {
@@ -479,12 +500,12 @@ func encodeCacheResourceCursor(cursor cacheResourceCursor) string {
 
 func cacheResourceFingerprint(result cache.ResourceResult) string {
 	data, _ := json.Marshal(struct {
-		Total          int    `json:"total"`
-		Coverage       string `json:"coverage"`
-		GenerationID   string `json:"generation_id"`
-		GeneratedAt    string `json:"generated_at"`
-		NewestObserved string `json:"newest_observed"`
-	}{result.Total, result.Coverage, result.GenerationID, result.GeneratedAt.UTC().Format(time.RFC3339Nano), result.NewestObserved.UTC().Format(time.RFC3339Nano)})
+		Total               int    `json:"total"`
+		Coverage            string `json:"coverage"`
+		GenerationID        string `json:"generation_id"`
+		GeneratedAt         string `json:"generated_at"`
+		InventoryObservedAt string `json:"inventory_observed_at"`
+	}{result.Total, result.Coverage, result.GenerationID, result.GeneratedAt.UTC().Format(time.RFC3339Nano), result.InventoryObservedAt.UTC().Format(time.RFC3339Nano)})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }

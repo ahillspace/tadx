@@ -10,7 +10,7 @@ import (
 func TestContentMutationCommandsStayDiscoverableWhenDisabled(t *testing.T) {
 	commands := map[string]*cobra.Command{
 		"workbook publish":   newPublish(Dependencies{MutationsEnabled: false}),
-		"workbook delete":    newWorkbookDelete(nil, nil, false),
+		"workbook delete":    newWorkbookDelete(nil, nil, nil),
 		"datasource publish": newDatasourcePublish(datasourceLifecycleDependencies{mutationsEnabled: false}),
 		"datasource delete":  newDatasourceDelete(datasourceLifecycleDependencies{mutationsEnabled: false}),
 		"project create":     newProjectCreate(Dependencies{MutationsEnabled: false}),

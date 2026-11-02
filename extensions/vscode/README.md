@@ -42,6 +42,8 @@ It also refreshes bundled agent Guidance, which is included in the confirmation.
 PATH and shell-completion changes are optional and initially unselected.
 Finish other TADX commands and detached transfers before approving setup.
 Cancellation or failed verification can leave partial installation state; inspect the installation before retrying.
+Cancellation waits for the installer process tree to stop before another setup or CLI command can run in this window.
+If termination cannot be confirmed, maintenance remains locked; stop the installer and its children before reloading the window.
 
 The [release and upgrade guide](../../docs/vscode-extension-release.md) explains shared installation ownership, compatibility, extension updates, and publishing.
 Setup does not change Tableau credentials, saved mutation consent, environments, or workspace registrations.

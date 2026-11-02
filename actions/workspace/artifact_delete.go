@@ -10,15 +10,18 @@ import (
 
 // DeleteArtifactInput selects one exact managed artifact.
 type DeleteArtifactInput struct {
-	Workspace string
-	Kind      string
-	LUID      string
-	Path      string
-	Force     bool
+	Workspace           string
+	Kind                string
+	LUID                string
+	Path                string
+	Force               bool
+	ExpectedWorkspaceID string
+	ExpectedArtifact    *ArtifactTarget
 }
 
 // ArtifactTarget is one complete managed artifact identity and state.
 type ArtifactTarget struct {
+	WorkspaceID         string   `json:"-"`
 	Kind                string   `json:"kind"`
 	LUID                string   `json:"luid"`
 	Name                string   `json:"name,omitempty"`

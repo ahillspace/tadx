@@ -5,7 +5,9 @@ import (
 	"errors"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/spf13/cobra"
 )
@@ -31,11 +33,15 @@ type datasourceLifecycleDependencies struct {
 	deleter          DatasourceDeleter
 	renderer         Renderer
 	mutationsEnabled bool
+	batchTargets     batchinput.Resolver
 }
 
 // addDatasourceLifecycle adds lifecycle actions to an existing datasource root.
-func addDatasourceLifecycle(command *cobra.Command, deps datasourceLifecycleDependencies) {
-	command.AddCommand(newDatasourcePull(deps), newDatasourcePublish(deps), newDatasourceDelete(deps))
+func addDatasourceLifecycle(command *cobra.Command, deps datasourceLifecycleDependencies, selected ...string) {
+	selection := commandset.Selected(selected)
+	selection.Add(command, "datasource.pull", func() *cobra.Command { return newDatasourcePull(deps) })
+	selection.Add(command, "datasource.publish", func() *cobra.Command { return newDatasourcePublish(deps) })
+	selection.Add(command, "datasource.delete", func() *cobra.Command { return newDatasourceDelete(deps) })
 }
 
 func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
@@ -70,6 +76,7 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 
 func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	var input datasourceops.PublishInput
+	var prepared map[string]datasourceops.PublishInput
 	var artifacts []string
 	var projectLUID, projectPath string
 	var create, overwrite, appendMode, replace bool
@@ -110,13 +117,20 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			case replace:
 				input.Mode = datasourceops.ModeReplace
 			}
-			return datasourceops.ValidatePublishInput(input)
+			if err := datasourceops.ValidatePublishInput(input); err != nil {
+				return err
+			}
+			prepared, err = prepareDatasourcePublications(command, deps, input, artifacts)
+			return err
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			reporter := progress.New(command.ErrOrStderr())
 			return runPublishSelection(command.Context(), "datasource.publish", "datasource", artifacts, preview, deps.renderer, reporter, func(ctx context.Context, artifact string) (datasourceops.PublishOutput, error) {
 				item := input
 				item.ArtifactPath = artifact
+				if prepared != nil {
+					item = prepared[artifact]
+				}
 				return deps.publisher.PublishDatasource(ctx, item, preview)
 			})
 		},
@@ -154,7 +168,7 @@ func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 			if input.Environment == "" {
 				return clierr.Usage("datasource.delete", errors.New("--environment is required for remote deletion"))
 			}
-			return nil
+			return batchinput.Resource(command.Context(), deps.batchTargets, input.Environment, "datasource", &input.Selector)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.deleter.DeleteDatasource(command.Context(), input, preview)

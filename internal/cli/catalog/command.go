@@ -10,6 +10,7 @@ import (
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -63,9 +64,14 @@ type Dependencies struct {
 	Renderer          Renderer
 }
 
-func New(d Dependencies) *cobra.Command {
+func New(d Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	root := NewGroup()
-	root.AddCommand(newDatabase(d), newTable(d), newColumn(d), newSearch(d), newAudit(d))
+	selection.Add(root, "catalog.database", func() *cobra.Command { return newDatabase(d, selected...) })
+	selection.Add(root, "catalog.table", func() *cobra.Command { return newTable(d, selected...) })
+	selection.Add(root, "catalog.column", func() *cobra.Command { return newColumn(d, selected...) })
+	selection.Add(root, "catalog.search", func() *cobra.Command { return newSearch(d) })
+	selection.Add(root, "catalog.audit", func() *cobra.Command { return newAudit(d) })
 	return root
 }
 

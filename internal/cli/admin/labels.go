@@ -7,6 +7,7 @@ import (
 	labelcategoryops "github.com/ahillspace/tadx/actions/admin/labelcategory"
 	labelvalueops "github.com/ahillspace/tadx/actions/admin/labelvalue"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -50,18 +51,19 @@ type LabelDependencies struct {
 	Renderer          Renderer
 }
 
-func NewLabels(deps LabelDependencies) []*cobra.Command {
+func NewLabels(deps LabelDependencies, selected ...string) []*cobra.Command {
+	selection := commandset.Selected(selected)
 	values := &cobra.Command{Use: "label-value", Short: "Manage exact shared label value definitions"}
 	categories := &cobra.Command{Use: "label-category", Short: "Manage exact shared label categories"}
-	values.AddCommand(newLabelValueLister(deps))
-	values.AddCommand(newLabelValueInspector(deps))
-	values.AddCommand(newLabelValueUpdater(deps))
-	values.AddCommand(newLabelValueDeleter(deps))
-	categories.AddCommand(newLabelCategoryLister(deps))
-	categories.AddCommand(newLabelCategoryInspector(deps))
-	categories.AddCommand(newLabelCategoryCreator(deps))
-	categories.AddCommand(newLabelCategoryUpdater(deps))
-	categories.AddCommand(newLabelCategoryDeleter(deps))
+	selection.Add(values, "admin.label.value.list", func() *cobra.Command { return newLabelValueLister(deps) })
+	selection.Add(values, "admin.label.value.inspect", func() *cobra.Command { return newLabelValueInspector(deps) })
+	selection.Add(values, "admin.label.value.update", func() *cobra.Command { return newLabelValueUpdater(deps) })
+	selection.Add(values, "admin.label.value.delete", func() *cobra.Command { return newLabelValueDeleter(deps) })
+	selection.Add(categories, "admin.label.category.list", func() *cobra.Command { return newLabelCategoryLister(deps) })
+	selection.Add(categories, "admin.label.category.inspect", func() *cobra.Command { return newLabelCategoryInspector(deps) })
+	selection.Add(categories, "admin.label.category.create", func() *cobra.Command { return newLabelCategoryCreator(deps) })
+	selection.Add(categories, "admin.label.category.update", func() *cobra.Command { return newLabelCategoryUpdater(deps) })
+	selection.Add(categories, "admin.label.category.delete", func() *cobra.Command { return newLabelCategoryDeleter(deps) })
 	return []*cobra.Command{values, categories}
 }
 func newLabelValueLister(deps LabelDependencies) *cobra.Command {

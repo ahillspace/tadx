@@ -1,13 +1,14 @@
 package artifact
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -31,12 +32,14 @@ var directManagedArtifactKinds = [...]string{"datasource", "flow", "pulse-defini
 
 // Selector identifies one exact managed artifact.
 type Selector struct {
-	Name         string
-	Kind         string
-	LUID         string
-	ServerOrigin string
-	SiteLUID     string
-	Path         string
+	Name                string
+	Kind                string
+	LUID                string
+	ServerOrigin        string
+	SiteLUID            string
+	Path                string
+	ExpectedWorkspaceID string
+	Expected            *Item
 }
 
 // Item is one bounded, validated managed-artifact record.
@@ -56,6 +59,7 @@ type Item struct {
 	CurrentFingerprint  string
 	TreeFingerprint     string
 	managedPaths        []string
+	bundleBaseline      string
 	Warnings            []string
 }
 
@@ -134,21 +138,30 @@ func inventoryWithScanLimit(ctx context.Context, workspace string, options Inven
 	if err != nil {
 		return InventoryPage{}, err
 	}
-	items, complete, err := scanManagedArtifacts(ctx, root, scanLimit)
+	items, complete, err := scanManagedArtifactMetadata(ctx, root, "", scanLimit)
 	if err != nil {
 		return InventoryPage{}, err
 	}
 	if !complete {
 		return InventoryPage{}, errors.New("artifact inventory exceeds its bounded scan limit")
 	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Kind != items[j].Kind {
-			return items[i].Kind < items[j].Kind
+	for index, item := range items {
+		if item.State == StateInvalid {
+			continue
 		}
-		if items[i].Path != items[j].Path {
-			return items[i].Path < items[j].Path
+		inspected, inspectErr := inspectArtifactState(ctx, root, item, false)
+		if inspectErr != nil {
+			item.State = StateInvalid
+			reason, warning := invalidArtifactDiagnostic(inspectErr)
+			item.Reason = reason
+			item.Warnings = []string{warning}
+			items[index] = item
+			continue
 		}
-		return items[i].LUID < items[j].LUID
+		items[index] = inspected
+	}
+	slices.SortFunc(items, func(left, right Item) int {
+		return cmp.Or(cmp.Compare(left.Kind, right.Kind), cmp.Compare(left.Path, right.Path), cmp.Compare(left.LUID, right.LUID))
 	})
 	page := InventoryPage{Limit: options.Limit, ScanComplete: complete}
 	if complete {
@@ -194,13 +207,20 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, 
 	if err != nil {
 		return Item{}, err
 	}
+	if err := requireWorkspaceIdentity(root, selector.ExpectedWorkspaceID); err != nil {
+		return Item{}, err
+	}
 	if selector.Path != "" {
-		return resolveRelativePath(ctx, root, selector)
+		item, err := resolveRelativePath(ctx, root, selector)
+		if err != nil {
+			return Item{}, err
+		}
+		return requireArtifactIdentity(item, selector.Expected)
 	}
 	if selector.Kind == "" || (selector.LUID == "" && selector.Name == "") {
 		return Item{}, errors.New("artifact selector requires kind and LUID, or an exact managed relative path")
 	}
-	items, complete, err := scanManagedArtifacts(ctx, root, maxInventoryScan)
+	items, complete, err := scanManagedArtifactMetadata(ctx, root, selector.Kind, maxInventoryScan)
 	if err != nil {
 		return Item{}, err
 	}
@@ -224,17 +244,8 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, 
 		return Item{}, errors.New("no managed artifact matches the exact selector")
 	}
 	if len(matches) > 1 {
-		sort.Slice(matches, func(i, j int) bool {
-			if matches[i].Path != matches[j].Path {
-				return matches[i].Path < matches[j].Path
-			}
-			if matches[i].LUID != matches[j].LUID {
-				return matches[i].LUID < matches[j].LUID
-			}
-			if matches[i].ServerOrigin != matches[j].ServerOrigin {
-				return matches[i].ServerOrigin < matches[j].ServerOrigin
-			}
-			return matches[i].SiteLUID < matches[j].SiteLUID
+		slices.SortFunc(matches, func(left, right Item) int {
+			return cmp.Or(cmp.Compare(left.Path, right.Path), cmp.Compare(left.LUID, right.LUID), cmp.Compare(left.ServerOrigin, right.ServerOrigin), cmp.Compare(left.SiteLUID, right.SiteLUID))
 		})
 		candidateCount := min(len(matches), maxAmbiguousCandidates)
 		candidates := make([]AmbiguousCandidate, 0, candidateCount)
@@ -243,12 +254,26 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, 
 		}
 		return Item{}, &AmbiguousSelectorError{Kind: selector.Kind, Name: selector.Name, LUID: selector.LUID, Candidates: candidates, Truncated: len(matches) - candidateCount, FullStatusCommand: "tadx workspace status --full"}
 	}
-	return matches[0], nil
+	item, err := inspectArtifactState(ctx, root, matches[0], true)
+	if err != nil {
+		return Item{}, err
+	}
+	return requireArtifactIdentity(item, selector.Expected)
 }
 
-func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) ([]Item, bool, error) {
+func requireArtifactIdentity(current Item, expected *Item) (Item, error) {
+	if expected != nil && (current.Path != expected.Path || current.Kind != expected.Kind || current.LUID != expected.LUID || current.ServerOrigin != expected.ServerOrigin || current.SiteLUID != expected.SiteLUID) {
+		return Item{}, errors.New("artifact source identity changed after selection")
+	}
+	return current, nil
+}
+
+func scanManagedArtifactMetadata(ctx context.Context, workspace, onlyKind string, scanLimit int) ([]Item, bool, error) {
 	var items []Item
 	for _, kind := range directManagedArtifactKinds {
+		if onlyKind != "" && onlyKind != kind {
+			continue
+		}
 		kindRoot := filepath.Join(workspace, "artifacts", kind)
 		if err := validateArtifactDirectory(workspace, kind, kindRoot); err != nil {
 			return nil, false, err
@@ -275,7 +300,7 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{"Managed artifact entry is not a regular directory."}})
 				continue
 			}
-			item, itemErr := inspectArtifact(ctx, workspace, kind, filepath.Join(kindRoot, entry.Name()))
+			item, itemErr := readArtifactMetadata(ctx, workspace, kind, filepath.Join(kindRoot, entry.Name()))
 			if itemErr != nil {
 				reason, warning := invalidArtifactDiagnostic(itemErr)
 				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Reason: reason, Warnings: []string{warning}})
@@ -283,6 +308,9 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 			}
 			items = append(items, item)
 		}
+	}
+	if onlyKind != "" && onlyKind != "lineage" {
+		return items, true, nil
 	}
 	// Standalone lineage artifacts live one level deeper, under
 	// artifacts/lineage/<resourceKind>/<component>, so they are walked here.
@@ -339,7 +367,7 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{"Managed artifact entry is not a regular directory."}})
 				continue
 			}
-			item, itemErr := inspectArtifact(ctx, workspace, "lineage", filepath.Join(kindRoot, entry.Name()))
+			item, itemErr := readArtifactMetadata(ctx, workspace, "lineage", filepath.Join(kindRoot, entry.Name()))
 			if itemErr != nil {
 				reason, warning := invalidArtifactDiagnostic(itemErr)
 				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: reason, Warnings: []string{warning}})
@@ -383,13 +411,23 @@ func resolveRelativePath(ctx context.Context, workspace string, selector Selecto
 }
 
 func inspectArtifact(ctx context.Context, workspace, kind, directory string) (Item, error) {
+	item, err := readArtifactMetadata(ctx, workspace, kind, directory)
+	if err != nil {
+		return Item{}, err
+	}
+	return inspectArtifactState(ctx, workspace, item, true)
+}
+
+func readArtifactMetadata(ctx context.Context, workspace, kind, directory string) (Item, error) {
+	if err := ctx.Err(); err != nil {
+		return Item{}, err
+	}
 	if err := validateArtifactDirectory(workspace, kind, directory); err != nil {
 		return Item{}, err
 	}
 	item := Item{Kind: kind}
 	var canonical string
 	var sidecar string
-	var pulseBundleBaseline string
 	switch kind {
 	case "workbook":
 		metadata, err := readMetadata(directory)
@@ -461,7 +499,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
 		if metadata.BundleFingerprint != "" {
 			sidecar = "bundle.json"
-			pulseBundleBaseline = metadata.BundleFingerprint
+			item.bundleBaseline = metadata.BundleFingerprint
 		}
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".json")
 		if err != nil {
@@ -497,13 +535,37 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 	if sidecar != "" {
 		item.managedPaths = append(item.managedPaths, item.Path+"/"+sidecar)
 	}
-	current, err := fingerprintFile(ctx, canonical)
-	if errors.Is(err, os.ErrNotExist) {
-		item.State = StateMissing
-		item.TreeFingerprint, err = artifactTreeFingerprint(ctx, directory)
-		if err != nil {
+	return item, nil
+}
+
+func inspectArtifactState(ctx context.Context, workspace string, item Item, snapshot bool) (Item, error) {
+	directory := filepath.Join(workspace, filepath.FromSlash(item.Path))
+	canonical := filepath.Join(workspace, filepath.FromSlash(item.CanonicalPath))
+	var current string
+	var err error
+	if snapshot {
+		item.TreeFingerprint, current, err = artifactSnapshotFingerprints(ctx, directory, canonical)
+		if err == nil && current == "" {
+			err = os.ErrNotExist
+		}
+	} else {
+		// Status needs canonical dirtiness and structural containment, not a
+		// content snapshot of every extra file in every artifact directory.
+		if err := walkArtifactTree(ctx, directory, nil); err != nil {
 			return Item{}, err
 		}
+		info, statErr := os.Lstat(canonical)
+		if statErr == nil && !info.Mode().IsRegular() {
+			return Item{}, errors.New("canonical artifact payload must be a regular file")
+		}
+		if statErr != nil {
+			err = statErr
+		} else {
+			current, err = fingerprintFile(ctx, canonical)
+		}
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		item.State = StateMissing
 		return item, nil
 	}
 	if err != nil {
@@ -514,19 +576,15 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 	if current != item.BaselineFingerprint {
 		item.State = StateDirty
 	}
-	if pulseBundleBaseline != "" {
+	if item.bundleBaseline != "" {
 		bundle, err := readPulseBundleFile(filepath.Join(directory, "bundle.json"))
 		if errors.Is(err, os.ErrNotExist) {
 			item.State = StateMissing
 		} else if err != nil {
 			return Item{}, err
-		} else if fingerprint(bundle) != pulseBundleBaseline {
+		} else if fingerprint(bundle) != item.bundleBaseline {
 			item.State = StateDirty
 		}
-	}
-	item.TreeFingerprint, err = artifactTreeFingerprint(ctx, directory)
-	if err != nil {
-		return Item{}, err
 	}
 	return item, nil
 }

@@ -4,13 +4,13 @@ package admin
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/paging"
 	tableau "github.com/ahillspace/tadx/internal/tableau/admin"
 )
 
@@ -227,59 +227,30 @@ func (a *Adapter) RemoveGroupUser(ctx context.Context, groupLUID, userLUID strin
 }
 
 func (a *Adapter) userInventory(ctx context.Context, name string) ([]tableau.User, error) {
-	byID := make(map[string]tableau.User)
-	for number := 1; number <= maxResolutionPages; number++ {
-		page, err := a.client.ListUsers(ctx, tableau.ListUsersRequest{PageNumber: number, PageSize: resolutionPageSize, Name: name})
-		if err != nil {
-			return nil, err
-		}
-		if err := mergeUsers(byID, page.Items); err != nil {
-			return nil, err
-		}
-		if number*page.Size >= page.Total {
-			return sortedUsers(byID), nil
-		}
-	}
-	return nil, errors.New("user inventory exceeded the 1000-page resolution bound")
+	items, err := paging.CollectBounded(ctx, resolutionPageSize, maxResolutionPages, func(ctx context.Context, state paging.State) (paging.Page[tableau.User], error) {
+		page, err := a.client.ListUsers(ctx, tableau.ListUsersRequest{PageNumber: state.Number, PageSize: state.Size, Name: name})
+		return paging.Page[tableau.User]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Items}, err
+	}, func(item tableau.User) string { return item.LUID })
+	slices.SortFunc(items, func(a, b tableau.User) int { return cmp.Compare(a.LUID, b.LUID) })
+	return items, err
 }
 
 func (a *Adapter) allGroups(ctx context.Context) ([]tableau.Group, error) {
-	byID := make(map[string]tableau.Group)
-	for number := 1; number <= maxResolutionPages; number++ {
-		page, err := a.client.ListGroups(ctx, tableau.ListGroupsRequest{PageNumber: number, PageSize: resolutionPageSize})
-		if err != nil {
-			return nil, err
-		}
-		if err := mergeGroups(byID, page.Items); err != nil {
-			return nil, err
-		}
-		if number*page.Size >= page.Total {
-			result := make([]tableau.Group, 0, len(byID))
-			for _, item := range byID {
-				result = append(result, item)
-			}
-			slices.SortFunc(result, func(a, b tableau.Group) int { return cmp.Compare(a.LUID, b.LUID) })
-			return result, nil
-		}
-	}
-	return nil, errors.New("group inventory exceeded the 1000-page resolution bound")
+	items, err := paging.CollectBounded(ctx, resolutionPageSize, maxResolutionPages, func(ctx context.Context, state paging.State) (paging.Page[tableau.Group], error) {
+		page, err := a.client.ListGroups(ctx, tableau.ListGroupsRequest{PageNumber: state.Number, PageSize: state.Size})
+		return paging.Page[tableau.Group]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Items}, err
+	}, func(item tableau.Group) string { return item.LUID })
+	slices.SortFunc(items, func(a, b tableau.Group) int { return cmp.Compare(a.LUID, b.LUID) })
+	return items, err
 }
 
 func (a *Adapter) allMembers(ctx context.Context, groupLUID string) ([]tableau.User, error) {
-	byID := make(map[string]tableau.User)
-	for number := 1; number <= maxResolutionPages; number++ {
-		page, err := a.client.ListGroupUsers(ctx, groupLUID, tableau.PageRequest{PageNumber: number, PageSize: resolutionPageSize})
-		if err != nil {
-			return nil, err
-		}
-		if err := mergeUsers(byID, page.Items); err != nil {
-			return nil, err
-		}
-		if number*page.Size >= page.Total {
-			return sortedUsers(byID), nil
-		}
-	}
-	return nil, errors.New("group membership exceeded the 1000-page resolution bound")
+	items, err := paging.CollectBounded(ctx, resolutionPageSize, maxResolutionPages, func(ctx context.Context, state paging.State) (paging.Page[tableau.User], error) {
+		page, err := a.client.ListGroupUsers(ctx, groupLUID, tableau.PageRequest{PageNumber: state.Number, PageSize: state.Size})
+		return paging.Page[tableau.User]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Items}, err
+	}, func(item tableau.User) string { return item.LUID })
+	slices.SortFunc(items, func(a, b tableau.User) int { return cmp.Compare(a.LUID, b.LUID) })
+	return items, err
 }
 
 func mergeUsers(target map[string]tableau.User, items []tableau.User) error {
@@ -299,12 +270,4 @@ func mergeGroups(target map[string]tableau.Group, items []tableau.Group) error {
 		target[item.LUID] = item
 	}
 	return nil
-}
-func sortedUsers(byID map[string]tableau.User) []tableau.User {
-	result := make([]tableau.User, 0, len(byID))
-	for _, item := range byID {
-		result = append(result, item)
-	}
-	slices.SortFunc(result, func(a, b tableau.User) int { return cmp.Compare(a.LUID, b.LUID) })
-	return result
 }

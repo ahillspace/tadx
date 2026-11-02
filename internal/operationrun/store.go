@@ -2,7 +2,7 @@
 // workers and provides the process-lifetime lease used to observe them.
 //
 // The package deliberately persists only Request fields. In particular, it has
-// no environment or credential field, and Launch inherits the caller's
+// no process-environment or credential field, and Launch inherits the caller's
 // environment only in memory.
 package operationrun
 
@@ -75,6 +75,9 @@ const (
 // put credentials in Args or BatchData. Environment variables are intentionally
 // not represented here and are never persisted by this package.
 type Request struct {
+	// PreparationData is an application-owned immutable preparation snapshot.
+	// Infrastructure stores its bounded JSON without interpreting domain targets.
+	PreparationData  json.RawMessage `json:"preparation_data,omitempty"`
 	Args             []string        `json:"args"`
 	BatchData        json.RawMessage `json:"batch_data,omitempty"`
 	ConfigPath       string          `json:"config_path,omitempty"`
@@ -419,6 +422,9 @@ func validateRequest(request Request) error {
 	if len(request.BatchData) != 0 && !json.Valid(request.BatchData) {
 		return errors.New("operation run batch data is not valid JSON")
 	}
+	if len(request.PreparationData) != 0 && !json.Valid(request.PreparationData) {
+		return errors.New("operation run preparation data is not valid JSON")
+	}
 	return nil
 }
 
@@ -562,6 +568,7 @@ func writeAtomic(path string, record Record) error {
 func cloneRequest(request Request) Request {
 	request.Args = append([]string(nil), request.Args...)
 	request.BatchData = append(json.RawMessage(nil), request.BatchData...)
+	request.PreparationData = append(json.RawMessage(nil), request.PreparationData...)
 	return request
 }
 

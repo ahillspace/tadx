@@ -67,6 +67,15 @@ Use it when the registry entry is obsolete or the workspace root is unavailable.
 `tadx workspace delete <name>` removes the registered workspace and its root.
 It protects unrecognized or changed files as dirty state; inspect the preview and use `--force` only when you intend to remove that state.
 Deletion is blocked when the workspace is still configured as a default.
+Active artifact operations and downloads also block deletion; `--force` does not bypass ownership checks.
+Deletion rechecks workspace identity and dirty state after obtaining exclusive lifecycle ownership.
+
+Workspace mutations coordinate through a persistent lock beside the canonical workspace root.
+Creating this lock requires write permission in the parent directory.
+The lock remains after deletion so waiting processes cannot acquire a different lock for the same path.
+Do not remove coordination locks while TADX operations are active.
+Empty lifecycle-control files from deleted nested workspaces do not make their parent workspace dirty.
+Nonempty or linked files with similar names remain protected as unrecognized content.
 
 `tadx workspace clean --workspace <name> --class <class>` removes disposable data under `.tadx/` while preserving managed artifacts.
 Classes are `temporary` (`tmp` and `staging`), `cache`, `logs`, and `all`.

@@ -61,6 +61,14 @@ func clean(ctx context.Context, root, class string, preview bool) (_ CleanResult
 	if !ok {
 		return CleanResult{}, fmt.Errorf("unsupported workspace cleanup class %q", class)
 	}
+	if !preview {
+		use, err := beginWorkspaceUse(ctx, root, false)
+		if err != nil {
+			return CleanResult{}, err
+		}
+		defer use.release()
+		root = use.root
+	}
 	control, err := controlDirectory(root, false)
 	if errors.Is(err, fs.ErrNotExist) {
 		return CleanResult{}, nil

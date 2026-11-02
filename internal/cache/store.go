@@ -94,15 +94,18 @@ type ResourceQuery struct {
 
 // ResourceResult contains a local page and its snapshot coverage provenance.
 type ResourceResult struct {
-	Entries          []ResourceEntry
-	Total            int
-	Coverage         string
-	GenerationID     string
-	GeneratedAt      time.Time
-	NewestObserved   time.Time
-	Stale            bool
-	NextCursor       string
-	InventoryWarning string
+	Entries        []ResourceEntry
+	Total          int
+	Coverage       string
+	GenerationID   string
+	GeneratedAt    time.Time
+	NewestObserved time.Time
+	// InventoryObservedAt is the newest matching inventory observation, independent
+	// of the returned page. It is continuation evidence, not page freshness.
+	InventoryObservedAt time.Time
+	Stale               bool
+	NextCursor          string
+	InventoryWarning    string
 }
 
 // ResourceScopeReplacement is one complete authoritative inventory for a

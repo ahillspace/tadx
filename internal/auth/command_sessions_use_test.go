@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -64,7 +63,7 @@ func TestLoginHoldsNoPATAfterItsSignIn(t *testing.T) {
 	}
 	next := NewCommandSessions(nil, nil, directory)
 	defer next.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), overlapWindow)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if _, err := next.AuthenticateCredentials(ctx, target, credentials, signer); err != nil || signer.signIns() != 2 {
 		t.Fatalf("next command AuthenticateCredentials() = %v after %d sign-ins; want the login to hold nothing", err, signer.signIns())
@@ -226,22 +225,29 @@ func TestWaitingForOnePATDoesNotDelayAnother(t *testing.T) {
 	defer waiter.Close()
 	waitCtx, stopWaiting := context.WithCancel(t.Context())
 	waiting := startCommand(waitCtx, waiter, held, signer)
+	waitingReturned := false
 	defer func() {
 		stopWaiting()
-		<-waiting
+		if !waitingReturned {
+			<-waiting
+		}
 	}()
 	select {
 	case err := <-waiting:
+		waitingReturned = true
 		t.Fatalf("waiting command returned %v; want it to wait for the holder", err)
 	case <-time.After(overlapWindow):
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), overlapWindow)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if _, err := waiter.Authenticate(ctx, unrelated, signer); err != nil {
 		t.Fatalf("Authenticate() for an unrelated PAT = %v; want it to proceed while the command waits for another PAT", err)
 	}
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		t.Fatal("unrelated PAT authenticated only at the deadline")
+	select {
+	case err := <-waiting:
+		waitingReturned = true
+		t.Fatalf("held PAT stopped waiting before its holder released ownership: %v", err)
+	default:
 	}
 }
 
@@ -279,18 +285,28 @@ func TestWaitingForAPATSignInDoesNotDelayAnother(t *testing.T) {
 	defer waiter.Close()
 	waitCtx, stopWaiting := context.WithCancel(t.Context())
 	waiting := startCommand(waitCtx, waiter, held, &countingSigner{})
+	waitingReturned := false
 	defer func() {
 		stopWaiting()
-		<-waiting
+		if !waitingReturned {
+			<-waiting
+		}
 	}()
 	select {
 	case err := <-waiting:
+		waitingReturned = true
 		t.Fatalf("waiting command returned %v; want it to wait for the signing command", err)
 	case <-time.After(overlapWindow):
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), overlapWindow)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if _, err := waiter.Authenticate(ctx, unrelated, &countingSigner{}); err != nil {
 		t.Fatalf("Authenticate() for an unrelated PAT = %v; want it to proceed while the command waits for another PAT's sign-in", err)
+	}
+	select {
+	case err := <-waiting:
+		waitingReturned = true
+		t.Fatalf("held PAT stopped waiting before its signer released ownership: %v", err)
+	default:
 	}
 }

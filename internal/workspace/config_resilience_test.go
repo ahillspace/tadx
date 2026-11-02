@@ -91,7 +91,7 @@ func TestWorkspaceResilienceUnregisterKeepsFilesAndCountsAllEntries(t *testing.T
 
 func TestWorkspaceResilienceInvalidChildProtectsParentDeletion(t *testing.T) {
 	manager, _, parent, child := workspaceResilienceFixture(t, true)
-	if _, err := manager.Delete(t.Context(), parent); err == nil || !strings.Contains(err.Error(), "contains registered workspace") {
+	if _, err := manager.Delete(t.Context(), workspace.DeleteRequest{Expected: parent}); err == nil || !strings.Contains(err.Error(), "contains registered workspace") {
 		t.Fatalf("parent deletion ignored invalid child registration: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(child, "keep.txt")); err != nil {
@@ -109,7 +109,7 @@ func TestWorkspaceResilienceKnownOutsidePathDoesNotBlockDeletion(t *testing.T) {
 	if err := config.Save(path, cfg); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Delete(t.Context(), parent); err != nil {
+	if _, err := manager.Delete(t.Context(), workspace.DeleteRequest{Expected: parent}); err != nil {
 		t.Fatalf("invalid outside registration blocked safe deletion: %v", err)
 	}
 	if _, err := os.Stat(parent.Root); !os.IsNotExist(err) {
@@ -182,7 +182,7 @@ func TestWorkspaceResilienceCollisionParticipantsRemainProtected(t *testing.T) {
 			t.Fatalf("collision participant lacked shared violation: %v", err)
 		}
 	}
-	if _, err := manager.Delete(t.Context(), parent); err == nil {
+	if _, err := manager.Delete(t.Context(), workspace.DeleteRequest{Expected: parent}); err == nil {
 		t.Fatal("colliding invalid child lost filesystem deletion protection")
 	}
 	if _, err := os.Stat(filepath.Join(child, "keep.txt")); err != nil {

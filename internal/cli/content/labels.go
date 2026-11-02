@@ -3,8 +3,10 @@ package content
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/actions/contentlabel"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -21,19 +23,21 @@ type LabelDeleter interface {
 	Execute(context.Context, contentlabel.DeleteInput, bool) (contentlabel.DeleteOutput, error)
 }
 type LabelDependencies struct {
-	Lister    LabelLister
-	Inspector LabelInspector
-	Updater   LabelUpdater
-	Deleter   LabelDeleter
-	Renderer  Renderer
+	Lister       LabelLister
+	Inspector    LabelInspector
+	Updater      LabelUpdater
+	Deleter      LabelDeleter
+	Renderer     Renderer
+	BatchTargets batchinput.Resolver
 }
 
-func NewLabels(deps LabelDependencies) *cobra.Command {
+func NewLabels(deps LabelDependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	root := &cobra.Command{Use: "label", Short: "Inspect and change labels attached to Tableau assets"}
-	root.AddCommand(newLabelLister(deps))
-	root.AddCommand(newLabelInspector(deps))
-	root.AddCommand(newLabelUpdater(deps))
-	root.AddCommand(newLabelDeleter(deps))
+	selection.Add(root, "content.label.list", func() *cobra.Command { return newLabelLister(deps) })
+	selection.Add(root, "content.label.inspect", func() *cobra.Command { return newLabelInspector(deps) })
+	selection.Add(root, "content.label.update", func() *cobra.Command { return newLabelUpdater(deps) })
+	selection.Add(root, "content.label.delete", func() *cobra.Command { return newLabelDeleter(deps) })
 	return root
 }
 func newLabelLister(deps LabelDependencies) *cobra.Command {
@@ -108,7 +112,10 @@ func newLabelUpdater(deps LabelDependencies) *cobra.Command {
 		if cmd.Flags().Changed("elevated") {
 			in.Elevated = &elevated
 		}
-		return contentlabel.ValidateUpdateInput(in)
+		if err := contentlabel.ValidateUpdateInput(in); err != nil {
+			return err
+		}
+		return prepareLabelUpdate(cmd.Context(), deps, &in)
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		if deps.Updater == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.update", errors.New("label command dependencies are not configured"))

@@ -163,7 +163,7 @@ func TestAdapterKeepsCrossPageConflictsBeforeCollisionDecisions(t *testing.T) {
 				client.groups = groups[:1]
 				_, err = adapter.ResolveGroup(t.Context(), resource.GroupSelector{LUID: groups[0].LUID}, true)
 			}
-			if err == nil || !strings.Contains(err.Error(), "conflicting records") {
+			if err == nil || !strings.Contains(err.Error(), "repeated identities") {
 				t.Fatalf("conflicting later page was lost: %v", err)
 			}
 		})
@@ -191,4 +191,29 @@ func groupPage(items []tableau.Group, number, size int) tableau.GroupPage {
 		end = len(items)
 	}
 	return tableau.GroupPage{Number: number, Size: size, Total: len(items), Items: append([]tableau.Group(nil), items[start:end]...)}
+}
+
+func TestAdapterRejectsIdenticalRepeatedResolutionRows(t *testing.T) {
+	users := make([]tableau.User, 1001)
+	groups := make([]tableau.Group, 1001)
+	for i := range users {
+		users[i] = tableau.User{LUID: fmt.Sprintf("u-%04d", i), Name: "user"}
+		groups[i] = tableau.Group{LUID: fmt.Sprintf("g-%04d", i), Name: "group"}
+	}
+	users[1000] = users[0]
+	groups[1000] = groups[0]
+	for _, kind := range []string{"user", "group"} {
+		t.Run(kind, func(t *testing.T) {
+			adapter := resource.NewAdapter(&fakeClient{users: users, groups: groups})
+			var err error
+			if kind == "user" {
+				_, err = adapter.ResolveUser(t.Context(), resource.UserSelector{Username: "missing"})
+			} else {
+				_, err = adapter.GroupExists(t.Context(), "missing")
+			}
+			if err == nil || !strings.Contains(err.Error(), "repeated identities") {
+				t.Fatalf("incomplete %s inventory trusted absence: %v", kind, err)
+			}
+		})
+	}
 }

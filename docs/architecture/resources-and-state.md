@@ -105,6 +105,12 @@ Dependency previews use private OS temporary staging, owned and removed by the c
 [`WorkbookManager.Pull`](../../internal/artifact/workbook.go) matches existing local content by server origin, site LUID, and workbook LUID.
 It protects local edits with the saved baseline fingerprint and requires overwrite before replacing dirty native bytes.
 [`WorkbookBundleManager.Pull`](../../internal/artifact/bundle.go) stages the workbook and datasources, journals the installation, and recovers interrupted bundle transactions.
+Artifact mutations acquire the workspace lifecycle lease and exclusive artifact lock before reconciling shared bundle journals.
+Rollback verifies transaction ownership and prepared content before replacing or removing an artifact; conflicting newer generations require explicit recovery.
+Workspace deletion owns the lifecycle exclusively and revalidates recovery, identity, and dirty-state evidence under that ownership.
+Deletion closes locks inside the workspace before renaming its root while retaining the external lifecycle lock.
+The persistent sibling lifecycle lock uses the canonical workspace path, independent of user cache settings.
+Creating that lock requires write permission in the workspace's parent directory; failure stops the operation before mutation.
 
 Datasource and flow pulls have their own contracts in [`datasource/pull.go`](../../actions/datasource/pull.go) and [`flow/pull.go`](../../actions/flow/pull.go).
 Standalone [`lineage.Execute`](../../actions/lineage/pull/action.go) resolves its REST root, captures the requested bounded graph, and saves confirmed partial evidence when capture fails.
@@ -169,6 +175,10 @@ Three kinds of local evidence remain distinct:
 | Partial inventory | Confirmed records remain useful, but bounds or provider problems prevent a complete-scope claim. |
 
 [`readsource.Metadata`](../../internal/readsource/readsource.go) reports source mode, observation time, completeness, reason, staleness, and generation information.
+Read-through pages report the newest observation among their returned rows and remain stale if any returned row is stale.
+Fresh rows outside the selected page cannot change that page's freshness evidence.
+Inventory continuation retains its separate scope observation metadata, so mixed-age pages do not invalidate an unchanged inventory cursor.
+Complete inventories retain their generation timestamp as the authority for staleness.
 A summary-only record can satisfy a list while leaving an inspect projection partial.
 A live read remains authoritative if best-effort local caching fails.
 Inventory publication failures expose `cache_warning`; ordinary detail write-through uses a bounded timeout and does not fail the live operation.

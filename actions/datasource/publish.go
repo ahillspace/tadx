@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -195,6 +196,10 @@ func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	existing, err := publishCollision(ctx, a.resolver, name, project.LUID, input, artifact)
 	if err != nil {
 		return PublishPlan{}, err
+	}
+	destination := value.PublishDestination{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, Name: name, ExistingLUID: existing}
+	if expected := input.ExpectedDestination; expected != nil && *expected != destination {
+		return PublishPlan{}, &errs.Error{ID: "datasource.publish.destination_changed", Kind: errs.KindOperation, Operation: "datasource.publish", Environment: input.Environment, Site: input.Site, Resource: expected.ExistingLUID, Summary: "The datasource publish destination changed after batch preparation.", Retryable: new(false), CorrectiveAction: "Review a new batch plan before publishing.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 	}
 	req := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Mode: input.Mode, ParentDataSourceURLs: parents}
 	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "confirm destination"}, request: req, contentURL: artifact.ContentURL}, nil

@@ -190,6 +190,37 @@ func TestRewriteWorkbookDatasourcesRebindsOnlyTheUploadCopy(t *testing.T) {
 	}
 }
 
+func TestRewriteWorkbookDatasourcesRebindsCompleteLiveEndpoint(t *testing.T) {
+	for _, test := range []struct {
+		name, source, origin, want string
+	}{
+		{"same host new port", workbookDatasourceFixture, "https://tableau.example.com:8443", "channel='https' class='sqlproxy' dbname='SalesMargin_1' directory='dataserver' port='8443' server='tableau.example.com'"},
+		{"same host new channel", strings.Replace(workbookDatasourceFixture, "channel='https'", "channel='http'", 1), "https://tableau.example.com", "channel='https' class='sqlproxy' dbname='SalesMargin_1' directory='dataserver' port='443' server='tableau.example.com'"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "Sales.twb")
+			if err := os.WriteFile(path, []byte(test.source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			rewritten, err := RewriteWorkbookDatasources(t.Context(), workbookRewriteRequest(t, path, test.origin, "target-site"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(rewritten.Path)
+			data, err := os.ReadFile(rewritten.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(data), test.want) || !strings.Contains(string(data), "derived-from='"+test.origin+"/t/target-site/datasources/") {
+				t.Fatalf("live endpoint and repository disagree: %s", data)
+			}
+			if !strings.Contains(string(data), strings.Replace(fixtureCachedConnection, "dbname='SalesMargin'", "dbname='SalesMargin_1'", 1)) {
+				t.Fatal("cached connection endpoint changed")
+			}
+		})
+	}
+}
+
 func TestRewriteWorkbookDatasourcesPreservesPackageEntries(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "Sales.twbx")

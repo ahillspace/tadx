@@ -423,6 +423,9 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 	if err != nil {
 		return flowops.PublishOutput{}, remoteSetupError("flow.publish", input.Environment, input.Site, connection.environment, err)
 	}
+	if err := bindPublicationScope(ctx, "flow.publish", connection.environment, connection.siteLUID); err != nil {
+		return flowops.PublishOutput{}, err
+	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	var lifecycle *publication

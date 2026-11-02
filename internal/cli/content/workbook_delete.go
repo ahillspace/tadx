@@ -3,6 +3,7 @@ package content
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/actions/batchinput"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
@@ -13,7 +14,7 @@ type WorkbookDeleter interface {
 	DeleteWorkbook(context.Context, workbookops.DeleteInput, bool) (workbookops.DeleteOutput, error)
 }
 
-func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobra.Command {
+func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, targets batchinput.Resolver) *cobra.Command {
 	var input workbookops.DeleteInput
 	var luid, name, projectPath string
 	var preview bool
@@ -28,7 +29,7 @@ func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobr
 			if input.Environment == "" {
 				return clierr.Usage("workbook.delete", errors.New("--environment is required for remote deletion"))
 			}
-			return nil
+			return batchinput.Resource(command.Context(), targets, input.Environment, "workbook", &input.Selector)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deleter.DeleteWorkbook(command.Context(), input, preview)

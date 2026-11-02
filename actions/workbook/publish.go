@@ -142,6 +142,10 @@ func (a *Publisher) Plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	if len(existing) == 1 {
 		existingLUID = existing[0].LUID
 	}
+	destination := value.PublishDestination{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, Name: name, ExistingLUID: existingLUID}
+	if expected := input.ExpectedDestination; expected != nil && *expected != destination {
+		return PublishPlan{}, &errs.Error{ID: "workbook.publish.destination_changed", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Resource: expected.ExistingLUID, Summary: "The workbook publish destination changed after batch preparation.", Retryable: new(false), CorrectiveAction: "Review a new batch plan before publishing.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
+	}
 	contentURLs, datasourceBindings, err := a.readDatasourceBindings(ctx, input, artifact.Datasources, bindings)
 	if err != nil {
 		return PublishPlan{}, err

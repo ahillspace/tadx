@@ -19,12 +19,20 @@ type Page[T any] struct {
 
 // Collect keeps provider state typed. External cursor envelopes are not involved.
 func Collect[T any](ctx context.Context, read func(context.Context, State) (Page[T], error), identity func(T) string) ([]T, error) {
-	state := State{Number: 1, Size: 100}
+	return CollectBounded(ctx, 100, 100, read, identity)
+}
+
+// CollectBounded applies the same completeness checks with a caller-owned scan bound.
+func CollectBounded[T any](ctx context.Context, pageSize, maxPages int, read func(context.Context, State) (Page[T], error), identity func(T) string) ([]T, error) {
+	if pageSize < 1 || maxPages < 1 {
+		return nil, errors.New("inventory requires positive page size and page count bounds")
+	}
+	state := State{Number: 1, Size: pageSize}
 	result := []T{}
 	seen := map[string]bool{}
 	tokens := map[string]bool{}
 	total := -1
-	for state.Number <= 100 {
+	for state.Number <= maxPages {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -66,5 +74,5 @@ func Collect[T any](ctx context.Context, read func(context.Context, State) (Page
 		state.Number++
 		state.Token = page.Token
 	}
-	return nil, fmt.Errorf("--all exceeds the 10000-record bound; use narrower filters")
+	return nil, fmt.Errorf("inventory exceeds the %d-record bound; use narrower filters", pageSize*maxPages)
 }

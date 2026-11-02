@@ -12,6 +12,7 @@ import (
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -107,7 +108,8 @@ type Dependencies struct {
 }
 
 // New creates the Pulse command tree.
-func New(deps Dependencies) *cobra.Command {
+func New(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{
 		Use:   "pulse",
 		Short: "Manage Tableau Pulse definitions and metrics",
@@ -116,26 +118,22 @@ func New(deps Dependencies) *cobra.Command {
 			"TADX reads and changes saved Pulse configuration; it does not retrieve current metric values or generated insights.",
 	}
 	definition := &cobra.Command{Use: "definition", Short: "Manage Pulse metric definitions"}
-	definition.AddCommand(
-		newDefinitionList(deps),
-		newDefinitionInspect(deps),
-		newDefinitionPull(deps),
-		newDefinitionPublish(deps),
-		newDefinitionCreate(deps),
-		newDefinitionDelete(deps),
-	)
+	selection.Add(definition, "pulse.definition.list", func() *cobra.Command { return newDefinitionList(deps) })
+	selection.Add(definition, "pulse.definition.inspect", func() *cobra.Command { return newDefinitionInspect(deps) })
+	selection.Add(definition, "pulse.definition.pull", func() *cobra.Command { return newDefinitionPull(deps) })
+	selection.Add(definition, "pulse.definition.publish", func() *cobra.Command { return newDefinitionPublish(deps) })
+	selection.Add(definition, "pulse.definition.create", func() *cobra.Command { return newDefinitionCreate(deps) })
+	selection.Add(definition, "pulse.definition.delete", func() *cobra.Command { return newDefinitionDelete(deps) })
 	metric := &cobra.Command{Use: "metric", Short: "Manage Pulse metric variants and followers"}
-	metric.AddCommand(
-		newMetricList(deps),
-		newMetricInspect(deps),
-		newMetricFork(deps),
-		newMetricDelete(deps),
-		newMetricFollowers(deps),
-		newMetricFollow(deps),
-		newMetricUnfollow(deps),
-	)
+	selection.Add(metric, "pulse.metric.list", func() *cobra.Command { return newMetricList(deps) })
+	selection.Add(metric, "pulse.metric.inspect", func() *cobra.Command { return newMetricInspect(deps) })
+	selection.Add(metric, "pulse.metric.fork", func() *cobra.Command { return newMetricFork(deps) })
+	selection.Add(metric, "pulse.metric.delete", func() *cobra.Command { return newMetricDelete(deps) })
+	selection.Add(metric, "pulse.metric.followers", func() *cobra.Command { return newMetricFollowers(deps) })
+	selection.Add(metric, "pulse.metric.follow", func() *cobra.Command { return newMetricFollow(deps) })
+	selection.Add(metric, "pulse.metric.unfollow", func() *cobra.Command { return newMetricUnfollow(deps) })
 	subscription := &cobra.Command{Use: "subscription", Short: "Inspect your Pulse subscriptions"}
-	subscription.AddCommand(newSubscriptionList(deps))
+	selection.Add(subscription, "pulse.subscription.list", func() *cobra.Command { return newSubscriptionList(deps) })
 	command.AddCommand(definition, metric, subscription)
 	return command
 }

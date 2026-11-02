@@ -2,8 +2,11 @@ package workspace_test
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,6 +36,75 @@ func newConfig(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return configPath
+}
+
+func TestCloneRejectsDestinationInsideSourceBeforeCreatingFiles(t *testing.T) {
+	manager := workspace.NewManager(newConfig(t), nil)
+	source, err := manager.Create(t.Context(), "source", filepath.Join(t.TempDir(), "source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"nested", "artifacts/nested", "artifacts/new-parent/nested"} {
+		t.Run(relative, func(t *testing.T) {
+			destination := filepath.Join(source.Root, filepath.FromSlash(relative))
+			for _, clone := range []func(context.Context, string, string, string) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
+				if _, err := clone(t.Context(), "source", "nested", destination); err == nil || !strings.Contains(err.Error(), "inside the source") {
+					t.Fatalf("nested clone error = %v", err)
+				}
+			}
+			if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+				t.Fatalf("nested destination was created: %v", err)
+			}
+		})
+	}
+}
+
+func TestCloneRejectsDestinationInsideSourceThroughParentAlias(t *testing.T) {
+	base := t.TempDir()
+	manager := workspace.NewManager(newConfig(t), nil)
+	source, err := manager.Create(t.Context(), "source", filepath.Join(base, "source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "alias")
+	linkWorkspaceTestDirectory(t, alias, source.Root)
+	for _, clone := range []func(context.Context, string, string, string) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
+		if _, err := clone(t.Context(), "source", "nested", filepath.Join(alias, "artifacts", "nested")); err == nil || !strings.Contains(err.Error(), "inside the source") {
+			t.Fatalf("aliased nested clone error = %v", err)
+		}
+	}
+	// A source registered through an aliased parent must be compared with a
+	// destination using the physical spelling of that same source tree.
+	parentAlias := filepath.Join(base, "parent-alias")
+	linkWorkspaceTestDirectory(t, parentAlias, base)
+	if _, err := manager.Create(t.Context(), "aliased-source", filepath.Join(parentAlias, "aliased-source")); err != nil {
+		t.Fatal(err)
+	}
+	for _, clone := range []func(context.Context, string, string, string) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
+		if _, err := clone(t.Context(), "aliased-source", "nested", filepath.Join(base, "aliased-source", "artifacts", "nested")); err == nil || !strings.Contains(err.Error(), "inside the source") {
+			t.Fatalf("aliased source nested clone error = %v", err)
+		}
+	}
+}
+
+func linkWorkspaceTestDirectory(t *testing.T, link, target string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		if output, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput(); err != nil {
+			t.Fatalf("create directory junction: %v: %s", err, output)
+		}
+	} else if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(link); err != nil {
+		reported, _ := os.Readlink(link)
+		t.Fatalf("directory alias does not resolve to its fixture: target=%q, %v", reported, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(link); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove owned directory alias: %v", err)
+		}
+	})
 }
 
 func TestRegisterAdoptsExistingManifestIdentity(t *testing.T) {

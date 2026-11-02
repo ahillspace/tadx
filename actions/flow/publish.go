@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type ArtifactReader interface {
@@ -134,6 +135,10 @@ func (a *Publisher) plan(ctx context.Context, input PublishInput) (PublishPlan, 
 	existing, err := publishExactCollision(ctx, a.resolver, name, project.LUID, input.Environment, input.Site, input.Overwrite)
 	if err != nil {
 		return PublishPlan{}, err
+	}
+	destination := value.PublishDestination{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, Name: name, ExistingLUID: existing}
+	if expected := input.ExpectedDestination; expected != nil && *expected != destination {
+		return PublishPlan{}, &errs.Error{ID: "flow.publish.destination_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Resource: expected.ExistingLUID, Summary: "The flow publish destination changed after batch preparation.", Retryable: new(false), CorrectiveAction: "Review a new batch plan before publishing.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 	}
 	return PublishPlan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", Operation: "flow.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, FlowName: name, Target: PublishTarget{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Overwrite: input.Overwrite, Substeps: []string{"resolve exact destination", "check flow collision", "revalidate destination and collision", "upload native flow", "publish flow"}, request: PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: input.Overwrite}, planned: true}, nil
 }

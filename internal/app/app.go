@@ -74,6 +74,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		}
 		return runPublicationWorker(context.Background(), args[1], args[2], options)
 	}
+	ctx = ensurePublicationScopes(ctx)
 	definitions := capability.All()
 	renderOptions := &cli.RenderOptions{HintConfig: func() string { return options.ConfigPath }}
 	renderOptions.JSON = hasJSONFlag(args)
@@ -141,6 +142,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		RenderOptions:         renderOptions,
 		BatchSelectors:        capability.BatchSelectors(),
 		BatchOptions:          capability.BatchOptions(),
+		BatchTargets:          batchTargetResolver{runtime: runtime},
 		ConfigPath:            &runtime.configPath,
 		MutationsEnabled:      false,
 		MutationPolicy:        registryMutationPolicy{},
@@ -738,6 +740,9 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 		return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
 	}
 	environment = connection.environment
+	if err := bindPublicationScope(ctx, "workbook.publish", environment, connection.session.SiteLUID()); err != nil {
+		return workbookops.PublishOutput{}, err
+	}
 	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	clients := s.runtime.clients(connection)
 	projects := resourceproject.NewAdapter(clients.projects)

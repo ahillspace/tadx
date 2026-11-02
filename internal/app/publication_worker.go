@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
@@ -102,6 +103,10 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 		return err
 	}
 	request := operationrun.Request{Args: slices.Clone(argv), ConfigPath: configPath, WorkingDirectory: cwd, Operation: command.Annotations[cli.CapabilityAnnotation], NoWait: noWait}
+	request.PreparationData, err = encodePublicationPreparation(command.Context(), request.Operation)
+	if err != nil {
+		return publicationWorkerError("preparation", "Publication preparation is invalid; nothing was started.", err)
+	}
 	if path, _ := command.Flags().GetString("batch-file"); path != "" {
 		file, err := os.Open(path)
 		if err != nil {
@@ -267,6 +272,17 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		return 1
 	}
 	defer lease.Release()
+	preparation, err := decodePublicationPreparation(record.Request.PreparationData, record.Operation)
+	if err != nil {
+		_, _ = lease.Update(func(r *operationrun.Record) error {
+			r.ExitCode = new(1)
+			r.FinishedAt = time.Now().UTC()
+			r.Phase = operationrun.PhaseFailed
+			r.Activity = "Publication preparation is invalid; no action was started: " + err.Error()
+			return nil
+		})
+		return 1
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	initialControl, controlErr := store.ReadCancel(id)
@@ -400,6 +416,8 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		}
 		args = replacePublicationBatchPath(args, path)
 	}
+	ctx = batchinput.WithPublicationExpectations(ctx, preparation.Destinations)
+	ctx = withPublicationScopes(ctx, preparation.Scopes)
 	return Run(ctx, args, io.Discard, options)
 }
 

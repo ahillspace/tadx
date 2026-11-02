@@ -12,7 +12,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/pathspec"
@@ -84,6 +86,7 @@ type Dependencies struct {
 	FlowUpdater         FlowUpdater
 	LineagePuller       LineagePuller
 	Renderer            Renderer
+	BatchTargets        batchinput.Resolver
 	MutationsEnabled    bool
 	PullUse             string
 	PullShort           string
@@ -92,7 +95,8 @@ type Dependencies struct {
 }
 
 // New creates the content workbook command tree.
-func New(deps Dependencies) *cobra.Command {
+func New(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	content := &cobra.Command{
 		Use:   "content",
 		Short: "Operate Tableau content lifecycle",
@@ -100,44 +104,48 @@ func New(deps Dependencies) *cobra.Command {
 			"TADX supports content discovery and schema inspection; it does not query datasource values or render views.",
 	}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
-	workbook.AddCommand(newPull(deps), newPublish(deps))
+	selection.Add(workbook, "workbook.pull", func() *cobra.Command { return newPull(deps) })
+	selection.Add(workbook, "workbook.publish", func() *cobra.Command { return newPublish(deps) })
 	if deps.WorkbookSchema != nil {
-		workbook.AddCommand(newWorkbookSchema(deps.WorkbookSchema, deps.Renderer))
+		selection.Add(workbook, "workbook.schema", func() *cobra.Command { return newWorkbookSchema(deps.WorkbookSchema, deps.Renderer) })
 	}
 	if deps.WorkbookLister != nil && deps.WorkbookInspector != nil {
-		workbook.AddCommand(newWorkbookList(deps.WorkbookLister, deps.Renderer), newWorkbookInspect(deps.WorkbookInspector, deps.Renderer))
+		selection.Add(workbook, "workbook.list", func() *cobra.Command { return newWorkbookList(deps.WorkbookLister, deps.Renderer) })
+		selection.Add(workbook, "workbook.inspect", func() *cobra.Command { return newWorkbookInspect(deps.WorkbookInspector, deps.Renderer) })
 	}
 	if deps.WorkbookDeleter != nil {
-		workbook.AddCommand(newWorkbookDelete(deps.WorkbookDeleter, deps.Renderer, deps.MutationsEnabled))
+		selection.Add(workbook, "workbook.delete", func() *cobra.Command {
+			return newWorkbookDelete(deps.WorkbookDeleter, deps.Renderer, deps.BatchTargets)
+		})
 	}
 	if deps.WorkbookMover != nil {
-		workbook.AddCommand(newWorkbookMove(deps))
+		selection.Add(workbook, "workbook.move", func() *cobra.Command { return newWorkbookMove(deps) })
 	}
 	if deps.WorkbookUpdater != nil {
-		workbook.AddCommand(newWorkbookUpdate(deps))
+		selection.Add(workbook, "workbook.update", func() *cobra.Command { return newWorkbookUpdate(deps) })
 	}
 	content.AddCommand(workbook)
-	if deps.DatasourceLister != nil && deps.DatasourceInspector != nil {
-		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceInspector, deps.Renderer)
+	if deps.DatasourceLister != nil && deps.DatasourceInspector != nil && selection.Wants("datasource") {
+		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceInspector, deps.Renderer, selected...)
 		if deps.DatasourceSchema != nil {
-			datasource.AddCommand(newDatasourceSchema(deps.DatasourceSchema, deps.Renderer))
+			selection.Add(datasource, "datasource.schema", func() *cobra.Command { return newDatasourceSchema(deps.DatasourceSchema, deps.Renderer) })
 		}
 		if deps.DatasourcePuller != nil && deps.DatasourcePublisher != nil && deps.DatasourceDeleter != nil {
-			addDatasourceLifecycle(datasource, datasourceLifecycleDependencies{puller: deps.DatasourcePuller, publisher: deps.DatasourcePublisher, deleter: deps.DatasourceDeleter, renderer: deps.Renderer, mutationsEnabled: deps.MutationsEnabled})
+			addDatasourceLifecycle(datasource, datasourceLifecycleDependencies{puller: deps.DatasourcePuller, publisher: deps.DatasourcePublisher, deleter: deps.DatasourceDeleter, renderer: deps.Renderer, mutationsEnabled: deps.MutationsEnabled, batchTargets: deps.BatchTargets}, selected...)
 		}
 		if deps.DatasourceMover != nil {
-			datasource.AddCommand(newDatasourceMove(deps))
+			selection.Add(datasource, "datasource.move", func() *cobra.Command { return newDatasourceMove(deps) })
 		}
 		if deps.DatasourceUpdater != nil {
-			datasource.AddCommand(newDatasourceUpdate(deps))
+			selection.Add(datasource, "datasource.update", func() *cobra.Command { return newDatasourceUpdate(deps) })
 		}
 		content.AddCommand(datasource)
 	}
-	if deps.ProjectLister != nil && deps.ProjectInspector != nil {
-		content.AddCommand(newProject(deps))
+	if deps.ProjectLister != nil && deps.ProjectInspector != nil && selection.Wants("project") {
+		content.AddCommand(newProject(deps, selected...))
 	}
-	if deps.FlowLister != nil && deps.FlowInspector != nil && deps.FlowPuller != nil && deps.FlowPublisher != nil && deps.FlowMover != nil && deps.FlowDeleter != nil {
-		content.AddCommand(newFlow(deps))
+	if deps.FlowLister != nil && deps.FlowInspector != nil && deps.FlowPuller != nil && deps.FlowPublisher != nil && deps.FlowMover != nil && deps.FlowDeleter != nil && selection.Wants("flow") {
+		content.AddCommand(newFlow(deps, selected...))
 	}
 	return content
 }
@@ -219,6 +227,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 		short = "Publish workbook artifacts in parallel."
 	}
 	var input workbookops.PublishInput
+	var prepared map[string]workbookops.PublishInput
 	var artifacts, bindings []string
 	var projectID, projectPath string
 	var preview bool
@@ -244,13 +253,17 @@ func newPublish(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return clierr.Usage("workbook.publish", err)
 			}
-			return nil
+			prepared, err = prepareWorkbookPublications(command, deps, input, artifacts)
+			return err
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			reporter := progress.New(command.ErrOrStderr())
 			return runPublishSelection(command.Context(), "workbook.publish", "workbook", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (workbookops.PublishOutput, error) {
 				item := input
 				item.ArtifactPath = artifact
+				if prepared != nil {
+					item = prepared[artifact]
+				}
 				return deps.Publisher.Execute(ctx, item, preview)
 			})
 		},

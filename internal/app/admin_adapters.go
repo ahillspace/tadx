@@ -2,11 +2,10 @@ package app
 
 import (
 	"context"
-	"net/url"
-	"strings"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
@@ -22,12 +21,7 @@ func (a adminUserAdapter) ValidateUpdate(ctx context.Context, input userops.Upda
 	if input.FullName == nil {
 		return nil
 	}
-	server, err := url.Parse(a.serverURL)
-	if err != nil {
-		return err
-	}
-	host := strings.ToLower(server.Hostname())
-	if host == "online.tableau.com" || strings.HasSuffix(host, ".online.tableau.com") {
+	if config.IsTableauCloud(a.serverURL) {
 		return unsupportedUserFullName("Tableau Cloud does not support updating a user's full name.")
 	}
 	if a.callerLUID == "" {

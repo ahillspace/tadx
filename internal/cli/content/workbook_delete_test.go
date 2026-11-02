@@ -26,7 +26,7 @@ func (r *workbookDeleteRenderer) Render(any) error {
 func TestWorkbookDeleteParsesExactSelectorAndPreview(t *testing.T) {
 	actions := &workbookDeleteCommands{}
 	renderer := &workbookDeleteRenderer{}
-	command := newWorkbookDelete(actions, renderer, true)
+	command := newWorkbookDelete(actions, renderer, nil)
 	command.SetArgs([]string{"--environment", "dev", "--name", "Finance", "--project", "Department/Ops", "--preview"})
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestWorkbookDeleteParsesExactSelectorAndPreview(t *testing.T) {
 }
 
 func TestWorkbookDeleteRequiresExplicitEnvironment(t *testing.T) {
-	command := newWorkbookDelete(&workbookDeleteCommands{}, &workbookDeleteRenderer{}, true)
+	command := newWorkbookDelete(&workbookDeleteCommands{}, &workbookDeleteRenderer{}, nil)
 	command.SetArgs([]string{"--id", "wb-1"})
 	if err := command.ExecuteContext(context.Background()); err == nil {
 		t.Fatal("expected explicit environment error")
@@ -45,7 +45,7 @@ func TestWorkbookDeleteRequiresExplicitEnvironment(t *testing.T) {
 }
 
 func TestWorkbookDeleteStaysDiscoverableWhenMutationsAreDisabled(t *testing.T) {
-	command := newWorkbookDelete(&workbookDeleteCommands{}, &workbookDeleteRenderer{}, false)
+	command := newWorkbookDelete(&workbookDeleteCommands{}, &workbookDeleteRenderer{}, nil)
 	if command.Hidden {
 		t.Fatal("workbook delete is hidden")
 	}

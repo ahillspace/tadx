@@ -454,6 +454,35 @@ func TestCheckAllowsLocalStateWritersToUseReplaceLeaf(t *testing.T) {
 	assertViolationStrings(t, violations, nil)
 }
 
+func TestCheckAllowsArtifactLifecycleAndAdminCollectionDependencies(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/artifact/workspacelock.go", `package artifact
+import _ "example.test/tadx/internal/workspace"
+`)
+	writeGo(t, root, "internal/resources/admin/adapter.go", `package admin
+import _ "example.test/tadx/internal/paging"
+`)
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, nil)
+}
+
+func TestCheckRejectsWorkspaceDependingOnArtifactPersistence(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/workspace/lifecycle.go", `package workspace
+import _ "example.test/tadx/internal/artifact"
+`)
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"internal/workspace/lifecycle.go imports example.test/tadx/internal/artifact: foundation packages must not import unapproved local packages",
+	})
+}
+
 func TestCheckKeepsReplaceLeafFreeOfLocalImports(t *testing.T) {
 	root := moduleFixture(t)
 	writeGo(t, root, "internal/fsreplace/fsreplace.go", `package fsreplace

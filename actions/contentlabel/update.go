@@ -14,7 +14,35 @@ type UpdateInput struct {
 	Environment, Site, ID, Type, TargetID string
 	Value, Message                        *string
 	Active, Elevated                      *bool
+	Expected                              *UpdateExpected
 }
+
+// UpdateExpected pins the attachment generation selected during batch planning.
+// An empty AttachmentID requires that the target value remain absent.
+type UpdateExpected struct {
+	Target       value.LabelTarget
+	AttachmentID string
+}
+
+// PinTarget retains the exact identity established by a validated preview while
+// preserving requested property changes for the action's fresh execution plan.
+func (in *UpdateInput) PinTarget(plan *UpdatePlan) error {
+	if plan == nil || !supportedKind(plan.Target.Type) || plan.Target.LUID == "" {
+		return updateUsage("label preview omitted the authoritative attachment target")
+	}
+	in.Environment, in.Site = plan.Environment, plan.Site
+	in.Type, in.TargetID = plan.Target.Type, plan.Target.LUID
+	in.Expected = &UpdateExpected{Target: plan.Target}
+	if plan.Before != nil {
+		if plan.Before.LUID == "" {
+			return updateUsage("label preview omitted the existing attachment ID")
+		}
+		in.ID = plan.Before.LUID
+		in.Expected.AttachmentID = plan.Before.LUID
+	}
+	return nil
+}
+
 type UpdateReader interface {
 	GetLabel(context.Context, string) (value.ContentLabel, error)
 	GetLabels(context.Context, value.LabelTarget, []string) ([]value.ContentLabel, error)
@@ -82,6 +110,17 @@ func Update(ctx context.Context, reader UpdateReader, writer UpdateWriter, in Up
 	before, err := updateBaseline(ctx, reader, in)
 	if err != nil {
 		return out, updateFailure(in, "read", errs.OutcomeNotAttempted, err)
+	}
+	if in.Expected != nil {
+		target := value.LabelTarget{Type: in.Type, LUID: in.TargetID}
+		attachmentID := ""
+		if before != nil {
+			target = value.LabelTarget{Type: before.Type, LUID: before.TargetLUID}
+			attachmentID = before.LUID
+		}
+		if target != in.Expected.Target || attachmentID != in.Expected.AttachmentID {
+			return out, updateFailure(in, "conflict", errs.OutcomeNotAttempted, errors.New("label target changed after batch preparation"))
+		}
 	}
 	if before != nil {
 		if in.Value != nil && *in.Value != before.Value {

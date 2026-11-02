@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -150,7 +151,11 @@ func (a *workspaceRuntime) Move(ctx context.Context, input workspaceaction.MoveI
 	if input.Preview {
 		operation = artifact.PreviewMove
 	}
-	item, err := operation(ctx, artifact.MoveRequest{SourceWorkspace: source.Root, DestinationWorkspace: destination.Root, Selector: artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path}})
+	selector := artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path, ExpectedWorkspaceID: cmp.Or(input.ExpectedWorkspaceID, source.ID)}
+	if input.ExpectedArtifact != nil {
+		selector.Expected = new(artifactItem(*input.ExpectedArtifact))
+	}
+	item, err := operation(ctx, artifact.MoveRequest{SourceWorkspace: source.Root, DestinationWorkspace: destination.Root, DestinationWorkspaceID: destination.ID, Selector: selector})
 	if err != nil {
 		return moveArtifact(item), mapArtifactResolutionError("workspace.move", input.SourceWorkspace, input.LUID, err)
 	}
@@ -180,6 +185,10 @@ func (a *workspaceRuntime) ResolveWorkspace(ctx context.Context, name string) (w
 	if err != nil {
 		return workspaceaction.DeletionTarget{}, err
 	}
+	return workspaceDeletionTarget(ctx, item)
+}
+
+func workspaceDeletionTarget(ctx context.Context, item workspacecore.Record) (workspaceaction.DeletionTarget, error) {
 	page, err := artifact.Inventory(ctx, item.Root, artifact.InventoryOptions{Limit: 1})
 	if err != nil {
 		return workspaceaction.DeletionTarget{}, err
@@ -191,33 +200,21 @@ func (a *workspaceRuntime) ResolveWorkspace(ctx context.Context, name string) (w
 	return workspaceaction.DeletionTarget{Workspace: workspaceIdentity(item), Dirty: page.Dirty > 0 || page.Invalid > 0 || page.Missing > 0 || unmanaged, DirtyArtifacts: page.Dirty, InvalidArtifacts: page.Invalid + page.Missing}, nil
 }
 func (a *workspaceRuntime) DeleteWorkspace(ctx context.Context, request workspaceaction.WorkspaceDeleteRequest) error {
-	current, err := a.ResolveWorkspace(ctx, request.Expected.Name)
-	if err != nil {
-		return err
-	}
-	if current.ID != request.Expected.ID || !sameWorkspaceRoot(current.Root, request.Expected.Root) {
-		return errors.New("workspace identity changed during deletion revalidation")
-	}
-	if current.Dirty && !request.Force {
-		return errors.New("workspace became dirty during deletion revalidation")
-	}
-	_, err = a.manager().Delete(ctx, workspacecore.Record{Name: current.Name, ID: current.ID, Root: current.Root})
+	expected := workspacecore.Record{Name: request.Expected.Name, ID: request.Expected.ID, Root: request.Expected.Root}
+	_, err := a.manager().Delete(ctx, workspacecore.DeleteRequest{Expected: expected, Revalidate: func(ctx context.Context, mutation *workspacecore.Mutation) error {
+		if err := artifact.RecoverWorkspace(ctx, mutation); err != nil {
+			return err
+		}
+		current, err := workspaceDeletionTarget(ctx, expected)
+		if err != nil {
+			return err
+		}
+		if current.Dirty && !request.Force {
+			return errors.New("workspace became dirty during deletion revalidation")
+		}
+		return nil
+	}})
 	return err
-}
-
-func sameWorkspaceRoot(left, right string) bool {
-	leftPath, leftErr := filepath.Abs(left)
-	rightPath, rightErr := filepath.Abs(right)
-	if leftErr != nil || rightErr != nil {
-		return false
-	}
-	leftPath, rightPath = filepath.Clean(leftPath), filepath.Clean(rightPath)
-	if leftPath == rightPath {
-		return true
-	}
-	leftInfo, leftErr := os.Stat(leftPath)
-	rightInfo, rightErr := os.Stat(rightPath)
-	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
 func workspaceHasUnmanagedEntries(ctx context.Context, root string, managedPaths []string) (bool, error) {
@@ -292,6 +289,15 @@ func workspaceHasUnmanagedEntries(ctx context.Context, root string, managedPaths
 				return filepath.SkipDir
 			}
 		default:
+			if len(parts) == 1 {
+				control, err := workspacecore.IsLifecycleControlFile(entry)
+				if err != nil {
+					return err
+				}
+				if control {
+					return nil
+				}
+			}
 			dirty = true
 			if entry.IsDir() && len(parts) == 1 {
 				return filepath.SkipDir
@@ -320,11 +326,17 @@ func (a *workspaceRuntime) ResolveArtifact(ctx context.Context, input workspacea
 	if err != nil {
 		return workspaceaction.ArtifactTarget{}, err
 	}
-	item, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path})
+	selector := artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path, ExpectedWorkspaceID: cmp.Or(input.ExpectedWorkspaceID, workspace.ID)}
+	if input.ExpectedArtifact != nil {
+		selector.Expected = new(artifactItem(*input.ExpectedArtifact))
+	}
+	item, err := artifact.Resolve(ctx, workspace.Root, selector)
 	if err != nil {
 		return workspaceaction.ArtifactTarget{}, mapArtifactResolutionError("workspace.artifact.delete", workspace.Name, input.LUID, err)
 	}
-	return deleteArtifact(item), err
+	target := deleteArtifact(item)
+	target.WorkspaceID = workspace.ID
+	return target, nil
 }
 
 func mapArtifactResolutionError(operation, workspace, resource string, cause error) error {
@@ -373,8 +385,12 @@ func (a *workspaceRuntime) DeleteArtifact(ctx context.Context, request workspace
 	if err != nil {
 		return workspaceaction.ArtifactTarget{}, err
 	}
-	item, err := artifact.Delete(ctx, artifact.DeleteRequest{Workspace: workspace.Root, Expected: artifact.Item{Kind: request.Expected.Kind, LUID: request.Expected.LUID, Name: request.Expected.Name, Path: request.Expected.Path, CanonicalPath: request.Expected.CanonicalPath, State: request.Expected.State, ServerOrigin: request.Expected.ServerOrigin, SiteLUID: request.Expected.SiteLUID, BaselineFingerprint: request.Expected.BaselineFingerprint, CurrentFingerprint: request.Expected.CurrentFingerprint, TreeFingerprint: request.Expected.TreeFingerprint}})
+	item, err := artifact.Delete(ctx, artifact.DeleteRequest{Workspace: workspace.Root, ExpectedWorkspaceID: request.Expected.WorkspaceID, Expected: artifactItem(request.Expected)})
 	return deleteArtifact(item), err
+}
+
+func artifactItem(target workspaceaction.ArtifactTarget) artifact.Item {
+	return artifact.Item{Kind: target.Kind, LUID: target.LUID, Name: target.Name, Path: target.Path, CanonicalPath: target.CanonicalPath, State: target.State, ServerOrigin: target.ServerOrigin, SiteLUID: target.SiteLUID, BaselineFingerprint: target.BaselineFingerprint, CurrentFingerprint: target.CurrentFingerprint, TreeFingerprint: target.TreeFingerprint}
 }
 
 func statusArtifact(item artifact.Item) workspaceaction.StatusArtifact {

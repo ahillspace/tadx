@@ -9,7 +9,9 @@ import (
 	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -72,18 +74,31 @@ type Dependencies struct {
 	GroupMemberRemover     GroupMemberRemover
 	PermissionInspector    PermissionInspector
 	Renderer               Renderer
+	BatchTargets           batchinput.Resolver
 }
 
-func New(deps Dependencies) *cobra.Command {
+func New(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{Use: "admin", Short: "Administer Tableau users, groups, and permissions"}
 	user := &cobra.Command{Use: "user", Short: "Administer site users"}
-	user.AddCommand(newUserList(deps), newUserInspect(deps), newUserCreate(deps), newUserUpdate(deps), newUserDelete(deps))
+	selection.Add(user, "admin.user.list", func() *cobra.Command { return newUserList(deps) })
+	selection.Add(user, "admin.user.inspect", func() *cobra.Command { return newUserInspect(deps) })
+	selection.Add(user, "admin.user.create", func() *cobra.Command { return newUserCreate(deps) })
+	selection.Add(user, "admin.user.update", func() *cobra.Command { return newUserUpdate(deps) })
+	selection.Add(user, "admin.user.delete", func() *cobra.Command { return newUserDelete(deps) })
 	group := &cobra.Command{Use: "group", Short: "Administer site groups"}
-	group.AddCommand(newGroupList(deps), newGroupInspect(deps), newGroupCreate(deps), newGroupUpdate(deps), newGroupDelete(deps))
+	selection.Add(group, "admin.group.list", func() *cobra.Command { return newGroupList(deps) })
+	selection.Add(group, "admin.group.inspect", func() *cobra.Command { return newGroupInspect(deps) })
+	selection.Add(group, "admin.group.create", func() *cobra.Command { return newGroupCreate(deps) })
+	selection.Add(group, "admin.group.update", func() *cobra.Command { return newGroupUpdate(deps) })
+	selection.Add(group, "admin.group.delete", func() *cobra.Command { return newGroupDelete(deps) })
 	member := &cobra.Command{Use: "group-member", Short: "Change direct group membership"}
-	member.AddCommand(newGroupMemberAdd(deps), newGroupMemberRemove(deps))
+	selection.Add(member, "admin.group.member.add", func() *cobra.Command { return newGroupMemberAdd(deps) })
+	selection.Add(member, "admin.group.member.remove", func() *cobra.Command { return newGroupMemberRemove(deps) })
 	permission := &cobra.Command{Use: "permission", Short: "Manage exact permission rules"}
-	permission.AddCommand(newPermissionInspect(deps), newPermissionCreate(deps), newPermissionDelete(deps))
+	selection.Add(permission, "admin.permission.inspect", func() *cobra.Command { return newPermissionInspect(deps) })
+	selection.Add(permission, "admin.permission.create", func() *cobra.Command { return newPermissionCreate(deps) })
+	selection.Add(permission, "admin.permission.delete", func() *cobra.Command { return newPermissionDelete(deps) })
 	command.AddCommand(user, group, member, permission)
 	return command
 }
@@ -101,6 +116,10 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 		if in.GroupLUID == "" || (in.UserLUID == "") == (in.Username == "") {
 			return clierr.Usage("admin.group.member.add", errors.New("--group-id and exactly one of --user-id or --username are required"))
 		}
+		if err := batchinput.User(cmd.Context(), deps.BatchTargets, in.Environment, &in.UserLUID, &in.Username); err != nil {
+			return err
+		}
+		batchinput.Record(cmd.Context(), batchinput.Target{Environment: in.Environment, ResourceKind: "group", ResourceID: in.GroupLUID, PrincipalType: "user", PrincipalID: in.UserLUID})
 		return nil
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupMemberAdder.AddAdminGroupMember(cmd.Context(), in, preview)
@@ -130,6 +149,10 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 		if in.GroupLUID == "" || (in.UserLUID == "") == (in.Username == "") {
 			return clierr.Usage("admin.group.member.remove", errors.New("--group-id and exactly one of --user-id or --username are required"))
 		}
+		if err := batchinput.User(cmd.Context(), deps.BatchTargets, in.Environment, &in.UserLUID, &in.Username); err != nil {
+			return err
+		}
+		batchinput.Record(cmd.Context(), batchinput.Target{Environment: in.Environment, ResourceKind: "group", ResourceID: in.GroupLUID, PrincipalType: "user", PrincipalID: in.UserLUID})
 		return nil
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupMemberRemover.RemoveAdminGroupMember(cmd.Context(), in, preview)
@@ -250,6 +273,10 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 		setString(cmd, "idp-configuration-id", idp, &in.IdPConfigurationID)
 		setString(cmd, "language", language, &in.Language)
 		setString(cmd, "locale", locale, &in.Locale)
+		if err := batchinput.User(cmd.Context(), deps.BatchTargets, in.Environment, &in.UserLUID, &in.Username); err != nil {
+			return err
+		}
+		batchinput.Record(cmd.Context(), batchinput.Target{Environment: in.Environment, ResourceKind: "user", ResourceID: in.UserLUID})
 		return nil
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserUpdater.UpdateAdminUser(cmd.Context(), in, preview)
@@ -286,6 +313,10 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 		if (in.UserLUID == "") == (in.Username == "") {
 			return clierr.Usage("admin.user.delete", errors.New("use exactly one of --id or --username"))
 		}
+		if err := batchinput.User(cmd.Context(), deps.BatchTargets, in.Environment, &in.UserLUID, &in.Username); err != nil {
+			return err
+		}
+		batchinput.Record(cmd.Context(), batchinput.Target{Environment: in.Environment, ResourceKind: "user", ResourceID: in.UserLUID})
 		return nil
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserDeleter.DeleteAdminUser(cmd.Context(), in, preview)

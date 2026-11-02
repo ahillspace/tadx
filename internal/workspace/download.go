@@ -25,6 +25,7 @@ type Downloads struct {
 	root      string
 	temporary bool
 	held      *lock.Handle
+	use       *workspaceUse
 	directory string
 }
 
@@ -91,6 +92,10 @@ func (d *Downloads) Close() {
 	}
 	_ = d.held.Release()
 	d.held = nil
+	if d.use != nil {
+		_ = d.use.release()
+		d.use = nil
+	}
 }
 
 func (d *Downloads) open(ctx context.Context) error {
@@ -102,7 +107,17 @@ func (d *Downloads) open(ctx context.Context) error {
 		d.directory = directory
 		return nil
 	}
-	control, err := controlDirectory(d.root, true)
+	use, err := beginWorkspaceUse(ctx, d.root, false)
+	if err != nil {
+		return err
+	}
+	success := false
+	defer func() {
+		if !success {
+			_ = use.release()
+		}
+	}()
+	control, err := controlDirectory(use.root, true)
 	if err != nil {
 		return err
 	}
@@ -120,7 +135,8 @@ func (d *Downloads) open(ctx context.Context) error {
 		_ = held.Release()
 		return fmt.Errorf("create workspace download directory: %w", err)
 	}
-	d.held, d.directory = held, directory
+	d.held, d.directory, d.use = held, directory, use
+	success = true
 	return nil
 }
 

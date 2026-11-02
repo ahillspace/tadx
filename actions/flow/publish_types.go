@@ -1,6 +1,9 @@
 package flow
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 type PublishInput struct {
 	File         string
@@ -13,6 +16,7 @@ type PublishInput struct {
 	Workspace, ArtifactPath, Environment, Site, Name string
 	ProjectSelector                                  identity.Selector
 	Overwrite                                        bool
+	ExpectedDestination                              *value.PublishDestination
 }
 
 // SetProjectSelector records one exact destination without exposing identity plumbing to Cobra.

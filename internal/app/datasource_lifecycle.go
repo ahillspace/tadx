@@ -83,6 +83,9 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	if err != nil {
 		return datasourceops.PublishOutput{}, remoteSetupError("datasource.publish", input.Environment, input.Site, connection.environment, err)
 	}
+	if err := bindPublicationScope(ctx, "datasource.publish", connection.environment, connection.siteLUID); err != nil {
+		return datasourceops.PublishOutput{}, err
+	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	var lifecycle *publication

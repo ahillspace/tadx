@@ -284,7 +284,7 @@ func (c *CommandSessions) authenticate(ctx context.Context, origin sessionOrigin
 		return nil, err
 	}
 	defer signing.Release()
-	epoch, err := readSignInEpoch(directory, identity)
+	epoch, err := signing.readEpoch()
 	if err != nil {
 		return nil, err
 	}
@@ -309,12 +309,12 @@ func (c *CommandSessions) authenticate(ctx context.Context, origin sessionOrigin
 		return nil, errors.New("credential sign-in epoch is exhausted")
 	}
 	epoch++
-	if err := writeSignInEpoch(directory, identity, epoch); err != nil {
+	if err := signing.writeEpoch(epoch); err != nil {
 		return nil, err
 	}
 	// The command uses the new session only once no other command can end it.
 	if !c.saveSession(ctx, origin, identity, epoch, response) {
-		if err := c.withholdUse(directory, identity); err != nil {
+		if err := c.withholdUse(signing); err != nil {
 			return nil, err
 		}
 	}
@@ -361,16 +361,17 @@ func (c *CommandSessions) useKey(origin sessionOrigin) string {
 // with the PAT without ending a session another command cannot replace by
 // adopting the saved one. Waiting for other commands releases the command
 // gate, so the command's authentication with other PATs proceeds meanwhile.
-func (c *CommandSessions) holdUse(ctx context.Context, directory, identity, key string) (*lock.Handle, error) {
+func (c *CommandSessions) holdUse(ctx context.Context, directory, identity, key string) (*patSignIn, error) {
 	for {
 		signing, err := lock.TryAcquire(filepath.Join(directory, identity+".lock"))
 		switch {
 		case err == nil:
-			held, err := c.useFor(directory, identity, key)
+			owner := &patSignIn{handle: signing, directory: directory, identity: identity}
+			held, err := c.useFor(owner, key)
 			if err == nil && held {
-				return signing, nil
+				return owner, nil
 			}
-			_ = signing.Release()
+			_ = owner.Release()
 			if err != nil {
 				return nil, err
 			}
@@ -397,12 +398,13 @@ func (c *CommandSessions) holdUse(ctx context.Context, directory, identity, key 
 // false while other commands' use prevents that. It runs under the PAT's
 // sign-in lock, as does every acquisition of the use lock and every change to
 // its key, so a hold the command converts cannot be taken in between.
-func (c *CommandSessions) useFor(directory, identity, key string) (bool, error) {
+func (c *CommandSessions) useFor(signing *patSignIn, key string) (bool, error) {
+	directory, identity := signing.directory, signing.identity
 	if held, holds := c.uses[identity]; holds {
 		if held.key == "" {
 			return true, nil
 		}
-		current, err := readUseKey(directory, identity)
+		current, err := signing.readUseKey()
 		if err != nil {
 			return false, err
 		}
@@ -420,7 +422,7 @@ func (c *CommandSessions) useFor(directory, identity, key string) (bool, error) 
 			return false, errors.New("credential coordination lock is unavailable")
 		}
 		if err == nil {
-			current, err := readUseKey(directory, identity)
+			current, err := signing.readUseKey()
 			if err == nil && current == key {
 				c.uses[identity] = patUse{handle: shared, key: key}
 				return true, nil
@@ -442,7 +444,7 @@ func (c *CommandSessions) useFor(directory, identity, key string) (bool, error) 
 		c.uses[identity] = patUse{handle: exclusive}
 		return true, nil
 	}
-	err = writeUseKey(directory, identity, key)
+	err = signing.writeUseKey(key)
 	_ = exclusive.Release()
 	if err != nil {
 		return false, err
@@ -461,12 +463,13 @@ func (c *CommandSessions) useFor(directory, identity, key string) (bool, error) 
 // lock keeps new commands out while the command's hold keeps others from
 // signing in; commands already sharing the PAT find the key changed and wait
 // before their next sign-in.
-func (c *CommandSessions) withholdUse(directory, identity string) error {
+func (c *CommandSessions) withholdUse(signing *patSignIn) error {
+	identity := signing.identity
 	held := c.uses[identity]
 	if held.key == "" {
 		return nil
 	}
-	if err := writeUseKey(directory, identity, ""); err != nil {
+	if err := signing.writeUseKey(""); err != nil {
 		return err
 	}
 	c.uses[identity] = patUse{handle: held.handle}
@@ -574,8 +577,29 @@ func signInEpochPath(directory, key string) string {
 	return filepath.Join(directory, "epoch-"+key+".txt")
 }
 
-func readSignInEpoch(directory, key string) (uint64, error) {
-	data, err := os.ReadFile(signInEpochPath(directory, key))
+// patSignIn owns the sign-in lock and every coordination snapshot read or
+// replacement for one PAT. Windows replacement cannot promise lock-free reads.
+// Epochs and sharing keys therefore require this same live ownership as sign-in.
+type patSignIn struct {
+	handle    *lock.Handle
+	directory string
+	identity  string
+}
+
+func (s *patSignIn) Release() error {
+	if s == nil {
+		return nil
+	}
+	err := s.handle.Release()
+	s.handle = nil
+	return err
+}
+
+func (s *patSignIn) readEpoch() (uint64, error) {
+	if s == nil || s.handle == nil {
+		return 0, errors.New("credential sign-in ownership is not held")
+	}
+	data, err := os.ReadFile(signInEpochPath(s.directory, s.identity))
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil
 	}
@@ -589,10 +613,13 @@ func readSignInEpoch(directory, key string) (uint64, error) {
 	return epoch, nil
 }
 
-// writeSignInEpoch replaces the epoch file atomically, so a command that stops
-// while writing never leaves a partial epoch.
-func writeSignInEpoch(directory, key string, epoch uint64) error {
-	if !replaceCoordinationFile(directory, signInEpochPath(directory, key), strconv.FormatUint(epoch, 10)+"\n") {
+// writeEpoch installs a complete staged epoch under sign-in ownership. A failed
+// replacement preserves the earlier epoch; readers never race the replacement.
+func (s *patSignIn) writeEpoch(epoch uint64) error {
+	if s == nil || s.handle == nil {
+		return errors.New("credential sign-in ownership is not held")
+	}
+	if !replaceCoordinationFile(s.directory, signInEpochPath(s.directory, s.identity), strconv.FormatUint(epoch, 10)+"\n") {
 		return errors.New("credential sign-in epoch is unavailable")
 	}
 	return nil
@@ -608,8 +635,11 @@ func useKeyPath(directory, identity string) string {
 
 // readUseKey returns the key of the commands that may share the PAT's use
 // lock, or an empty key when no command may share it.
-func readUseKey(directory, identity string) (string, error) {
-	data, err := os.ReadFile(useKeyPath(directory, identity))
+func (s *patSignIn) readUseKey() (string, error) {
+	if s == nil || s.handle == nil {
+		return "", errors.New("credential sign-in ownership is not held")
+	}
+	data, err := os.ReadFile(useKeyPath(s.directory, s.identity))
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -619,15 +649,19 @@ func readUseKey(directory, identity string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-func writeUseKey(directory, identity, key string) error {
-	if !replaceCoordinationFile(directory, useKeyPath(directory, identity), key+"\n") {
+func (s *patSignIn) writeUseKey(key string) error {
+	if s == nil || s.handle == nil {
+		return errors.New("credential sign-in ownership is not held")
+	}
+	if !replaceCoordinationFile(s.directory, useKeyPath(s.directory, s.identity), key+"\n") {
 		return errors.New("credential coordination lock is unavailable")
 	}
 	return nil
 }
 
-// replaceCoordinationFile replaces path atomically, so a reader never sees
-// partial contents.
+// replaceCoordinationFile installs staged complete contents while the caller
+// holds sign-in ownership. The staging prevents partial in-place state after
+// interruption; ownership prevents Windows readers racing the replacement.
 func replaceCoordinationFile(directory, path, contents string) bool {
 	staged, err := os.CreateTemp(directory, "coordination-*.tmp")
 	if err != nil {
@@ -641,7 +675,8 @@ func replaceCoordinationFile(directory, path, contents string) bool {
 	// A durability failure leaves the new contents visible now; losing them
 	// later only makes a command sign in or wait instead of sharing a session.
 	err = fsreplace.Replace(staged.Name(), path)
-	return err == nil || errors.As(err, new(*fsreplace.DurabilityError))
+	_, installed := errors.AsType[*fsreplace.DurabilityError](err)
+	return err == nil || installed
 }
 
 // Close releases all PAT use locks and discards command-local cached state.

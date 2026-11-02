@@ -19,7 +19,11 @@ func TestBatchMetadataNamesRealRemoteCommandSelectors(t *testing.T) {
 			if command.Flags().Lookup("batch-file") == nil {
 				t.Errorf("%s missing file batching", id)
 			}
-			for _, name := range append(append([]string(nil), options.Selectors...), options.NativeSelections...) {
+			names := append(append([]string(nil), options.Selectors...), options.NativeSelections...)
+			for _, identity := range options.Identities {
+				names = append(names, identity.Flags...)
+			}
+			for _, name := range names {
 				if command.Flags().Lookup(name) == nil {
 					t.Errorf("%s declares nonexistent batch selector --%s", id, name)
 				}

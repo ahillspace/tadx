@@ -12,6 +12,7 @@ import (
 	jobactions "github.com/ahillspace/tadx/actions/job"
 	jobcli "github.com/ahillspace/tadx/internal/cli/job"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
@@ -250,9 +251,9 @@ func (c *jobCommands) observer(connection authenticatedTableau) func(context.Con
 			session, err := sessions.Authenticate(ctx, authTarget(connection), tableauauth.NewClient(connection.transport))
 			if err == nil {
 				client := tableaujob.NewClient(connection.transport, session, connection.environment.URL)
-				if normalizeServer(receipt.Server) != normalizeServer(connection.environment.URL) || receipt.SiteID != session.SiteLUID() {
-					err = errors.New("job receipt target does not match the authenticated site")
-				} else {
+				freshConnection := connection
+				freshConnection.session = session
+				if err = verifyReceiptTarget(freshConnection, receipt); err == nil {
 					results[i].Status, err = client.Inspect(ctx, receipt.Observation.ID)
 					if err == nil && receipt.Observation.Type != "" && results[i].Status.Type != receipt.Observation.Type {
 						err = errors.New("job observation changed the accepted job type")
@@ -284,18 +285,16 @@ func (c *jobCommands) receiptRecoveryHint(receipt jobmonitor.Receipt, path strin
 }
 
 func verifyReceiptTarget(connection authenticatedTableau, receipt jobmonitor.Receipt) error {
-	if normalizeServer(connection.environment.URL) != normalizeServer(receipt.Server) || connection.environment.SiteContentURL != receipt.Site || connection.session.SiteLUID() != receipt.SiteID {
-		return &errs.Error{ID: "job.wait.target", Kind: errs.KindOperation, Operation: "job.wait", Resource: receipt.Observation.ID, Environment: receipt.Environment, Site: receipt.Site, TableauJobID: receipt.Observation.ID, Summary: "The saved job receipt does not match the authenticated environment and site.", Retryable: errs.Bool(false), CorrectiveAction: "Use the original environment configuration and durable receipt; do not redirect recovery to another site.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+	server, serverErr := config.CanonicalMutationServer(connection.environment.URL)
+	saved, savedErr := config.CanonicalMutationServer(receipt.Server)
+	if serverErr != nil || savedErr != nil || server != saved || connection.environment.SiteContentURL != receipt.Site || connection.session.SiteLUID() != receipt.SiteID {
+		return &errs.Error{ID: "job.wait.target", Kind: errs.KindOperation, Operation: "job.wait", Resource: receipt.Observation.ID, Environment: receipt.Environment, Site: receipt.Site, TableauJobID: receipt.Observation.ID, Summary: "The saved job receipt does not match the authenticated environment and site.", Cause: errors.Join(serverErr, savedErr), Retryable: errs.Bool(false), CorrectiveAction: "Use the original environment configuration and durable receipt; do not redirect recovery to another site.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	return nil
 }
 
 func (c *jobCommands) observationError(operation, environment, site, id, summary string, cause error) error {
 	return &errs.Error{ID: operation + ".inspect", Kind: errs.KindOperation, Operation: operation, Resource: id, Environment: environment, Site: site, TableauJobID: id, TableauRequestID: errs.TableauRequestID(cause), Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect or recover the exact job identity; do not infer success or failure from an unavailable observation.", Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown}
-}
-
-func normalizeServer(value string) string {
-	return strings.TrimRight(strings.ToLower(strings.TrimSpace(value)), "/")
 }
 
 func supportedCancellation(jobType string) bool {

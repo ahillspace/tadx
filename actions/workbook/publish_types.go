@@ -1,6 +1,9 @@
 package workbook
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 const (
 	publishMaxFullWarnings         = 20
@@ -34,6 +37,8 @@ type PublishInput struct {
 	// DatasourceBindings map workbook published datasource references to exact
 	// destination datasources. Unmapped references are left to Tableau.
 	DatasourceBindings []DatasourceBinding
+	// ExpectedDestination retains an earlier read-only plan through dispatch.
+	ExpectedDestination *value.PublishDestination
 }
 
 // DatasourceBinding maps one workbook published datasource reference, selected

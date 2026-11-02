@@ -30,6 +30,14 @@ export class TadxError extends Error {
   }
 }
 
+/** A failed maintenance operation can retain exclusion when its writer may still be running. */
+export class MaintenanceError extends Error {
+  constructor(message: string, readonly retainExclusion = false) {
+    super(message);
+    this.name = 'MaintenanceError';
+  }
+}
+
 /** Run argv directly. Never run a shell, a rendered help command, or webview-supplied command text. */
 export const runCommand: CommandRunner = (executable, args, options) => new Promise((resolve, reject) => {
   const timeoutMs = options.timeoutMs ?? 300_000;
@@ -109,8 +117,12 @@ export class TadxClient {
   async withMaintenance<T>(task: () => Promise<T>): Promise<T> {
     if (this.maintenance || this.running > 0) throw new TadxError('Wait for TADX commands in this window to finish before changing the CLI installation.', 'busy');
     this.maintenance = true;
+    let retainExclusion = false;
     try { return await task(); }
-    finally { this.maintenance = false; }
+    catch (error) {
+      retainExclusion = error instanceof MaintenanceError && error.retainExclusion;
+      throw error;
+    } finally { if (!retainExclusion) this.maintenance = false; }
   }
 
   /** Starts a new compatibility generation, including recovery after replacing the executable. */

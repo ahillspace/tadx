@@ -38,6 +38,33 @@ func TestManagedPublishSelectionHasNoSnapshotEntryLimit(t *testing.T) {
 	}
 }
 
+func TestArtifactSnapshotUsesCanonicalFileIdentityOnCaseInsensitiveFilesystems(t *testing.T) {
+	root := createMoveTestWorkspace(t, "case-alias")
+	created, err := NewWorkbookManager(time.Now).Pull(t.Context(), WorkbookPull{Workspace: root, Filename: "Finance.twb", PayloadPath: PayloadFile(t, []byte("<workbook/>")), Metadata: moveTestMetadata()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := readMetadata(created.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata.CanonicalPayload = strings.ToUpper(metadata.CanonicalPayload)
+	if _, err := os.Stat(filepath.Join(created.ArtifactPath, metadata.CanonicalPayload)); os.IsNotExist(err) {
+		t.Skip("filesystem does not support this case alias")
+	}
+	encoded, err := encodeWorkbookMetadata(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(created.ArtifactPath, "metadata.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := Resolve(t.Context(), root, Selector{Kind: "workbook", LUID: metadata.TableauID})
+	if err != nil || selected.State != StateClean || selected.CurrentFingerprint != metadata.LocalBaselineFingerprint || selected.TreeFingerprint == "" {
+		t.Fatalf("case-aliased native payload: %#v, %v", selected, err)
+	}
+}
+
 func TestArtifactTreeFingerprintDetectsContentAndPathChanges(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "a"), 0o700); err != nil {
@@ -82,7 +109,7 @@ func TestArtifactTreeFingerprintHonorsCancellation(t *testing.T) {
 	}
 	var calls int
 	ctx, cancel = context.WithCancel(t.Context())
-	reader := &snapshotContextReader{ctx: ctx, reader: snapshotReadFunc(func(buffer []byte) (int, error) {
+	reader := &contextReader{ctx: ctx, reader: snapshotReadFunc(func(buffer []byte) (int, error) {
 		calls++
 		cancel()
 		return copy(buffer, "read"), nil

@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/pathspec"
@@ -16,9 +15,10 @@ import (
 
 // MoveRequest moves one exact managed artifact between named workspace roots.
 type MoveRequest struct {
-	SourceWorkspace      string
-	DestinationWorkspace string
-	Selector             Selector
+	SourceWorkspace        string
+	DestinationWorkspace   string
+	DestinationWorkspaceID string
+	Selector               Selector
 }
 
 type moveOperations struct {
@@ -46,6 +46,9 @@ func PreviewMove(ctx context.Context, request MoveRequest) (_ Item, err error) {
 	}
 	destinationRoot, err := validateWorkspaceRoot(request.DestinationWorkspace)
 	if err != nil {
+		return Item{}, err
+	}
+	if err := requireWorkspaceIdentity(destinationRoot, request.DestinationWorkspaceID); err != nil {
 		return Item{}, err
 	}
 	if sameFilesystemPath(sourceRoot, destinationRoot) {
@@ -108,11 +111,15 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 	if sameFilesystemPath(sourceRoot, destinationRoot) {
 		return Item{}, errors.New("source and destination workspaces must differ")
 	}
-	release, err := lockWorkspaces(ctx, sourceRoot, destinationRoot)
+	ownedRoots, release, err := lockWorkspaces(ctx, sourceRoot, destinationRoot)
 	if err != nil {
 		return Item{}, err
 	}
 	defer release()
+	sourceRoot, destinationRoot = ownedRoots[0], ownedRoots[1]
+	if err := requireWorkspaceIdentity(destinationRoot, request.DestinationWorkspaceID); err != nil {
+		return Item{}, err
+	}
 	source, err := Resolve(ctx, sourceRoot, request.Selector)
 	if err != nil {
 		return Item{}, err
@@ -268,5 +275,10 @@ func (r *contextReader) Read(buffer []byte) (int, error) {
 }
 
 func sameFilesystemPath(left, right string) bool {
-	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+	if filepath.Clean(left) == filepath.Clean(right) {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }

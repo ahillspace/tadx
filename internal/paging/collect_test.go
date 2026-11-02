@@ -8,7 +8,7 @@ import (
 )
 
 func TestCollectMechanicalGuards(t *testing.T) {
-	for _, name := range []string{"complete", "empty-id", "duplicate", "changed-total", "stall", "repeated-token", "final-token", "bound", "cancel"} {
+	for _, name := range []string{"complete", "empty-id", "duplicate", "changed-total", "wrong-number", "wrong-size", "negative-total", "stall", "repeated-token", "final-token", "bound", "cancel"} {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -35,6 +35,12 @@ func TestCollectMechanicalGuards(t *testing.T) {
 					if s.Number == 2 {
 						p.Total++
 					}
+				case "wrong-number":
+					p.Number++
+				case "wrong-size":
+					p.Size--
+				case "negative-total":
+					p.Total = -1
 				case "stall":
 					if s.Number == 2 {
 						p.Items = nil
@@ -62,5 +68,26 @@ func TestCollectMechanicalGuards(t *testing.T) {
 				t.Fatalf("unbounded provider calls=%d", calls)
 			}
 		})
+	}
+}
+
+func TestCollectBoundedRetainsCallerScanLimits(t *testing.T) {
+	for _, maxPages := range []int{2, 3} {
+		calls := 0
+		items, err := CollectBounded(t.Context(), 2, maxPages, func(_ context.Context, state State) (Page[string], error) {
+			calls++
+			page := Page[string]{Number: state.Number, Size: state.Size, Total: 5}
+			for i := (state.Number - 1) * state.Size; i < min(state.Number*state.Size, 5); i++ {
+				page.Items = append(page.Items, fmt.Sprint(i))
+			}
+			return page, nil
+		}, func(item string) string { return item })
+		if maxPages == 2 {
+			if err == nil || items != nil || calls != 2 {
+				t.Fatalf("bound ignored: items=%v err=%v calls=%d", items, err, calls)
+			}
+		} else if err != nil || len(items) != 5 || calls != 3 {
+			t.Fatalf("valid bounded scan failed: items=%v err=%v calls=%d", items, err, calls)
+		}
 	}
 }

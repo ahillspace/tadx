@@ -26,7 +26,7 @@ func TestAdminCreateSubmittedHTTP502IsUnknownThroughCLI(t *testing.T) {
 					return
 				}
 				if r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/"+kind+"s" {
-					_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><%ss/></tsResponse>`, kind)
+					_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="%s" totalAvailable="0"/><%ss/></tsResponse>`, r.URL.Query().Get("pageSize"), kind)
 					return
 				}
 				if r.Method == http.MethodPost && r.URL.Path == "/api/3.29/sites/site-1/"+kind+"s" {
@@ -127,10 +127,10 @@ func TestCachedGroupMembersRequireObservedCoverageThroughCLI(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/api/3.29/sites/site-1/groups":
-			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><groups><group id="group-1" name="Authors"/></groups></tsResponse>`)
+			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="%s" totalAvailable="1"/><groups><group id="group-1" name="Authors"/></groups></tsResponse>`, r.URL.Query().Get("pageSize"))
 		case "/api/3.29/sites/site-1/groups/group-1/users":
 			memberReads++
-			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><users/></tsResponse>`)
+			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="%s" totalAvailable="0"/><users/></tsResponse>`, r.URL.Query().Get("pageSize"))
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}

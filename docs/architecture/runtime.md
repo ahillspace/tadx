@@ -34,6 +34,17 @@ The deferred result path runs before [`runtimeDependencies.Close`](../../interna
 Cleanup releases credential coordination and discards command-local setup state.
 It does not send a Tableau sign-out request.
 
+Batch preflight creates independent bindings for the selected action through the same lazy factories used by the full command tree.
+It retains each row's parsed input and validates every row before dispatching any action.
+[`BatchOptions`](../../internal/capability/batch.go) declares actions that prepare authoritative targets; their typed action bindings own target identities.
+Exact names and usernames resolve before duplicate comparison, and retained inputs use the resulting LUIDs during execution.
+Local artifact preparation pins the registered workspace ID, canonical artifact path, and artifact identity.
+Replacement properties do not distinguish updates to the same existing target.
+Duplicate membership pairs and overlapping permission capabilities fail before dispatch; distinct groups, principals, and capabilities remain independent.
+Rows share command-scoped services and authenticated sessions while retaining separate flag collections and output capture.
+Dispatch rechecks current mutation policy, and actions revalidate current resource state.
+Independent rows run concurrently, and the batch reports results in selection order.
+
 ## Execution guards and wrapper order
 
 The wrapper order matters because the executable and detached worker enter the same command construction path.
@@ -115,7 +126,9 @@ Each sign-in holds the PAT's sign-in lock and advances the PAT's shared numeric 
 Session reuse additionally requires the exact site.
 `authenticate` takes the sign-in lock, then reuses the command's session while its epoch is current, otherwise adopts the session saved by the PAT's latest sign-in, and otherwise signs in.
 Commands that waited for another command's sign-in therefore adopt it instead of signing in again.
-The epoch file is replaced atomically, so a command that stops while writing never leaves a partial epoch.
+`patSignIn` ties epoch and sharing-key access to the same live sign-in ownership; released ownership cannot read or replace coordination state.
+Epoch writes stage complete contents before replacement, and failed replacements retain the prior epoch.
+Readers use that ownership because Windows replacement does not support a lock-free snapshot guarantee.
 A command also holds the PAT's use lock until `Suspend` or `Close`, so that no other command signs in and ends a session it cannot replace.
 Commands using the same stored credential reference for the same site hold the use lock shared, because each can adopt the others' saved sessions, so they run in parallel on one session.
 The use key file names which commands may share the lock; it changes, and the use lock is taken, only under the sign-in lock.

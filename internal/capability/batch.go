@@ -101,5 +101,52 @@ func BatchOptions() map[string]batchspec.Options {
 	for _, id := range []string{"workspace.delete", "workspace.unregister"} {
 		result[id] = batchspec.Options{Positional: true}
 	}
+	// Conflict identities describe the state an action owns, independently of
+	// desired values and of the dimension used by shorthand repetition.
+	identity := func(id string, names ...string) {
+		options := result[id]
+		options.Identities = []batchspec.Identity{{Flags: names}}
+		result[id] = options
+	}
+	for _, kind := range []string{"workbook", "datasource", "flow"} {
+		options := result[kind+".pull"]
+		options.Identities = []batchspec.Identity{
+			{Selector: "id", Flags: []string{"id", "workspace"}},
+			{Flags: []string{"name", "project", "workspace"}},
+		}
+		result[kind+".pull"] = options
+	}
+	for _, kind := range []string{"workbook", "datasource", "flow"} {
+		for _, operation := range []string{"move", "update", "delete", "publish"} {
+			id := kind + "." + operation
+			options := result[id]
+			options.ResolveTargets = true
+			result[id] = options
+		}
+	}
+	for _, id := range []string{
+		"project.create", "project.update", "project.move", "admin.user.update", "admin.user.delete", "content.label.update",
+		"admin.group.member.add", "admin.group.member.remove",
+		"admin.permission.create", "admin.permission.delete", "workspace.move", "workspace.artifact.delete",
+	} {
+		options := result[id]
+		options.ResolveTargets = true
+		result[id] = options
+	}
+	identity("pulse.metric.follow", "id", "user-id", "group-id")
+	identity("pulse.metric.unfollow", "subscription-id", "id", "user-id", "group-id")
+	identity("pulse.metric.fork", "id", "period", "days", "filter", "exclude-filter")
+	identity("workspace.clean", "workspace", "class")
+	// Read-only repetitions preserve their complete request semantics. Read
+	// projections and filters do not create a conflicting mutation domain.
+	for _, definitions := range [][]Definition{canonicalDefinitions, metadataDefinitions} {
+		for _, definition := range definitions {
+			options, ok := result[definition.ID]
+			if ok && !definition.RemoteMutation && !definition.LocalWrite {
+				options.RequestIdentity = true
+				result[definition.ID] = options
+			}
+		}
+	}
 	return result
 }
