@@ -545,19 +545,13 @@ func inspectArtifactState(ctx context.Context, workspace string, item Item, snap
 	var err error
 	if snapshot {
 		item.TreeFingerprint, current, err = artifactSnapshotFingerprints(ctx, directory, canonical)
-		if err == nil && current == "" {
-			err = os.ErrNotExist
-		}
 	} else {
 		// Status needs canonical dirtiness and structural containment, not a
 		// content snapshot of every extra file in every artifact directory.
 		if err := walkArtifactTree(ctx, directory, nil); err != nil {
 			return Item{}, err
 		}
-		info, statErr := os.Lstat(canonical)
-		if statErr == nil && !info.Mode().IsRegular() {
-			return Item{}, errors.New("canonical artifact payload must be a regular file")
-		}
+		_, statErr := canonicalPayloadInfo(canonical)
 		if statErr != nil {
 			err = statErr
 		} else {

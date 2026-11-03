@@ -39,11 +39,13 @@ type PulseDefinitionMetadata struct {
 
 // PulseDefinitionPull describes one complete definition artifact replacement.
 type PulseDefinitionPull struct {
-	Workspace     string
-	Configuration []byte
-	Bundle        []byte
-	Metadata      PulseDefinitionMetadata
-	Overwrite     bool
+	Workspace           string
+	ExpectedWorkspaceID string
+	ExpectedPath        string
+	Configuration       []byte
+	Bundle              []byte
+	Metadata            PulseDefinitionMetadata
+	Overwrite           bool
 }
 
 // PulseDefinitionPullResult identifies the materialized definition artifact.
@@ -135,6 +137,9 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 	defer func() { _ = handle.Release() }()
 	workspace = handle.Root()
 	input.Workspace = workspace
+	if err := requireWorkspaceIdentity(workspace, input.ExpectedWorkspaceID); err != nil {
+		return PulseDefinitionPullResult{}, err
+	}
 	root, err := ensurePulseDefinitionRoot(workspace)
 	if err != nil {
 		return PulseDefinitionPullResult{}, err
@@ -145,6 +150,9 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 	}
 	if target == "" {
 		target = filepath.Join(root, pulseDefinitionIdentityComponent(input.Metadata.Name, origin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID))
+	}
+	if err := requirePullDestination(workspace, target, input.ExpectedPath); err != nil {
+		return PulseDefinitionPullResult{}, err
 	}
 	warnings := []string{}
 	if existing != nil {

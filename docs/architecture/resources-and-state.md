@@ -107,6 +107,9 @@ It protects local edits with the saved baseline fingerprint and requires overwri
 [`WorkbookBundleManager.Pull`](../../internal/artifact/bundle.go) stages the workbook and datasources, journals the installation, and recovers interrupted bundle transactions.
 Artifact mutations acquire the workspace lifecycle lease and exclusive artifact lock before reconciling shared bundle journals.
 Rollback verifies transaction ownership and prepared content before replacing or removing an artifact; conflicting newer generations require explicit recovery.
+Rollback validates every surviving stage before changing any transaction entry, including stages whose original artifact remains untouched.
+Unverifiable legacy stages remain in place with an explicit recovery conflict.
+Canonical native payloads must be regular files; an existing directory or linked payload is invalid, rather than missing.
 Workspace deletion owns the lifecycle exclusively and revalidates recovery, identity, and dirty-state evidence under that ownership.
 Deletion closes locks inside the workspace before renaming its root while retaining the external lifecycle lock.
 The persistent sibling lifecycle lock uses the canonical workspace path, independent of user cache settings.

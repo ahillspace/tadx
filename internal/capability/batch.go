@@ -128,6 +128,7 @@ func BatchOptions() map[string]batchspec.Options {
 		"project.create", "project.update", "project.move", "admin.user.update", "admin.user.delete", "content.label.update",
 		"admin.group.member.add", "admin.group.member.remove",
 		"admin.permission.create", "admin.permission.delete", "workspace.move", "workspace.artifact.delete",
+		"lineage.pull", "pulse.definition.pull",
 	} {
 		options := result[id]
 		options.ResolveTargets = true

@@ -39,6 +39,9 @@ It retains each row's parsed input and validates every row before dispatching an
 [`BatchOptions`](../../internal/capability/batch.go) declares actions that prepare authoritative targets; their typed action bindings own target identities.
 Exact names and usernames resolve before duplicate comparison, and retained inputs use the resulting LUIDs during execution.
 Local artifact preparation pins the registered workspace ID, canonical artifact path, and artifact identity.
+Publication conflicts include both the resolved resource LUID and the destination slot, using the resolver's case-insensitive name semantics.
+Lineage and Pulse definition pulls compare their resolved local artifact destinations, including workspace identity, rather than raw selector flags.
+Their artifact managers recheck the prepared workspace identity and destination under mutation ownership before installing output.
 Replacement properties do not distinguish updates to the same existing target.
 Duplicate membership pairs and overlapping permission capabilities fail before dispatch; distinct groups, principals, and capabilities remain independent.
 Rows share command-scoped services and authenticated sessions while retaining separate flag collections and output capture.
@@ -212,6 +215,8 @@ Embedded callers can leave workers disabled and run inline; `--no-wait` requires
 
 `beginPublicationWorker` records the request before launching the same executable with an exact local operation ID.
 It snapshots bounded batch JSON rather than relying on a caller-editable batch file after handoff.
+After capturing preparation and batch inputs, the foreground command suspends its PAT use leases before recording or launching the worker.
+A failed suspension leaves no accepted operation record and launches no worker.
 The launch inherits environment values in memory without persisting them in the operation record.
 Arguments, configuration paths, working directories, batch inputs, and results remain potentially sensitive local data.
 

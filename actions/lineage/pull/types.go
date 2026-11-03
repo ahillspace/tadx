@@ -28,6 +28,10 @@ type Input struct {
 	Depth         int
 	Fields        bool
 	Overwrite     bool
+	// Prepared batches pin local ownership while execution rechecks current state.
+	ExpectedWorkspaceID   string
+	ExpectedWorkspaceRoot string
+	ExpectedArtifactPath  string
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.
@@ -75,24 +79,26 @@ type Graph struct {
 
 // Artifact is one metadata-only lineage write request.
 type Artifact struct {
-	Workspace       string
-	Resource        Resource
-	Environment     string
-	Site            string
-	ServerOrigin    string
-	SiteLUID        string
-	Direction       string
-	Depth           int
-	Fields          bool
-	Complete        bool
-	CountsKnown     bool
-	Failure         *value.LineageFailure
-	Nodes           []Node
-	Edges           []Edge
-	Warnings        []string
-	WarningsOmitted int
-	RequestIDs      []string
-	Overwrite       bool
+	Workspace           string
+	ExpectedWorkspaceID string
+	ExpectedPath        string
+	Resource            Resource
+	Environment         string
+	Site                string
+	ServerOrigin        string
+	SiteLUID            string
+	Direction           string
+	Depth               int
+	Fields              bool
+	Complete            bool
+	CountsKnown         bool
+	Failure             *value.LineageFailure
+	Nodes               []Node
+	Edges               []Edge
+	Warnings            []string
+	WarningsOmitted     int
+	RequestIDs          []string
+	Overwrite           bool
 }
 
 // ArtifactResult identifies one materialized metadata-only artifact.

@@ -40,9 +40,11 @@ type LineageMetadata struct {
 
 // LineagePull describes one metadata-only lineage snapshot.
 type LineagePull struct {
-	Workspace string
-	Metadata  LineageMetadata
-	Lineage   LineageDocument
+	Workspace           string
+	ExpectedWorkspaceID string
+	ExpectedPath        string
+	Metadata            LineageMetadata
+	Lineage             LineageDocument
 	// CountsKnown distinguishes an observed empty graph from unavailable counts.
 	CountsKnown bool
 	Overwrite   bool
@@ -101,11 +103,17 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (_ Lineage
 	defer func() { _ = handle.Release() }()
 	workspace = handle.Root()
 	input.Workspace = workspace
+	if err := requireWorkspaceIdentity(workspace, input.ExpectedWorkspaceID); err != nil {
+		return LineagePullResult{}, err
+	}
 	root, err := ensureStandaloneLineageRoot(workspace, input.Metadata.ResourceKind)
 	if err != nil {
 		return LineagePullResult{}, err
 	}
 	target := filepath.Join(root, lineageIdentityComponent(input.Metadata.Name, origin, input.Metadata.SourceSiteLUID, input.Metadata.ResourceKind, input.Metadata.TableauID))
+	if err := requirePullDestination(workspace, target, input.ExpectedPath); err != nil {
+		return LineagePullResult{}, err
+	}
 	if err := protectExistingStandaloneLineage(ctx, target, input, origin); err != nil {
 		return LineagePullResult{}, err
 	}

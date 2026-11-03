@@ -122,6 +122,11 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 		}
 		request.BatchData = data
 	}
+	// Preparation has finished all foreground Tableau requests. Release its
+	// PAT-use ownership before the independently authenticated worker starts.
+	if err := runtime.commandSessions().Suspend(command.Context()); err != nil {
+		return &errs.Error{ID: "operation.worker.handoff", Kind: errs.KindOperation, Operation: "operation", Summary: "Credential coordination could not be released before worker handoff; nothing was started.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: new(false)}
+	}
 	record, err := store.Create(request)
 	if err != nil {
 		return publicationWorkerError("store", "The operation could not be recorded; nothing was started.", err)

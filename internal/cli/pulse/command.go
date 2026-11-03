@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
@@ -32,6 +33,10 @@ type DefinitionInspector interface {
 // DefinitionPuller pulls one Pulse definition artifact.
 type DefinitionPuller interface {
 	PullPulseDefinition(context.Context, pulsedefinition.PullInput) (pulsedefinition.PullOutput, error)
+}
+
+type definitionPullBatchPreparer interface {
+	PreparePulseDefinitionPull(context.Context, pulsedefinition.PullInput) (pulsedefinition.PullInput, batchinput.Target, error)
 }
 
 type DefinitionPublisher interface {
@@ -237,6 +242,25 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	})
+	validate := command.Args
+	command.Args = func(command *cobra.Command, args []string) error {
+		if err := validate(command, args); err != nil {
+			return err
+		}
+		if batchinput.Active(command.Context()) {
+			preparer, ok := deps.DefinitionPuller.(definitionPullBatchPreparer)
+			if !ok {
+				return errors.New("authoritative Pulse definition pull batch preparation is not configured")
+			}
+			prepared, target, err := preparer.PreparePulseDefinitionPull(command.Context(), input)
+			if err != nil {
+				return err
+			}
+			input = prepared
+			batchinput.Record(command.Context(), target)
+		}
+		return nil
+	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")

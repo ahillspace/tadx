@@ -690,6 +690,16 @@ func recoverBundleTransaction(workspace string, operations directoryOperations) 
 
 func validateBundleRollback(journal bundleJournal, operations directoryOperations) error {
 	for _, entry := range journal.Entries {
+		// Stage cleanup needs its own proof even when the original target never moved.
+		if entry.Staging != "" {
+			if _, err := operations.stat(entry.Staging); err == nil {
+				if err := requireBundleOwnership(entry.Staging, entry); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		_, targetErr := operations.stat(entry.Target)
 		if targetErr != nil && !errors.Is(targetErr, os.ErrNotExist) {
 			return targetErr
@@ -720,17 +730,6 @@ func validateBundleRollback(journal bundleJournal, operations directoryOperation
 		}
 		if targetExists {
 			if err := requireBundleOwnership(entry.Target, entry); err != nil {
-				return err
-			}
-		}
-		if entry.Staging != "" {
-			if _, err := operations.stat(entry.Staging); err == nil {
-				if entry.Owner != "" {
-					if err := requireBundleOwnership(entry.Staging, entry); err != nil {
-						return err
-					}
-				}
-			} else if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 		}

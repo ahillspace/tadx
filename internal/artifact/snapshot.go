@@ -25,11 +25,11 @@ func artifactSnapshotFingerprints(ctx context.Context, root, canonical string) (
 	canonicalDigest := sha256.New()
 	canonicalFound := false
 	var canonicalInfo os.FileInfo
+	var canonicalErr error
 	if canonical != "" {
-		var err error
-		canonicalInfo, err = os.Lstat(canonical)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", "", err
+		canonicalInfo, canonicalErr = canonicalPayloadInfo(canonical)
+		if canonicalErr != nil && !errors.Is(canonicalErr, os.ErrNotExist) {
+			return "", "", canonicalErr
 		}
 	}
 	err := walkArtifactTree(ctx, root, func(path string, entry os.DirEntry, name string) error {
@@ -80,11 +80,32 @@ func artifactSnapshotFingerprints(ctx context.Context, root, canonical string) (
 	if err != nil {
 		return "", "", err
 	}
+	tree := "sha256:" + hex.EncodeToString(digest.Sum(nil))
+	if canonicalErr != nil {
+		return tree, "", canonicalErr
+	}
+	if canonical != "" && !canonicalFound {
+		return "", "", errors.New("canonical artifact payload changed while its snapshot was read")
+	}
 	current := ""
 	if canonicalFound {
 		current = "sha256:" + hex.EncodeToString(canonicalDigest.Sum(nil))
 	}
-	return "sha256:" + hex.EncodeToString(digest.Sum(nil)), current, nil
+	return tree, current, nil
+}
+
+func canonicalPayloadInfo(path string) (os.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("canonical artifact payload must not be a symbolic link")
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("canonical artifact payload must be a regular file")
+	}
+	return info, nil
 }
 
 func walkArtifactTree(ctx context.Context, root string, visit func(string, os.DirEntry, string) error) error {

@@ -74,7 +74,7 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 					return err
 				}
 			}
-			batchinput.Record(command.Context(), batchinput.Target{Environment: input.Environment, ResourceKind: "project", Collection: string(input.ParentSelector.LUID), Name: input.Name})
+			batchinput.Record(command.Context(), batchinput.NamedTarget(input.Environment, input.Site, "project", string(input.ParentSelector.LUID), input.Name))
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {

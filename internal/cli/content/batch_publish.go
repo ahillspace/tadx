@@ -30,17 +30,17 @@ func publicationPreparation(command *cobra.Command, resolver batchinput.Resolver
 	return ctx, true, nil
 }
 
-func recordPublication(ctx context.Context, kind string, destination batchinput.PublishDestination, seen map[batchinput.PublishDestination]bool) error {
+func recordPublication(ctx context.Context, kind string, destination batchinput.PublishDestination, seen map[batchinput.Target]bool) error {
 	if destination.Environment == "" || destination.ProjectLUID == "" || destination.Name == "" {
 		return fmt.Errorf("%s publication plan omitted its authoritative destination", kind)
 	}
-	key := destination
-	key.ExistingLUID = ""
-	if seen[key] {
-		return fmt.Errorf("multiple %s sources select the same publication destination %q", kind, destination.Name)
+	for _, target := range batchinput.PublicationTargets(kind, destination) {
+		if seen[target] {
+			return fmt.Errorf("multiple %s sources select the same publication destination %q", kind, destination.Name)
+		}
+		seen[target] = true
+		batchinput.Record(ctx, target)
 	}
-	seen[key] = true
-	batchinput.Record(ctx, batchinput.Target{Environment: destination.Environment, Site: destination.Site, ResourceKind: kind, Collection: destination.ProjectLUID, Name: destination.Name})
 	return batchinput.RecordPublication(ctx, destination)
 }
 
@@ -51,7 +51,7 @@ func prepareWorkbookPublications(command *cobra.Command, deps Dependencies, inpu
 		return nil, err
 	}
 	prepared := make(map[string]workbookops.PublishInput, len(artifacts))
-	seen := make(map[batchinput.PublishDestination]bool)
+	seen := make(map[batchinput.Target]bool)
 	for _, source := range artifacts {
 		item := input
 		item.ArtifactPath = source
@@ -83,7 +83,7 @@ func prepareDatasourcePublications(command *cobra.Command, deps datasourceLifecy
 		return nil, err
 	}
 	prepared := make(map[string]datasourceops.PublishInput, len(artifacts))
-	seen := make(map[batchinput.PublishDestination]bool)
+	seen := make(map[batchinput.Target]bool)
 	for _, source := range artifacts {
 		item := input
 		item.ArtifactPath = source
@@ -115,7 +115,7 @@ func prepareFlowPublications(command *cobra.Command, deps Dependencies, input fl
 		return nil, err
 	}
 	prepared := make(map[string]flowops.PublishInput, len(artifacts))
-	seen := make(map[batchinput.PublishDestination]bool)
+	seen := make(map[batchinput.Target]bool)
 	for _, source := range artifacts {
 		item := input
 		item.ArtifactPath = source

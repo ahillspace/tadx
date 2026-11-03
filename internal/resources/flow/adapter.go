@@ -195,6 +195,7 @@ func (a *Adapter) DownloadFlow(ctx context.Context, luid string, destination io.
 
 // FindFlows returns case-insensitive name collisions scoped to one project LUID.
 func (a *Adapter) FindFlows(ctx context.Context, name, projectLUID string) ([]Flow, error) {
+	nameKey := identity.CollisionNameKey(name)
 	if a == nil || a.client == nil {
 		return nil, errors.New("flow resource adapter is not configured")
 	}
@@ -223,7 +224,7 @@ func (a *Adapter) FindFlows(ctx context.Context, name, projectLUID string) ([]Fl
 			if err := recordFlow(seen, item); err != nil {
 				return nil, err
 			}
-			if strings.EqualFold(item.Name, name) && item.ProjectLUID == projectLUID {
+			if identity.CollisionNameKey(item.Name) == nameKey && item.ProjectLUID == projectLUID {
 				matches[item.LUID] = normalize(item, "")
 			}
 		}

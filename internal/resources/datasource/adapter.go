@@ -361,6 +361,7 @@ func (a *Adapter) FindDatasources(ctx context.Context, name, projectLUID string)
 		return nil, errors.New("datasource resource adapter is not configured")
 	}
 	name, projectLUID = strings.TrimSpace(name), strings.TrimSpace(projectLUID)
+	nameKey := identity.CollisionNameKey(name)
 	if name == "" || projectLUID == "" {
 		return nil, errors.New("datasource collision lookup requires name and project LUID")
 	}
@@ -391,7 +392,7 @@ func (a *Adapter) FindDatasources(ctx context.Context, name, projectLUID string)
 			if err := recordDatasource(seen, item); err != nil {
 				return nil, err
 			}
-			if strings.EqualFold(item.Name, name) && item.ProjectLUID == projectLUID {
+			if identity.CollisionNameKey(item.Name) == nameKey && item.ProjectLUID == projectLUID {
 				result = append(result, normalizeDatasource(item, ""))
 			}
 		}

@@ -83,6 +83,7 @@ func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Write
 	requestIDs, requestIDsOmitted := boundedStrings(graph.RequestIDs, maxWarnings)
 	artifact := Artifact{
 		Workspace: input.Workspace, Resource: resource, Environment: input.Environment, Site: input.Site,
+		ExpectedWorkspaceID: input.ExpectedWorkspaceID, ExpectedPath: input.ExpectedArtifactPath,
 		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields,
 		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges,
 		Failure:  graph.Failure,

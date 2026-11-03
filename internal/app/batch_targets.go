@@ -18,6 +18,20 @@ import (
 // Prepared inputs retain IDs; the actions still revalidate current state.
 type batchTargetResolver struct{ runtime *runtimeDependencies }
 
+func resolvePullWorkspace(ctx context.Context, runtime *runtimeDependencies, operation, environment, selector, expectedID, expectedRoot string) (workspacecore.Record, error) {
+	workspace, err := (&workspaceRuntime{runtime: runtime}).resolveForEnvironment(ctx, selector, environment)
+	if err == nil {
+		workspace.Root, err = workspacecore.CanonicalRoot(workspace.Root)
+	}
+	if err != nil {
+		return workspacecore.Record{}, capabilitySetupError(operation+".workspace", operation, environment, "", "Artifact workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	if expectedID != "" && (workspace.ID != expectedID || workspace.Root != expectedRoot) {
+		return workspacecore.Record{}, &errs.Error{ID: operation + ".workspace_changed", Kind: errs.KindOperation, Operation: operation, Environment: environment, Summary: "The artifact workspace changed after batch preparation.", Retryable: errs.Bool(false), Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, CorrectiveAction: "Review a new batch plan before pulling."}
+	}
+	return workspace, nil
+}
+
 func (r batchTargetResolver) AuthorizeBatchPreparation(ctx context.Context, _ string) error {
 	if err := ctx.Err(); err != nil {
 		return err

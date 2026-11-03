@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
@@ -22,6 +23,7 @@ import (
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 const (
@@ -201,28 +203,56 @@ func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input pulsed
 }
 
 func (c *pulseCommands) PullPulseDefinition(ctx context.Context, input pulsedefinition.PullInput) (pulsedefinition.PullOutput, error) {
-	if err := pulsedefinition.PullValidateInput(input); err != nil {
+	input, _, connection, err := c.resolvePulseDefinitionPull(ctx, input)
+	if err != nil {
 		return pulsedefinition.PullOutput{}, err
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	reader := &pulseDefinitionPullReader{client: connection.client}
+	return pulsedefinition.Pull(ctx, reader, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}, input)
+}
+
+func (c *pulseCommands) PreparePulseDefinitionPull(ctx context.Context, input pulsedefinition.PullInput) (pulsedefinition.PullInput, batchinput.Target, error) {
+	if err := batchinput.Authorize(ctx, batchTargetResolver{runtime: c.runtime}, input.Environment); err != nil {
+		return input, batchinput.Target{}, err
+	}
+	resolved, workspace, connection, err := c.resolvePulseDefinitionPull(ctx, input)
 	if err != nil {
-		return pulsedefinition.PullOutput{}, capabilitySetupError("pulse.definition.pull.workspace", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return input, batchinput.Target{}, err
+	}
+	resolved.Preview = true
+	out, err := pulsedefinition.Pull(ctx, &pulseDefinitionPullReader{client: connection.client}, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}, resolved)
+	if err != nil {
+		return input, batchinput.Target{}, err
+	}
+	resolved.Preview = input.Preview
+	resolved.Workspace = workspace.Name
+	resolved.LUID = out.Definition.LUID
+	resolved.ExpectedWorkspaceID, resolved.ExpectedWorkspaceRoot = workspace.ID, workspace.Root
+	resolved.ExpectedArtifactPath = out.Preview.Target.Path
+	return resolved, batchinput.Target{WorkspaceID: workspace.ID, WorkspaceRoot: workspace.Root, ResourceKind: "pulse-definition", ResourceID: out.Preview.Target.Path}, nil
+}
+
+func (c *pulseCommands) resolvePulseDefinitionPull(ctx context.Context, input pulsedefinition.PullInput) (pulsedefinition.PullInput, workspacecore.Record, pulseConnection, error) {
+	if err := pulsedefinition.PullValidateInput(input); err != nil {
+		return input, workspacecore.Record{}, pulseConnection{}, err
+	}
+	workspace, err := resolvePullWorkspace(ctx, c.runtime, "pulse.definition.pull", input.Environment, input.Workspace, input.ExpectedWorkspaceID, input.ExpectedWorkspaceRoot)
+	if err != nil {
+		return input, workspace, pulseConnection{}, err
 	}
 	input.Workspace = workspace.Root
 	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return pulsedefinition.PullOutput{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
+		return input, workspace, connection, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.SiteLUID = connection.siteLUID
 	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
 	if err != nil {
-		return pulsedefinition.PullOutput{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
+		return input, workspace, connection, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
 	}
-
-	reader := &pulseDefinitionPullReader{client: connection.client}
-	return pulsedefinition.Pull(ctx, reader, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}, input)
+	return input, workspace, connection, nil
 }
 
 func (c *pulseCommands) CreatePulseDefinition(ctx context.Context, input pulsedefinition.CreateInput, preview bool) (pulsedefinition.CreateOutput, error) {
@@ -520,6 +550,7 @@ func (w pulseDefinitionArtifactWriter) WriteDefinition(ctx context.Context, inpu
 	}
 	result, err := w.manager.Pull(ctx, artifact.PulseDefinitionPull{
 		Workspace: input.Workspace, Configuration: input.Configuration, Bundle: append(data, '\n'), Overwrite: input.Overwrite,
+		ExpectedWorkspaceID: input.ExpectedWorkspaceID, ExpectedPath: input.ExpectedPath,
 		Metadata: artifact.PulseDefinitionMetadata{Kind: "pulse-definition", Name: input.Name, TableauID: input.DefinitionLUID, DatasourceLUID: input.DatasourceLUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site},
 	})
 	if err != nil {
