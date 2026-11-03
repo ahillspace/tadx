@@ -114,9 +114,13 @@ func PrepareWorkspaceSnapshot(ctx context.Context, mutation *workspacecore.Mutat
 		slices.SortFunc(entries, func(left, right os.DirEntry) int { return strings.Compare(left.Name(), right.Name()) })
 		for _, entry := range entries {
 			name := entry.Name()
-			if strings.HasPrefix(name, backupPrefix) || strings.HasPrefix(name, stagePrefix) || strings.HasPrefix(name, datasourceBackupPrefix) || strings.HasPrefix(name, datasourceStagePrefix) || strings.HasPrefix(name, ".tadx-flow-stage-") || strings.HasPrefix(name, ".tadx-pulse-definition-stage-") || strings.HasPrefix(name, ".tadx-lineage-stage-") {
+			if isArtifactRecoveryEntry(name) {
 				relative, _ := filepath.Rel(mutation.Root(), filepath.Join(directory, name))
-				return &errs.Error{Kind: errs.KindOperation, Summary: "Workspace snapshot has unresolved artifact recovery evidence: " + filepath.ToSlash(relative), Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Preserve the source workspace recovery entry and complete or repair the interrupted artifact replacement before cloning."}
+				action := "Preserve the source workspace recovery entry and complete or repair the interrupted artifact replacement before cloning."
+				if strings.HasPrefix(name, moveSourcePrefix) || strings.HasPrefix(name, moveStagePrefix) {
+					action = "Preserve the move recovery entry and inspect the source and destination workspaces before recovery; do not restore or remove it based on one workspace alone."
+				}
+				return &errs.Error{Kind: errs.KindOperation, Summary: "Workspace snapshot has unresolved artifact recovery evidence: " + filepath.ToSlash(relative), Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: action}
 			}
 			if directory == artifacts && (slices.Contains(directManagedArtifactKinds[:], name) || name == "lineage") || filepath.Base(directory) == "lineage" && isLineageResourceKind(name) {
 				directories = append(directories, filepath.Join(directory, name))
@@ -124,6 +128,15 @@ func PrepareWorkspaceSnapshot(ctx context.Context, mutation *workspacecore.Mutat
 		}
 	}
 	return nil
+}
+
+func isArtifactRecoveryEntry(name string) bool {
+	for _, prefix := range []string{backupPrefix, stagePrefix, datasourceBackupPrefix, datasourceStagePrefix, moveSourcePrefix, moveStagePrefix, ".tadx-flow-stage-", ".tadx-pulse-definition-stage-", ".tadx-lineage-stage-"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func requireWorkspaceIdentity(root, expectedID string) error {

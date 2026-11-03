@@ -179,14 +179,15 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 	if in.MembershipSet && len(group.Members) > maxDesiredMembers {
 		return UpdateOutput{}, errors.New("current group membership exceeds the 1000-member action bound")
 	}
-	changes := groupChanges(group, UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled})
+	request := UpdateRequest{Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled}
+	changes := groupChanges(group, request)
 	var membership *MembershipDiff
 	if in.MembershipSet {
 		diff := membershipDiff(group.Members, in.DesiredMemberLUIDs)
 		membership = &diff
 	}
 	noOp := len(changes) == 0 && (membership == nil || (len(membership.Add) == 0 && len(membership.Remove) == 0))
-	out := UpdateOutput{Plan: UpdatePlan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Requested: UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled}, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
+	out := UpdateOutput{Plan: UpdatePlan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Requested: request, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
 	if preview {
 		return out, nil
 	}
@@ -205,7 +206,7 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 		return out, nil
 	}
 	if len(changes) > 0 {
-		updated, err := updater.UpdateGroup(ctx, group.LUID, UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled})
+		updated, err := updater.UpdateGroup(ctx, group.LUID, request)
 		if updated.RequestID != "" {
 			result.TableauRequestIDs = append(result.TableauRequestIDs, updated.RequestID)
 		}
@@ -221,7 +222,7 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 			}
 			return out, failure
 		}
-		result.MismatchedSettings, result.UnverifiedSettings = verifyGroupChanges(group.LUID, changes, updated)
+		result.MismatchedSettings, result.UnverifiedSettings = verifyGroupResponse(group.LUID, request, updated)
 		if len(result.MismatchedSettings)+len(result.UnverifiedSettings) > 0 {
 			result.Status = "partial"
 			out.Help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", group.LUID, "--members")}
@@ -265,29 +266,27 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 	return out, nil
 }
 
-func verifyGroupChanges(luid string, changes []UpdateChange, observed Record) (mismatched, unverified []string) {
+func verifyGroupResponse(luid string, submitted UpdateRequest, observed Record) (mismatched, unverified []string) {
 	if observed.LUID != luid {
 		mismatched = append(mismatched, "luid")
 	}
-	for _, change := range changes {
-		value, present := "", true
-		switch change.Field {
-		case "name":
-			value, present = observed.Name, observed.Name != ""
-		case "minimum_site_role":
-			value, present = observed.MinimumSiteRole, observed.MinimumSiteRole != ""
-		case "external_user_enabled":
-			present = observed.ExternalUserEnabled != nil
-			if present && *observed.ExternalUserEnabled {
-				value = "true"
-			} else {
-				value = "false"
-			}
+	verifyString := func(field string, expected *string, actual string) {
+		if expected == nil {
+			return
 		}
-		if !present {
-			unverified = append(unverified, change.Field)
-		} else if value != change.After {
-			mismatched = append(mismatched, change.Field)
+		if actual == "" {
+			unverified = append(unverified, field)
+		} else if actual != *expected {
+			mismatched = append(mismatched, field)
+		}
+	}
+	verifyString("name", submitted.Name, observed.Name)
+	verifyString("minimum_site_role", submitted.MinimumSiteRole, observed.MinimumSiteRole)
+	if submitted.ExternalUserEnabled != nil {
+		if observed.ExternalUserEnabled == nil {
+			unverified = append(unverified, "external_user_enabled")
+		} else if *observed.ExternalUserEnabled != *submitted.ExternalUserEnabled {
+			mismatched = append(mismatched, "external_user_enabled")
 		}
 	}
 	return mismatched, unverified

@@ -160,7 +160,16 @@ func searchPages(ctx context.Context, source Source, input Input, types []string
 			return Result{}, errors.New("search source returned an invalid or repeated continuation token")
 		}
 		if pages == 0 {
-			result.Source, result.Generation = page.Source, page.Generation
+			result.Source = page.Source
+			if page.Generation != nil {
+				result.Generation = new(*page.Generation)
+			}
+		} else if result.Generation != nil {
+			if page.Generation == nil || result.Generation.ID != page.Generation.ID || result.Generation.Environment != page.Generation.Environment || result.Generation.Site != page.Generation.Site || result.Generation.GeneratedAt != page.Generation.GeneratedAt {
+				result.Generation = nil
+			} else {
+				result.Generation.Stale = result.Generation.Stale || page.Generation.Stale
+			}
 		}
 		if page.Source != "" && result.Source != "" && page.Source != result.Source {
 			result.Source = "mixed"
@@ -172,6 +181,15 @@ func searchPages(ctx context.Context, source Source, input Input, types []string
 		result.Page.MoreAvailable = result.Page.UnresolvedMoreAvailable || page.Page.MoreAvailable || page.Page.NextCursor != "" || len(result.Items) > input.Limit
 		if len(result.Items) >= input.Limit || page.Page.NextCursor == "" {
 			result.Items = result.Items[:min(input.Limit, len(result.Items))]
+			if input.Cache && pages > 0 && result.Generation == nil {
+				warnings := []string{UnsharedCacheGenerationWarning}
+				for _, warning := range result.Warnings {
+					if warning != UnsharedCacheGenerationWarning {
+						warnings = append(warnings, warning)
+					}
+				}
+				result.Warnings = warnings
+			}
 			return result, nil
 		}
 		request.Cursor = page.Page.NextCursor

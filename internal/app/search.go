@@ -82,7 +82,12 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		}
 		input.SiteResolved = true
 		store := c.runtime.cacheStore(environment)
-		return searchaction.Execute(ctx, cacheGlobalSearchSource{store: store}, input, types)
+		reader, err := store.OpenResourceRead(ctx, input.Environment, input.Site)
+		if err != nil {
+			return searchaction.Output{}, capabilitySetupError("search.cache.setup", "search", input.Environment, input.Site, "Cache search setup failed.", "Review the selected environment and cache configuration.", err)
+		}
+		defer reader.Close()
+		return searchaction.Execute(ctx, cacheGlobalSearchSource{reader: reader}, input, types)
 	}
 	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
 		_, environment, err := c.runtime.environment(input.Environment, false)
@@ -338,16 +343,11 @@ func combinedSearchChecksum(state combinedSearchCursor) string {
 }
 
 type cacheGlobalSearchSource struct {
-	store *cache.Store
+	reader *cache.ResourceReadSession
 }
 
 func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
-	reader, err := s.store.OpenResourceRead(ctx, input.Environment, input.Site)
-	if err != nil {
-		return searchaction.Result{}, err
-	}
-	defer reader.Close()
-	lister := &cacheSearchLister{reader: reader, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cache.ResourceResult)}
+	lister := &cacheSearchLister{reader: s.reader, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cache.ResourceResult)}
 	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
@@ -376,7 +376,7 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	if shared {
 		return searchResult(page, generation), nil
 	}
-	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
+	page.Warnings = append(page.Warnings, searchaction.UnsharedCacheGenerationWarning)
 	return searchResult(page, nil), nil
 }
 

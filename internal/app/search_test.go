@@ -28,6 +28,15 @@ func executeSearchAction(ctx context.Context, source searchaction.Source, input 
 	return searchaction.Execute(ctx, source, input, types)
 }
 
+func executeCachedSearchAction(ctx context.Context, store *cache.Store, input searchaction.Input) (searchaction.Output, error) {
+	reader, err := store.OpenResourceRead(ctx, input.Environment, input.Site)
+	if err != nil {
+		return searchaction.Output{}, err
+	}
+	defer reader.Close()
+	return executeSearchAction(ctx, cacheGlobalSearchSource{reader: reader}, input)
+}
+
 func searchWithTypes(ctx context.Context, source globalSearchSource, input searchaction.Input) (searchaction.Result, error) {
 	types, err := searchaction.ValidateInput(input)
 	if err != nil {
@@ -42,7 +51,7 @@ func TestCacheGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testi
 	if err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "dev", Site: "site", Kind: "workbook", LUID: "wb-1", Name: "Sales", Coverage: "summary", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
+	out, err := executeCachedSearchAction(context.Background(), store, searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +62,7 @@ func TestCacheGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testi
 
 func TestCacheGlobalSearchRejectsExplicitUnavailableType(t *testing.T) {
 	store := cache.NewStore(t.TempDir(), time.Now)
-	_, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
+	_, err := executeCachedSearchAction(context.Background(), store, searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error=%v", err)

@@ -113,6 +113,7 @@ Canonical native payloads must be regular files; an existing directory or linked
 Workspace deletion owns the lifecycle exclusively and revalidates recovery, identity, and dirty-state evidence under that ownership.
 Workspace clone holds source lifecycle and artifact ownership while preparing its snapshot and copying the complete artifact tree.
 Supported replacements are reconciled; unresolved recovery evidence blocks copying and remains intact.
+Retained Move stages and source tombstones also block cloning because the other workspace might already contain a committed destination.
 The destination receives a fresh workspace identity and registration only after that consistent copy succeeds.
 Deletion closes locks inside the workspace before renaming its root while retaining the external lifecycle lock.
 The persistent sibling lifecycle lock uses the canonical workspace path, independent of user cache settings.
@@ -175,8 +176,9 @@ These readers do not silently substitute a live answer.
 Unsupported cached filters fail with a corrective command.
 [`Store.ReadResources`](../../internal/cache/resources.go) uses a read transaction, exact selectors, stable ordering, and generation/query-bound continuation.
 Changed snapshots invalidate continuation rather than combine observations from different generations.
-Cached search opens one target-bound resource read session for its invocation.
+Cached search opens one target-bound resource read session around the complete search action.
 That session validates the database once and reuses one consistent read transaction and scope metadata across source pages.
+Dense 100-result source calls share the same session until the command succeeds, fails, or is canceled.
 Later invocations validate their continuation against current generation and observation evidence.
 `UpsertResources` marks touched complete inventory snapshots incomplete because a detail observation cannot preserve their original membership claim.
 The prior continuation then fails; the confirmed detail remains readable with partial inventory coverage.
@@ -256,6 +258,9 @@ Failed readback retains the acknowledged result and reports verification failure
 [`admin.Adapter.GetPermissionRule`](../../internal/resources/admin/permission_mutations.go) verifies principal type and identity before reading resource rules.
 It does not calculate effective user access from group membership, inheritance, or Tableau's broader permission model.
 User, group, and membership actions keep their own lifecycle and receipt contracts in [`actions/admin`](../../actions/admin).
+Group response verification checks every submitted metadata setting, including settings that matched the planning snapshot.
+The difference list controls planning and whether a metadata write is needed.
+Mismatched or unverified submitted settings preserve the observed response and stop later membership changes.
 Supported remote administration remains subject to the same selected-site consent and managed-policy checks described in [security](../security.md).
 A preview or discovery result does not authorize a write.
 
