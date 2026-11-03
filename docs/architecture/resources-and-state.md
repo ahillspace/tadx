@@ -249,6 +249,9 @@ A preview or discovery result does not authorize a write.
 
 ## Pulse authoring and portable bundles
 
+Batch preparation resolves Pulse definition destinations from exact definition metadata and the existing artifact preview.
+Execution and explicit `--preview` requests acquire and validate the complete metric bundle, with fresh definition metadata.
+
 [`definition.Create`](../../actions/pulse/definition/create.go) resolves exact live field IDs and checks both names and semantically equivalent existing definitions.
 Equivalent definitions depend on datasource, measure, aggregation, time dimension, running total, temporality, and filters.
 Names and adjustable dimensions alone do not distinguish otherwise equivalent definitions.

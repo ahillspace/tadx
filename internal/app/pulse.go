@@ -219,17 +219,26 @@ func (c *pulseCommands) PreparePulseDefinitionPull(ctx context.Context, input pu
 	if err != nil {
 		return input, batchinput.Target{}, err
 	}
-	resolved.Preview = true
-	out, err := pulsedefinition.Pull(ctx, &pulseDefinitionPullReader{client: connection.client}, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}, resolved)
+	resolved.LUID = strings.TrimSpace(resolved.LUID)
+	item, err := connection.client.GetDefinition(ctx, resolved.LUID)
+	if err != nil {
+		return input, batchinput.Target{}, batchPreparationError(ctx, resolved.Environment, resolved.Site, err)
+	}
+	if err := pulsedefinition.PullValidateDefinition(resolved, pulsePullDefinitionMetadata(item)); err != nil {
+		return input, batchinput.Target{}, err
+	}
+	if resolved.Environment == "" || resolved.Site == "" {
+		return input, batchinput.Target{}, capabilitySetupError("pulse.definition.pull.preview", "pulse.definition.pull", resolved.Environment, resolved.Site, "Pulse definition artifact requires source environment and site identity.", "Configure a complete Pulse source target before pulling.", nil)
+	}
+	target, err := acquisitionTarget(ctx, "pulse.definition.pull", artifact.PullPreview{Workspace: resolved.Workspace, Kind: "pulse-definition", Name: item.Name, LUID: item.LUID, ServerOrigin: resolved.ServerOrigin, SiteLUID: resolved.SiteLUID, Overwrite: resolved.Overwrite})
 	if err != nil {
 		return input, batchinput.Target{}, err
 	}
-	resolved.Preview = input.Preview
 	resolved.Workspace = workspace.Name
-	resolved.LUID = out.Definition.LUID
+	resolved.LUID = item.LUID
 	resolved.ExpectedWorkspaceID, resolved.ExpectedWorkspaceRoot = workspace.ID, workspace.Root
-	resolved.ExpectedArtifactPath = out.Preview.Target.Path
-	return resolved, batchinput.Target{WorkspaceID: workspace.ID, WorkspaceRoot: workspace.Root, ResourceKind: "pulse-definition", ResourceID: out.Preview.Target.Path}, nil
+	resolved.ExpectedArtifactPath = target.Path
+	return resolved, batchinput.Target{WorkspaceID: workspace.ID, WorkspaceRoot: workspace.Root, ResourceKind: "pulse-definition", ResourceID: target.Path}, nil
 }
 
 func (c *pulseCommands) resolvePulseDefinitionPull(ctx context.Context, input pulsedefinition.PullInput) (pulsedefinition.PullInput, workspacecore.Record, pulseConnection, error) {
@@ -486,12 +495,16 @@ func (a *pulseDefinitionGetAdapter) GetDefinition(ctx context.Context, luid stri
 
 type pulseDefinitionPullReader struct{ client *tableaupulse.Client }
 
+func pulsePullDefinitionMetadata(item tableaupulse.Definition) pulsedefinition.PullDefinition {
+	return pulsedefinition.PullDefinition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID, Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
+}
+
 func (r *pulseDefinitionPullReader) GetDefinition(ctx context.Context, luid string) (pulsedefinition.PullDefinition, error) {
 	item, err := r.client.GetDefinition(ctx, luid)
 	if err != nil {
 		return pulsedefinition.PullDefinition{}, err
 	}
-	result := pulsedefinition.PullDefinition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID, Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
+	result := pulsePullDefinitionMetadata(item)
 	totalBytes := len(item.Configuration)
 	seenIDs, seenTokens := map[string]bool{}, map[string]bool{"": true}
 	token := ""

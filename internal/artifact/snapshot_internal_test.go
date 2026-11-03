@@ -108,7 +108,7 @@ func TestArtifactSnapshotDistinguishesMissingAndNonregularCanonicalPayload(t *te
 					t.Fatalf("nonregular canonical snapshot error = %v", err)
 				}
 			case "symlink":
-				if err == nil || errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "regular file") {
+				if err == nil || errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "symbolic link") {
 					t.Fatalf("linked canonical snapshot error = %v", err)
 				}
 			case "outside tree":
