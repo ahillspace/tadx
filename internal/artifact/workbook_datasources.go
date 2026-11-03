@@ -280,10 +280,19 @@ func newDatasourceRebinding(request WorkbookDatasourceRewrite) (*datasourceRebin
 }
 
 // connectionEdits rebinds a live connection and moves its endpoint to the
-// destination host only when the workbook was bound to another host.
+// destination endpoint when its host, channel, or effective port differs.
 func (r *datasourceRebinding) connectionEdits(destination string, attributes []xml.Attr) []attributeEdit {
 	edits := []attributeEdit{{name: "dbname", value: destination}}
-	if !strings.EqualFold(attributeValue(attributes, "server"), r.host) {
+	channel := attributeValue(attributes, "channel")
+	port := attributeValue(attributes, "port")
+	if port == "" {
+		if strings.EqualFold(channel, "https") {
+			port = "443"
+		} else if strings.EqualFold(channel, "http") {
+			port = "80"
+		}
+	}
+	if !strings.EqualFold(attributeValue(attributes, "server"), r.host) || !strings.EqualFold(channel, "https") || port != r.port {
 		edits = append(edits, attributeEdit{name: "channel", value: "https"}, attributeEdit{name: "port", value: r.port}, attributeEdit{name: "server", value: r.host})
 	}
 	return edits

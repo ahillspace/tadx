@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/lock"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestPullStopsWaitingForHeldWorkspaceLockWhenCanceled(t *testing.T) {
@@ -16,7 +17,7 @@ func TestPullStopsWaitingForHeldWorkspaceLockWhenCanceled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	held, err := lock.Acquire(filepath.Join(workspace, workspaceLockName))
+	held, err := lock.Acquire(filepath.Join(workspace, workspacecore.ArtifactLockName))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,10 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, realpath } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { MaintenanceError } from './cli.js';
 
 export interface VerifiedCliRelease { readonly version: string; readonly archiveSha256: string }
 export interface SetupChoices {
@@ -29,9 +30,9 @@ export interface SetupCommandOptions {
 export interface SetupCommandResult { stdout: string; stderr: string; exitCode: number }
 export type SetupRunner = (executable: string, args: readonly string[], options: SetupCommandOptions) => Promise<SetupCommandResult>;
 
-export class SetupError extends Error {
-  constructor(message: string, readonly outcome: 'not_attempted' | 'unknown' = 'not_attempted') {
-    super(message);
+export class SetupError extends MaintenanceError {
+  constructor(message: string, readonly outcome: 'not_attempted' | 'unknown' = 'not_attempted', retainExclusion = false) {
+    super(message, retainExclusion);
     this.name = 'SetupError';
   }
 }
@@ -69,6 +70,9 @@ export const runSetupCommand: SetupRunner = (executable, args, options) => new P
   const stderr: Buffer[] = [];
   let size = 0;
   let settled = false;
+  let stopping = false;
+  let confirmClosed!: () => void;
+  const closed = new Promise<void>(resolve => { confirmClosed = resolve; });
   const finish = (error?: SetupError, code = 1): void => {
     if (settled) return;
     settled = true;
@@ -77,42 +81,131 @@ export const runSetupCommand: SetupRunner = (executable, args, options) => new P
     if (error) {
       child.stdout.destroy();
       child.stderr.destroy();
-      child.unref();
       reject(error);
     }
     else fulfill({ stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8'), exitCode: code });
   };
   const stop = (message: string): void => {
-    if (settled) return;
-    if (child.pid && process.platform === 'win32') {
-      const windows = Object.entries(options.environment).find(([key]) => key.toUpperCase() === 'SYSTEMROOT')?.[1];
-      const taskkill = windows ? join(windows, 'System32', 'taskkill.exe') : 'taskkill.exe';
-      const cleanup = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
-        shell: false, windowsHide: true, env: options.environment, stdio: 'ignore',
-      });
-      cleanup.once('error', () => { child.kill(); });
-      cleanup.unref();
-    } else {
-      try { if (child.pid) process.kill(-child.pid, 'SIGTERM'); else child.kill(); }
-      catch { child.kill(); }
-    }
-    finish(new SetupError(`${message} Installation state may be partial; rollback is not confirmed. Inspect the installed CLI before retrying.`, 'unknown'));
+    if (settled || stopping) return;
+    stopping = true;
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abort);
+    void terminateSetup(child, options.environment, closed).then(() => {
+      finish(new SetupError(`${message} Installation state may be partial; rollback is not confirmed. Inspect the installed CLI before retrying.`, 'unknown'));
+    }, () => {
+      finish(new SetupError(`${message} The installer process tree could not be confirmed stopped. CLI maintenance remains locked in this window. Stop the installer and its children before reloading the window or retrying.`, 'unknown', true));
+    });
   };
   const abort = (): void => stop('Setup was canceled.');
   const timer = setTimeout(() => stop('Setup exceeded its time limit.'), timeoutMs);
-  options.signal?.addEventListener('abort', abort, { once: true });
-  if (options.signal?.aborted) abort();
   const collect = (destination: Buffer[], chunk: Buffer): void => {
-    if (settled) return;
+    if (settled || stopping) return;
     size += chunk.length;
     if (size > maxBytes) { stop('Setup exceeded its output limit.'); return; }
     destination.push(chunk);
   };
   child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk));
   child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk));
-  child.once('error', () => finish(new SetupError('The setup command could not start. Check the host shell and executable.')));
-  child.once('close', code => finish(undefined, code ?? 1));
+  child.once('error', () => {
+    if (!stopping) finish(new SetupError('The setup command could not start. Check the host shell and executable.'));
+  });
+  child.once('close', code => {
+    confirmClosed();
+    if (!stopping) finish(undefined, code ?? 1);
+  });
+  options.signal?.addEventListener('abort', abort, { once: true });
+  if (options.signal?.aborted) abort();
 });
+
+async function terminateSetup(child: ChildProcess, environment: NodeJS.ProcessEnv, closed: Promise<void>): Promise<void> {
+  if (!child.pid) { await confirmSetupClosed(closed); return; }
+  if (process.platform === 'win32') {
+    const windows = Object.entries(environment).find(([key]) => key.toUpperCase() === 'SYSTEMROOT')?.[1];
+    const taskkill = windows ? join(windows, 'System32', 'taskkill.exe') : 'taskkill.exe';
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
+        shell: false, windowsHide: true, env: environment, stdio: 'ignore',
+      });
+      const timer = setTimeout(() => { cleanup.kill(); reject(new Error('Process-tree termination timed out.')); }, 10_000);
+      cleanup.once('error', error => { clearTimeout(timer); reject(error); });
+      cleanup.once('close', code => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error('Process-tree termination failed.'));
+      });
+    });
+  } else {
+    const signalGroup = (signal: NodeJS.Signals | 0): boolean => {
+      try { process.kill(-child.pid!, signal); return true; }
+      catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH') return false;
+        throw error;
+      }
+    };
+    if (signalGroup('SIGTERM')) {
+      // The shell can finish rollback while holding its installation lock.
+      // A closed parent alone does not prove a stubborn descendant has stopped.
+      let timer!: NodeJS.Timeout;
+      const grace = new Promise<void>(resolve => { timer = setTimeout(resolve, 2000); });
+      try {
+        await Promise.race([closed, grace]);
+        if (signalGroup(0)) {
+          await grace;
+          signalGroup('SIGKILL');
+          const confirmation = AbortSignal.timeout(2000);
+          while (!await setupGroupStopped(child.pid, confirmation)) {
+            confirmation.throwIfAborted();
+            await new Promise<void>(resolve => setTimeout(resolve, 25));
+          }
+        }
+      } finally { clearTimeout(timer); }
+    }
+  }
+  await confirmSetupClosed(closed);
+}
+
+async function confirmSetupClosed(closed: Promise<void>): Promise<void> {
+  let completionTimer!: NodeJS.Timeout;
+  try {
+    await Promise.race([closed, new Promise<never>((_resolve, reject) => {
+      completionTimer = setTimeout(() => reject(new Error('The installer did not close after termination.')), 2000);
+    })]);
+  } finally { clearTimeout(completionTimer); }
+}
+
+async function setupGroupStopped(group: number, confirmation: AbortSignal): Promise<boolean> {
+  try { process.kill(-group, 0); }
+  catch (error) {
+    if (missingProcess(error)) return true;
+    throw error;
+  }
+  if (process.platform !== 'linux') return false;
+  // An orphan can remain a zombie until its new parent reaps it. SIGKILL has
+  // already been delivered to the entire group, so terminal members cannot
+  // create new descendants or perform later installation writes.
+  const processes = (await readdir('/proc')).filter(name => /^\d+$/.test(name));
+  confirmation.throwIfAborted();
+  const active = await Promise.all(processes.map(async pid => {
+    try {
+      const stat = await readFile(`/proc/${pid}/stat`, { encoding: 'utf8', signal: confirmation });
+      const boundary = stat.lastIndexOf(')');
+      const fields = stat.slice(boundary + 2).split(' ');
+      const processGroup = Number(fields[2]);
+      if (boundary < 0 || !/^[A-Z]$/.test(fields[0] ?? '') || !Number.isSafeInteger(processGroup)) {
+        throw new Error('Process state could not be verified.');
+      }
+      return processGroup === group && fields[0] !== 'Z' && fields[0] !== 'X';
+    } catch (error) {
+      if (missing(error) || missingProcess(error)) return false;
+      throw error;
+    }
+  }));
+  return active.every(value => !value);
+}
+
+function missingProcess(error: unknown): boolean {
+  return !!error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH';
+}
 
 export function installerInvocation(platform: NodeJS.Platform, extensionPath: string, directory: string,
   release: VerifiedCliRelease, choices: SetupChoices, expectedCurrentSha256?: string): { executable: string; args: string[] } {
@@ -225,6 +318,7 @@ export class SetupService {
       return installed;
     } catch (error) {
       if (!installerReturned && error instanceof SetupError && error.outcome === 'not_attempted') throw error;
+      if (error instanceof SetupError && error.retainExclusion) throw error;
       throw new SetupError('TADX setup did not complete or could not be verified. Installation state may be partial; rollback is not confirmed. Inspect the installed CLI and Guidance before retrying.', 'unknown');
     }
   }

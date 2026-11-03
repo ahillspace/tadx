@@ -13,8 +13,9 @@ import (
 
 // DeleteRequest removes one exact revalidated managed artifact.
 type DeleteRequest struct {
-	Workspace string
-	Expected  Item
+	Workspace           string
+	ExpectedWorkspaceID string
+	Expected            Item
 }
 
 type deleteOperations struct {
@@ -46,12 +47,13 @@ func deleteWithOperations(ctx context.Context, request DeleteRequest, operations
 	if err != nil {
 		return Item{}, err
 	}
-	handle, err := lockWorkspace(ctx, root)
+	handle, err := lockWorkspace(ctx, root, defaultDirectoryOperations())
 	if err != nil {
 		return Item{}, err
 	}
 	defer func() { _ = handle.Release() }()
-	current, err := Resolve(ctx, root, Selector{Path: request.Expected.Path, Kind: request.Expected.Kind, LUID: request.Expected.LUID})
+	root = handle.Root()
+	current, err := Resolve(ctx, root, Selector{Path: request.Expected.Path, Kind: request.Expected.Kind, LUID: request.Expected.LUID, ExpectedWorkspaceID: request.ExpectedWorkspaceID})
 	if err != nil {
 		return Item{}, err
 	}

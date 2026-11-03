@@ -8,6 +8,7 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	"io"
+	"path"
 	"reflect"
 	"sort"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
+	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/spf13/cobra"
 )
 
@@ -57,6 +59,9 @@ func (b *batchCalls) Execute(_ context.Context, in workbookops.PullInput) (workb
 type batchWorkbookPublisher struct{ b *batchCalls }
 
 func (p batchWorkbookPublisher) Execute(_ context.Context, in workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
+	if preview {
+		return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: in.ArtifactPath, WorkbookName: path.Base(in.ArtifactPath), Target: workbookops.PublishTarget{Environment: publicationFixtureEnvironment(in.Environment), Site: "site", ProjectLUID: "project-1"}}}, nil
+	}
 	p.b.preview(preview)
 	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: in.ArtifactPath}}, p.b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
@@ -64,6 +69,9 @@ func (b *batchCalls) PullDatasource(_ context.Context, in datasourceops.PullInpu
 	return datasourceops.PullOutput{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
 }
 func (b *batchCalls) PublishDatasource(_ context.Context, in datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
+	if preview {
+		return datasourceops.PublishOutput{Plan: datasourceops.PublishPlan{Operation: "datasource.publish", ArtifactPath: in.ArtifactPath, DatasourceName: path.Base(in.ArtifactPath), Target: datasourceops.PublishTarget{Environment: publicationFixtureEnvironment(in.Environment), Site: "site", ProjectLUID: "project-1"}}}, nil
+	}
 	b.preview(preview)
 	return datasourceops.PublishOutput{Plan: datasourceops.PublishPlan{Operation: "datasource.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
@@ -71,8 +79,24 @@ func (b *batchCalls) PullFlow(_ context.Context, in flowops.PullInput) (flowops.
 	return flowops.PullOutput{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
 }
 func (b *batchCalls) PublishFlow(_ context.Context, in flowops.PublishInput, preview bool) (flowops.PublishOutput, error) {
+	if preview {
+		return flowops.PublishOutput{Plan: flowops.PublishPlan{Operation: "flow.publish", ArtifactPath: in.ArtifactPath, FlowName: path.Base(in.ArtifactPath), Target: flowops.PublishTarget{Environment: publicationFixtureEnvironment(in.Environment), Site: "site", ProjectLUID: "project-1"}}}, nil
+	}
 	b.preview(preview)
 	return flowops.PublishOutput{Plan: flowops.PublishPlan{Operation: "flow.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
+}
+
+func publicationFixtureEnvironment(environment string) string {
+	if environment == "" {
+		return "dev"
+	}
+	return environment
+}
+
+func (*batchCalls) AuthorizeBatchPreparation(context.Context, string) error { return nil }
+
+func (*batchCalls) ResolveBatchResource(context.Context, string, string, identity.Selector) (identity.LUID, error) {
+	return "project-1", nil
 }
 
 type batchRenderer struct{ values []any }
@@ -80,7 +104,7 @@ type batchRenderer struct{ values []any }
 func (r *batchRenderer) Render(v any) error { r.values = append(r.values, v); return nil }
 
 func batchCommand(kind, verb string, b *batchCalls, r Renderer) *cobra.Command {
-	deps := Dependencies{Puller: b, Publisher: batchWorkbookPublisher{b}, FlowPuller: b, FlowPublisher: b, Renderer: r}
+	deps := Dependencies{Puller: b, Publisher: batchWorkbookPublisher{b}, FlowPuller: b, FlowPublisher: b, Renderer: r, BatchTargets: b}
 	var command *cobra.Command
 	switch kind + "." + verb {
 	case "workbook.pull":
@@ -90,7 +114,7 @@ func batchCommand(kind, verb string, b *batchCalls, r Renderer) *cobra.Command {
 	case "datasource.pull":
 		command = newDatasourcePull(datasourceLifecycleDependencies{puller: b, renderer: r})
 	case "datasource.publish":
-		command = newDatasourcePublish(datasourceLifecycleDependencies{publisher: b, renderer: r})
+		command = newDatasourcePublish(datasourceLifecycleDependencies{publisher: b, renderer: r, batchTargets: b})
 	case "flow.pull":
 		command = newFlowPull(deps)
 	default:
@@ -117,7 +141,7 @@ func TestContentBatchProcessesEverySelectorAndPreservesSharedFlags(t *testing.T)
 					for i := range selectors {
 						selectors[i] = "artifacts/" + kind + "/" + selectors[i]
 					}
-					args = append(args, "--project-id", "project-1", "--preview")
+					args = append(args, "--project-id", "project-1")
 					if kind == "datasource" {
 						args = append(args, "--create", "--project-id", "project-1")
 					}
@@ -149,7 +173,7 @@ func TestContentBatchProcessesEverySelectorAndPreservesSharedFlags(t *testing.T)
 				if !ok || out.Total != 3 || out.Succeeded != 2 || out.Failed != 1 || out.Items[1].Status != "failed" {
 					t.Fatalf("aggregate = %#v", r.values[0])
 				}
-				if verb == "publish" && !reflect.DeepEqual(b.previews, []bool{true, true, true}) {
+				if verb == "publish" && !reflect.DeepEqual(b.previews, []bool{false, false, false}) {
 					t.Errorf("preview flags = %v", b.previews)
 				}
 			})

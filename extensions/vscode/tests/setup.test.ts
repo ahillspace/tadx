@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { SetupError, SetupService, installerInvocation, runSetupCommand, setupEnvironment, type SetupRunner } from '../src/setup.js';
+import { TadxClient } from '../src/cli.js';
 
 const release = { version: '1.0.0', archiveSha256: 'a'.repeat(64) };
 const consent = { guidanceConsent: true, otherTransfersStopped: true, modifyPath: false, completion: false };
@@ -255,3 +257,162 @@ test('setup preserves a confirmed installer launch failure as not attempted', as
     await assert.rejects(f.service.execute(plan, consent), /new setup preview/);
   } finally { await f.cleanup(); }
 });
+
+for (const trigger of ['cancel', 'timeout', 'output'] as const) for (const stubborn of [false, true]) {
+  test(`${trigger} retains maintenance until its ${stubborn ? 'stubborn' : 'responsive'} native process tree has stopped`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tadx-setup-tree-'));
+    const parentPath = join(root, 'installer.cjs');
+    const childPath = join(root, 'guidance.cjs');
+    const parentReady = join(root, 'installer.pid');
+    const childReady = join(root, 'guidance.pid');
+    const abort = new AbortController();
+    const client = new TadxClient(process.execPath);
+    let parentPID: number | undefined;
+    let childPID: number | undefined;
+    try {
+      await writeFile(childPath, `const fs = require('node:fs');
+        ${stubborn ? "process.on('SIGTERM', () => {});" : ''}
+        fs.writeFileSync(process.argv[2], String(process.pid));
+        setInterval(() => {}, 1000);`);
+      await writeFile(parentPath, `const fs = require('node:fs');
+        const { spawn } = require('node:child_process');
+        spawn(process.execPath, [process.argv[2], process.argv[4]], { stdio: 'inherit', windowsHide: true });
+        process.on('SIGTERM', () => setTimeout(() => process.exit(0), 100));
+        fs.writeFileSync(process.argv[3], String(process.pid));
+        ${trigger === 'output' ? `const ready = setInterval(() => {
+          if (fs.existsSync(process.argv[4])) { clearInterval(ready); process.stdout.write('x'.repeat(4096)); }
+        }, 10);` : ''}
+        setInterval(() => {}, 1000);`);
+      const stopped = client.withMaintenance(() => runSetupCommand(process.execPath,
+        [parentPath, childPath, parentReady, childReady],
+        { environment: setupEnvironment(process.env), signal: abort.signal,
+          timeoutMs: trigger === 'timeout' ? 1000 : 10_000, maxOutputBytes: trigger === 'output' ? 100 : undefined }));
+      const failure = assert.rejects(stopped, trigger === 'cancel' ? /Setup was canceled/ : trigger === 'timeout' ? /time limit/ : /output limit/);
+      parentPID = await readPID(parentReady);
+      childPID = await readPID(childReady);
+      if (trigger === 'cancel') abort.abort();
+      await failure;
+      assert.equal(processAlive(parentPID), false, 'installer must stop before maintenance is released');
+      assert.equal(processAlive(childPID), false, 'Guidance descendant must stop before maintenance is released');
+      assert.equal(await client.withMaintenance(async () => 'retry'), 'retry');
+    } finally {
+      for (const pid of [parentPID, childPID]) {
+        if (pid && processAlive(pid)) { try { process.kill(pid, 'SIGKILL'); } catch { /* Already exited. */ } }
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('unconfirmed setup termination keeps CLI commands and installer retries excluded', async () => {
+  const client = new TadxClient(process.execPath);
+  await assert.rejects(client.withMaintenance(async () => {
+    throw new SetupError('The installer process tree could not be confirmed stopped.', 'unknown', true);
+  }), /could not be confirmed stopped/);
+  await assert.rejects(client.withMaintenance(async () => undefined), /Wait for TADX commands/);
+  await assert.rejects(client.version(), /setup is in progress/);
+});
+
+test('Unix cancellation stops a redirected stubborn descendant after its parent closes',
+  { skip: process.platform === 'win32' }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tadx-setup-orphan-'));
+    const parentPath = join(root, 'installer.cjs');
+    const childPath = join(root, 'guidance.cjs');
+    const ready = join(root, 'guidance.pid');
+    const heartbeat = join(root, 'guidance-progress');
+    const abort = new AbortController();
+    const client = new TadxClient(process.execPath);
+    let pid: number | undefined;
+    try {
+      await writeFile(childPath, `const fs = require('node:fs');
+        process.on('SIGTERM', () => {});
+        let count = 0;
+        fs.writeFileSync(process.argv[3], String(count));
+        fs.writeFileSync(process.argv[2], String(process.pid));
+        setInterval(() => fs.writeFileSync(process.argv[3], String(++count)), 10);`);
+      await writeFile(parentPath, `const { spawn } = require('node:child_process');
+        spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[4]], { stdio: 'ignore' });
+        process.on('SIGTERM', () => process.exit(0));
+        setInterval(() => {}, 1000);`);
+      const stopped = client.withMaintenance(() => runSetupCommand(process.execPath,
+        [parentPath, childPath, ready, heartbeat],
+        { environment: setupEnvironment(process.env), signal: abort.signal, timeoutMs: 10_000 }));
+      const failed = assert.rejects(stopped, error => {
+        assert.ok(error instanceof SetupError);
+        assert.equal(error.retainExclusion, false);
+        return true;
+      });
+      pid = await readPID(ready);
+      abort.abort();
+      await failed;
+      const lastWrite = await readFile(heartbeat, 'utf8');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(await readFile(heartbeat, 'utf8'), lastWrite, 'a closed parent must not leave a writer behind');
+      assert.equal(await client.withMaintenance(async () => 'retry'), 'retry');
+    } finally {
+      if (pid && processAlive(pid)) { try { process.kill(pid, 'SIGKILL'); } catch { /* Already exited. */ } }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+test('Windows termination-helper launch failure retains maintenance while the installer is alive',
+  { skip: process.platform !== 'win32' }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tadx-setup-termination-failure-'));
+    const ready = join(root, 'installer.pid');
+    const abort = new AbortController();
+    const client = new TadxClient(process.execPath);
+    let pid: number | undefined;
+    try {
+      const environment = setupEnvironment(process.env);
+      const stopped = client.withMaintenance(() => runSetupCommand(process.execPath,
+        ['-e', "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)", ready],
+        { environment, signal: abort.signal, timeoutMs: 10_000 }));
+      const failed = stopped.then(result => {
+        assert.fail(`Termination unexpectedly returned success: ${JSON.stringify(result)}`);
+      }, error => {
+        assert.ok(error instanceof SetupError);
+        assert.equal(error.retainExclusion, true);
+        assert.match(error.message, /could not be confirmed stopped/);
+      });
+      pid = await readPID(ready);
+      // Make the native termination helper unavailable after Node has started;
+      // Windows Node itself requires a valid SystemRoot during initialization.
+      for (const key of Object.keys(environment)) if (key.toUpperCase() === 'SYSTEMROOT') delete environment[key];
+      environment.SystemRoot = join(root, 'unavailable-system-root');
+      abort.abort();
+      await failed;
+      assert.equal(processAlive(pid), true);
+      await assert.rejects(client.withMaintenance(async () => undefined), /Wait for TADX commands/);
+      await assert.rejects(client.version(), /setup is in progress/);
+    } finally {
+      if (pid && processAlive(pid)) process.kill(pid, 'SIGKILL');
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+async function readPID(path: string): Promise<number> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      const pid = Number(await readFile(path, 'utf8'));
+      if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('PID has not been written.');
+      return pid;
+    }
+    catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    if (process.platform === 'linux' && /\) [ZX] /.test(readFileSync(`/proc/${pid}/stat`, 'utf8'))) return false;
+    return true;
+  }
+  catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && (error.code === 'ESRCH' || error.code === 'ENOENT')) return false;
+    throw error;
+  }
+}

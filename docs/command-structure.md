@@ -128,6 +128,12 @@ Use this matrix for conventions shared across resource references, while keeping
 
 ## Implementation and acceptance
 
+Batch files must select independent targets for the action.
+Two updates to the same workbook conflict even when their requested descriptions differ.
+Selecting the workbook by ID in one row and its exact name and project in another still identifies one target.
+Membership identity includes both the group and user; permission identity includes the resource, principal, and capability.
+Overlapping permission arrays conflict before any row runs, while distinct capabilities for the same principal remain valid.
+
 Derive executable command and flag inventory from the actual Cobra tree, with explicit navigation and operational-reference boundaries.
 Keep factual syntax synchronized with validation through automated command and flag coverage checks.
 Keep one maintained definitions source, rendering complete resource references and focused action subsets from it rather than maintaining copies at each level.

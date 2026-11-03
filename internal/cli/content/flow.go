@@ -5,7 +5,9 @@ import (
 	"errors"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/spf13/cobra"
 )
@@ -29,11 +31,17 @@ type FlowDeleter interface {
 	DeleteFlow(context.Context, flowops.DeleteInput, bool) (flowops.DeleteOutput, error)
 }
 
-func newFlow(deps Dependencies) *cobra.Command {
+func newFlow(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{Use: "flow", Short: "Operate Tableau flows"}
-	command.AddCommand(newFlowList(deps), newFlowInspect(deps), newFlowPull(deps), newFlowPublish(deps), newFlowMove(deps), newFlowDelete(deps))
+	selection.Add(command, "flow.list", func() *cobra.Command { return newFlowList(deps) })
+	selection.Add(command, "flow.inspect", func() *cobra.Command { return newFlowInspect(deps) })
+	selection.Add(command, "flow.pull", func() *cobra.Command { return newFlowPull(deps) })
+	selection.Add(command, "flow.publish", func() *cobra.Command { return newFlowPublish(deps) })
+	selection.Add(command, "flow.move", func() *cobra.Command { return newFlowMove(deps) })
+	selection.Add(command, "flow.delete", func() *cobra.Command { return newFlowDelete(deps) })
 	if deps.FlowUpdater != nil {
-		command.AddCommand(newFlowUpdate(deps))
+		selection.Add(command, "flow.update", func() *cobra.Command { return newFlowUpdate(deps) })
 	}
 	return command
 }
@@ -107,6 +115,7 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 
 func newFlowPublish(deps Dependencies) *cobra.Command {
 	var input flowops.PublishInput
+	var prepared map[string]flowops.PublishInput
 	var artifacts []string
 	var projectLUID, projectPath string
 	var preview bool
@@ -127,12 +136,16 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 			return clierr.Usage("flow.publish", errors.New("use at most one of --project-id or --project"))
 		}
 		input.SetProjectSelector(projectLUID, projectPath)
-		return nil
+		prepared, err = prepareFlowPublications(command, deps, input, artifacts)
+		return err
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		reporter := progress.New(command.ErrOrStderr())
 		return runPublishSelection(command.Context(), "flow.publish", "flow", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (flowops.PublishOutput, error) {
 			item := input
 			item.ArtifactPath = artifact
+			if prepared != nil {
+				item = prepared[artifact]
+			}
 			return deps.FlowPublisher.PublishFlow(ctx, item, preview)
 		})
 	}}
@@ -167,7 +180,7 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 			return clierr.Usage("flow.move", errors.New("use exactly one of --destination-project-id or --destination-project"))
 		}
 		input.SetProjectSelector(projectLUID, projectPath)
-		return nil
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "flow", &input.FlowSelector)
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowMover.MoveFlow(command.Context(), input, preview)
 		if err != nil {
@@ -193,7 +206,7 @@ func newFlowDelete(deps Dependencies) *cobra.Command {
 		if input.Environment == "" {
 			return clierr.Usage("flow.delete", errors.New("--environment is required for remote deletion"))
 		}
-		return nil
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "flow", &input.Selector)
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowDeleter.DeleteFlow(command.Context(), input, preview)
 		if err != nil {

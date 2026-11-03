@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -423,6 +424,9 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 	if err != nil {
 		return flowops.PublishOutput{}, remoteSetupError("flow.publish", input.Environment, input.Site, connection.environment, err)
 	}
+	if err := bindPublicationScope(ctx, "flow.publish", connection.environment, connection.siteLUID); err != nil {
+		return flowops.PublishOutput{}, err
+	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	var lifecycle *publication
@@ -481,29 +485,58 @@ func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbo
 }
 
 func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
-	input, err := lineagepull.NormalizeInput(input)
+	input, _, connection, err := c.resolveLineagePull(ctx, input)
 	if err != nil {
 		return lineagepull.Output{}, err
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	resolver := lineageResolver{workbooks: connection.workbooks, flows: connection.flows, datasources: connection.datasources, projects: connection.projects}
+	return lineagepull.Execute(ctx, resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}, input)
+}
+
+func (c *remoteContentCommands) PrepareLineagePull(ctx context.Context, input lineagepull.Input) (lineagepull.Input, batchinput.Target, error) {
+	if err := batchinput.Authorize(ctx, batchTargetResolver{runtime: c.runtime}, input.Environment); err != nil {
+		return input, batchinput.Target{}, err
+	}
+	resolved, workspace, connection, err := c.resolveLineagePull(ctx, input)
 	if err != nil {
-		return lineagepull.Output{}, capabilitySetupError("lineage.pull.workspace", "lineage.pull", input.Environment, input.Site, "Lineage workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return input, batchinput.Target{}, err
+	}
+	resolved.Preview = true
+	resolver := lineageResolver{workbooks: connection.workbooks, flows: connection.flows, datasources: connection.datasources, projects: connection.projects}
+	out, err := lineagepull.Execute(ctx, resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}, resolved)
+	if err != nil {
+		return input, batchinput.Target{}, err
+	}
+	resolved.Preview = input.Preview
+	resolved.Workspace = workspace.Name
+	resolved.ExpectedWorkspaceID, resolved.ExpectedWorkspaceRoot = workspace.ID, workspace.Root
+	resolved.ExpectedArtifactPath = out.Preview.Target.Path
+	resolved.SetSelector(out.Resource.LUID, "", "")
+	return resolved, batchinput.Target{WorkspaceID: workspace.ID, WorkspaceRoot: workspace.Root, ResourceKind: "lineage", ResourceID: out.Preview.Target.Path}, nil
+}
+
+func (c *remoteContentCommands) resolveLineagePull(ctx context.Context, input lineagepull.Input) (lineagepull.Input, workspacecore.Record, remoteConnection, error) {
+	input, err := lineagepull.NormalizeInput(input)
+	if err != nil {
+		return input, workspacecore.Record{}, remoteConnection{}, err
+	}
+	workspace, err := resolvePullWorkspace(ctx, c.runtime, "lineage.pull", input.Environment, input.Workspace, input.ExpectedWorkspaceID, input.ExpectedWorkspaceRoot)
+	if err != nil {
+		return input, workspace, remoteConnection{}, err
 	}
 	input.Workspace = workspace.Root
 	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return lineagepull.Output{}, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
+		return input, workspace, connection, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.SiteLUID = connection.siteLUID
 	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
 	if err != nil {
-		return lineagepull.Output{}, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
+		return input, workspace, connection, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
 	}
-
-	resolver := lineageResolver{workbooks: connection.workbooks, flows: connection.flows, datasources: connection.datasources, projects: connection.projects}
-	return lineagepull.Execute(ctx, resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}, input)
+	return input, workspace, connection, nil
 }
 
 func remoteSetupError(operation, environment, site string, resolved config.Environment, err error) error {
@@ -829,6 +862,6 @@ func (w lineageArtifactWriter) WriteLineage(ctx context.Context, input lineagepu
 	for index, edge := range input.Edges {
 		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
+	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, ExpectedWorkspaceID: input.ExpectedWorkspaceID, ExpectedPath: input.ExpectedPath, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Fields: input.Fields, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
 	return lineagepull.ArtifactResult{Path: result.Path, LineagePath: result.LineagePath, Fingerprint: result.Fingerprint}, err
 }

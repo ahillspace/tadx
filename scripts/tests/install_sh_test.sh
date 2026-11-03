@@ -25,6 +25,7 @@ home_directory="${test_root}/home"
 install_directory="${home_directory}/bin space's"
 mkdir -p "$release_directory" "$fake_bin" "$home_directory"
 
+# shellcheck disable=SC2016
 printf '%s\n' '#!/bin/sh' 'if [ "${1:-}" = agent ]; then printf "%s\n" "$*" >> "$TADX_TEST_GUIDANCE_LOG"; [ "${TADX_TEST_GUIDANCE_FAIL:-0}" = 0 ]; elif [ "${1:-}" = completion ]; then printf "%s\n" "# test completion"; else printf "%s\n" "tadx test 1.2.3"; fi' > "${test_root}/tadx"
 chmod 0755 "${test_root}/tadx"
 tar -czf "${release_directory}/tadx_1.2.3_linux_amd64.tar.gz" -C "$test_root" tadx
@@ -363,10 +364,12 @@ expect_lock_respected() {
     fi
     [ -d "$lock_path" ]
     [ "$(cat "${lock_path}/owner" 2>/dev/null || printf '%s' missing)" = "$lock_record" ]
-    if ls -A "$lock_install" | grep -q '^\.tadx-install\.stale\.'; then
-        printf '%s\n' "Lock remnants were left behind: $1" >&2
-        exit 1
-    fi
+    for lock_remnant in "$lock_install"/.tadx-install.stale.*; do
+        if [ -e "$lock_remnant" ]; then
+            printf '%s\n' "Lock remnants were left behind: $1" >&2
+            exit 1
+        fi
+    done
 }
 in_use='Another installer is using this directory.'
 abandoned='A previous installer exited without releasing this directory.'
@@ -404,5 +407,74 @@ rm -rf "$lock_path"
 # After the lock is removed by hand, the next installer acquires and releases it.
 sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$lock_install" --no-modify-path --no-completion >/dev/null
 [ ! -e "$lock_path" ]
+
+# A signal must enter rollback and exit while the original installation lock
+# still excludes a real retry. Exercise both a prior binary and first install.
+real_mv=$(command -v mv)
+real_rm=$(command -v rm)
+export TADX_TEST_REAL_MV="$real_mv" TADX_TEST_REAL_RM="$real_rm"
+export TADX_TEST_INSTALLER="${repository_root}/scripts/install.sh"
+cat > "${test_root}/tadx" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = agent ] && [ "${TADX_TEST_INTERRUPT_SETUP:-0}" = 1 ]; then
+    read -r installer_pid ignored_host < "${TADX_TEST_ROLLBACK_DIRECTORY}/.tadx-install.lock/owner"
+    kill -TERM "$installer_pid"
+    exit 0
+fi
+printf '%s\n' 'tadx test 1.2.3'
+EOF
+chmod 0755 "${test_root}/tadx"
+tar -czf "${release_directory}/tadx_1.2.3_linux_amd64.tar.gz" -C "$test_root" tadx
+if command -v sha256sum >/dev/null 2>&1; then
+    signal_hash=$(sha256sum "${release_directory}/tadx_1.2.3_linux_amd64.tar.gz" | awk '{ print $1 }')
+else
+    signal_hash=$(shasum -a 256 "${release_directory}/tadx_1.2.3_linux_amd64.tar.gz" | awk '{ print $1 }')
+fi
+printf '%s  %s\n' "$signal_hash" 'tadx_1.2.3_linux_amd64.tar.gz' > "${release_directory}/checksums.txt"
+cat > "${fake_bin}/check-rollback-lock" <<'EOF'
+#!/bin/sh
+set -eu
+[ -d "${TADX_TEST_ROLLBACK_DIRECTORY}/.tadx-install.lock" ] || exit 91
+if TADX_TEST_INTERRUPT_SETUP=0 sh "$TADX_TEST_INSTALLER" --version 1.2.3 --install-dir "$TADX_TEST_ROLLBACK_DIRECTORY" --no-modify-path --no-completion >"${TADX_TEST_ROLLBACK_DIRECTORY}/retry-output" 2>&1; then
+    printf '%s\n' 'A retry overlapped rollback.' >&2
+    exit 92
+fi
+grep -Fq 'Another installer is using this directory.' "${TADX_TEST_ROLLBACK_DIRECTORY}/retry-output"
+: > "${TADX_TEST_ROLLBACK_DIRECTORY}/rollback-checked"
+EOF
+cat > "${fake_bin}/mv" <<'EOF'
+#!/bin/sh
+case "${2:-}" in
+    */.tadx.backup.*) check-rollback-lock || exit $? ;;
+esac
+exec "$TADX_TEST_REAL_MV" "$@"
+EOF
+cat > "${fake_bin}/rm" <<'EOF'
+#!/bin/sh
+if [ "${2:-}" = "${TADX_TEST_ROLLBACK_DIRECTORY}/tadx" ]; then check-rollback-lock || exit $?; fi
+exec "$TADX_TEST_REAL_RM" "$@"
+EOF
+chmod 0755 "${fake_bin}/check-rollback-lock" "${fake_bin}/mv" "${fake_bin}/rm"
+for installation in update first; do
+    export TADX_TEST_ROLLBACK_DIRECTORY="${test_root}/signal-${installation}"
+    mkdir -p "$TADX_TEST_ROLLBACK_DIRECTORY"
+    if [ "$installation" = update ]; then
+        printf '%s\n' '#!/bin/sh' 'printf "%s\n" prior-version' > "${TADX_TEST_ROLLBACK_DIRECTORY}/tadx"
+        chmod 0755 "${TADX_TEST_ROLLBACK_DIRECTORY}/tadx"
+    fi
+    if TADX_TEST_INTERRUPT_SETUP=1 sh "$TADX_TEST_INSTALLER" --version 1.2.3 --install-dir "$TADX_TEST_ROLLBACK_DIRECTORY" --no-modify-path --no-completion >"${TADX_TEST_ROLLBACK_DIRECTORY}/signal-output" 2>&1; then
+        printf '%s\n' 'The interrupted installer continued after its signal.' >&2
+        exit 1
+    fi
+    [ -f "${TADX_TEST_ROLLBACK_DIRECTORY}/rollback-checked" ]
+    [ ! -d "${TADX_TEST_ROLLBACK_DIRECTORY}/.tadx-install.lock" ]
+    if [ "$installation" = update ]; then
+        [ "$("${TADX_TEST_ROLLBACK_DIRECTORY}/tadx")" = prior-version ]
+    else
+        [ ! -e "${TADX_TEST_ROLLBACK_DIRECTORY}/tadx" ]
+    fi
+    TADX_TEST_INTERRUPT_SETUP=0 sh "$TADX_TEST_INSTALLER" --version 1.2.3 --install-dir "$TADX_TEST_ROLLBACK_DIRECTORY" --no-modify-path --no-completion >/dev/null
+    [ "$("${TADX_TEST_ROLLBACK_DIRECTORY}/tadx")" = 'tadx test 1.2.3' ]
+done
 
 printf '%s\n' 'install.sh tests passed'

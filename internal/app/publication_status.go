@@ -11,6 +11,7 @@ import (
 	"time"
 
 	jobactions "github.com/ahillspace/tadx/actions/job"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
@@ -414,23 +415,29 @@ func (r *runtimeDependencies) inspectReceiptOnce(ctx context.Context, receipt jo
 }
 
 func (r *runtimeDependencies) receiptConnection(ctx context.Context, receipt jobmonitor.Receipt, connections map[string]authenticatedTableau) (authenticatedTableau, error) {
-	key := receipt.Environment + "\x00" + receipt.Site + "\x00" + receipt.Server
+	server := receipt.Server
+	if server != "" {
+		var err error
+		server, err = config.CanonicalMutationServer(server)
+		if err != nil {
+			return authenticatedTableau{}, fmt.Errorf("invalid saved receipt server: %w", err)
+		}
+	}
+	key := receipt.Environment + "\x00" + receipt.Site + "\x00" + server
 	connection, ok := connections[key]
-	if ok {
-		return connection, nil
+	if !ok {
+		var err error
+		connection, err = r.tableauConnection(ctx, receipt.Environment, false)
+		if err != nil {
+			return connection, err
+		}
 	}
-	connection, err := r.tableauConnection(ctx, receipt.Environment, false)
-	if err != nil {
-		return connection, err
-	}
-	serverMismatch := receipt.Server != "" && normalizeServer(connection.environment.URL) != normalizeServer(receipt.Server)
+	selectedServer, serverErr := config.CanonicalMutationServer(connection.environment.URL)
+	serverMismatch := server != "" && (serverErr != nil || selectedServer != server)
 	// An empty content URL is the Tableau default site. It is a real target,
 	// not a wildcard, so a receipt for that site must not be checked through a
 	// named site. Legacy receipts may omit SiteID, but a present ID is exact.
 	siteMismatch := connection.environment.SiteContentURL != receipt.Site
-	if receipt.Site == "" && connection.environment.SiteContentURL == "" {
-		siteMismatch = false
-	}
 	siteIDMismatch := receipt.SiteID != "" && connection.session.SiteLUID() != receipt.SiteID
 	if serverMismatch || siteMismatch || siteIDMismatch {
 		return connection, errors.New("saved receipt target does not match the authenticated environment and site")

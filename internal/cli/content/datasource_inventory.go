@@ -5,6 +5,7 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -24,15 +25,17 @@ type datasourceInventoryDependencies struct {
 	renderer  Renderer
 }
 
-func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspector, renderer Renderer) *cobra.Command {
+func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspector, renderer Renderer, selected ...string) *cobra.Command {
 	deps := datasourceInventoryDependencies{lister: lister, inspector: inspector, renderer: renderer}
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{
 		Use:   "datasource",
 		Short: "Operate published Tableau datasources",
 		Long: "Operate published datasource lifecycle and inspect schema with TADX.\n\n" +
 			"Schema inspection returns field and table metadata; TADX does not query datasource values.",
 	}
-	command.AddCommand(newDatasourceList(deps), newDatasourceInspect(deps))
+	selection.Add(command, "datasource.list", func() *cobra.Command { return newDatasourceList(deps) })
+	selection.Add(command, "datasource.inspect", func() *cobra.Command { return newDatasourceInspect(deps) })
 	return command
 }
 

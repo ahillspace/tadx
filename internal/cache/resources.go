@@ -143,8 +143,8 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	}
 
 	var total int
-	var newestObserved sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT count(*),max(observed_at) FROM resource_entries `+where, args...).Scan(&total, &newestObserved); err != nil {
+	var inventoryObserved sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),max(observed_at) FROM resource_entries `+where, args...).Scan(&total, &inventoryObserved); err != nil {
 		return ResourceResult{}, err
 	}
 	if snapshotErr != nil && metaErr != nil && total == 0 {
@@ -159,8 +159,8 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	}
 	defer rows.Close()
 	result := ResourceResult{Total: total, Coverage: "partial"}
-	if newestObserved.Valid {
-		result.NewestObserved, err = time.Parse(generationTimeLayout, newestObserved.String)
+	if inventoryObserved.Valid {
+		result.InventoryObservedAt, err = time.Parse(generationTimeLayout, inventoryObserved.String)
 		if err != nil {
 			return ResourceResult{}, err
 		}
@@ -182,6 +182,13 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 			return ResourceResult{}, err
 		}
 		result.Entries = append(result.Entries, entry)
+		if result.NewestObserved.IsZero() || entry.ObservedAt.After(result.NewestObserved) {
+			result.NewestObserved = entry.ObservedAt
+		}
+		if !complete {
+			stale, _ := staleness(s.now, entry.ObservedAt, "read-through")
+			result.Stale = result.Stale || stale
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return ResourceResult{}, err
@@ -193,9 +200,6 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 		if result.Total > 1 {
 			return ResourceResult{}, ambiguousSelectorError{}
 		}
-	}
-	if !complete && !result.NewestObserved.IsZero() {
-		result.Stale, _ = staleness(s.now, result.NewestObserved, "read-through")
 	}
 	if complete && query.Offset+len(result.Entries) < total {
 		result.NextCursor = encodeCursor(generationID, resourceQueryFingerprint(query), query.Offset+len(result.Entries))

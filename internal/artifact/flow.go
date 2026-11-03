@@ -161,11 +161,13 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResul
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return FlowPullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	handle, err := lockWorkspace(ctx, workspace)
+	handle, err := lockWorkspace(ctx, workspace, defaultDirectoryOperations())
 	if err != nil {
 		return FlowPullResult{}, err
 	}
 	defer func() { _ = handle.Release() }()
+	workspace = handle.Root()
+	input.Workspace = workspace
 	root, err := ensureFlowRoot(workspace)
 	if err != nil {
 		return FlowPullResult{}, err

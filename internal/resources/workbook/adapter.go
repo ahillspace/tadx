@@ -382,10 +382,11 @@ func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workb
 
 // FindWorkbooks returns exact name and project matches for collision checks.
 func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]Workbook, error) {
+	nameKey := identity.CollisionNameKey(name)
 	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	byLUID := make(map[string]Workbook)
 	err := a.scanWorkbooks(ctx, tableauworkbook.ListRequest{Name: name}, func(item tableauworkbook.Workbook) error {
-		if !strings.EqualFold(item.Name, name) {
+		if identity.CollisionNameKey(item.Name) != nameKey {
 			return nil
 		}
 		if item.LUID == "" {

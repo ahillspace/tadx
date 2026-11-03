@@ -519,6 +519,11 @@ func localImportAllowed(file, imported string) bool {
 		}
 		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint", "internal/batchspec")
 	case layerResource:
+		if hasPathPrefix(file, "internal/resources/admin") && imported == "internal/paging" {
+			// Administrative identity and membership resolution require the
+			// shared complete-collection contract before trusting absence.
+			return true
+		}
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
 		if imported == "internal/commitguard" {
@@ -597,7 +602,9 @@ func localImportAllowed(file, imported string) bool {
 		// installs staged directories through the leaf replace package.
 		// The neutral error contract supplies shared workspace-relative rendering.
 		if hasPathPrefix(file, "internal/artifact") {
-			return matchesExact(imported, "internal/commitguard", "internal/errs", "internal/fsreplace", "internal/lock", "internal/pathspec")
+			// Artifact mutations are subordinate to workspace lifecycle ownership;
+			// the registry package never imports artifact persistence in reverse.
+			return matchesExact(imported, "internal/commitguard", "internal/errs", "internal/fsreplace", "internal/lock", "internal/pathspec", "internal/workspace")
 		}
 		// The cache serializes first-time SQLite schema initialization across
 		// Store instances and tadx processes with the leaf lock package.

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/batchspec"
@@ -141,6 +142,30 @@ func TestSingleIDKeepsSingleResult(t *testing.T) {
 	}
 	if _, ok := value.(map[string]any); !ok {
 		t.Fatalf("single shape changed: %T", value)
+	}
+}
+
+func TestBatchRetainsValidatedCommandBindingsForDispatch(t *testing.T) {
+	var mu sync.Mutex
+	var calls []string
+	var builds atomic.Int64
+	factory := func(renderer Renderer) *cobra.Command {
+		builds.Add(1)
+		return batchTestRoot(renderer, &mu, &calls, true)
+	}
+	renderer := &batchTestRenderer{}
+	root := factory(renderer)
+	command, _, err := root.Find([]string{"change"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachBatch(root, command, "id", renderer, factory)
+	root.SetArgs([]string{"change", "--batch-file", batchFile(t, `{"items":[{"id":"one"},{"id":"two"}]}`)})
+	if err := root.ExecuteContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if builds.Load() != 3 || len(calls) != 2 {
+		t.Fatalf("constructed %d command trees for two rows and dispatched %d actions", builds.Load(), len(calls))
 	}
 }
 

@@ -54,7 +54,7 @@ func TestWorkspaceRemovalRequiresDefaultReassignmentThroughCLI(t *testing.T) {
 }
 
 func TestWorkspaceDeletionProtectsUnmanagedArtifactFilesThroughCLI(t *testing.T) {
-	for _, extra := range []string{"", "clean-pulled", "artifacts/lineage/notes.txt", "artifacts/lineage/workbook/notes.txt", "artifacts/.tadx-personal/notes.txt", "artifacts/workbook/.tadx-personal/notes.txt", "artifact-notes", "artifact-nested", "artifact-lock", ".tadx.lock.bak", ".tadx.lock/notes.txt"} {
+	for _, extra := range []string{"", "clean-pulled", "artifacts/lineage/notes.txt", "artifacts/lineage/workbook/notes.txt", "artifacts/.tadx-personal/notes.txt", "artifacts/workbook/.tadx-personal/notes.txt", "artifact-notes", "artifact-nested", "artifact-lock", ".tadx.lock.bak", ".tadx.lock/notes.txt", ".tadx-workspace-" + strings.Repeat("a", 64) + ".lock"} {
 		t.Run(extra, func(t *testing.T) {
 			directory := t.TempDir()
 			root := filepath.Join(directory, "development")

@@ -15,6 +15,8 @@ type MoveInput struct {
 	Kind                 string
 	LUID                 string
 	Path                 string
+	ExpectedWorkspaceID  string
+	ExpectedArtifact     *ArtifactTarget
 }
 
 // MoveArtifact is the complete moved artifact result.

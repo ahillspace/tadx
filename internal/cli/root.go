@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	authops "github.com/ahillspace/tadx/actions/auth"
+	"github.com/ahillspace/tadx/actions/batchinput"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	searchaction "github.com/ahillspace/tadx/actions/search"
@@ -22,6 +23,7 @@ import (
 	capabilitycli "github.com/ahillspace/tadx/internal/cli/capability"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
@@ -108,6 +110,7 @@ type Dependencies struct {
 	AdminLabels           *admincli.LabelDependencies
 	BatchSelectors        map[string]string
 	BatchOptions          map[string]batchspec.Options
+	BatchTargets          batchinput.Resolver
 	Lister                Lister
 	Getter                Getter
 	Renderer              Renderer
@@ -192,7 +195,8 @@ func RootVersionRequested(args []string) bool {
 	return found
 }
 
-func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
+func newRoot(deps Dependencies, withBatches bool, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	renderOptions := deps.RenderOptions
 	if renderOptions == nil {
 		renderOptions = &RenderOptions{}
@@ -228,7 +232,7 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	}
 	var versionCommand *cobra.Command
 	var showVersion bool
-	if deps.SessionOverview != nil {
+	if deps.SessionOverview != nil && selection.Wants("session") {
 		root.Annotations = map[string]string{CapabilityAnnotation: "session.overview"}
 		root.Args = cobra.NoArgs
 		root.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -239,7 +243,7 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 			return deps.Renderer.Render(result)
 		}
 	}
-	if deps.Update != nil {
+	if deps.Update != nil && selection.Wants("update") {
 		updateDependencies := *deps.Update
 		updateDependencies.Renderer = deps.Renderer
 		root.AddCommand(updatecli.New(updateDependencies))
@@ -260,74 +264,78 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		}
 		return ""
 	}
-	if deps.LastReader != nil {
+	if deps.LastReader != nil && selection.Wants("last") {
 		root.AddCommand(lastcli.New(deps.LastReader, deps.Renderer))
 	}
-	if deps.Policy != nil {
+	if deps.Policy != nil && selection.Wants("policy") {
 		policyDependencies := *deps.Policy
 		policyDependencies.Renderer = deps.Renderer
 		root.AddCommand(policycli.New(policyDependencies))
 	}
-	if deps.Jobs != nil {
+	if deps.Jobs != nil && selection.Wants("job") {
 		jobs := *deps.Jobs
 		jobs.Renderer = deps.Renderer
-		root.AddCommand(jobcli.New(jobs))
+		root.AddCommand(jobcli.New(jobs, selected...))
 	}
-	if deps.MutationStatus != nil && deps.MutationSetter != nil {
+	if deps.MutationStatus != nil && deps.MutationSetter != nil && selection.Wants("mutation") {
 		root.AddCommand(mutationcli.New(deps.MutationStatus, deps.MutationSetter, deps.Renderer))
 	}
-	root.AddCommand(capabilitycli.New(capabilitycli.Dependencies{
-		Lister:                deps.Lister,
-		Getter:                deps.Getter,
-		Renderer:              deps.Renderer,
-		MutationsEnabled:      deps.MutationsEnabled,
-		ResolveMutationPolicy: deps.ResolveMutationPolicy,
-		ListUse:               deps.ListUse,
-		ListShort:             deps.ListShort,
-		GetUse:                deps.GetUse,
-		GetShort:              deps.GetShort,
-	}))
-	if deps.EnvironmentProfiles != nil {
+	if selection.Wants("capability") {
+		root.AddCommand(capabilitycli.New(capabilitycli.Dependencies{
+			Lister:                deps.Lister,
+			Getter:                deps.Getter,
+			Renderer:              deps.Renderer,
+			MutationsEnabled:      deps.MutationsEnabled,
+			ResolveMutationPolicy: deps.ResolveMutationPolicy,
+			ListUse:               deps.ListUse,
+			ListShort:             deps.ListShort,
+			GetUse:                deps.GetUse,
+			GetShort:              deps.GetShort,
+		}))
+	}
+	if deps.EnvironmentProfiles != nil && selection.Wants("env") {
 		environmentProfiles := *deps.EnvironmentProfiles
 		environmentProfiles.Renderer = deps.Renderer
 		root.AddCommand(envcli.New(environmentProfiles))
 	}
-	if deps.Workspaces != nil {
+	if deps.Workspaces != nil && selection.Wants("workspace") {
 		workspaces := *deps.Workspaces
 		workspaces.Renderer = deps.Renderer
-		root.AddCommand(workspacecli.New(workspaces))
+		workspaces.BatchTargets = deps.BatchTargets
+		root.AddCommand(workspacecli.New(workspaces, selected...))
 	}
-	if deps.Admin != nil {
+	if deps.Admin != nil && selection.Wants("admin") {
 		admin := *deps.Admin
 		admin.Renderer = deps.Renderer
-		node := admincli.New(admin)
+		admin.BatchTargets = deps.BatchTargets
+		node := admincli.New(admin, selected...)
 		if deps.AdminLabels != nil {
 			labels := *deps.AdminLabels
 			labels.Renderer = deps.Renderer
-			node.AddCommand(admincli.NewLabels(labels)...)
+			node.AddCommand(admincli.NewLabels(labels, selected...)...)
 		}
 		root.AddCommand(node)
 	}
-	if deps.Agent != nil {
+	if deps.Agent != nil && selection.Wants("agent") {
 		agent := *deps.Agent
 		agent.Renderer = deps.Renderer
 		root.AddCommand(agentcli.New(agent))
 	}
-	if deps.Pulse != nil {
+	if deps.Pulse != nil && selection.Wants("pulse") {
 		pulse := *deps.Pulse
 		pulse.Renderer = deps.Renderer
-		root.AddCommand(pulsecli.New(pulse))
+		root.AddCommand(pulsecli.New(pulse, selected...))
 	}
-	if deps.Version != nil {
+	if deps.Version != nil && selection.Wants("version") {
 		version := *deps.Version
 		version.Renderer = deps.Renderer
 		versionCommand = versioncli.New(version)
 		root.AddCommand(versionCommand)
 	}
-	if deps.DoctorRunner != nil {
+	if deps.DoctorRunner != nil && selection.Wants("doctor") {
 		root.AddCommand(doctorcli.New(doctorcli.Dependencies{Runner: deps.DoctorRunner, Renderer: deps.Renderer, Use: deps.DoctorUse, Short: deps.DoctorShort}))
 	}
-	if deps.AuthChecker != nil {
+	if deps.AuthChecker != nil && selection.Wants("auth") {
 		root.AddCommand(authcli.New(authcli.Dependencies{
 			Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Login: deps.AuthLogin, Logout: deps.AuthLogout,
 			Prompter: deps.AuthPrompter, Renderer: deps.Renderer,
@@ -335,10 +343,10 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 			LoginUse: deps.AuthLoginUse, LoginShort: deps.AuthLoginShort, LogoutUse: deps.AuthLogoutUse, LogoutShort: deps.AuthLogoutShort,
 		}))
 	}
-	if deps.Searcher != nil {
+	if deps.Searcher != nil && selection.Wants("search") {
 		root.AddCommand(newSearch(deps.Searcher, deps.Renderer))
 	}
-	if deps.CacheRefresher != nil || deps.CacheStatuser != nil {
+	if (deps.CacheRefresher != nil || deps.CacheStatuser != nil) && selection.Wants("cache") {
 		root.AddCommand(cachecli.New(cachecli.Dependencies{
 			Refresher: deps.CacheRefresher, Statuser: deps.CacheStatuser,
 			Renderer:   deps.Renderer,
@@ -346,24 +354,25 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 			StatusUse: deps.CacheStatusUse, StatusShort: deps.CacheStatusShort,
 		}))
 	}
-	if deps.Catalog != nil || deps.ContentLabels != nil || (deps.Content != nil && deps.Content.LineagePuller != nil) {
+	if (deps.Catalog != nil || deps.ContentLabels != nil || (deps.Content != nil && deps.Content.LineagePuller != nil)) && (selection.Wants("catalog") || selection.Wants("lineage") || selection.Wants("content.label")) {
 		node := catalogcli.NewGroup()
-		if deps.Catalog != nil {
+		if deps.Catalog != nil && selection.Wants("catalog") {
 			catalog := *deps.Catalog
 			catalog.Renderer = deps.Renderer
-			node = catalogcli.New(catalog)
+			node = catalogcli.New(catalog, selected...)
 		}
-		if deps.Content != nil && deps.Content.LineagePuller != nil {
+		if deps.Content != nil && deps.Content.LineagePuller != nil && selection.Wants("lineage") {
 			node.AddCommand(contentcli.NewLineage(deps.Content.LineagePuller, deps.Renderer))
 		}
-		if deps.ContentLabels != nil {
+		if deps.ContentLabels != nil && selection.Wants("content.label") {
 			labels := *deps.ContentLabels
 			labels.Renderer = deps.Renderer
-			node.AddCommand(contentcli.NewLabels(labels))
+			labels.BatchTargets = deps.BatchTargets
+			node.AddCommand(contentcli.NewLabels(labels, selected...))
 		}
 		root.AddCommand(node)
 	}
-	if deps.WorkbookPuller != nil && deps.WorkbookPublisher != nil {
+	if deps.WorkbookPuller != nil && deps.WorkbookPublisher != nil && (selection.Wants("workbook") || selection.Wants("datasource") || selection.Wants("project") || selection.Wants("flow")) {
 		contentDependencies := contentcli.Dependencies{}
 		if deps.Content != nil {
 			contentDependencies = *deps.Content
@@ -371,14 +380,17 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		contentDependencies.Puller = deps.WorkbookPuller
 		contentDependencies.Publisher = deps.WorkbookPublisher
 		contentDependencies.Renderer = deps.Renderer
+		contentDependencies.BatchTargets = deps.BatchTargets
 		contentDependencies.MutationsEnabled = deps.MutationsEnabled
 		contentDependencies.PullUse = deps.WorkbookPullUse
 		contentDependencies.PullShort = deps.WorkbookPullShort
 		contentDependencies.PublishUse = deps.WorkbookPublishUse
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
-		root.AddCommand(contentcli.New(contentDependencies))
+		root.AddCommand(contentcli.New(contentDependencies, selected...))
 	}
-	root.AddCommand(NewCompletion(root))
+	if selection == "" {
+		root.AddCommand(NewCompletion(root))
+	}
 	if versionCommand != nil {
 		root.Flags().BoolVar(&showVersion, "version", false, "show the installed version without release checks")
 		originalRunE := root.RunE

@@ -289,6 +289,7 @@ func (r *DiscoveryPaths) ResolveProjectPaths(ctx context.Context, luids []string
 
 // FindProjectCollisions returns case-insensitive sibling-name collisions.
 func (a *Adapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]Project, error) {
+	nameKey := identity.CollisionNameKey(name)
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("project collision check requires a name")
 	}
@@ -298,7 +299,7 @@ func (a *Adapter) FindProjectCollisions(ctx context.Context, name, parentLUID st
 	}
 	matches := make([]Project, 0, 1)
 	for _, item := range items {
-		if !strings.EqualFold(item.Name, name) || item.ParentLUID != parentLUID {
+		if identity.CollisionNameKey(item.Name) != nameKey || item.ParentLUID != parentLUID {
 			continue
 		}
 		path, pathErr := index.resolvePath(item.LUID)

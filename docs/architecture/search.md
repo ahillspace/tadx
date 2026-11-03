@@ -27,8 +27,8 @@ Live branches use the command's authenticated Tableau connection and shared tran
 | --- | --- | --- |
 | Term, `--type content` or workbook/datasource/flow/project | Native search adapter | Tableau relevance order; matching can extend beyond names. |
 | Term, `--type admin`, user, or group | Dedicated classic REST inventories | TADX case-insensitive name substring match. |
-| Term, `--type pulse`, definition, or metric | Dedicated Pulse inventories | TADX case-insensitive name substring match. |
-| Term, no type | Native content phase, then dedicated definition/group/metric/user phase | Content is returned first; no globally merged relevance score. |
+| Term, `--type pulse`, definition, or metric | Dedicated Pulse inventories on Tableau Cloud | TADX case-insensitive name substring match. |
+| Term, no type | Native content phase, then product-supported dedicated inventories | Content is returned first; no globally merged relevance score. |
 | No term, content/admin or a concrete non-Pulse type | `completeLiveSearchLister` calls normal list commands | Bounded inventories, without relevance search. |
 | No term, pulse/definition/metric | Dedicated Pulse inventories | Same list traversal, without term filtering. |
 | `--cache` | `cacheGlobalSearchSource` and `cacheSearchLister` | Local resource records; same substring matcher as dedicated inventories. |
@@ -37,6 +37,16 @@ For dedicated and cache sources, `internal/resources/search/adapter.go` sorts ty
 This is not a global sort across all provider pages.
 Its internal project-path and owner filters are exact matches; the public search command does not expose those filters.
 The native adapter rejects those unsupported internal filters rather than approximating them.
+
+Default Server searches include content, groups, and users, and report that scope in the output.
+Default Cloud searches also include Pulse definitions and metrics.
+Both combined-search phases retain the selected source scope, including continuation after a full native page.
+An explicit Pulse selector on Server returns an unsupported-type error before querying Pulse.
+Source failures remain errors; the dispatcher does not interpret arbitrary provider failures as unsupported features.
+
+`config.IsTableauCloud` recognizes the documented Cloud REST API hostname boundary and also supplies administration product checks.
+Tableau's [REST authentication contract](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_auth.htm) requires the Cloud pod URL.
+The [Pulse API reference](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_pulse.htm) identifies these endpoints as unavailable on Server.
 
 ## Tableau requests and content filtering
 

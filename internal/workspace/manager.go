@@ -107,7 +107,7 @@ func (m *Manager) Create(ctx context.Context, name, root string) (record Record,
 	if info, err := os.Lstat(filepath.Clean(root)); err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
 		return Record{}, recoveryError("workspace root must be a real directory", "Choose a new path or an empty real directory for tadx workspace create.")
 	}
-	resolvedRoot, err := canonicalRoot(root)
+	resolvedRoot, err := CanonicalRoot(root)
 	if err != nil {
 		return Record{}, err
 	}
@@ -157,7 +157,7 @@ func (m *Manager) Register(ctx context.Context, name, root string) (Record, erro
 	if m == nil || strings.TrimSpace(m.configPath) == "" {
 		return Record{}, errors.New("workspace manager is not configured")
 	}
-	resolvedRoot, err := canonicalRoot(root)
+	resolvedRoot, err := CanonicalRoot(root)
 	if err != nil {
 		return Record{}, err
 	}
@@ -250,9 +250,18 @@ func (m *Manager) Unregister(ctx context.Context, name string) (Record, error) {
 	return removed, err
 }
 
+// DeleteRequest binds deletion to one expected identity and the caller's fresh
+// content policy. Revalidate runs with exclusive lifecycle and artifact
+// ownership, before the root can be staged or its registration changed.
+type DeleteRequest struct {
+	Expected   Record
+	Revalidate func(context.Context, *Mutation) error
+}
+
 // Delete removes one exact registered workspace root and its registry entry.
 // The caller must pass a record obtained from Resolve so identity changes fail closed.
-func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
+func (m *Manager) Delete(ctx context.Context, request DeleteRequest) (Record, error) {
+	expected := request.Expected
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
@@ -262,9 +271,15 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 	if expected.Name == "" || expected.ID == "" || expected.Root == "" {
 		return Record{}, errors.New("workspace deletion requires an exact resolved identity")
 	}
+	mutation, downloads, err := acquireDeletion(ctx, expected.Root)
+	if err != nil {
+		return Record{}, err
+	}
+	defer mutation.Release()
+	defer downloads.Release()
 	var removed Record
 	var tombstone string
-	_, err := m.updateConfigWithRollback(false, func(current config.Config) (config.Config, func() error, error) {
+	_, err = m.updateConfigWithRollback(false, func(current config.Config) (config.Config, func() error, error) {
 		if err := ctx.Err(); err != nil {
 			return config.Config{}, nil, err
 		}
@@ -275,11 +290,14 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 		if info, err := os.Lstat(registration.Path); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return config.Config{}, nil, errors.New("workspace deletion target must be an available real directory")
 		}
-		root, err := canonicalRoot(registration.Path)
+		root, err := CanonicalRoot(registration.Path)
 		if err != nil || !samePath(root, expected.Root) {
 			return config.Config{}, nil, errors.New("workspace root changed before deletion")
 		}
 		if err := validateDeletionRoot(root, name, registration.ID); err != nil {
+			return config.Config{}, nil, err
+		}
+		if err := mutation.Validate(); err != nil {
 			return config.Config{}, nil, err
 		}
 		for otherName, other := range current.WorkspaceRegistrations() {
@@ -289,12 +307,20 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 			if strings.TrimSpace(other.Path) == "" {
 				return config.Config{}, nil, fmt.Errorf("cannot safely delete workspace %q while registration %q has no unambiguous path; repair or unregister it first", name, otherName)
 			}
-			otherRoot, resolveErr := canonicalRoot(other.Path)
+			otherRoot, resolveErr := CanonicalRoot(other.Path)
 			if containsPath(root, other.Path) || (resolveErr == nil && containsPath(root, otherRoot)) {
 				return config.Config{}, nil, fmt.Errorf("workspace %q contains registered workspace %q", name, otherName)
 			}
 		}
 		if err := validateDefaultReferences(current, name); err != nil {
+			return config.Config{}, nil, err
+		}
+		if request.Revalidate != nil {
+			if err := request.Revalidate(ctx, mutation); err != nil {
+				return config.Config{}, nil, err
+			}
+		}
+		if err := mutation.Validate(); err != nil {
 			return config.Config{}, nil, err
 		}
 		removed = recordFromRegistration(name, registration, current.DefaultWorkspace)
@@ -304,6 +330,11 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 				err = errors.New("workspace deletion staging path already exists")
 			}
 			return config.Config{}, nil, err
+		}
+		// Windows cannot rename a root containing open lock handles. Retain the
+		// external exclusive lifecycle lock while closing the interior locks.
+		if err := errors.Join(downloads.Release(), mutation.releaseArtifact()); err != nil {
+			return config.Config{}, nil, fmt.Errorf("close workspace interior locks: %w", err)
 		}
 		if err := fsreplace.Rename(root, tombstone); err != nil {
 			return config.Config{}, nil, fmt.Errorf("stage workspace deletion: %w", err)
@@ -338,7 +369,7 @@ func recordFromRegistration(name string, registration config.WorkspaceRegistrati
 	if reported, err := presentedRoot(registration.Path); err == nil {
 		record.Root = reported
 	}
-	root, err := canonicalRoot(registration.Path)
+	root, err := CanonicalRoot(registration.Path)
 	if err != nil {
 		return record
 	}
@@ -433,10 +464,18 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 	if err != nil {
 		return Record{}, err
 	}
-	if _, err := ReadManifest(sourceRecord.Root); err != nil {
-		return Record{}, fmt.Errorf("source workspace %q manifest: %w", sourceRecord.Name, err)
+	use, err := beginWorkspaceUse(ctx, sourceRecord.Root, false)
+	if err != nil {
+		return Record{}, err
 	}
-	resolvedRoot, err := canonicalRoot(newRoot)
+	defer use.release()
+	sourceRecord.Root = use.root
+	if manifest, err := ReadManifest(sourceRecord.Root); err != nil {
+		return Record{}, fmt.Errorf("source workspace %q manifest: %w", sourceRecord.Name, err)
+	} else if manifest.Workspace.ID != sourceRecord.ID {
+		return Record{}, errors.New("clone source workspace identity changed after selection")
+	}
+	resolvedRoot, err := CanonicalRoot(newRoot)
 	if err != nil {
 		return Record{}, err
 	}
@@ -444,8 +483,8 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 	if err != nil {
 		return Record{}, err
 	}
-	if samePath(sourceRecord.Root, resolvedRoot) {
-		return Record{}, errors.New("clone source and destination roots must differ")
+	if err := validateCloneRoots(sourceRecord.Root, resolvedRoot); err != nil {
+		return Record{}, err
 	}
 	id, err := m.newID()
 	if err != nil {
@@ -507,7 +546,7 @@ func planRegistration(configuration config.Config, name, id, resolvedRoot string
 			}
 			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q", id, existingName)
 		}
-		existingRoot, rootErr := canonicalRoot(registration.Path)
+		existingRoot, rootErr := CanonicalRoot(registration.Path)
 		if rootErr != nil {
 			// The registered root is currently unresolvable (for example an
 			// unavailable volume). Fall back to a lexical comparison so an
@@ -594,7 +633,7 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 		}
 		return Record{}, recoveryError(err.Error(), action)
 	}
-	root, err := canonicalRoot(registration.Path)
+	root, err := CanonicalRoot(registration.Path)
 	if err != nil {
 		return Record{}, err
 	}
@@ -624,7 +663,7 @@ func containingWorkspace(configuration config.Config) string {
 	if err != nil {
 		return ""
 	}
-	workingDirectory, err = canonicalRoot(workingDirectory)
+	workingDirectory, err = CanonicalRoot(workingDirectory)
 	if err != nil {
 		return ""
 	}
@@ -634,7 +673,7 @@ func containingWorkspace(configuration config.Config) string {
 	}
 	var matches []candidate
 	for name, registration := range configuration.WorkspaceRegistrations() {
-		root, rootErr := canonicalRoot(registration.Path)
+		root, rootErr := CanonicalRoot(registration.Path)
 		if rootErr != nil || !containsPath(root, workingDirectory) {
 			continue
 		}
@@ -685,7 +724,7 @@ func (m *Manager) List(ctx context.Context, limit, offset int) (Page, error) {
 		if reported, presentErr := presentedRoot(registration.Path); presentErr == nil {
 			record.Root = reported
 		}
-		root, rootErr := canonicalRoot(registration.Path)
+		root, rootErr := CanonicalRoot(registration.Path)
 		if rootErr == nil {
 			_, _ = upgradeLegacyManifest(root, Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: registration.ID, Name: name}})
 			manifest, manifestErr := ReadManifest(root)
@@ -871,6 +910,16 @@ func cloneRoot(ctx context.Context, sourceRoot, root string, manifest Manifest) 
 	return nil
 }
 
+func validateCloneRoots(source, destination string) error {
+	if samePath(source, destination) {
+		return errors.New("clone source and destination roots must differ")
+	}
+	if containsPath(source, destination) {
+		return errors.New("clone destination must not be inside the source workspace")
+	}
+	return nil
+}
+
 // copyManagedTree recursively copies a managed directory, rejecting symbolic
 // links and any non-regular entry. It mirrors the artifact manager's copy so a
 // clone carries exactly the same containment guarantees as a move. A missing
@@ -948,7 +997,9 @@ func (r *contextReader) Read(buffer []byte) (int, error) {
 	return r.reader.Read(buffer)
 }
 
-func canonicalRoot(root string) (string, error) {
+// CanonicalRoot resolves physical workspace identity, including parent aliases
+// when the final path components do not exist yet.
+func CanonicalRoot(root string) (string, error) {
 	if strings.TrimSpace(root) == "" {
 		return "", errors.New("workspace root is required")
 	}
@@ -957,7 +1008,7 @@ func canonicalRoot(root string) (string, error) {
 		return "", err
 	}
 	absolute = filepath.Clean(absolute)
-	if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
+	if resolved, resolveErr := resolveExistingPath(absolute); resolveErr == nil {
 		return resolved, nil
 	}
 	current := absolute
@@ -975,7 +1026,7 @@ func canonicalRoot(root string) (string, error) {
 		missing = append(missing, filepath.Base(current))
 		current = parent
 	}
-	resolved, err := filepath.EvalSymlinks(current)
+	resolved, err := resolveExistingPath(current)
 	if err != nil {
 		return "", fmt.Errorf("resolve workspace parent: %w", err)
 	}
@@ -988,7 +1039,7 @@ func canonicalRoot(root string) (string, error) {
 // presentedRoot returns the caller's root as an absolute, lexically clean path
 // WITHOUT resolving symlinks. The registry stores and reports this caller-facing
 // form. Every collision and containment check re-resolves the stored path through
-// canonicalRoot (see planRegistration and containingWorkspace), so storing the
+// CanonicalRoot (see planRegistration and containingWorkspace), so storing the
 // unresolved path keeps comparisons correct while keeping surprising
 // symlink-expanded prefixes (for example macOS /private/var) out of output and
 // error messages.

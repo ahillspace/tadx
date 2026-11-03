@@ -391,8 +391,22 @@ func TestLocalCancelStopsRealWorkerBeforeSubmission(t *testing.T) {
 		t.Fatal("worker did not reach validation")
 	}
 	var cancelOutput strings.Builder
-	if code := Run(t.Context(), []string{"job", "cancel", "--operation-id", id, "--json"}, &cancelOutput, options); code != 0 || !strings.Contains(cancelOutput.String(), "cancellation_requested") {
+	if code := Run(t.Context(), []string{"job", "cancel", "--operation-id", id, "--json"}, &cancelOutput, options); code != 0 {
 		t.Fatalf("local cancellation: code=%d output=%s", code, cancelOutput.String())
+	}
+	var cancellation struct {
+		OperationID string `json:"operation_id"`
+		Status      string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(cancelOutput.String()), &cancellation); err != nil || cancellation.OperationID != id {
+		t.Fatalf("cancellation identity: %+v, %v", cancellation, err)
+	}
+	// The real worker can acknowledge and finish between RequestCancel and the
+	// status read. Durable acknowledgment and zero writes below prove success.
+	switch cancellation.Status {
+	case "cancellation_requested", "cancellation_acknowledged", "already_finished":
+	default:
+		t.Fatalf("unexpected cancellation state: %s", cancelOutput.String())
 	}
 	store := operationrun.Store{Directory: options.OperationDirectory}
 	select {

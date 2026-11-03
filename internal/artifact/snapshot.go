@@ -14,30 +14,25 @@ import (
 )
 
 func artifactTreeFingerprint(ctx context.Context, root string) (string, error) {
+	tree, _, err := artifactSnapshotFingerprints(ctx, root, "")
+	return tree, err
+}
+
+// artifactSnapshotFingerprints feeds the canonical file into both digests in
+// the same read. The tree digest retains its existing byte-for-byte format.
+func artifactSnapshotFingerprints(ctx context.Context, root, canonical string) (string, string, error) {
 	digest := sha256.New()
-	// WalkDir's lexical depth-first order is deterministic, so each entry can
-	// be hashed immediately without retaining a complete tree index.
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	canonicalDigest := sha256.New()
+	canonicalFound := false
+	var canonicalInfo os.FileInfo
+	var canonicalErr error
+	if canonical != "" {
+		canonicalInfo, canonicalErr = canonicalPayloadInfo(canonical)
+		if canonicalErr != nil && !errors.Is(canonicalErr, os.ErrNotExist) {
+			return "", "", canonicalErr
 		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if path == root {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("artifact entry %q must not be a symbolic link", entry.Name())
-		}
-		if !entry.IsDir() && !entry.Type().IsRegular() {
-			return fmt.Errorf("artifact entry %q must be a regular file", entry.Name())
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return errors.New("artifact snapshot path escapes its root")
-		}
-		name := filepath.ToSlash(relative)
+	}
+	err := walkArtifactTree(ctx, root, func(path string, entry os.DirEntry, name string) error {
 		if err := binary.Write(digest, binary.BigEndian, uint64(len(name))); err != nil {
 			return err
 		}
@@ -64,7 +59,12 @@ func artifactTreeFingerprint(ctx context.Context, root string) (string, error) {
 			_ = file.Close()
 			return err
 		}
-		copied, copyErr := io.Copy(digest, &snapshotContextReader{ctx: ctx, reader: file})
+		var writer io.Writer = digest
+		if !canonicalFound && canonicalInfo != nil && os.SameFile(info, canonicalInfo) {
+			canonicalFound = true
+			writer = io.MultiWriter(digest, canonicalDigest)
+		}
+		copied, copyErr := io.Copy(writer, &contextReader{ctx: ctx, reader: file})
 		closeErr := file.Close()
 		if copyErr != nil {
 			return copyErr
@@ -78,14 +78,71 @@ func artifactTreeFingerprint(ctx context.Context, root string) (string, error) {
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return "sha256:" + hex.EncodeToString(digest.Sum(nil)), nil
+	tree := "sha256:" + hex.EncodeToString(digest.Sum(nil))
+	if canonicalErr != nil {
+		return tree, "", canonicalErr
+	}
+	if canonical != "" && !canonicalFound {
+		return "", "", errors.New("canonical artifact payload changed while its snapshot was read")
+	}
+	current := ""
+	if canonicalFound {
+		current = "sha256:" + hex.EncodeToString(canonicalDigest.Sum(nil))
+	}
+	return tree, current, nil
 }
 
-type snapshotContextReader struct {
-	ctx    context.Context
-	reader io.Reader
+func canonicalPayloadInfo(path string) (os.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("canonical artifact payload must not be a symbolic link")
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("canonical artifact payload must be a regular file")
+	}
+	return info, nil
+}
+
+func walkArtifactTree(ctx context.Context, root string, visit func(string, os.DirEntry, string) error) error {
+	info, err := os.Lstat(root)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("artifact snapshot root must be a real directory, not a symbolic link")
+	}
+	// WalkDir's lexical depth-first order is deterministic, so each entry can
+	// be hashed immediately without retaining a complete tree index.
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("artifact entry %q must not be a symbolic link", entry.Name())
+		}
+		if !entry.IsDir() && !entry.Type().IsRegular() {
+			return fmt.Errorf("artifact entry %q must be a regular file", entry.Name())
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return errors.New("artifact snapshot path escapes its root")
+		}
+		if visit != nil {
+			return visit(path, entry, filepath.ToSlash(relative))
+		}
+		return nil
+	})
 }
 
 func sameArtifactSnapshot(left, right Item) bool {
@@ -99,11 +156,4 @@ func sameArtifactSnapshot(left, right Item) bool {
 		left.CurrentFingerprint == right.CurrentFingerprint &&
 		left.TreeFingerprint != "" &&
 		left.TreeFingerprint == right.TreeFingerprint
-}
-
-func (r *snapshotContextReader) Read(buffer []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.reader.Read(buffer)
 }

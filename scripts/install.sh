@@ -23,6 +23,7 @@ usage() {
     printf '%s\n' '  --expected-sha256 HASH  additionally require this archive digest; requires an explicit exact --version'
     printf '%s\n' "  --expected-current-sha256 HASH|absent  require this executable state under the installation lock"
     printf '%s\n' '  --target TARGET         install bundled Guidance for one target; repeat for more than one'
+    # shellcheck disable=SC2016
     printf '%s\n' '  --install-dir DIRECTORY resolved binary directory; default: $TADX_INSTALL_DIR or $HOME/.local/bin'
     printf '%s\n' '  --no-modify-path        leave shell profiles and PATH unchanged'
     printf '%s\n' '  --no-completion         leave shell completion profiles unchanged'
@@ -262,7 +263,28 @@ temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/tadx-install.XXXXXXXX")
 install_lock="${install_dir}/.tadx-install.lock"
 install_lock_owner="$$ $(uname -n 2>/dev/null || printf '%s' unknown)"
 owns_install_lock=0
+staged_binary=''
+backup_binary=''
+replacement_started=0
+installation_committed=0
 cleanup() {
+    cleanup_status=$?
+    trap - EXIT
+    # Rollback and lock release are one terminating path. A repeated signal must
+    # not release exclusion while the previous binary is still being restored.
+    trap '' HUP INT TERM
+    if [ "$replacement_started" -eq 1 ] && [ "$installation_committed" -eq 0 ]; then
+        if [ -n "$backup_binary" ] && [ -f "$backup_binary" ]; then
+            if ! mv -f "$backup_binary" "${install_dir}/tadx"; then
+                printf 'Could not restore the previous binary. Its backup remains at %s.\n' "$backup_binary" >&2
+                cleanup_status=1
+            fi
+        elif ! rm -f "${install_dir}/tadx"; then
+            printf '%s\n' 'Could not remove the interrupted first installation.' >&2
+            cleanup_status=1
+        fi
+    fi
+    if [ -n "$staged_binary" ]; then rm -f "$staged_binary"; fi
     if [ "$owns_install_lock" -eq 1 ]; then
         # Never remove a lock that another installer acquired after a manual removal.
         lock_record=$(cat "${install_lock}/owner" 2>/dev/null || true)
@@ -272,8 +294,12 @@ cleanup() {
         fi
     fi
     rm -rf "$temporary_directory"
+    exit "$cleanup_status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 manifest_path="${temporary_directory}/checksums.txt"
 
@@ -413,8 +439,8 @@ fi
 owns_install_lock=1
 printf '%s\n' "$install_lock_owner" > "${install_lock}/owner"
 if [ "$expected_current_sha256_set" -eq 1 ]; then
-    logical_install_dir=$(CDPATH= cd "$install_dir" && pwd -L)
-    physical_install_dir=$(CDPATH= cd "$install_dir" && pwd -P)
+    logical_install_dir=$(CDPATH='' cd "$install_dir" && pwd -L)
+    physical_install_dir=$(CDPATH='' cd "$install_dir" && pwd -P)
     [ "$logical_install_dir" = "$physical_install_dir" ] || fail 'The installation directory is redirected by a link. No replacement occurred; create a new setup preview.'
     current_binary="${install_dir}/tadx"
     [ ! -L "$current_binary" ] || fail 'The installation target must be a regular executable file.'
@@ -435,24 +461,17 @@ fi
 staged_binary=$(mktemp "${install_dir}/.tadx.new.XXXXXXXX") || fail "Could not stage the release binary in '$install_dir'. No replacement occurred; choose another --install-dir or check directory permissions."
 cp "$binary_paths" "$staged_binary" || { rm -f "$staged_binary"; fail "Could not stage the release binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
 chmod 0755 "$staged_binary" || { rm -f "$staged_binary"; fail "Could not set executable permissions for the staged binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
-backup_binary=''
 if [ -e "${install_dir}/tadx" ]; then
     backup_binary=$(mktemp "${install_dir}/.tadx.backup.XXXXXXXX") || { rm -f "$staged_binary"; fail "Could not preserve the existing binary at '${install_dir}/tadx'. No replacement occurred; choose another --install-dir or check directory permissions."; }
     cp -p "${install_dir}/tadx" "$backup_binary" || { rm -f "$backup_binary" "$staged_binary"; fail "Could not preserve the existing binary at '${install_dir}/tadx'. No replacement occurred; choose another --install-dir or check directory permissions."; }
 fi
+replacement_started=1
 mv -f "$staged_binary" "${install_dir}/tadx" || {
-    rm -f "$staged_binary"
-    if [ -f "$backup_binary" ]; then mv -f "$backup_binary" "${install_dir}/tadx" 2>/dev/null || true; fi
-    fail "Could not replace the resolved binary at '${install_dir}/tadx'. The previous binary was restored when possible; choose another --install-dir or check directory permissions."
+    fail "Could not replace the resolved binary at '${install_dir}/tadx'. The previous binary will be restored when possible; choose another --install-dir or check directory permissions."
 }
 for target in ${targets:-auto}; do
 if ! "${install_dir}/tadx" agent install --target "$target"; then
-    if [ -f "$backup_binary" ]; then
-        mv -f "$backup_binary" "${install_dir}/tadx"
-    else
-        rm -f "${install_dir}/tadx"
-    fi
-    fail 'Guidance installation failed. The binary was rolled back; any completed Guidance targets were reported above. Retry the installer to complete setup.'
+    fail 'Guidance installation failed. The binary will be rolled back; any completed Guidance targets were reported above. Retry the installer to complete setup.'
 fi
 done
 
@@ -463,6 +482,7 @@ if [ "$completion" -eq 1 ]; then
     add_managed_completion
 fi
 
+installation_committed=1
 printf 'TADX %s was installed at %s.\n' "$resolved_version" "${install_dir}/tadx"
 if [ "$modify_path" -eq 0 ]; then
     printf 'Add %s to PATH to run tadx from any directory.\n' "$install_dir"

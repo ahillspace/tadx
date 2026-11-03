@@ -27,7 +27,7 @@ func (m *Manager) PreviewCreate(ctx context.Context, name, root string) (Record,
 	if info, err := os.Lstat(filepath.Clean(root)); err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
 		return Record{}, errors.New("workspace root must be a real directory")
 	}
-	resolved, err := canonicalRoot(root)
+	resolved, err := CanonicalRoot(root)
 	if err != nil {
 		return Record{}, err
 	}
@@ -62,7 +62,7 @@ func (m *Manager) PreviewRegister(ctx context.Context, name, root string) (Recor
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
-	resolved, err := canonicalRoot(root)
+	resolved, err := CanonicalRoot(root)
 	if err != nil {
 		return Record{}, err
 	}
@@ -94,6 +94,10 @@ func (m *Manager) PreviewClone(ctx context.Context, source, name, root string) (
 	if err != nil {
 		return Record{}, err
 	}
+	src.Root, err = CanonicalRoot(src.Root)
+	if err != nil {
+		return Record{}, err
+	}
 	plan, err := m.PreviewCreate(ctx, name, root)
 	if err != nil {
 		return Record{}, err
@@ -101,8 +105,8 @@ func (m *Manager) PreviewClone(ctx context.Context, source, name, root string) (
 	if _, err := os.Lstat(plan.Root); !errors.Is(err, os.ErrNotExist) {
 		return Record{}, errors.New("clone destination must not already exist")
 	}
-	if samePath(src.Root, plan.Root) {
-		return Record{}, errors.New("clone source and destination roots must differ")
+	if err := validateCloneRoots(src.Root, plan.Root); err != nil {
+		return Record{}, err
 	}
 	const maxEntries = 100000
 	count := 0

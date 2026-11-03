@@ -32,8 +32,8 @@ func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullI
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Review the exact definition LUID and selected Tableau site, then retry.")
 		return PullOutput{}, &errs.Error{ID: "pulse.definition.pull.read", Kind: errs.KindOperation, Operation: "pulse.definition.pull", Resource: input.LUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse definition retrieval failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	if definition.LUID != input.LUID || definition.Name == "" || definition.DatasourceLUID == "" || len(definition.Configuration) == 0 {
-		return PullOutput{}, pullError("pulse.definition.pull.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched Pulse definition.", errors.New("definition requires matching LUID, name, datasource LUID, and configuration"))
+	if err := PullValidateDefinition(input, definition); err != nil {
+		return PullOutput{}, err
 	}
 	if !definition.MetricsComplete || len(definition.Metrics) == 0 || len(definition.Metrics) > 10000 {
 		return PullOutput{}, pullError("pulse.definition.pull.incomplete", errs.KindOperation, input, "A complete Pulse metric inventory is required for a portable bundle.", nil)
@@ -47,6 +47,7 @@ func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullI
 	}
 	artifact, err := writer.WriteDefinition(ctx, PullArtifact{
 		Workspace: input.Workspace, DefinitionLUID: definition.LUID, Name: definition.Name, DatasourceLUID: definition.DatasourceLUID,
+		ExpectedWorkspaceID: input.ExpectedWorkspaceID, ExpectedPath: input.ExpectedArtifactPath,
 		Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID,
 		Configuration: append([]byte(nil), definition.Configuration...), Metrics: definition.Metrics, Overwrite: input.Overwrite,
 	})
@@ -93,7 +94,11 @@ type PullInput struct {
 	Workspace     string
 	WorkspaceName string
 	LUID          string
-	Overwrite     bool
+	// Prepared batches pin local ownership while execution rechecks current state.
+	ExpectedWorkspaceID   string
+	ExpectedWorkspaceRoot string
+	ExpectedArtifactPath  string
+	Overwrite             bool
 }
 
 // Definition is the canonical remote definition document.
@@ -116,17 +121,19 @@ type PullMetric struct {
 
 // Artifact is the action-owned materialization request.
 type PullArtifact struct {
-	Workspace      string
-	DefinitionLUID string
-	Name           string
-	DatasourceLUID string
-	Environment    string
-	Site           string
-	ServerOrigin   string
-	SiteLUID       string
-	Configuration  []byte
-	Metrics        []PullMetric
-	Overwrite      bool
+	Workspace           string
+	ExpectedWorkspaceID string
+	ExpectedPath        string
+	DefinitionLUID      string
+	Name                string
+	DatasourceLUID      string
+	Environment         string
+	Site                string
+	ServerOrigin        string
+	SiteLUID            string
+	Configuration       []byte
+	Metrics             []PullMetric
+	Overwrite           bool
 }
 
 // ArtifactResult identifies one managed definition artifact.
@@ -211,6 +218,15 @@ func (o PullOutput) FullOutput() any {
 func PullValidateInput(input PullInput) error {
 	if strings.TrimSpace(input.LUID) == "" {
 		return pullError("pulse.definition.pull.usage", errs.KindUsage, input, "Pulse definition pull requires an exact LUID.", nil)
+	}
+	return nil
+}
+
+// PullValidateDefinition checks the authoritative metadata needed to select one
+// local destination. Saved metric completeness is validated during acquisition.
+func PullValidateDefinition(input PullInput, definition PullDefinition) error {
+	if definition.LUID != input.LUID || definition.Name == "" || definition.DatasourceLUID == "" || len(definition.Configuration) == 0 {
+		return pullError("pulse.definition.pull.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched Pulse definition.", errors.New("definition requires matching LUID, name, datasource LUID, and configuration"))
 	}
 	return nil
 }

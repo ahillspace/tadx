@@ -8,10 +8,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +33,10 @@ type DefinitionInspector interface {
 // DefinitionPuller pulls one Pulse definition artifact.
 type DefinitionPuller interface {
 	PullPulseDefinition(context.Context, pulsedefinition.PullInput) (pulsedefinition.PullOutput, error)
+}
+
+type definitionPullBatchPreparer interface {
+	PreparePulseDefinitionPull(context.Context, pulsedefinition.PullInput) (pulsedefinition.PullInput, batchinput.Target, error)
 }
 
 type DefinitionPublisher interface {
@@ -107,7 +113,8 @@ type Dependencies struct {
 }
 
 // New creates the Pulse command tree.
-func New(deps Dependencies) *cobra.Command {
+func New(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{
 		Use:   "pulse",
 		Short: "Manage Tableau Pulse definitions and metrics",
@@ -116,26 +123,22 @@ func New(deps Dependencies) *cobra.Command {
 			"TADX reads and changes saved Pulse configuration; it does not retrieve current metric values or generated insights.",
 	}
 	definition := &cobra.Command{Use: "definition", Short: "Manage Pulse metric definitions"}
-	definition.AddCommand(
-		newDefinitionList(deps),
-		newDefinitionInspect(deps),
-		newDefinitionPull(deps),
-		newDefinitionPublish(deps),
-		newDefinitionCreate(deps),
-		newDefinitionDelete(deps),
-	)
+	selection.Add(definition, "pulse.definition.list", func() *cobra.Command { return newDefinitionList(deps) })
+	selection.Add(definition, "pulse.definition.inspect", func() *cobra.Command { return newDefinitionInspect(deps) })
+	selection.Add(definition, "pulse.definition.pull", func() *cobra.Command { return newDefinitionPull(deps) })
+	selection.Add(definition, "pulse.definition.publish", func() *cobra.Command { return newDefinitionPublish(deps) })
+	selection.Add(definition, "pulse.definition.create", func() *cobra.Command { return newDefinitionCreate(deps) })
+	selection.Add(definition, "pulse.definition.delete", func() *cobra.Command { return newDefinitionDelete(deps) })
 	metric := &cobra.Command{Use: "metric", Short: "Manage Pulse metric variants and followers"}
-	metric.AddCommand(
-		newMetricList(deps),
-		newMetricInspect(deps),
-		newMetricFork(deps),
-		newMetricDelete(deps),
-		newMetricFollowers(deps),
-		newMetricFollow(deps),
-		newMetricUnfollow(deps),
-	)
+	selection.Add(metric, "pulse.metric.list", func() *cobra.Command { return newMetricList(deps) })
+	selection.Add(metric, "pulse.metric.inspect", func() *cobra.Command { return newMetricInspect(deps) })
+	selection.Add(metric, "pulse.metric.fork", func() *cobra.Command { return newMetricFork(deps) })
+	selection.Add(metric, "pulse.metric.delete", func() *cobra.Command { return newMetricDelete(deps) })
+	selection.Add(metric, "pulse.metric.followers", func() *cobra.Command { return newMetricFollowers(deps) })
+	selection.Add(metric, "pulse.metric.follow", func() *cobra.Command { return newMetricFollow(deps) })
+	selection.Add(metric, "pulse.metric.unfollow", func() *cobra.Command { return newMetricUnfollow(deps) })
 	subscription := &cobra.Command{Use: "subscription", Short: "Inspect your Pulse subscriptions"}
-	subscription.AddCommand(newSubscriptionList(deps))
+	selection.Add(subscription, "pulse.subscription.list", func() *cobra.Command { return newSubscriptionList(deps) })
 	command.AddCommand(definition, metric, subscription)
 	return command
 }
@@ -239,6 +242,25 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	})
+	validate := command.Args
+	command.Args = func(command *cobra.Command, args []string) error {
+		if err := validate(command, args); err != nil {
+			return err
+		}
+		if batchinput.Active(command.Context()) {
+			preparer, ok := deps.DefinitionPuller.(definitionPullBatchPreparer)
+			if !ok {
+				return errors.New("authoritative Pulse definition pull batch preparation is not configured")
+			}
+			prepared, target, err := preparer.PreparePulseDefinitionPull(command.Context(), input)
+			if err != nil {
+				return err
+			}
+			input = prepared
+			batchinput.Record(command.Context(), target)
+		}
+		return nil
+	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")

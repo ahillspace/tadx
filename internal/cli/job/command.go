@@ -6,6 +6,7 @@ import (
 
 	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -24,16 +25,17 @@ type Dependencies struct {
 }
 
 // New creates the top-level job command and only exposes configured actions.
-func New(deps Dependencies) *cobra.Command {
+func New(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{Use: "job", Short: "Inspect, recover, and control supported Tableau jobs"}
 	if deps.Inspect != nil {
-		command.AddCommand(newInspectCommand(deps))
+		selection.Add(command, "job.inspect", func() *cobra.Command { return newInspectCommand(deps) })
 	}
 	if deps.Wait != nil {
-		command.AddCommand(newWaitCommand(deps))
+		selection.Add(command, "job.wait", func() *cobra.Command { return newWaitCommand(deps) })
 	}
 	if deps.Cancel != nil {
-		command.AddCommand(newCancelCommand(deps))
+		selection.Add(command, "job.cancel", func() *cobra.Command { return newCancelCommand(deps) })
 	}
 	return command
 }

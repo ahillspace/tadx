@@ -167,6 +167,18 @@ func TestWorkbookBundleRecoveryRollsBackPreparedTransactionAfterProcessExit(t *t
 		{Target: oldTarget, Backup: oldBackup, HadTarget: true},
 		{Target: newTarget, HadTarget: false},
 	}}
+	for index := range journal.Entries {
+		entry := &journal.Entries[index]
+		entry.Owner = "recovery-owner-" + filepath.Base(entry.Target)
+		if err := os.WriteFile(filepath.Join(entry.Target, bundleOwnerFile), []byte(entry.Owner), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fingerprint, err := artifactTreeFingerprint(t.Context(), entry.Target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry.Fingerprint = fingerprint
+	}
 	if err := writeBundleJournal(workspace, journal, defaultDirectoryOperations()); err != nil {
 		t.Fatal(err)
 	}

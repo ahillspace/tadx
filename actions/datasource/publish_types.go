@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type Mode string
@@ -27,6 +28,7 @@ type PublishInput struct {
 	ProjectSelector                                  identity.Selector
 	SourceDefaulted                                  bool
 	Mode                                             Mode
+	ExpectedDestination                              *value.PublishDestination
 }
 
 // SetProjectSelector sets one exact destination project selector.

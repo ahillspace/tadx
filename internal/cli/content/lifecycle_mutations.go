@@ -7,6 +7,7 @@ import (
 	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +27,8 @@ func newWorkbookMove(deps Dependencies) *cobra.Command {
 			return clierr.Usage("workbook.move", errors.New("use exactly one of --destination-project-id or --destination-project"))
 		}
 		input.SetProjectSelector(destinationLUID, destinationPath)
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "workbook", &input.WorkbookSelector)
+	}, func(command *cobra.Command) error {
 		result, err := deps.WorkbookMover.MoveWorkbook(command.Context(), input, preview)
 		if err != nil {
 			return clierr.WithOutput(result, err)
@@ -61,6 +64,8 @@ func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 		if command.Flags().Changed("owner-id") {
 			input.OwnerLUID = &ownerLUID
 		}
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "workbook", &input.Selector)
+	}, func(command *cobra.Command) error {
 		result, err := deps.WorkbookUpdater.UpdateWorkbook(command.Context(), input, preview)
 		if err != nil {
 			return clierr.WithOutput(result, err)
@@ -89,6 +94,8 @@ func newDatasourceMove(deps Dependencies) *cobra.Command {
 			return clierr.Usage("datasource.move", errors.New("use exactly one of --destination-project-id or --destination-project"))
 		}
 		input.SetProjectSelector(destinationLUID, destinationPath)
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "datasource", &input.DatasourceSelector)
+	}, func(command *cobra.Command) error {
 		result, err := deps.DatasourceMover.MoveDatasource(command.Context(), input, preview)
 		if err != nil {
 			return clierr.WithOutput(result, err)
@@ -121,6 +128,8 @@ func newDatasourceUpdate(deps Dependencies) *cobra.Command {
 		if command.Flags().Changed("owner-id") {
 			input.OwnerLUID = &ownerLUID
 		}
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "datasource", &input.Selector)
+	}, func(command *cobra.Command) error {
 		result, err := deps.DatasourceUpdater.UpdateDatasource(command.Context(), input, preview)
 		if err != nil {
 			return clierr.WithOutput(result, err)
@@ -148,6 +157,8 @@ func newFlowUpdate(deps Dependencies) *cobra.Command {
 			return clierr.Usage("flow.update", errors.New("--owner-id is required"))
 		}
 		input.OwnerLUID = &ownerLUID
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "flow", &input.Selector)
+	}, func(command *cobra.Command) error {
 		result, err := deps.FlowUpdater.UpdateFlow(command.Context(), input, preview)
 		if err != nil {
 			return clierr.WithOutput(result, err)
@@ -179,6 +190,8 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 		if parentSelected {
 			input.SetParentSelector(parentLUID, parentPath)
 		}
+		return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "project", &input.ProjectSelector)
+	}, func(command *cobra.Command) error {
 		result, err := deps.ProjectMover.MoveProject(command.Context(), input, preview)
 		if err != nil {
 			return clierr.WithOutput(result, err)
@@ -197,12 +210,17 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 	return command
 }
 
-func mutationCommand(capabilityID, use, short string, run func(*cobra.Command) error) *cobra.Command {
+func mutationCommand(capabilityID, use, short string, validate, run func(*cobra.Command) error) *cobra.Command {
 	return &cobra.Command{
 		Use:         use,
 		Short:       short,
 		Annotations: map[string]string{"tadx.capability": capabilityID},
-		Args:        noContentArgs(capabilityID),
+		Args: func(command *cobra.Command, args []string) error {
+			if err := noContentArgs(capabilityID)(command, args); err != nil {
+				return err
+			}
+			return validate(command)
+		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			return run(command)
 		},

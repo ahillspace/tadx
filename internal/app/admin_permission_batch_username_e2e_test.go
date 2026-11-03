@@ -34,7 +34,7 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 				}
 				switch {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/users":
-					_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="2"/><users><user id="u-a" name="alice"/><user id="u-b" name="bob"/></users></tsResponse>`)
+					_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="%s" totalAvailable="2"/><users><user id="u-a" name="alice"/><user id="u-b" name="bob"/></users></tsResponse>`, r.URL.Query().Get("pageSize"))
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/users/u-a":
 					_, _ = io.WriteString(w, `<tsResponse><user id="u-a" name="alice"/></tsResponse>`)
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/users/u-b":

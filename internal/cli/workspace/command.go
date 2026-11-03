@@ -6,8 +6,10 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	workspaceaction "github.com/ahillspace/tadx/actions/workspace"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
 )
@@ -60,13 +62,29 @@ type Dependencies struct {
 	Unregistrar      Unregistrar
 	WorkspaceDeleter WorkspaceDeleter
 	Renderer         Renderer
+	BatchTargets     batchinput.Resolver
 	Uses             map[string]string
 	Shorts           map[string]string
 }
 
-func New(deps Dependencies) *cobra.Command {
+func New(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{Use: "workspace", Short: "Manage named local workspaces"}
-	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newSetDefault(deps), newUnregister(deps), newDeleteWorkspace(deps), newMove(deps, true), newArtifact(deps), newClean(deps))
+	selection.Add(command, "workspace.create", func() *cobra.Command { return newCreate(deps) })
+	selection.Add(command, "workspace.register", func() *cobra.Command { return newRegister(deps) })
+	selection.Add(command, "workspace.clone", func() *cobra.Command { return newClone(deps) })
+	selection.Add(command, "workspace.list", func() *cobra.Command { return newList(deps) })
+	selection.Add(command, "workspace.status", func() *cobra.Command { return newStatus(deps) })
+	selection.Add(command, "workspace.set-default", func() *cobra.Command { return newSetDefault(deps) })
+	selection.Add(command, "workspace.unregister", func() *cobra.Command { return newUnregister(deps) })
+	selection.Add(command, "workspace.delete", func() *cobra.Command { return newDeleteWorkspace(deps) })
+	selection.Add(command, "workspace.clean", func() *cobra.Command { return newClean(deps) })
+	if selection == "" {
+		command.AddCommand(newMove(deps, true))
+	}
+	if selection.Wants("workspace.move") || selection.Wants("workspace.artifact") {
+		command.AddCommand(newArtifact(deps, selected...))
+	}
 	return command
 }
 
@@ -297,7 +315,10 @@ func newMove(deps Dependencies, hidden bool) *cobra.Command {
 			if input.SourceWorkspace == "" || input.DestinationWorkspace == "" {
 				return clierr.Usage("workspace.move", errors.New("--source and --destination are required"))
 			}
-			return validateSelector("workspace.move", input.Path, input.Kind, input.LUID)
+			if err := validateSelector("workspace.move", input.Path, input.Kind, input.LUID); err != nil {
+				return err
+			}
+			return prepareArtifactMove(command.Context(), deps, &input)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Mover.Move(command.Context(), input)
@@ -319,8 +340,15 @@ func newMove(deps Dependencies, hidden bool) *cobra.Command {
 	return command
 }
 
-func newArtifact(deps Dependencies) *cobra.Command {
+func newArtifact(deps Dependencies, selected ...string) *cobra.Command {
 	artifact := &cobra.Command{Use: "artifact", Short: "Manage exact local artifacts"}
+	selection := commandset.Selected(selected)
+	selection.Add(artifact, "workspace.move", func() *cobra.Command { return newMove(deps, false) })
+	selection.Add(artifact, "workspace.artifact.delete", func() *cobra.Command { return newDeleteArtifact(deps) })
+	return artifact
+}
+
+func newDeleteArtifact(deps Dependencies) *cobra.Command {
 	var input workspaceaction.DeleteArtifactInput
 	var preview bool
 	command := &cobra.Command{
@@ -333,7 +361,10 @@ func newArtifact(deps Dependencies) *cobra.Command {
 			if input.Workspace == "" {
 				return clierr.Usage("workspace.artifact.delete", errors.New("--workspace is required"))
 			}
-			return validateSelector("workspace.artifact.delete", input.Path, input.Kind, input.LUID)
+			if err := validateSelector("workspace.artifact.delete", input.Path, input.Kind, input.LUID); err != nil {
+				return err
+			}
+			return prepareArtifactDelete(command.Context(), deps, &input)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Deleter.DeleteArtifact(command.Context(), input, preview)
@@ -347,8 +378,7 @@ func newArtifact(deps Dependencies) *cobra.Command {
 	selectorFlags(command, &input.Path, &input.Kind, &input.LUID)
 	command.Flags().BoolVar(&input.Force, "force", false, "acknowledge deletion of a dirty artifact")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the local deletion without performing it")
-	artifact.AddCommand(newMove(deps, false), command)
-	return artifact
+	return command
 }
 
 func selectorFlags(command *cobra.Command, path, kind, luid *string) {

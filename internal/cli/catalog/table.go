@@ -3,12 +3,16 @@ package catalog
 import (
 	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
-func newTable(d Dependencies) *cobra.Command {
+func newTable(d Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	c := &cobra.Command{Use: "table", Short: "Inspect and enrich upstream table metadata."}
-	c.AddCommand(newTableList(d), newTableInspect(d), newTableUpdate(d))
+	selection.Add(c, "catalog.table.list", func() *cobra.Command { return newTableList(d) })
+	selection.Add(c, "catalog.table.inspect", func() *cobra.Command { return newTableInspect(d) })
+	selection.Add(c, "catalog.table.update", func() *cobra.Command { return newTableUpdate(d) })
 	return c
 }
 func newTableList(d Dependencies) *cobra.Command {

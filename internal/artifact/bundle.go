@@ -6,19 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/ahillspace/tadx/internal/commitguard"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 const (
 	bundleStatePrepared   = "prepared"
 	bundleStateCommitted  = "committed"
 	maxBundleJournalBytes = 1024 * 1024
+	bundleOwnerFile       = ".tadx-bundle-owner"
 )
 
 // WorkbookBundlePull describes one workbook and all direct published
@@ -61,10 +64,13 @@ type bundleJournal struct {
 }
 
 type bundleJournalEntry struct {
-	Target    string `json:"target"`
-	Staging   string `json:"staging,omitempty"`
-	Backup    string `json:"backup,omitempty"`
-	HadTarget bool   `json:"had_target"`
+	Target              string `json:"target"`
+	Staging             string `json:"staging,omitempty"`
+	Backup              string `json:"backup,omitempty"`
+	HadTarget           bool   `json:"had_target"`
+	Owner               string `json:"owner,omitempty"`
+	Fingerprint         string `json:"fingerprint,omitempty"`
+	OriginalFingerprint string `json:"original_fingerprint,omitempty"`
 }
 
 // Pull preflights and stages every artifact before installing any artifact.
@@ -84,11 +90,13 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookBundlePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	handle, err := lockWorkspace(ctx, workspace)
+	handle, err := lockWorkspace(ctx, workspace, m.operations)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err
 	}
 	defer func() { _ = handle.Release() }()
+	workspace = handle.Root()
+	input.Workbook.Workspace = workspace
 	workbookRoot, err := ensureWorkbookRoot(workspace)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err
@@ -98,9 +106,6 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 		return WorkbookBundlePullResult{}, err
 	}
 	operations := m.operations.withDefaults()
-	if err := recoverBundleTransaction(workspace, operations); err != nil {
-		return WorkbookBundlePullResult{}, err
-	}
 	workbookRecoveryWarnings, err := recoverWorkbookRoot(workbookRoot, operations)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err
@@ -112,6 +117,13 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 
 	prepared := make([]preparedDirectory, 0, len(input.Datasources)+1)
 	defer func() {
+		// Once durable, the journal owns its staging and backups until recovery
+		// finishes. A failed rollback must keep that evidence intact.
+		for _, path := range []string{bundleJournalPath(workspace), bundleCommittedPath(workspace)} {
+			if _, statErr := operations.stat(path); !errors.Is(statErr, os.ErrNotExist) {
+				return
+			}
+		}
 		for _, item := range prepared {
 			_ = operations.removeAll(item.staging)
 		}
@@ -127,7 +139,7 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 		if absErr != nil {
 			return WorkbookBundlePullResult{}, absErr
 		}
-		if datasourceWorkspace != workspace {
+		if !sameFilesystemPath(datasourceWorkspace, workspace) {
 			return WorkbookBundlePullResult{}, errors.New("workbook bundle artifacts must use one workspace")
 		}
 		item, result, prepareErr := m.prepareDatasource(ctx, workspace, datasourceRoot, datasource, operations)
@@ -423,12 +435,6 @@ func inspectWorkbookTarget(root, target, origin, siteLUID, tableauID string) (*W
 	return &metadata, nil
 }
 
-type installedDirectory struct {
-	preparedDirectory
-	backup    string
-	installed bool
-}
-
 func commitPreparedDirectories(workspace string, prepared []preparedDirectory, operations directoryOperations) ([]string, error) {
 	operations = operations.withDefaults()
 	seen := make(map[string]struct{}, len(prepared))
@@ -439,21 +445,13 @@ func commitPreparedDirectories(workspace string, prepared []preparedDirectory, o
 		}
 		seen[key] = struct{}{}
 	}
-	journal := bundleJournal{State: bundleStatePrepared, Entries: make([]bundleJournalEntry, len(prepared))}
-	for index, item := range prepared {
-		entry := bundleJournalEntry{Target: item.target, Staging: item.staging}
-		if _, err := operations.stat(item.target); err == nil {
-			entry.HadTarget = true
-			entry.Backup = filepath.Join(filepath.Dir(item.target), item.backupPrefix+filepath.Base(item.target)+"-"+uniqueSuffix())
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		journal.Entries[index] = entry
+	journal, err := prepareBundleJournal(prepared, operations)
+	if err != nil {
+		return nil, err
 	}
 	if err := writeBundleJournal(workspace, journal, operations); err != nil {
 		return nil, err
 	}
-	installed := make([]installedDirectory, 0, len(prepared))
 	rollback := func(cause error) error {
 		if err := recoverBundleTransaction(workspace, operations); err != nil {
 			return fmt.Errorf("%w; artifact transaction rollback failed: %v", cause, err)
@@ -461,32 +459,21 @@ func commitPreparedDirectories(workspace string, prepared []preparedDirectory, o
 		return cause
 	}
 	for index, item := range prepared {
-		record := installedDirectory{preparedDirectory: item}
 		entry := journal.Entries[index]
 		if entry.HadTarget {
-			record.backup = entry.Backup
-			if err := operations.rename(item.target, record.backup); err != nil {
+			if err := operations.rename(item.target, entry.Backup); err != nil {
 				return nil, rollback(fmt.Errorf("stage existing artifact %q: %w", item.target, err))
 			}
-			installed = append(installed, record)
-		} else {
-			installed = append(installed, record)
 		}
 		if err := operations.rename(item.staging, item.target); err != nil {
 			return nil, rollback(fmt.Errorf("install artifact %q: %w", item.target, err))
 		}
-		installed[len(installed)-1].installed = true
 	}
 	parents := make(map[string]struct{})
-	for _, item := range installed {
-		parents[filepath.Dir(item.target)] = struct{}{}
+	for _, entry := range journal.Entries {
+		parents[filepath.Dir(entry.Target)] = struct{}{}
 	}
-	orderedParents := make([]string, 0, len(parents))
-	for parent := range parents {
-		orderedParents = append(orderedParents, parent)
-	}
-	sort.Strings(orderedParents)
-	for _, parent := range orderedParents {
+	for _, parent := range slices.Sorted(maps.Keys(parents)) {
 		if err := operations.syncDir(parent); err != nil {
 			return nil, rollback(fmt.Errorf("sync artifact transaction root %q: %w", parent, err))
 		}
@@ -495,25 +482,60 @@ func commitPreparedDirectories(workspace string, prepared []preparedDirectory, o
 	if err := writeBundleJournal(workspace, journal, operations); err != nil {
 		return nil, rollback(fmt.Errorf("mark artifact transaction committed: %w", err))
 	}
-	var warnings []string
-	for _, item := range installed {
-		if item.backup == "" {
-			continue
+	// The durable record is the only recovery and cleanup owner, during this
+	// process and after a restart. Keep it intact if cleanup cannot finish.
+	if err := recoverBundleTransaction(workspace, operations); err != nil {
+		return []string{"artifact transaction committed, but cleanup is incomplete: " + warningCause(err, "unexpected error")}, nil
+	}
+	return nil, nil
+}
+
+func prepareBundleJournal(prepared []preparedDirectory, operations directoryOperations) (bundleJournal, error) {
+	journal := bundleJournal{State: bundleStatePrepared, Entries: make([]bundleJournalEntry, len(prepared))}
+	for index, item := range prepared {
+		entry := bundleJournalEntry{Target: item.target, Staging: item.staging, Owner: uniqueSuffix()}
+		if err := operations.writeFile(filepath.Join(item.staging, bundleOwnerFile), []byte(entry.Owner), 0o600); err != nil {
+			return journal, err
 		}
-		if err := operations.removeAll(item.backup); err != nil {
-			backup := filepath.Base(item.backup)
-			if relative, relErr := filepath.Rel(workspace, item.backup); relErr == nil {
-				backup = filepath.ToSlash(relative)
+		if err := operations.syncDir(item.staging); err != nil {
+			return journal, err
+		}
+		var err error
+		entry.Fingerprint, err = artifactTreeFingerprint(context.Background(), item.staging)
+		if err != nil {
+			return journal, err
+		}
+		if _, err := operations.stat(item.target); err == nil {
+			entry.HadTarget = true
+			entry.Backup = filepath.Join(filepath.Dir(item.target), item.backupPrefix+filepath.Base(item.target)+"-"+uniqueSuffix())
+			entry.OriginalFingerprint, err = artifactTreeFingerprint(context.Background(), item.target)
+			if err != nil {
+				return journal, err
 			}
-			warnings = append(warnings, fmt.Sprintf("artifact transaction committed, but backup %q could not be removed: %s", backup, warningCause(err, "unexpected error")))
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return journal, err
 		}
+		journal.Entries[index] = entry
 	}
-	if len(warnings) == 0 {
-		if err := removeBundleJournal(workspace, operations); err != nil {
-			warnings = append(warnings, fmt.Sprintf("artifact transaction committed, but its recovery journal could not be removed: %s", warningCause(err, "unexpected error")))
-		}
+	return journal, nil
+}
+
+func removeBundleOwner(entry bundleJournalEntry, operations directoryOperations) error {
+	if entry.Owner == "" {
+		return nil
 	}
-	return warnings, nil
+	path := filepath.Join(entry.Target, bundleOwnerFile)
+	owner, err := readBoundedFile(path, 256)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil // Cleanup may already have removed this committed marker.
+	}
+	if err != nil || string(owner) != entry.Owner {
+		return fmt.Errorf("artifact transaction ownership conflict at %q", entry.Target)
+	}
+	if err := operations.removeAll(path); err != nil {
+		return err
+	}
+	return operations.syncDir(entry.Target)
 }
 
 func bundleJournalPath(workspace string) string {
@@ -616,11 +638,21 @@ func recoverBundleTransaction(workspace string, operations directoryOperations) 
 	if !committed && journal.State != bundleStatePrepared {
 		return errors.New("prepared artifact transaction journal has invalid state")
 	}
+	if !committed {
+		// Validate the complete rollback before deleting any path. An abandoned
+		// journal cannot authorize removing another generation or local edits.
+		if err := validateBundleRollback(journal, operations); err != nil {
+			return err
+		}
+	}
 	parents := make(map[string]struct{})
 	for index := len(journal.Entries) - 1; index >= 0; index-- {
 		entry := journal.Entries[index]
 		parents[filepath.Dir(entry.Target)] = struct{}{}
 		if committed {
+			if err := removeBundleOwner(entry, operations); err != nil {
+				return err
+			}
 			if entry.Backup != "" {
 				if err := operations.removeAll(entry.Backup); err != nil {
 					return fmt.Errorf("remove committed artifact backup %q: %w", entry.Backup, err)
@@ -648,12 +680,83 @@ func recoverBundleTransaction(workspace string, operations directoryOperations) 
 			}
 		}
 	}
-	for parent := range parents {
+	for _, parent := range slices.Sorted(maps.Keys(parents)) {
 		if err := operations.syncDir(parent); err != nil {
 			return err
 		}
 	}
 	return removeBundleJournal(workspace, operations)
+}
+
+func validateBundleRollback(journal bundleJournal, operations directoryOperations) error {
+	for _, entry := range journal.Entries {
+		// Stage cleanup needs its own proof even when the original target never moved.
+		if entry.Staging != "" {
+			if _, err := operations.stat(entry.Staging); err == nil {
+				if err := requireBundleOwnership(entry.Staging, entry); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+		_, targetErr := operations.stat(entry.Target)
+		if targetErr != nil && !errors.Is(targetErr, os.ErrNotExist) {
+			return targetErr
+		}
+		targetExists := targetErr == nil
+		if entry.HadTarget {
+			_, backupErr := operations.stat(entry.Backup)
+			if backupErr != nil && !errors.Is(backupErr, os.ErrNotExist) {
+				return backupErr
+			}
+			if backupErr != nil {
+				if !targetExists {
+					return fmt.Errorf("artifact recovery conflict at %q: the prior artifact and its backup are both missing", entry.Target)
+				}
+				// The original has not been moved, or was already restored.
+				if targetExists && entry.OriginalFingerprint != "" {
+					if err := requireBundleFingerprint(entry.Target, entry.OriginalFingerprint); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if entry.OriginalFingerprint != "" {
+				if err := requireBundleFingerprint(entry.Backup, entry.OriginalFingerprint); err != nil {
+					return err
+				}
+			}
+		}
+		if targetExists {
+			if err := requireBundleOwnership(entry.Target, entry); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func requireBundleOwnership(path string, entry bundleJournalEntry) error {
+	if entry.Owner == "" || entry.Fingerprint == "" {
+		return fmt.Errorf("artifact recovery conflict at %q: the journal cannot prove ownership of the current artifact; preserve its contents and resolve the pending transaction", path)
+	}
+	owner, err := readBoundedFile(filepath.Join(path, bundleOwnerFile), 256)
+	if err != nil || string(owner) != entry.Owner {
+		return fmt.Errorf("artifact recovery conflict at %q: the current artifact belongs to another generation", path)
+	}
+	return requireBundleFingerprint(path, entry.Fingerprint)
+}
+
+func requireBundleFingerprint(path, expected string) error {
+	actual, err := artifactTreeFingerprint(context.Background(), path)
+	if err != nil {
+		return err
+	}
+	if actual != expected {
+		return fmt.Errorf("artifact recovery conflict at %q: files changed after the transaction was prepared", path)
+	}
+	return nil
 }
 
 func validateBundleJournal(workspace string, journal bundleJournal) error {
@@ -666,6 +769,11 @@ func validateBundleJournal(workspace string, journal bundleJournal) error {
 	artifactsRoot, err := filepath.Abs(filepath.Join(workspace, "artifacts"))
 	if err != nil {
 		return err
+	}
+	for _, kind := range []string{"workbook", "datasource"} {
+		if err := validateArtifactDirectory(workspace, kind, filepath.Join(artifactsRoot, kind)); err != nil {
+			return err
+		}
 	}
 	for _, entry := range journal.Entries {
 		if err := validateBundleTransactionPath(artifactsRoot, entry.Target, false); err != nil {
@@ -691,11 +799,22 @@ func validateBundleTransactionPath(artifactsRoot, path string, hidden bool) erro
 		return err
 	}
 	parent := filepath.Dir(absolute)
-	if parent != filepath.Join(artifactsRoot, "workbook") && parent != filepath.Join(artifactsRoot, "datasource") {
+	parent, err = workspacecore.CanonicalRoot(parent)
+	if err != nil {
+		return err
+	}
+	if !sameFilesystemPath(parent, filepath.Join(artifactsRoot, "workbook")) && !sameFilesystemPath(parent, filepath.Join(artifactsRoot, "datasource")) {
 		return fmt.Errorf("artifact transaction path %q is outside managed artifact roots", path)
 	}
 	if hidden && !strings.HasPrefix(filepath.Base(absolute), ".tadx-") {
 		return fmt.Errorf("artifact transaction internal path %q is invalid", path)
+	}
+	info, statErr := os.Lstat(absolute)
+	if statErr == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+		return fmt.Errorf("artifact transaction path %q must be a real directory", path)
+	}
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
 	}
 	return nil
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	projectops "github.com/ahillspace/tadx/actions/project"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/commandset"
 	"github.com/spf13/cobra"
 )
 
@@ -29,20 +31,22 @@ type ProjectDeleter interface {
 	DeleteProject(context.Context, projectops.DeleteInput, bool) (projectops.DeleteOutput, error)
 }
 
-func newProject(deps Dependencies) *cobra.Command {
+func newProject(deps Dependencies, selected ...string) *cobra.Command {
+	selection := commandset.Selected(selected)
 	command := &cobra.Command{Use: "project", Short: "Inspect Tableau projects"}
-	command.AddCommand(newProjectList(deps), newProjectInspect(deps))
+	selection.Add(command, "project.list", func() *cobra.Command { return newProjectList(deps) })
+	selection.Add(command, "project.inspect", func() *cobra.Command { return newProjectInspect(deps) })
 	if deps.ProjectCreator != nil {
-		command.AddCommand(newProjectCreate(deps))
+		selection.Add(command, "project.create", func() *cobra.Command { return newProjectCreate(deps) })
 	}
 	if deps.ProjectUpdater != nil {
-		command.AddCommand(newProjectUpdate(deps))
+		selection.Add(command, "project.update", func() *cobra.Command { return newProjectUpdate(deps) })
 	}
 	if deps.ProjectDeleter != nil {
-		command.AddCommand(newProjectDelete(deps))
+		selection.Add(command, "project.delete", func() *cobra.Command { return newProjectDelete(deps) })
 	}
 	if deps.ProjectMover != nil {
-		command.AddCommand(newProjectMove(deps))
+		selection.Add(command, "project.move", func() *cobra.Command { return newProjectMove(deps) })
 	}
 	return command
 }
@@ -65,6 +69,12 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 				return clierr.Usage("project.create", errors.New("use at most one of --parent-id or --parent"))
 			}
 			input.SetParentSelector(parentLUID, parentPath)
+			if parentLUID != "" || parentPath != "" {
+				if err := batchinput.Reference(command.Context(), deps.BatchTargets, input.Environment, "project", &input.ParentSelector); err != nil {
+					return err
+				}
+			}
+			batchinput.Record(command.Context(), batchinput.NamedTarget(input.Environment, input.Site, "project", string(input.ParentSelector.LUID), input.Name))
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -112,7 +122,7 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 			if command.Flags().Changed("content-permissions") {
 				input.ContentPermissions = &contentPermissions
 			}
-			return nil
+			return batchinput.Resource(command.Context(), deps.BatchTargets, input.Environment, "project", &input.Selector)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.ProjectUpdater.UpdateProject(command.Context(), input, preview)

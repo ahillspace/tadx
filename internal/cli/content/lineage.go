@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ahillspace/tadx/actions/batchinput"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
@@ -11,6 +12,10 @@ import (
 
 type LineagePuller interface {
 	PullLineage(context.Context, lineagepull.Input) (lineagepull.Output, error)
+}
+
+type lineageBatchPreparer interface {
+	PrepareLineagePull(context.Context, lineagepull.Input) (lineagepull.Input, batchinput.Target, error)
 }
 
 // NewLineage creates the lineage resource for the catalog command tree.
@@ -35,6 +40,18 @@ func NewLineage(puller LineagePuller, renderer Renderer) *cobra.Command {
 				return clierr.Usage("lineage.pull", errors.New("name selection requires both --name and --project"))
 			}
 			input.SetSelector("", name, projectPath)
+		}
+		if batchinput.Active(command.Context()) {
+			preparer, ok := puller.(lineageBatchPreparer)
+			if !ok {
+				return errors.New("authoritative lineage pull batch preparation is not configured")
+			}
+			prepared, target, err := preparer.PrepareLineagePull(command.Context(), input)
+			if err != nil {
+				return err
+			}
+			input = prepared
+			batchinput.Record(command.Context(), target)
 		}
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
