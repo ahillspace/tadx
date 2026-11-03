@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -27,17 +28,40 @@ func TestPulsePullBatchAcquiresSavedMetricsOnce(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var definitions, firstPages, secondPages atomic.Int32
+			var individualReads, detailBatches atomic.Int32
 			var metrics [3]atomic.Int32
 			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if diagnosticSignIn(w, r) {
 					return
 				}
-				if r.Method != http.MethodGet {
+				if r.Method != http.MethodGet && !(r.Method == http.MethodPost && r.URL.Path == "/api/-/pulse/metrics:batchGet") {
 					t.Errorf("unexpected mutation: %s %s", r.Method, r.URL.Path)
 					w.WriteHeader(405)
 					return
 				}
 				switch r.URL.Path {
+				case "/api/-/pulse/metrics:batchGet":
+					detailBatches.Add(1)
+					var request struct {
+						IDs []string `json:"metric_ids"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.IDs) == 0 || len(request.IDs) > 2 {
+						t.Errorf("invalid metric batch: %+v %v", request, err)
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					details := []json.RawMessage{}
+					for i := len(request.IDs) - 1; i >= 0; i-- {
+						index, err := strconv.Atoi(strings.TrimPrefix(request.IDs[i], "metric-"))
+						if err != nil || index < 1 || index > len(metrics) {
+							t.Errorf("invalid metric ID %q", request.IDs[i])
+							w.WriteHeader(http.StatusBadRequest)
+							return
+						}
+						metrics[index-1].Add(1)
+						details = append(details, json.RawMessage(pulseEfficiencyMetric(index)))
+					}
+					json.NewEncoder(w).Encode(map[string]any{"metrics": details})
 				case "/api/-/pulse/definitions/definition-1":
 					definitions.Add(1)
 					fmt.Fprint(w, `{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"}}}`)
@@ -54,6 +78,7 @@ func TestPulsePullBatchAcquiresSavedMetricsOnce(t *testing.T) {
 						w.WriteHeader(400)
 					}
 				default:
+					individualReads.Add(1)
 					index, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/-/pulse/metrics/metric-"))
 					if err != nil || index < 1 || index > len(metrics) {
 						t.Errorf("unexpected request %s", r.URL.Path)
@@ -61,7 +86,7 @@ func TestPulsePullBatchAcquiresSavedMetricsOnce(t *testing.T) {
 						return
 					}
 					metrics[index-1].Add(1)
-					fmt.Fprintf(w, `{"id":"metric-%d","definition_id":"definition-1","site_id":"site-1","is_default":%t,"specification":{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":%d},"filters":[]}}`, index, index == 1, index)
+					fmt.Fprint(w, pulseEfficiencyMetric(index))
 				}
 			}))
 			defer server.Close()
@@ -82,9 +107,9 @@ func TestPulsePullBatchAcquiresSavedMetricsOnce(t *testing.T) {
 			if tc.batch {
 				wantDefinitions++
 			}
-			t.Logf("definition reads=%d page reads=%d+%d metric detail reads=%d+%d+%d", definitions.Load(), firstPages.Load(), secondPages.Load(), metrics[0].Load(), metrics[1].Load(), metrics[2].Load())
-			if definitions.Load() != wantDefinitions || firstPages.Load() != 1 || secondPages.Load() != 1 || metrics[0].Load() != 1 || metrics[1].Load() != 1 || metrics[2].Load() != 1 {
-				t.Fatalf("saved metric bundle was reacquired; definition reads=%d want=%d page reads=%d+%d metric reads=%d+%d+%d", definitions.Load(), wantDefinitions, firstPages.Load(), secondPages.Load(), metrics[0].Load(), metrics[1].Load(), metrics[2].Load())
+			t.Logf("definition reads=%d page reads=%d+%d individual reads=%d detail batches=%d", definitions.Load(), firstPages.Load(), secondPages.Load(), individualReads.Load(), detailBatches.Load())
+			if definitions.Load() != wantDefinitions || firstPages.Load() != 1 || secondPages.Load() != 1 || metrics[0].Load() != 1 || metrics[1].Load() != 1 || metrics[2].Load() != 1 || individualReads.Load() != 0 || detailBatches.Load() != 2 {
+				t.Fatalf("saved metric acquisition was not bounded by list pages; individual reads=%d detail batches=%d", individualReads.Load(), detailBatches.Load())
 			}
 			wantArtifacts := 1
 			if tc.preview {
@@ -100,9 +125,18 @@ func TestPulsePullBatchAcquiresSavedMetricsOnce(t *testing.T) {
 				if err != nil || len(bundle.Metrics) != len(metrics) {
 					t.Fatalf("saved bundle metrics=%d err=%v", len(bundle.Metrics), err)
 				}
+				for i, metric := range bundle.Metrics {
+					if metric.LUID != fmt.Sprintf("metric-%d", i+1) || metric.IsDefault != (i == 0) {
+						t.Fatalf("metric inventory order or default marker changed: %+v", bundle.Metrics)
+					}
+				}
 			}
 		})
 	}
+}
+
+func pulseEfficiencyMetric(index int) string {
+	return fmt.Sprintf(`{"id":"metric-%d","definition_id":"definition-1","site_id":"site-1","is_default":%t,"specification":{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":%d},"filters":[]}}`, index, index == 1, index)
 }
 
 func TestPulsePullBatchRejectsIncompleteDefinitionBeforeMetricReads(t *testing.T) {

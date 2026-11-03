@@ -127,7 +127,7 @@ func TestCloneKeepsDestinationWhenRegistrationStaysInstalled(t *testing.T) {
 	installedUpdates(m)
 	destination := filepath.Join(t.TempDir(), "copy")
 
-	record, err := m.Clone(context.Background(), "source", "copy", destination)
+	record, err := m.Clone(context.Background(), CloneRequest{Source: "source", Name: "copy", Root: destination, Reconcile: fixtureInternalReconcile})
 	assertInstalled(t, err)
 	if record.ID == "" || record.Name != "copy" {
 		t.Fatalf("record = %+v, want the installed identity", record)
@@ -142,7 +142,7 @@ func TestCloneRemovesDestinationWhenPriorConfigurationWasRestored(t *testing.T) 
 	restoredUpdates(m)
 	destination := filepath.Join(t.TempDir(), "copy")
 
-	if _, err := m.Clone(context.Background(), "source", "copy", destination); err == nil {
+	if _, err := m.Clone(context.Background(), CloneRequest{Source: "source", Name: "copy", Root: destination, Reconcile: fixtureInternalReconcile}); err == nil {
 		t.Fatal("Clone() error = nil")
 	}
 	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {

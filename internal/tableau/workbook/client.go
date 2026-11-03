@@ -219,7 +219,10 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 	}
 	response, err := c.do(ctx, http.MethodPut, c.sitePath("workbooks", input.LUID), nil, body, "application/xml", "workbook.update")
 	if err != nil {
-		return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: tableau.RequestID(err)}, err
+		if tableau.MutationUncertain(err) {
+			return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: tableau.RequestID(err)}, err
+		}
+		return MutationResult{}, err
 	}
 	if response.StatusCode != http.StatusOK {
 		result := MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}
@@ -264,7 +267,10 @@ func (c *Client) Delete(ctx context.Context, workbookLUID string) (MutationResul
 	}
 	response, err := c.do(ctx, http.MethodDelete, c.sitePath("workbooks", workbookLUID), nil, nil, "", "workbook.delete")
 	if err != nil {
-		return MutationResult{Status: "unknown", WorkbookLUID: workbookLUID, TableauRequestID: tableau.RequestID(err)}, err
+		if tableau.MutationUncertain(err) {
+			return MutationResult{Status: "unknown", WorkbookLUID: workbookLUID, TableauRequestID: tableau.RequestID(err)}, err
+		}
+		return MutationResult{}, err
 	}
 	if response.StatusCode != http.StatusNoContent || len(response.Body) != 0 {
 		result := MutationResult{Status: "unknown", WorkbookLUID: workbookLUID, TableauRequestID: response.TableauRequestID}

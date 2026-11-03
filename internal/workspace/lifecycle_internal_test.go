@@ -13,6 +13,11 @@ import (
 	"github.com/ahillspace/tadx/internal/lock"
 )
 
+// These fixture trees have no artifact transactions to recover.
+func fixtureInternalReconcile(_ context.Context, mutation *Mutation) error {
+	return mutation.Validate()
+}
+
 func TestMutationRejectsManifestReplacedWhileWaitingForArtifactOwner(t *testing.T) {
 	root := t.TempDir()
 	manifest := filepath.Join(root, "tadx.yaml")
@@ -101,7 +106,7 @@ func TestCloneRetainsSourceLifecycleOwnershipThroughRegistration(t *testing.T) {
 		}
 		return config.Update(path, create, mutate)
 	}
-	if _, err := manager.Clone(t.Context(), "source", "clone", filepath.Join(base, "clone")); err != nil {
+	if _, err := manager.Clone(t.Context(), CloneRequest{Source: "source", Name: "clone", Root: filepath.Join(base, "clone"), Reconcile: fixtureInternalReconcile}); err != nil {
 		t.Fatal(err)
 	}
 	if !checked {

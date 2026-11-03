@@ -535,7 +535,8 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	}
 	clients := s.runtime.clients(connection)
 	workbookClient, metadataClient, datasourceClient := clients.workbooks, clients.metadata, clients.datasources
-	workbooks := resourceworkbook.NewAdapterWithProjectResolver(workbookClient, s.runtime.discoveryPaths(connection))
+	projects := s.runtime.discoveryPaths(connection)
+	workbooks := resourceworkbook.NewAdapterWithProjectResolver(workbookClient, projects)
 	lineage := resourcelineage.NewAdapter(metadataClient)
 	datasources := resourcedatasource.NewAdapter(datasourceClient)
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
@@ -552,12 +553,13 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 		downloads = workspacecore.NewDownloads(input.Workspace)
 	}
 	defer downloads.Close()
-	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, lineage: lineage, downloads: downloads}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
+	return workbookops.Pull(ctx, pullReader{workbooks: workbooks, datasources: datasources, projects: projects, lineage: lineage, downloads: downloads}, artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)}, input)
 }
 
 type pullReader struct {
 	workbooks   *resourceworkbook.Adapter
 	datasources *resourcedatasource.Adapter
+	projects    *commandDiscoveryPaths
 	lineage     *resourcelineage.Adapter
 	downloads   *workspacecore.Downloads
 }
@@ -610,11 +612,11 @@ func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string
 	if err != nil {
 		return workbookops.DatasourceDownload{}, err
 	}
-	project, err := r.workbooks.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(item.ProjectLUID)})
+	projectPath, err := r.projects.ResolveProjectPath(ctx, item.ProjectLUID)
 	if err != nil {
 		return workbookops.DatasourceDownload{}, fmt.Errorf("resolve datasource project %q: %w", item.ProjectLUID, err)
 	}
-	return workbookops.DatasourceDownload{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: project.Path, Filename: item.Filename, Path: path, TableauRequestID: item.TableauRequestID}, nil
+	return workbookops.DatasourceDownload{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, Filename: item.Filename, Path: path, TableauRequestID: item.TableauRequestID}, nil
 }
 
 func (r pullReader) CaptureWorkbookLineage(ctx context.Context, input workbookops.LineageRequest) (workbookops.LineageCapture, error) {
@@ -713,7 +715,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 	if input.File != "" {
 		input.ArtifactPath = input.File
 		reader = nativeWorkbookArtifactReader{}
-		if _, err := reader.ReadWorkbook(ctx, input.File); err != nil {
+		if err := artifact.ValidateNativePath(ctx, input.File, "workbook"); err != nil {
 			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.file", "workbook.publish", input.Environment, input.Site, "Native workbook file is invalid.", "Select an existing .twb or .twbx file with --file.", err)
 		}
 	} else {
@@ -721,7 +723,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 		if err != nil {
 			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.workspace", "workbook.publish", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 		}
-		managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook", LUID: input.ArtifactID, Name: input.ArtifactName})
+		managedArtifact, err := artifact.Select(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook", LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
 				return workbookops.PublishOutput{}, mapArtifactResolutionError("workbook.publish", resolvedWorkspace.Name, input.ArtifactID, err)
@@ -730,9 +732,6 @@ func (s *publishService) Execute(ctx context.Context, input workbookops.PublishI
 		}
 		input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
 		input.WorkspaceName = resolvedWorkspace.Name
-		if _, err := manager.Read(ctx, input.ArtifactPath); err != nil {
-			return workbookops.PublishOutput{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact read failed.", "Repair or pull the exact workbook artifact, then retry.", err)
-		}
 		reader = artifactReader{manager: manager, displayPath: managedArtifact.Path}
 	}
 	connection, err := s.runtime.tableauConnection(ctx, input.Environment, true)

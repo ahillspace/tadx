@@ -44,7 +44,7 @@ func TestGroupUpdateReceiptReportsConfirmedChangesThroughCLI(t *testing.T) {
 	}))
 	defer server.Close()
 	var output strings.Builder
-	code := app.Run(context.Background(), []string{"admin", "group", "update", "--id", "group-1", "--new-name", "Requested Name", "--set-members", "--member-id", "keep-user", "--member-id", "new-user", "--environment", "test"}, &output, diagnosticOptions(t, server))
+	code := app.Run(context.Background(), []string{"admin", "group", "update", "--id", "group-1", "--new-name", "Confirmed Name", "--set-members", "--member-id", "keep-user", "--member-id", "new-user", "--environment", "test"}, &output, diagnosticOptions(t, server))
 	if code != 0 || reads != 4 || writes != 3 {
 		t.Fatalf("code=%d reads=%d writes=%d %s", code, reads, writes, output.String())
 	}
@@ -53,7 +53,7 @@ func TestGroupUpdateReceiptReportsConfirmedChangesThroughCLI(t *testing.T) {
 			t.Errorf("receipt missing %q: %s", want, output.String())
 		}
 	}
-	for _, hidden := range []string{"Requested Name", "Existing Inventory", "keep-user"} {
+	for _, hidden := range []string{"Existing Inventory", "keep-user"} {
 		if strings.Contains(output.String(), hidden) {
 			t.Errorf("compact receipt leaks plan/inventory %q: %s", hidden, output.String())
 		}

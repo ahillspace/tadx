@@ -55,7 +55,7 @@ const singleActions = new Set<string>(['openRemote', 'openPayload', 'openMetadat
 const transferKinds = new Set<string>(['workbook', 'datasource', 'flow']);
 
 /** Treat every webview message as untrusted, including messages from an old render. */
-export function validatePanelRequest(message: unknown, snapshot: PanelSnapshot): PanelRequest | undefined {
+export function validatePanelRequest(message: unknown, snapshot: PanelSnapshot, byKey = new Map(snapshot.artifacts.map(row => [row.key, row]))): PanelRequest | undefined {
   if (!message || typeof message !== 'object' || Array.isArray(message)) return undefined;
   const value = message as Record<string, unknown>;
   if (value.type !== 'action' || typeof value.action !== 'string') return undefined;
@@ -67,7 +67,7 @@ export function validatePanelRequest(message: unknown, snapshot: PanelSnapshot):
   if (value.action === 'download' || value.action === 'upload') {
     if (snapshot.busy || !Array.isArray(value.keys) || value.keys.length === 0 || value.keys.length > 100) return undefined;
     if (!value.keys.every((key): key is string => typeof key === 'string') || new Set(value.keys).size !== value.keys.length) return undefined;
-    const rows = value.keys.map(key => snapshot.artifacts.find(row => row.key === key));
+    const rows = value.keys.map(key => byKey.get(key));
     const first = rows[0];
     if (!first) return undefined;
     const sourceKind = value.action === 'download' ? 'sites' : 'workspaces';
@@ -76,7 +76,7 @@ export function validatePanelRequest(message: unknown, snapshot: PanelSnapshot):
     return { action, keys: [...value.keys] };
   }
   if (typeof value.key !== 'string') return undefined;
-  const row = snapshot.artifacts.find(artifact => artifact.key === value.key);
+  const row = byKey.get(value.key);
   if (!row) return undefined;
   if (value.action === 'showArtifact') return { action: 'showArtifact', key: row.key };
   if (!singleActions.has(value.action) || !row.actions.includes(value.action as PanelAction)) return undefined;
@@ -109,6 +109,9 @@ export class PanelManager implements VSCode.Disposable {
   private artifactKey?: string;
   private inventorySource?: { sourceKind: PanelSourceKind; sourceId?: string };
   private operation?: PanelOperation;
+  private byKey = new Map<string, PanelArtifact>();
+  private bySource = new Map<string, PanelArtifact[]>();
+  private sourceIdentity = '';
 
   constructor(
     private readonly api: typeof VSCode,
@@ -117,15 +120,31 @@ export class PanelManager implements VSCode.Disposable {
   ) {}
 
   update(snapshot: PanelSnapshot): void {
+    const sourceIdentity = JSON.stringify(snapshot.sources);
+    const inventoryChanged = snapshot.artifacts !== this.snapshot.artifacts || sourceIdentity !== this.sourceIdentity;
+    if (snapshot.artifacts !== this.snapshot.artifacts) {
+      this.byKey = new Map(snapshot.artifacts.map(row => [row.key, row]));
+      this.bySource.clear();
+      for (const row of snapshot.artifacts) {
+        const key = `${row.sourceKind}:${row.sourceId}`;
+        const rows = this.bySource.get(key) ?? [];
+        rows.push(row);
+        this.bySource.set(key, rows);
+      }
+    }
     this.snapshot = snapshot;
-    for (const [view, panel] of this.panels) this.sendState(view, panel);
+    this.sourceIdentity = sourceIdentity;
+    for (const [view, panel] of this.panels) {
+      if (inventoryChanged) this.sendState(view, panel);
+      else void panel.webview.postMessage({ type: 'status', busy: snapshot.busy, errors: snapshot.errors });
+    }
   }
 
   showArtifact(key: string): void {
-    if (!this.snapshot.artifacts.some(row => row.key === key)) return;
+    if (!this.byKey.has(key)) return;
     this.artifactKey = key;
     const panel = this.open('artifact');
-    panel.title = this.snapshot.artifacts.find(row => row.key === key)?.name ?? 'TADX artifact';
+    panel.title = this.byKey.get(key)?.name ?? 'TADX artifact';
     this.sendState('artifact', panel, true);
   }
 
@@ -161,10 +180,15 @@ export class PanelManager implements VSCode.Disposable {
     this.panels.set(view, panel);
     const receive = panel.webview.onDidReceiveMessage(async (message: unknown) => {
       if (message && typeof message === 'object' && (message as Record<string, unknown>).type === 'ready') {
+        if (view === 'inventory' && !this.inventorySource) {
+          const saved = message as Record<string, unknown>;
+          const request = validatePanelRequest({ ...saved, type: 'action', action: 'selectSource' }, this.snapshot, this.byKey);
+          if (request?.action === 'selectSource') this.inventorySource = { sourceKind: request.sourceKind, sourceId: request.sourceId };
+        }
         this.sendState(view, panel);
         return;
       }
-      const request = validatePanelRequest(message, this.snapshot);
+      const request = validatePanelRequest(message, this.snapshot, this.byKey);
       if (!request) {
         void panel.webview.postMessage({ type: 'error', message: 'This action is unavailable. Refresh the inventory and select the artifacts again.' });
         return;
@@ -175,6 +199,7 @@ export class PanelManager implements VSCode.Disposable {
       }
       if (request.action === 'selectSource') {
         this.inventorySource = { sourceKind: request.sourceKind, sourceId: request.sourceId };
+        this.sendState(view, panel);
       }
       try {
         await this.onRequest(request);
@@ -197,6 +222,32 @@ export class PanelManager implements VSCode.Disposable {
   }
 
   private sendState(view: PanelView, panel: VSCode.WebviewPanel, reveal = false): void {
-    void panel.webview.postMessage({ type: 'state', snapshot: this.snapshot, artifactKey: this.artifactKey, inventorySource: this.inventorySource, operation: this.operation, reveal, view });
+    const sources: PanelSnapshot['sources'] = { sites: [], workspaces: [] };
+    let artifacts: PanelArtifact[] = [];
+    let inventorySource = this.inventorySource;
+    if (view === 'artifact') {
+      const selected = this.artifactKey ? this.byKey.get(this.artifactKey) : undefined;
+      if (selected) {
+        const keys = new Set([selected.key, ...(selected.relatedKeys ?? [])]);
+        artifacts = [...keys].map(key => this.byKey.get(key)).filter((row): row is PanelArtifact => !!row);
+        for (const kind of ['sites', 'workspaces'] as const) {
+          const ids = new Set(artifacts.filter(row => row.sourceKind === kind).map(row => row.sourceId));
+          sources[kind] = this.snapshot.sources[kind].filter(source => ids.has(source.id));
+        }
+      }
+    } else if (view === 'inventory') {
+      Object.assign(sources, this.snapshot.sources);
+      const sourceKind = this.inventorySource?.sourceKind ?? (sources.sites.length ? 'sites' : 'workspaces');
+      const sourceId = sources[sourceKind].find(source => source.id === this.inventorySource?.sourceId)?.id ?? sources[sourceKind][0]?.id;
+      inventorySource = { sourceKind, sourceId };
+      if (this.inventorySource) this.inventorySource = inventorySource;
+      artifacts = this.bySource.get(`${sourceKind}:${sourceId}`) ?? [];
+    }
+    const snapshot: PanelSnapshot = { sources, artifacts, busy: this.snapshot.busy, errors: this.snapshot.errors };
+    void panel.webview.postMessage({ type: 'state', snapshot, reveal, view,
+      ...(view === 'artifact' ? { artifactKey: this.artifactKey } : {}),
+      ...(view === 'inventory' ? { inventorySource } : {}),
+      ...(view === 'operation' ? { operation: this.operation } : {}),
+    });
   }
 }

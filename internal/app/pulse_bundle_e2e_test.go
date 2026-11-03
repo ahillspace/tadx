@@ -83,12 +83,11 @@ func testPulseBundleRoundTrip(t *testing.T, destinationSite string, change pulse
 				return
 			}
 			_, _ = io.WriteString(w, `{"metrics":[{"id":"source-default","definition_id":"source-definition","is_default":true},{"id":"source-variant","definition_id":"source-definition","is_default":false}]}`)
-		case r.URL.Path == "/api/-/pulse/metrics/source-default" || r.URL.Path == "/api/-/pulse/metrics/source-variant":
-			i := 0
-			if strings.HasSuffix(r.URL.Path, "source-variant") {
-				i = 1
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": []string{"source-default", "source-variant"}[i], "definition_id": "source-definition", "site_id": "site-1", "is_default": i == 0, "specification": specs[i]})
+		case r.URL.Path == "/api/-/pulse/metrics:batchGet":
+			_ = json.NewEncoder(w).Encode(map[string]any{"metrics": []any{
+				map[string]any{"id": "source-default", "definition_id": "source-definition", "site_id": "site-1", "is_default": true, "specification": specs[0]},
+				map[string]any{"id": "source-variant", "definition_id": "source-definition", "site_id": "site-1", "is_default": false, "specification": specs[1]},
+			}})
 		case r.URL.Path == "/api/3.29/sites/"+destinationSite+"/datasources/destination-ds":
 			_, _ = io.WriteString(w, `<tsResponse><datasource id="destination-ds" name="Orders"><project id="project-1" name="Test"/></datasource></tsResponse>`)
 		case r.URL.Path == "/api/v1/vizql-data-service/read-metadata":

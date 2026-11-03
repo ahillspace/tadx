@@ -43,14 +43,16 @@ type TablePlan struct {
 	NoOp        bool                   `json:"no_op"`
 }
 type TableResult struct {
-	Status       string                 `json:"status"`
-	Identity     value.MetadataIdentity `json:"identity"`
-	Description  *string                `json:"description,omitempty"`
-	ContactLUID  string                 `json:"contact_luid,omitempty"`
-	Tags         []string               `json:"tags,omitempty"`
-	TagsObserved bool                   `json:"tags_observed"`
-	Completed    []string               `json:"completed"`
-	Failed       string                 `json:"failed,omitempty"`
+	Status                string                 `json:"status"`
+	Identity              value.MetadataIdentity `json:"identity"`
+	Description           *string                `json:"description,omitempty"`
+	ContactLUID           string                 `json:"contact_luid,omitempty"`
+	Tags                  []string               `json:"tags,omitempty"`
+	TagsObserved          bool                   `json:"tags_observed"`
+	AcknowledgedAdditions []string               `json:"acknowledged_additions,omitempty"`
+	UnconfirmedAdditions  []string               `json:"unconfirmed_additions,omitempty"`
+	Completed             []string               `json:"completed"`
+	Failed                string                 `json:"failed,omitempty"`
 }
 type TableOutput struct {
 	Plan   TablePlan    `json:"plan"`
@@ -170,16 +172,21 @@ func (a *TableAction) Execute(ctx context.Context, in TableInput, preview bool) 
 	}
 	if len(add) > 0 {
 		acknowledged, e := a.writer.AddTableTags(ctx, in.ID, add)
+		out.Result.Tags = slices.Clone(acknowledged)
+		out.Result.TagsObserved = false
+		out.Result.AcknowledgedAdditions, out.Result.UnconfirmedAdditions = tagAdditionReceipt(add, acknowledged)
 		if e == nil {
 			e = verifyTagAcknowledgment(add, acknowledged)
 		}
 		if e != nil {
+			for _, tag := range out.Result.AcknowledgedAdditions {
+				out.Result.Completed = append(out.Result.Completed, "add_tag:"+tag)
+			}
 			out.Result.Status = "partial"
 			out.Result.Failed = "add_tags"
 			return out, tableFailure(in, "add_tags", out.Result.Completed, errs.OutcomeUnknown, e)
 		}
 		out.Result.Completed = append(out.Result.Completed, "add_tags")
-		out.Result.Tags = slices.Clone(acknowledged)
 		out.Result.TagsObserved = true
 	}
 	for _, tag := range remove {

@@ -116,25 +116,31 @@ func (c *Client) Create(ctx context.Context, input CreateRequest) (MutationResul
 		Accept: "application/xml", ContentType: "application/xml", Operation: createOperation, MaxResponseBytes: maxResponseBytes,
 	})
 	if err != nil {
+		if !tableau.MutationUncertain(err) {
+			return MutationResult{}, err
+		}
 		return MutationResult{Status: "unknown", Project: Project{Name: input.Name, ParentLUID: input.ParentLUID}, TableauRequestID: tableau.RequestID(err)}, err
 	}
+	result := MutationResult{Status: "unknown", TableauRequestID: response.TableauRequestID}
 	if response.StatusCode != http.StatusCreated {
-		return MutationResult{}, tableau.NewProtocolError(createOperation, response, fmt.Errorf("project create returned HTTP %d, expected 201", response.StatusCode), false)
+		return result, tableau.NewProtocolError(createOperation, response, fmt.Errorf("project create returned HTTP %d, expected 201", response.StatusCode), false)
 	}
 	project, err := decodeMutationProject(response, createOperation)
 	if err != nil {
-		return MutationResult{}, err
+		return result, err
 	}
+	result.Status, result.Project = "partial", project
 	if project.Name != input.Name || project.ParentLUID != input.ParentLUID {
-		return MutationResult{}, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested name or parent identity"), false)
+		return result, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested name or parent identity"), false)
 	}
 	if input.Description != "" && project.Description != input.Description {
-		return MutationResult{}, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested description"), false)
+		return result, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested description"), false)
 	}
 	if input.ContentPermissions != "" && project.ContentPermissions != input.ContentPermissions {
-		return MutationResult{}, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested content permissions"), false)
+		return result, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested content permissions"), false)
 	}
-	return MutationResult{Status: "succeeded", Project: project, TableauRequestID: response.TableauRequestID}, nil
+	result.Status = "succeeded"
+	return result, nil
 }
 
 // Update updates only explicit bounded project metadata fields.

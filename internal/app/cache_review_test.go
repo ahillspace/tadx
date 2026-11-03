@@ -75,7 +75,7 @@ func TestReadThroughCacheSearchContinuesAcrossObservationTimes(t *testing.T) {
 	if err := store.UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
 	}
-	lister := &cacheSearchLister{store: store, environment: "dev", site: "site"}
+	lister := &cacheSearchLister{reader: store, environment: "dev", site: "site"}
 	first, err := lister.List(context.Background(), "workbook", "", 100)
 	if err != nil || first.NextCursor == "" {
 		t.Fatalf("first page: %#v %v", first, err)

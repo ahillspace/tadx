@@ -38,6 +38,11 @@ func newConfig(t *testing.T) string {
 	return configPath
 }
 
+// These fixture trees have no artifact transactions to recover.
+func fixtureReconcile(_ context.Context, mutation *workspace.Mutation) error {
+	return mutation.Validate()
+}
+
 func TestCloneRejectsDestinationInsideSourceBeforeCreatingFiles(t *testing.T) {
 	manager := workspace.NewManager(newConfig(t), nil)
 	source, err := manager.Create(t.Context(), "source", filepath.Join(t.TempDir(), "source"))
@@ -47,8 +52,8 @@ func TestCloneRejectsDestinationInsideSourceBeforeCreatingFiles(t *testing.T) {
 	for _, relative := range []string{"nested", "artifacts/nested", "artifacts/new-parent/nested"} {
 		t.Run(relative, func(t *testing.T) {
 			destination := filepath.Join(source.Root, filepath.FromSlash(relative))
-			for _, clone := range []func(context.Context, string, string, string) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
-				if _, err := clone(t.Context(), "source", "nested", destination); err == nil || !strings.Contains(err.Error(), "inside the source") {
+			for _, clone := range []func(context.Context, workspace.CloneRequest) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
+				if _, err := clone(t.Context(), workspace.CloneRequest{Source: "source", Name: "nested", Root: destination, Reconcile: fixtureReconcile}); err == nil || !strings.Contains(err.Error(), "inside the source") {
 					t.Fatalf("nested clone error = %v", err)
 				}
 			}
@@ -68,8 +73,8 @@ func TestCloneRejectsDestinationInsideSourceThroughParentAlias(t *testing.T) {
 	}
 	alias := filepath.Join(base, "alias")
 	linkWorkspaceTestDirectory(t, alias, source.Root)
-	for _, clone := range []func(context.Context, string, string, string) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
-		if _, err := clone(t.Context(), "source", "nested", filepath.Join(alias, "artifacts", "nested")); err == nil || !strings.Contains(err.Error(), "inside the source") {
+	for _, clone := range []func(context.Context, workspace.CloneRequest) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
+		if _, err := clone(t.Context(), workspace.CloneRequest{Source: "source", Name: "nested", Root: filepath.Join(alias, "artifacts", "nested"), Reconcile: fixtureReconcile}); err == nil || !strings.Contains(err.Error(), "inside the source") {
 			t.Fatalf("aliased nested clone error = %v", err)
 		}
 	}
@@ -80,8 +85,8 @@ func TestCloneRejectsDestinationInsideSourceThroughParentAlias(t *testing.T) {
 	if _, err := manager.Create(t.Context(), "aliased-source", filepath.Join(parentAlias, "aliased-source")); err != nil {
 		t.Fatal(err)
 	}
-	for _, clone := range []func(context.Context, string, string, string) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
-		if _, err := clone(t.Context(), "aliased-source", "nested", filepath.Join(base, "aliased-source", "artifacts", "nested")); err == nil || !strings.Contains(err.Error(), "inside the source") {
+	for _, clone := range []func(context.Context, workspace.CloneRequest) (workspace.Record, error){manager.PreviewClone, manager.Clone} {
+		if _, err := clone(t.Context(), workspace.CloneRequest{Source: "aliased-source", Name: "nested", Root: filepath.Join(base, "aliased-source", "artifacts", "nested"), Reconcile: fixtureReconcile}); err == nil || !strings.Contains(err.Error(), "inside the source") {
 			t.Fatalf("aliased source nested clone error = %v", err)
 		}
 	}
@@ -146,6 +151,27 @@ func TestRegisterHonorsNameOverride(t *testing.T) {
 	}
 	if registered.Name != "override" {
 		t.Fatalf("registered name = %q, want override", registered.Name)
+	}
+	resolved, err := manager.Resolve(t.Context(), "override", "")
+	if err != nil || resolved.ID != registered.ID || resolved.Name != "override" {
+		t.Fatalf("registered alias cannot resolve its stable workspace identity: %+v, %v", resolved, err)
+	}
+	manifest, err := workspace.ReadManifest(workspaceRoot)
+	if err != nil || manifest.Workspace.Name != "manifest-name" {
+		t.Fatalf("registration changed the shared workspace name: %+v, %v", manifest, err)
+	}
+	page, err := manager.List(t.Context(), 10, 0)
+	if err != nil || len(page.Items) != 1 || !page.Items[0].ManifestValid {
+		t.Fatalf("listed alias lost manifest validity: %+v, %v", page, err)
+	}
+	if _, err := manager.SetDefault(t.Context(), "override"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Clean(t.Context(), resolved.Root, "all"); err != nil {
+		t.Fatalf("registered alias cannot clean its workspace: %v", err)
+	}
+	if _, err := manager.Delete(t.Context(), workspace.DeleteRequest{Expected: resolved}); err != nil {
+		t.Fatalf("registered alias cannot delete its stable workspace identity: %v", err)
 	}
 }
 
@@ -220,7 +246,7 @@ func TestCloneCopiesArtifactsUnderFreshIdentity(t *testing.T) {
 	}
 
 	cloneRoot := filepath.Join(base, "clone")
-	cloned, err := manager.Clone(context.Background(), "source", "clone", cloneRoot)
+	cloned, err := manager.Clone(context.Background(), workspace.CloneRequest{Source: "source", Name: "clone", Root: cloneRoot, Reconcile: fixtureReconcile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +283,7 @@ func TestCloneRejectsExistingDestination(t *testing.T) {
 	if err := os.MkdirAll(destination, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Clone(context.Background(), "source", "clone", destination); err == nil {
+	if _, err := manager.Clone(context.Background(), workspace.CloneRequest{Source: "source", Name: "clone", Root: destination, Reconcile: fixtureReconcile}); err == nil {
 		t.Fatal("Clone() overwrote an existing destination")
 	}
 }
@@ -277,7 +303,7 @@ func TestCloneRejectsSymlinkedSourceEntry(t *testing.T) {
 	if err := os.Symlink(secret, filepath.Join(source.Root, "artifacts", "link.tds")); err != nil {
 		t.Skipf("symlinks unsupported: %v", err)
 	}
-	if _, err := manager.Clone(context.Background(), "source", "clone", filepath.Join(base, "clone")); err == nil {
+	if _, err := manager.Clone(context.Background(), workspace.CloneRequest{Source: "source", Name: "clone", Root: filepath.Join(base, "clone"), Reconcile: fixtureReconcile}); err == nil {
 		t.Fatal("Clone() followed a symbolic link out of the source workspace")
 	} else if !strings.Contains(err.Error(), "symbolic link") {
 		t.Fatalf("error = %v", err)
@@ -297,7 +323,7 @@ func TestCloneRollsBackRootWhenRegistrationFails(t *testing.T) {
 	// Cloning under the already-taken "source" name fails registration; the
 	// staged destination root must be rolled back.
 	cloneRoot := filepath.Join(base, "clone")
-	if _, err := manager.Clone(context.Background(), "source", "source", cloneRoot); err == nil {
+	if _, err := manager.Clone(context.Background(), workspace.CloneRequest{Source: "source", Name: "source", Root: cloneRoot, Reconcile: fixtureReconcile}); err == nil {
 		t.Fatal("Clone() accepted a duplicate name")
 	}
 	if _, err := os.Stat(cloneRoot); !os.IsNotExist(err) {

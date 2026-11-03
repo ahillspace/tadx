@@ -40,6 +40,7 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInp
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	ctx = beginProjectResolution(ctx, resolver)
 	current, currentDestination, err := moveResolveByLUID(ctx, resolver, input, source.LUID, destination.LUID)
 	if err != nil {
@@ -56,8 +57,11 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInp
 		return out, nil
 	}
 	result, err := mover.MoveWorkbook(ctx, source.LUID, destination.LUID)
+	if result != (MoveResult{}) {
+		out.Result = &result
+	}
 	if err != nil {
-		return MoveOutput{}, moveOperationError("workbook.move.failed", input, source.LUID, "Workbook move failed.", "Inspect the exact workbook before retrying: "+commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", source.LUID), err)
+		return out, errs.MutationFailure(errs.Error{ID: "workbook.move.failed", Kind: errs.KindOperation, Operation: "workbook.move", Resource: source.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook move failed.", Cause: err, CorrectiveAction: "Inspect the exact workbook before attempting another move: " + commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", source.LUID)}, result.Status)
 	}
 	out.Result = &result
 	out.Help = []string{commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", source.LUID)}

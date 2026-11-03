@@ -52,7 +52,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	manager := artifact.NewDatasourceManager(c.runtime.now)
 	var reader datasourceops.ArtifactReader
 	if input.File != "" {
-		if _, err := artifact.ReadNative(ctx, input.File, "datasource"); err != nil {
+		if err := artifact.ValidateNativePath(ctx, input.File, "datasource"); err != nil {
 			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.file", "datasource.publish", input.Environment, input.Site, "Native datasource validation failed.", "Select a valid native datasource file, then retry.", err)
 		}
 		input.ArtifactPath = input.File
@@ -62,7 +62,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		if err != nil {
 			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.workspace", "datasource.publish", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure the logical workspace containing the exact managed datasource artifact, then retry.", err)
 		}
-		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
+		managed, err := artifact.Select(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
 				return datasourceops.PublishOutput{}, mapArtifactResolutionError("datasource.publish", workspace.Name, input.ArtifactID, err)
@@ -71,10 +71,6 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		}
 		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
 		input.WorkspaceName = workspace.Name
-		_, err = manager.Read(ctx, absolutePath)
-		if err != nil {
-			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact read failed.", "Repair or pull the exact datasource artifact, then retry.", err)
-		}
 		input.ArtifactPath = absolutePath
 		reader = datasourceArtifactReader{manager: manager, displayPath: managed.Path}
 	}
@@ -267,6 +263,8 @@ func datasourcePublishMode(mode datasourceops.Mode) (tableaudatasource.PublishMo
 type preparedDatasourcePublish struct {
 	prepared tableaudatasource.PreparedPublish
 }
+
+func (p preparedDatasourcePublish) Close() error { return p.prepared.Close() }
 
 func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourceops.PublishResult, error) {
 	progress.SetLabel(ctx, "Uploading and submitting datasource")

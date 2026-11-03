@@ -54,9 +54,9 @@ Name and project selectors use exact matching, and ambiguous matches fail.
 [`project.Adapter`](../../internal/resources/project/adapter.go) owns canonical project paths, hierarchy cycles, and conflicting project records.
 Its `BeginProjectResolution` creates a lazy hierarchy snapshot for one validation phase.
 A new phase obtains fresh state before consequential revalidation.
-Workbook dependency acquisition retains a second project-resolution path.
-[`pullReader.DownloadPublishedDatasource`](../../internal/app/app.go) calls `workbook.Adapter.ResolveProject` after the pull service supplies a display-path resolver.
-That resolver lacks the optional `ResolveProject` method, so the workbook adapter uses its private hierarchy collector and path index.
+Workbook and datasource dependency acquisition share the command's immutable display hierarchy through [`pullReader`](../../internal/app/app.go).
+Each dependency resolves its authoritative project LUID against that hierarchy without another inventory traversal.
+Project moves validate ancestry through parent LUIDs; display paths cannot establish parent relationships when names contain literal slashes.
 
 Metadata IDs identify GraphQL objects and are distinct from REST LUIDs.
 [`value.MetadataIdentity`](../../internal/value/metadata.go) carries both namespaces without treating one as the other.
@@ -111,6 +111,9 @@ Rollback validates every surviving stage before changing any transaction entry, 
 Unverifiable legacy stages remain in place with an explicit recovery conflict.
 Canonical native payloads must be regular files; an existing directory or linked payload is invalid, rather than missing.
 Workspace deletion owns the lifecycle exclusively and revalidates recovery, identity, and dirty-state evidence under that ownership.
+Workspace clone holds source lifecycle and artifact ownership while preparing its snapshot and copying the complete artifact tree.
+Supported replacements are reconciled; unresolved recovery evidence blocks copying and remains intact.
+The destination receives a fresh workspace identity and registration only after that consistent copy succeeds.
 Deletion closes locks inside the workspace before renaming its root while retaining the external lifecycle lock.
 The persistent sibling lifecycle lock uses the canonical workspace path, independent of user cache settings.
 Creating that lock requires write permission in the workspace's parent directory; failure stops the operation before mutation.
@@ -141,14 +144,20 @@ Datasource and flow actions share the publication boundary but preserve differen
 | Publication | Distinct behavior and source |
 | --- | --- |
 | Workbook | [`Publisher.Apply`](../../actions/workbook/publish.go) rechecks overwrite identity around preparation; `Complete` preserves successful publication despite delayed destination visibility. |
-| Datasource | [`Publisher.Execute`](../../actions/datasource/publish.go) rereads native fingerprint and composition references, revalidates the destination and collision, then prepares and commits; `Complete` reports the assigned content URL and compares it with the file's own repository location to report a changed URL and the workbook binding to use. |
-| Flow | [`Publisher.Execute`](../../actions/flow/publish.go) completes artifact, destination, and collision revalidation before upload preparation, leaving no fallible action gate between preparation and commit. |
+| Datasource | [`Publisher.Execute`](../../actions/datasource/publish.go) revalidates destination identity around staging and preserves append/replace identity, composition checks, and datasource URL evidence. |
+| Flow | [`Publisher.Execute`](../../actions/flow/publish.go) revalidates the artifact and destination before preparation, then obtains fresh destination and collision evidence immediately before commit. |
 
 Preparation can create a server-side upload, so its placement is part of each resource's recovery design.
+Prepared publication has explicit cleanup ownership, including when final destination validation rejects the commit.
+Datasource completion compares the assigned content URL with the native repository location to describe required workbook bindings.
+The final check narrows concurrent replacement exposure; Tableau's name-based publication request does not provide an atomic identity condition.
 Do not substitute one generic mutation sequence for these explicit differences.
 [`ReadNative`](../../internal/artifact/native.go) streams supported XML, JSON, and ZIP-packaged definitions and fingerprints the original file before publication.
 It validates format, primary-definition identity, and source consistency without local payload-size or package-entry ceilings.
 Managed artifact publication instead resolves the selected workspace artifact and its provenance.
+Setup uses metadata selection and cheap native file checks; actions own full payload validation for planning.
+Fresh prewrite integrity checks remain in place.
+The provider's snapshot fingerprint still binds the bytes submitted to the planned file.
 
 The composition root can hand workbook, datasource, and flow transfers to a detached instance of the same binary.
 [`publication_worker.go`](../../internal/app/publication_worker.go), [`publication_status.go`](../../internal/app/publication_status.go), and [`operationrun`](../../internal/operationrun) own durable handoff and observation.
@@ -166,6 +175,9 @@ These readers do not silently substitute a live answer.
 Unsupported cached filters fail with a corrective command.
 [`Store.ReadResources`](../../internal/cache/resources.go) uses a read transaction, exact selectors, stable ordering, and generation/query-bound continuation.
 Changed snapshots invalidate continuation rather than combine observations from different generations.
+Cached search opens one target-bound resource read session for its invocation.
+That session validates the database once and reuses one consistent read transaction and scope metadata across source pages.
+Later invocations validate their continuation against current generation and observation evidence.
 `UpsertResources` marks touched complete inventory snapshots incomplete because a detail observation cannot preserve their original membership claim.
 The prior continuation then fails; the confirmed detail remains readable with partial inventory coverage.
 
@@ -251,6 +263,8 @@ A preview or discovery result does not authorize a write.
 
 Batch preparation resolves Pulse definition destinations from exact definition metadata and the existing artifact preview.
 Execution and explicit `--preview` requests acquire and validate the complete metric bundle, with fresh definition metadata.
+Each nonempty metric inventory page uses one exact-ID batch detail read.
+Pull validates complete membership, unique identities, definition ownership, inventory order, and the 32 MiB portable bundle bound.
 
 [`definition.Create`](../../actions/pulse/definition/create.go) resolves exact live field IDs and checks both names and semantically equivalent existing definitions.
 Equivalent definitions depend on datasource, measure, aggregation, time dimension, running total, temporality, and filters.

@@ -89,7 +89,8 @@ func (m *Manager) PreviewRegister(ctx context.Context, name, root string) (Recor
 	return Record{Name: name, ID: manifest.Workspace.ID, Root: resolved, Available: true, ManifestValid: true}, nil
 }
 
-func (m *Manager) PreviewClone(ctx context.Context, source, name, root string) (Record, error) {
+func (m *Manager) PreviewClone(ctx context.Context, request CloneRequest) (Record, error) {
+	source, name, root := request.Source, request.Name, request.Root
 	src, err := m.previewResolve(ctx, source)
 	if err != nil {
 		return Record{}, err

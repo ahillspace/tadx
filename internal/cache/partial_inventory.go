@@ -76,24 +76,15 @@ func PartialInventoryCursor(id string, query ResourceQuery) string {
 	return partialInventoryCursorPrefix + encodeCursor(id, resourceQueryFingerprint(query), query.Offset)
 }
 
-func (s *Store) readPartialInventory(ctx context.Context, query ResourceQuery) (ResourceResult, error) {
+func (s *ResourceReadSession) readPartialInventory(ctx context.Context, query ResourceQuery) (ResourceResult, error) {
 	id, fingerprint, offset, err := decodeCursor(strings.TrimPrefix(query.Cursor, partialInventoryCursorPrefix))
 	if err != nil || offset < 0 || query.Offset != 0 || fingerprint != resourceQueryFingerprint(query) || query.LUID != "" || query.Name != "" || query.ProjectPath != "" || query.ProjectLUID != "" || query.ProjectName != "" {
 		return ResourceResult{}, invalidCursorError{}
 	}
-	db, err := s.open(ctx)
-	if err != nil {
-		return ResourceResult{}, err
-	}
-	defer db.Close()
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return ResourceResult{}, err
-	}
-	defer tx.Rollback()
+	tx := s.tx
 	var observed string
 	result := ResourceResult{Coverage: "partial"}
-	err = tx.QueryRowContext(ctx, `SELECT observed_at,record_count,warning FROM partial_inventories WHERE id=? AND environment=? AND site=? AND kind=? AND expires_at>?`, id, query.Environment, query.Site, query.Kind, s.now().UTC().Format(generationTimeLayout)).Scan(&observed, &result.Total, &result.InventoryWarning)
+	err = tx.QueryRowContext(ctx, `SELECT observed_at,record_count,warning FROM partial_inventories WHERE id=? AND environment=? AND site=? AND kind=? AND expires_at>?`, id, query.Environment, query.Site, query.Kind, s.store.now().UTC().Format(generationTimeLayout)).Scan(&observed, &result.Total, &result.InventoryWarning)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ResourceResult{}, invalidCursorError{}
 	}
@@ -107,7 +98,7 @@ func (s *Store) readPartialInventory(ctx context.Context, query ResourceQuery) (
 	if err != nil {
 		return ResourceResult{}, err
 	}
-	result.Stale, _ = staleness(s.now, result.NewestObserved, id)
+	result.Stale, _ = staleness(s.store.now, result.NewestObserved, id)
 	rows, err := tx.QueryContext(ctx, `SELECT entry FROM partial_inventory_rows WHERE snapshot_id=? AND ordinal>=? ORDER BY ordinal LIMIT ?`, id, offset, query.Limit)
 	if err != nil {
 		return ResourceResult{}, err
@@ -134,7 +125,7 @@ func (s *Store) readPartialInventory(ctx context.Context, query ResourceQuery) (
 		query.Offset = offset + len(result.Entries)
 		result.NextCursor = PartialInventoryCursor(id, query)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return ResourceResult{}, err
 	}
 	return result, nil

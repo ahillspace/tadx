@@ -37,6 +37,7 @@ func Update(ctx context.Context, resolver UpdateResolver, updater Updater, in Up
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	current, err := resolver.ResolveDatasource(ctx, identity.Selector{LUID: identity.LUID(target.LUID)})
 	if err != nil {
 		return UpdateOutput{}, updateOperationError("datasource.update.resolve", in, target.LUID, "Datasource revalidation failed.", "Review a new preview before updating.", err)
@@ -54,8 +55,11 @@ func Update(ctx context.Context, resolver UpdateResolver, updater Updater, in Up
 		return out, nil
 	}
 	result, err := updater.UpdateDatasource(ctx, request)
+	if result != (UpdateResult{}) {
+		out.Result = &result
+	}
 	if err != nil {
-		return UpdateOutput{}, updateOperationError("datasource.update.failed", in, current.LUID, "Datasource update failed.", "Inspect the exact datasource before retrying: "+commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", current.LUID), err)
+		return out, errs.MutationFailure(errs.Error{ID: "datasource.update.failed", Kind: errs.KindOperation, Operation: "datasource.update", Resource: current.LUID, Environment: in.Environment, Site: in.Site, Summary: "Datasource update failed.", Cause: err, CorrectiveAction: "Inspect the exact datasource before attempting another update: " + commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", current.LUID)}, result.Status)
 	}
 	out.Result = &result
 	out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", current.LUID)}

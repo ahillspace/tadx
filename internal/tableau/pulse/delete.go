@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/tableau"
 )
 
 // DeleteResult preserves the exact identity and upstream response status.
@@ -30,7 +32,7 @@ func (c *Client) deleteExact(ctx context.Context, kind, luid string) (DeleteResu
 	if strings.TrimSpace(luid) == "" {
 		return DeleteResult{}, errors.New("Pulse " + kind + " LUID is required")
 	}
-	response, err := c.do(ctx, http.MethodDelete, pulsePath+"/"+kind+"s/"+url.PathEscape(luid), nil, nil, "", "", "pulse."+kind+".delete")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodDelete, Path: pulsePath + "/" + kind + "s/" + url.PathEscape(luid), Operation: "pulse." + kind + ".delete", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return DeleteResult{}, err
 	}

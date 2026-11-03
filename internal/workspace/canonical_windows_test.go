@@ -51,13 +51,13 @@ func TestWindowsWorkspaceLifecycleAndCloneSupportExtendedLengthPaths(t *testing.
 		t.Fatal(err)
 	}
 	nested := filepath.Join(root, "artifacts", "nested")
-	if _, err := manager.PreviewClone(t.Context(), "source", "nested", nested); err == nil || !strings.Contains(err.Error(), "inside the source") {
+	if _, err := manager.PreviewClone(t.Context(), CloneRequest{Source: "source", Name: "nested", Root: nested, Reconcile: fixtureInternalReconcile}); err == nil || !strings.Contains(err.Error(), "inside the source") {
 		t.Fatalf("long-path nested clone preview: %v", err)
 	}
-	if _, err := manager.Clone(t.Context(), "source", "nested", nested); err == nil || !strings.Contains(err.Error(), "inside the source") {
+	if _, err := manager.Clone(t.Context(), CloneRequest{Source: "source", Name: "nested", Root: nested, Reconcile: fixtureInternalReconcile}); err == nil || !strings.Contains(err.Error(), "inside the source") {
 		t.Fatalf("long-path nested clone execution: %v", err)
 	}
-	cloned, err := manager.Clone(t.Context(), "source", "copy", filepath.Join(parent, "copy"))
+	cloned, err := manager.Clone(t.Context(), CloneRequest{Source: "source", Name: "copy", Root: filepath.Join(parent, "copy"), Reconcile: fixtureInternalReconcile})
 	if err != nil {
 		t.Fatalf("long-path sibling clone: %v", err)
 	}

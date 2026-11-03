@@ -66,6 +66,17 @@ func verifyTagAcknowledgment(requested, acknowledged []string) error {
 	return nil
 }
 
+func tagAdditionReceipt(requested, acknowledged []string) (confirmed, unconfirmed []string) {
+	for _, tag := range requested {
+		if slices.Contains(acknowledged, tag) {
+			confirmed = append(confirmed, tag)
+		} else {
+			unconfirmed = append(unconfirmed, tag)
+		}
+	}
+	return confirmed, unconfirmed
+}
+
 func propertyVerification(property string) error {
 	return &errs.Error{Kind: errs.KindOperation, Summary: "Property response did not confirm requested " + property + ".", Retryable: errs.Bool(false), Phase: errs.PhaseVerification}
 }

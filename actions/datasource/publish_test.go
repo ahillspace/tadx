@@ -77,6 +77,8 @@ func (r *publishPublishResolver) FindDatasources(context.Context, string, string
 
 type publishPreparedPublish struct{ committed bool }
 
+func (*publishPreparedPublish) Close() error { return nil }
+
 func (p *publishPreparedPublish) Commit(context.Context) (datasourceops.PublishResult, error) {
 	p.committed = true
 	return datasourceops.PublishResult{Status: "succeeded", DatasourceLUID: "ds-new", DatasourceName: "Sales", ProjectLUID: "project-1"}, nil
@@ -149,7 +151,7 @@ func TestPublishPublishRevalidatesThenForwardsExactParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Result == nil || artifacts.calls != 2 || resolver.resolveCalls != 2 || resolver.findCalls != 2 || publisher.calls != 1 || !publisher.prepared.committed {
+	if output.Result == nil || artifacts.calls != 2 || resolver.resolveCalls != 3 || resolver.findCalls != 3 || publisher.calls != 1 || !publisher.prepared.committed {
 		t.Fatalf("output = %#v, artifacts = %#v, resolver = %#v, publisher = %#v", output, artifacts, resolver, publisher)
 	}
 	if publisher.request.Mode != datasourceops.ModeCreate || !reflect.DeepEqual(publisher.request.ParentDataSourceURLs, []string{"parent-a", "parent-b"}) {
@@ -205,6 +207,8 @@ type publishOutcomePrepared struct {
 func (p publishOutcomePrepared) Commit(context.Context) (datasourceops.PublishResult, error) {
 	return p.result, p.err
 }
+
+func (publishOutcomePrepared) Close() error { return nil }
 
 func TestPublishPublishRequiresExplicitModeAndRejectsCollision(t *testing.T) {
 	artifact := publishComposedArtifact()

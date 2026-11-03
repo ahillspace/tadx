@@ -516,18 +516,36 @@ func (r *pulseDefinitionPullReader) GetDefinition(ctx context.Context, luid stri
 		if len(page.Metrics) > 100 {
 			return result, errors.New("Pulse metric page exceeded its requested bound")
 		}
-		for _, summary := range page.Metrics {
+		ids := make([]string, len(page.Metrics))
+		requested := make(map[string]bool, len(page.Metrics))
+		for i, summary := range page.Metrics {
 			if summary.LUID == "" || seenIDs[summary.LUID] || summary.DefinitionLUID != luid {
 				return result, errors.New("Pulse metric inventory contains a duplicate or mismatched identity")
 			}
 			seenIDs[summary.LUID] = true
-			metric, err := r.client.GetMetric(ctx, summary.LUID)
+			ids[i], requested[summary.LUID] = summary.LUID, true
+		}
+		byID := make(map[string]tableaupulse.Metric, len(ids))
+		if len(ids) > 0 {
+			metrics, err := r.client.BatchGetMetrics(ctx, ids)
 			if err != nil {
 				return result, err
 			}
-			if metric.DefinitionLUID != luid {
-				return result, errors.New("Pulse metric changed definition while pulling")
+			if len(metrics) != len(ids) {
+				return result, errors.New("Pulse metric detail batch did not return the complete requested inventory")
 			}
+			for _, metric := range metrics {
+				if !requested[metric.LUID] || byID[metric.LUID].LUID != "" {
+					return result, errors.New("Pulse metric detail batch contains an unexpected or duplicate identity")
+				}
+				if metric.DefinitionLUID != luid {
+					return result, errors.New("Pulse metric changed definition while pulling")
+				}
+				byID[metric.LUID] = metric
+			}
+		}
+		for _, summary := range page.Metrics {
+			metric := byID[summary.LUID]
 			specification, err := json.Marshal(metric.Specification)
 			if err != nil {
 				return result, err

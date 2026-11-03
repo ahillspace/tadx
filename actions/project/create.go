@@ -91,11 +91,20 @@ func (a *CreateAction) Execute(ctx context.Context, input CreateInput, preview b
 		return CreateOutput{}, err
 	}
 	result, err := a.creator.CreateProject(ctx, CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: currentParentLUID, ContentPermissions: input.ContentPermissions})
-	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the remote project create outcome before retrying.")
-		return CreateOutput{}, &errs.Error{ID: "project.create.failed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "Project create failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
-	}
 	output.Plan.Parent = currentParent
+	if err != nil {
+		correctiveAction := "Inspect the remote project create outcome and Tableau request before considering another create."
+		if result.Status != "" || result.Project.LUID != "" || result.TableauRequestID != "" {
+			output.Result = &result
+		}
+		if result.Project.LUID != "" {
+			output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", result.Project.LUID)}
+			correctiveAction = "Inspect the acknowledged project before repairing its settings: " + output.Help[0]
+		} else {
+			output.Help = nil
+		}
+		return output, errs.MutationFailure(errs.Error{ID: "project.create.failed", Kind: errs.KindOperation, Operation: "project.create", Resource: result.Project.LUID, Environment: input.Environment, Site: input.Site, Summary: "Project create failed.", Cause: err, CorrectiveAction: correctiveAction, TableauRequestID: result.TableauRequestID}, result.Status)
+	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", result.Project.LUID)}
 	return output, nil

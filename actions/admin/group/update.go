@@ -63,6 +63,8 @@ type UpdateResult struct {
 	Status                   string          `json:"status"`
 	GroupLUID                string          `json:"group_luid"`
 	Group                    *ConfirmedGroup `json:"group,omitempty"`
+	MismatchedSettings       []string        `json:"mismatched_settings,omitempty"`
+	UnverifiedSettings       []string        `json:"unverified_settings,omitempty"`
 	AddedUserLUIDs           []string        `json:"added_user_luids,omitempty"`
 	RemovedUserLUIDs         []string        `json:"removed_user_luids,omitempty"`
 	Added                    int             `json:"added"`
@@ -110,6 +112,8 @@ type UpdateCompactMutationResult struct {
 	Added                   int             `json:"added"`
 	Removed                 int             `json:"removed"`
 	Group                   *ConfirmedGroup `json:"group,omitempty"`
+	MismatchedSettings      []string        `json:"mismatched_settings,omitempty"`
+	UnverifiedSettings      []string        `json:"unverified_settings,omitempty"`
 	AddedUserLUIDs          []string        `json:"added_user_luids,omitempty"`
 	RemovedUserLUIDs        []string        `json:"removed_user_luids,omitempty"`
 	AddedUserLUIDsOmitted   int             `json:"added_user_luids_omitted,omitempty"`
@@ -125,6 +129,8 @@ func (o UpdateOutput) CompactOutput() any {
 	if o.Result != nil {
 		result = &UpdateCompactMutationResult{Status: o.Result.Status, GroupLUID: o.Result.GroupLUID, Added: o.Result.Added, Removed: o.Result.Removed}
 		result.Group = o.Result.Group
+		result.MismatchedSettings = o.Result.MismatchedSettings
+		result.UnverifiedSettings = o.Result.UnverifiedSettings
 		result.AddedUserLUIDs, result.AddedUserLUIDsOmitted = boundedMemberIDs(o.Result.AddedUserLUIDs)
 		result.RemovedUserLUIDs, result.RemovedUserLUIDsOmitted = boundedMemberIDs(o.Result.RemovedUserLUIDs)
 	}
@@ -185,6 +191,7 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	current, err := resolver.ResolveGroup(ctx, Selector{LUID: in.GroupLUID}, in.MembershipSet)
 	if err != nil {
 		return UpdateOutput{}, err
@@ -199,16 +206,27 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 	}
 	if len(changes) > 0 {
 		updated, err := updater.UpdateGroup(ctx, group.LUID, UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled})
-		if err != nil {
-			if updated.MutationStatus == "unknown" {
-				return UpdateOutput{}, updateOutcomeUnknown(in, group.LUID, updated.RequestID, err)
-			}
-			return UpdateOutput{}, err
-		}
 		if updated.RequestID != "" {
 			result.TableauRequestIDs = append(result.TableauRequestIDs, updated.RequestID)
 		}
-		result.Group = &ConfirmedGroup{LUID: updated.LUID, Name: updated.Name, Domain: updated.Domain, MinimumSiteRole: updated.MinimumSiteRole, ExternalUserEnabled: updated.ExternalUserEnabled}
+		if updated.LUID != "" {
+			result.Group = &ConfirmedGroup{LUID: updated.LUID, Name: updated.Name, Domain: updated.Domain, MinimumSiteRole: updated.MinimumSiteRole, ExternalUserEnabled: updated.ExternalUserEnabled}
+		}
+		if err != nil {
+			failure := errs.MutationFailure(errs.Error{ID: "admin.group.update.failed", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: group.LUID, Environment: in.Environment, Site: in.Site, Summary: "Group metadata update failed.", Cause: err, CorrectiveAction: "Inspect the exact group and Tableau request before attempting another update: " + commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", group.LUID), TableauRequestID: updated.RequestID}, updated.MutationStatus)
+			result.Status = "failed"
+			if failure.Outcome == errs.OutcomeUnknown {
+				failure.ID = "admin.group.update.outcome_unknown"
+				result.Status = "unknown"
+			}
+			return out, failure
+		}
+		result.MismatchedSettings, result.UnverifiedSettings = verifyGroupChanges(group.LUID, changes, updated)
+		if len(result.MismatchedSettings)+len(result.UnverifiedSettings) > 0 {
+			result.Status = "partial"
+			out.Help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", group.LUID, "--members")}
+			return out, &errs.Error{ID: "admin.group.update.verification", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: group.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group response did not confirm the requested metadata changes.", Retryable: errs.Bool(false), CorrectiveAction: "Inspect the observed group before reviewing another update: " + out.Help[0], TableauRequestID: updated.RequestID, Failed: "group.metadata.update", Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown}
+		}
 	}
 	completed := make([]string, 0, 1+result.Added+result.Removed)
 	if len(changes) > 0 {
@@ -247,11 +265,36 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 	return out, nil
 }
 
+func verifyGroupChanges(luid string, changes []UpdateChange, observed Record) (mismatched, unverified []string) {
+	if observed.LUID != luid {
+		mismatched = append(mismatched, "luid")
+	}
+	for _, change := range changes {
+		value, present := "", true
+		switch change.Field {
+		case "name":
+			value, present = observed.Name, observed.Name != ""
+		case "minimum_site_role":
+			value, present = observed.MinimumSiteRole, observed.MinimumSiteRole != ""
+		case "external_user_enabled":
+			present = observed.ExternalUserEnabled != nil
+			if present && *observed.ExternalUserEnabled {
+				value = "true"
+			} else {
+				value = "false"
+			}
+		}
+		if !present {
+			unverified = append(unverified, change.Field)
+		} else if value != change.After {
+			mismatched = append(mismatched, change.Field)
+		}
+	}
+	return mismatched, unverified
+}
+
 func updateUsage(field, message string) error {
 	return &errs.Error{ID: "admin.group.update.usage", Kind: errs.KindUsage, Operation: "admin.group.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the group update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
-}
-func updateOutcomeUnknown(in UpdateInput, luid, requestID string, cause error) error {
-	return &errs.Error{ID: "admin.group.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group update outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", luid), TableauRequestID: requestID}
 }
 func partialError(input UpdateInput, groupLUID string, completed []string, failed string, cause error) error {
 	return &errs.Error{ID: "admin.group.update.partial", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: groupLUID, Environment: input.Environment, Site: input.Site, Summary: "Group update stopped after a partial remote mutation.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Re-read the exact group membership before reviewing a new update plan: " + commandhint.Environment(input.Environment, "admin", "group", "inspect", "--id", groupLUID, "--members"), Completed: append([]string(nil), completed...), Failed: failed, TableauRequestID: errs.TableauRequestID(cause)}

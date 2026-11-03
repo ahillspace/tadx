@@ -87,6 +87,7 @@ type PublishResult struct {
 // It holds the publish snapshot until Commit sends and releases it.
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
+	Close() error
 }
 
 // MutationResult is one exact move or delete result.

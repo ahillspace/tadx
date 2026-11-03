@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/errs"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
@@ -38,6 +41,89 @@ func RecoverWorkspace(ctx context.Context, mutation *workspacecore.Mutation) err
 		return err
 	}
 	return recoverBundleTransaction(mutation.Root(), defaultDirectoryOperations())
+}
+
+// PrepareWorkspaceSnapshot reconciles supported replacement protocols and
+// rejects unresolved recovery evidence before a source tree can be copied.
+// It preserves evidence for resource types without a standalone recovery owner.
+func PrepareWorkspaceSnapshot(ctx context.Context, mutation *workspacecore.Mutation) error {
+	if err := RecoverWorkspace(ctx, mutation); err != nil {
+		return err
+	}
+	operations := defaultDirectoryOperations()
+	artifacts := filepath.Join(mutation.Root(), "artifacts")
+	if info, err := os.Lstat(artifacts); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	} else if !info.IsDir() || info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+		return errors.New("workspace artifacts root must be a real directory")
+	}
+	for _, resource := range []struct {
+		kind    string
+		recover func(string, directoryOperations) ([]string, error)
+	}{{"workbook", recoverWorkbookRoot}, {"datasource", recoverDatasourceRoot}} {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		root := filepath.Join(artifacts, resource.kind)
+		info, err := os.Lstat(root)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return fmt.Errorf("%s artifact root must be a real directory", resource.kind)
+		}
+		if _, err := resource.recover(root, operations); err != nil {
+			return err
+		}
+	}
+	remaining := 100000
+	directories := []string{artifacts}
+	for index := 0; index < len(directories); index++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		directory := directories[index]
+		info, err := os.Lstat(directory)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return errors.New("workspace artifact snapshot root must be a real directory")
+		}
+		file, err := os.Open(directory)
+		if err != nil {
+			return err
+		}
+		entries, readErr := file.ReadDir(remaining + 1)
+		closeErr := file.Close()
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(entries) > remaining {
+			return errors.New("workspace artifact snapshot exceeds its recovery entry limit")
+		}
+		remaining -= len(entries)
+		slices.SortFunc(entries, func(left, right os.DirEntry) int { return strings.Compare(left.Name(), right.Name()) })
+		for _, entry := range entries {
+			name := entry.Name()
+			if strings.HasPrefix(name, backupPrefix) || strings.HasPrefix(name, stagePrefix) || strings.HasPrefix(name, datasourceBackupPrefix) || strings.HasPrefix(name, datasourceStagePrefix) || strings.HasPrefix(name, ".tadx-flow-stage-") || strings.HasPrefix(name, ".tadx-pulse-definition-stage-") || strings.HasPrefix(name, ".tadx-lineage-stage-") {
+				relative, _ := filepath.Rel(mutation.Root(), filepath.Join(directory, name))
+				return &errs.Error{Kind: errs.KindOperation, Summary: "Workspace snapshot has unresolved artifact recovery evidence: " + filepath.ToSlash(relative), Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Preserve the source workspace recovery entry and complete or repair the interrupted artifact replacement before cloning."}
+			}
+			if directory == artifacts && (slices.Contains(directManagedArtifactKinds[:], name) || name == "lineage") || filepath.Base(directory) == "lineage" && isLineageResourceKind(name) {
+				directories = append(directories, filepath.Join(directory, name))
+			}
+		}
+	}
+	return nil
 }
 
 func requireWorkspaceIdentity(root, expectedID string) error {

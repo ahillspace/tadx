@@ -45,6 +45,7 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInp
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	output.Help = nil
 	ctx = beginProjectResolution(ctx, resolver)
 	current, err := resolver.ResolveFlow(ctx, input.FlowSelector)
 	if err != nil {
@@ -64,9 +65,11 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, input MoveInp
 		return output, nil
 	}
 	result, err := mover.MoveFlow(ctx, flow.LUID, project.LUID)
+	if result != (MoveResult{}) {
+		output.Result = &result
+	}
 	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the upstream error before moving again.")
-		return MoveOutput{}, &errs.Error{ID: "flow.move.failed", Kind: errs.KindOperation, Operation: "flow.move", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow move failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return output, errs.MutationFailure(errs.Error{ID: "flow.move.failed", Kind: errs.KindOperation, Operation: "flow.move", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow move failed.", Cause: err, CorrectiveAction: "Inspect the exact flow before attempting another move: " + commandhint.Environment(input.Environment, "content", "flow", "inspect", "--id", flow.LUID)}, result.Status)
 	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(input.Environment, "content", "flow", "inspect", "--id", flow.LUID)}

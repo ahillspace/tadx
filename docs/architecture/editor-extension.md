@@ -86,6 +86,11 @@ Display warnings come from the four requested lists, including their `source.cac
 The cache model retains global coverage and warnings, including permission coverage, without presenting unrelated scopes as artifact inventory failures.
 Malformed required fields produce a contract error instead of an empty successful inventory.
 Environment and workspace discovery reject truncated lists; artifact lists retain their partial-coverage indicators.
+`Inventory` builds artifact rows, project paths, and selection indexes for each loaded inventory generation.
+Busy and selection changes reuse those projections.
+Artifact panels receive the selected artifact and related rows; bulk panels receive rows from their selected source.
+Operation panels receive operation state without inventory rows, and busy-only messages carry no inventory snapshot.
+Host validation continues to use the complete current inventory rather than trusting a panel's projection.
 
 The native site tree displays every configured environment as a collapsed root and loads that site's inventory when expanded.
 Projects retain their parent-child hierarchy, with short folder names and full-path tooltips.
