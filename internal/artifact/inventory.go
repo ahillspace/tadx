@@ -200,9 +200,44 @@ func inventoryWithScanLimit(ctx context.Context, workspace string, options Inven
 	return page, nil
 }
 
-// Resolve returns one exact valid managed artifact.
+// Resolve returns one exact managed artifact with current payload and tree
+// fingerprints suitable for dirty-state checks and mutation ownership.
 func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, err error) {
 	defer func() { err = withWorkspaceRelativePaths(err, workspace) }()
+	item, err := selectArtifactMetadata(ctx, workspace, selector)
+	if err != nil {
+		return Item{}, err
+	}
+	root, err := filepath.Abs(workspace)
+	if err != nil {
+		return Item{}, err
+	}
+	return inspectArtifactState(ctx, root, item, true)
+}
+
+// Select resolves exact metadata and validates containment without reading
+// payload bytes. Its result does not establish payload validity, dirtiness, or
+// a mutation snapshot; those checks belong to the selected operation.
+func Select(ctx context.Context, workspace string, selector Selector) (_ Item, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, workspace) }()
+	item, err := selectArtifactMetadata(ctx, workspace, selector)
+	if err != nil {
+		return Item{}, err
+	}
+	root, err := filepath.Abs(workspace)
+	if err != nil {
+		return Item{}, err
+	}
+	if err := walkArtifactTree(ctx, filepath.Join(root, filepath.FromSlash(item.Path)), nil); err != nil {
+		return Item{}, err
+	}
+	if _, err := canonicalPayloadInfo(filepath.Join(root, filepath.FromSlash(item.CanonicalPath))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Item{}, err
+	}
+	return item, nil
+}
+
+func selectArtifactMetadata(ctx context.Context, workspace string, selector Selector) (Item, error) {
 	root, err := validateWorkspaceRoot(workspace)
 	if err != nil {
 		return Item{}, err
@@ -254,11 +289,7 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, 
 		}
 		return Item{}, &AmbiguousSelectorError{Kind: selector.Kind, Name: selector.Name, LUID: selector.LUID, Candidates: candidates, Truncated: len(matches) - candidateCount, FullStatusCommand: "tadx workspace status --full"}
 	}
-	item, err := inspectArtifactState(ctx, root, matches[0], true)
-	if err != nil {
-		return Item{}, err
-	}
-	return requireArtifactIdentity(item, selector.Expected)
+	return requireArtifactIdentity(matches[0], selector.Expected)
 }
 
 func requireArtifactIdentity(current Item, expected *Item) (Item, error) {
@@ -400,7 +431,8 @@ func resolveRelativePath(ctx context.Context, workspace string, selector Selecto
 	if selector.Kind != "" && selector.Kind != kind {
 		return Item{}, errors.New("artifact path kind does not match selector kind")
 	}
-	item, err := inspectArtifact(ctx, workspace, kind, filepath.Join(workspace, filepath.FromSlash(clean)))
+	directory := filepath.Join(workspace, filepath.FromSlash(clean))
+	item, err := readArtifactMetadata(ctx, workspace, kind, directory)
 	if err != nil {
 		return Item{}, err
 	}

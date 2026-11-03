@@ -20,6 +20,8 @@ func (publishTypedErrorPrepared) Commit(context.Context) (flowpublish.PublishRes
 	}
 }
 
+func (publishTypedErrorPrepared) Close() error { return nil }
+
 type publishTypedErrorPublisher struct{}
 
 func (publishTypedErrorPublisher) Prepare(context.Context, flowpublish.PublishRequest) (flowpublish.PreparedPublish, error) {
@@ -60,6 +62,8 @@ type deniedPrepared struct{}
 func (deniedPrepared) Commit(context.Context) (flowpublish.PublishResult, error) {
 	return flowpublish.PublishResult{}, admissionDenied{}
 }
+
+func (deniedPrepared) Close() error { return nil }
 
 type deniedPublisher struct{}
 

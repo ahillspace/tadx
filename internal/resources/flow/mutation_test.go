@@ -14,6 +14,8 @@ func (preparedPublish) Commit(context.Context) (tableauflow.PublishResult, error
 	return tableauflow.PublishResult{Status: "succeeded", FlowLUID: "f-new"}, nil
 }
 
+func (preparedPublish) Close() error { return nil }
+
 type mutationClient struct{ prepared, moved, deleted int }
 
 func (c *mutationClient) Prepare(context.Context, tableauflow.PublishRequest) (tableauflow.PreparedPublish, error) {

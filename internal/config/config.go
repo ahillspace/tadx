@@ -518,17 +518,21 @@ func saveBytes(path string, data []byte) error {
 // replaceFile is replaceable so tests can fail the replacement after it installs.
 var replaceFile = fsreplace.Replace
 
-// InstalledError reports that an update installed the new configuration but
-// could neither make it durable nor reinstall the prior configuration. The
-// external commit then runs so external state matches the installed
-// configuration; ExternalErr records its failure, if any.
+// InstalledError reports that the new configuration remains in effect after
+// restoration of its predecessor failed. DurabilityConfirmed distinguishes a
+// durable save followed by external failure from an initial durability failure.
+// ExternalErr records whether the matching external commit failed.
 type InstalledError struct {
-	Err         error
-	ExternalErr error
+	Err                 error
+	ExternalErr         error
+	DurabilityConfirmed bool
 }
 
 func (e *InstalledError) Error() string {
 	message := "the updated configuration took effect but may not survive power loss, and the prior configuration could not be reinstalled: " + e.Err.Error()
+	if e.DurabilityConfirmed {
+		message = "the updated configuration remains in effect because the prior configuration could not be reinstalled: " + e.Err.Error()
+	}
 	if e.ExternalErr != nil {
 		message += "; the external commit also failed: " + e.ExternalErr.Error()
 	}
@@ -713,7 +717,14 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		if err := postSave(); err != nil {
 			restoreErr := restore()
 			if restoreErr != nil {
-				return Config{}, errors.Join(err, fmt.Errorf("restore configuration after external commit failure: %w", restoreErr))
+				restoreErr = fmt.Errorf("restore configuration after external commit failure: %w", restoreErr)
+				if !isDurabilityError(restoreErr) {
+					committed = true
+					return next, &InstalledError{Err: restoreErr, ExternalErr: err, DurabilityConfirmed: true}
+				}
+				// A durability error means restoration replaced the file. The
+				// previous reference is visible again, although its sync failed.
+				return current, errors.Join(err, restoreErr)
 			}
 			return current, err
 		}

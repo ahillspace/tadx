@@ -64,23 +64,20 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 	if artifact.Fingerprint != plan.ArtifactFingerprint || artifact.CompositionStatus != plan.CompositionStatus || !slices.Equal(artifact.ParentDataSourceURLs, plan.ParentDataSourceURLs) {
 		return PublishOutput{}, publishOperationError("datasource.publish.artifact_changed", "The datasource artifact changed during revalidation.", input, errors.New("datasource artifact or composition references changed during revalidation"))
 	}
-	project, err := a.resolveProject(ctx, input, artifact)
-	if err != nil {
-		return PublishOutput{}, err
-	}
-	if project.LUID != plan.Target.ProjectLUID || project.Path != plan.Target.ProjectPath {
-		return PublishOutput{}, publishOperationError("datasource.publish.target_changed", "The datasource publish destination changed during revalidation.", input, errors.New("datasource publish destination changed during revalidation"))
-	}
-	existing, err := publishCollision(ctx, a.resolver, plan.DatasourceName, project.LUID, input, artifact)
-	if err != nil {
-		return PublishOutput{}, err
-	}
-	if existing != plan.Target.ExistingLUID {
-		return PublishOutput{}, publishOperationError("datasource.publish.collision_changed", "The datasource publish collision changed during revalidation.", input, errors.New("datasource publish collision changed during revalidation"))
+	if err := a.verifyDestination(ctx, input, artifact, plan); err != nil {
+		return out, err
 	}
 	prepared, err := a.publisher.Prepare(ctx, plan.request)
 	if err != nil {
-		return PublishOutput{}, publishOperationError("datasource.publish.prepare", "Datasource publish preparation failed.", input, err)
+		return out, publishOperationError("datasource.publish.prepare", "Datasource publish preparation failed.", input, err)
+	}
+	if prepared == nil {
+		return out, &errs.Error{ID: "datasource.publish.prepare", Kind: errs.KindRuntime, Operation: "datasource.publish", Summary: "Datasource publish preparation returned no commit operation.", Retryable: new(false), Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+	}
+	defer func() { _ = prepared.Close() }()
+	ctx = beginProjectResolution(ctx, a.resolver)
+	if err := a.verifyDestination(ctx, input, artifact, plan); err != nil {
+		return out, err
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
@@ -106,10 +103,28 @@ func (a *Publisher) Execute(ctx context.Context, input PublishInput, preview boo
 		if result != (PublishResult{}) {
 			out.Result = &result
 		}
-		return out, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: new(false), CorrectiveAction: correctiveAction, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+		return out, errs.MutationFailure(errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, CorrectiveAction: correctiveAction, TableauRequestID: requestID}, result.Status)
 	}
 	out.Result = &result
 	return a.Complete(out)
+}
+
+func (a *Publisher) verifyDestination(ctx context.Context, input PublishInput, artifact PublishArtifact, plan PublishPlan) error {
+	project, err := a.resolveProject(ctx, input, artifact)
+	if err == nil && (project.LUID != plan.Target.ProjectLUID || project.Path != plan.Target.ProjectPath) {
+		err = publishOperationError("datasource.publish.target_changed", "The datasource publish destination changed during revalidation.", input, errors.New("datasource publish destination changed during revalidation"))
+	}
+	if err == nil {
+		var existing string
+		existing, err = publishCollision(ctx, a.resolver, plan.DatasourceName, project.LUID, input, artifact)
+		if err == nil && existing != plan.Target.ExistingLUID {
+			err = publishOperationError("datasource.publish.collision_changed", "The datasource publish collision changed during revalidation.", input, errors.New("datasource publish collision changed during revalidation"))
+		}
+	}
+	if failure, ok := errors.AsType[*errs.Error](err); ok {
+		return errs.MutationFailure(*failure, "not_attempted")
+	}
+	return err
 }
 
 // Complete confirms the publish destination without ever repeating its write.
@@ -124,7 +139,7 @@ func (a *Publisher) Complete(out PublishOutput) (PublishOutput, error) {
 		return out, nil
 	}
 	input := PublishInput{Environment: plan.Target.Environment, Site: plan.Target.Site}
-	if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
+	if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID || ((plan.PublishMode == ModeAppend || plan.PublishMode == ModeReplace) && result.DatasourceLUID != plan.Target.ExistingLUID) {
 		result.Verification = "destination_mismatch"
 		return out, publishUnknownOutcomeError(plan, input, result, errors.New("datasource publish returned identity conflicting with the exact publish target"))
 	}

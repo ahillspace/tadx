@@ -46,6 +46,7 @@ Replacement properties do not distinguish updates to the same existing target.
 Duplicate membership pairs and overlapping permission capabilities fail before dispatch; distinct groups, principals, and capabilities remain independent.
 Rows share command-scoped services and authenticated sessions while retaining separate flag collections and output capture.
 Dispatch rechecks current mutation policy, and actions revalidate current resource state.
+Saved consent is reread for the invocation's selected canonical server and exact site without resolving aliases or defaults again.
 Independent rows run concurrently, and the batch reports results in selection order.
 
 ## Execution guards and wrapper order
@@ -109,6 +110,8 @@ They coordinate configuration persistence with external rollback or post-save wo
 `InstalledError` identifies a durability failure when the prior configuration could not be reinstalled and the new configuration remains active.
 It also reports whether the required external commit completed.
 Post-save failures use a separate restoration path; callers must preserve restoration failures instead of assuming that every error means rollback succeeded.
+If restoration fails before replacement, the installed-state error retains the new configuration and the external commit failure for exact credential cleanup.
+If restoration replaced the file but failed durability confirmation, the returned configuration describes the restored visible state.
 
 ## Credentials and cross-process sessions
 
@@ -291,6 +294,9 @@ The error can preserve confirmed completed items, a failed item, missing prerequ
 [`RenderError`](../../internal/output/output.go) retains partial operation output beside its structured error when the error carries `OperationOutput`.
 Consumers must inspect both the document and exit status.
 Warnings and confirmed partial results do not disappear because a later phase fails.
+Joined failures retain the primary error and expose independent failures in `secondary_errors`, including each failure's phase, outcome, and recovery guidance.
+Live rendering and saved full snapshots use the same error projection.
+Mutation boundaries retain available receipts and classify unknown outcomes independently from transport retryability.
 
 [`lastCapture.save`](../../internal/app/last_result.go) saves a bounded expanded snapshot beside configuration before final rendering.
 It also saves the capability prerequisites recorded during execution.

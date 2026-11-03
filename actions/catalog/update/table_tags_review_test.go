@@ -70,11 +70,17 @@ func TestTableIncompleteTagAcknowledgmentPreservesPartialResult(t *testing.T) {
 		in := tableValid()
 		in.AddTags = []string{"sales", "retail"}
 		out, err := NewTable(f, f).Execute(context.Background(), in, false)
+		completed := []string{"description"}
+		unconfirmed := []string{"sales", "retail"}
+		if len(ack) > 0 {
+			completed = append(completed, "add_tag:sales")
+			unconfirmed = []string{"retail"}
+		}
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeUnknown || structured.Resource != "item" || structured.Retryable == nil || *structured.Retryable {
 			t.Fatalf("incorrect failure evidence: %#v %v", structured, err)
 		}
-		if out.Result == nil || out.Result.Identity.LUID != "item" || out.Result.Status != "partial" || out.Result.Failed != "add_tags" || !slices.Equal(out.Result.Completed, []string{"description"}) || !slices.Equal(structured.Completed, out.Result.Completed) {
+		if out.Result == nil || out.Result.Identity.LUID != "item" || out.Result.Status != "partial" || out.Result.Failed != "add_tags" || !slices.Equal(out.Result.Completed, completed) || !slices.Equal(structured.Completed, out.Result.Completed) || !slices.Equal(out.Result.Tags, ack) || out.Result.TagsObserved || !slices.Equal(out.Result.AcknowledgedAdditions, ack) || !slices.Equal(out.Result.UnconfirmedAdditions, unconfirmed) {
 			t.Fatalf("partial success lost or unverified tags marked completed: %#v", out)
 		}
 		if f.writes != 2 {

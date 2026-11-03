@@ -81,7 +81,7 @@ func (a *workspaceRuntime) Clone(ctx context.Context, input workspaceaction.Clon
 	if input.Preview {
 		operation = a.manager().PreviewClone
 	}
-	item, err := operation(ctx, input.Source, input.Name, root)
+	item, err := operation(ctx, workspacecore.CloneRequest{Source: input.Source, Name: input.Name, Root: root, Reconcile: artifact.PrepareWorkspaceSnapshot})
 	return workspaceRegistration(item), err
 }
 

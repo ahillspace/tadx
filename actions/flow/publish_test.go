@@ -58,6 +58,8 @@ func (r *publishResolver) FindFlows(context.Context, string, string) ([]flowpubl
 
 type publishPrepared struct{ committed bool }
 
+func (*publishPrepared) Close() error { return nil }
+
 func (p *publishPrepared) Commit(context.Context) (flowpublish.PublishResult, error) {
 	p.committed = true
 	return flowpublish.PublishResult{Status: "succeeded", FlowLUID: "new-flow"}, nil
@@ -107,7 +109,7 @@ func TestPublishPublishRevalidatesThenPreparesAndCommits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Result == nil || p.calls != 1 || !p.prepared.committed || r.resolveCalls != 2 || r.findCalls != 2 {
+	if output.Result == nil || p.calls != 1 || !p.prepared.committed || r.resolveCalls != 3 || r.findCalls != 3 {
 		t.Fatalf("output=%#v resolver=%#v publisher=%#v", output, r, p)
 	}
 }

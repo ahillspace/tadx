@@ -294,7 +294,7 @@ func (m *Manager) Delete(ctx context.Context, request DeleteRequest) (Record, er
 		if err != nil || !samePath(root, expected.Root) {
 			return config.Config{}, nil, errors.New("workspace root changed before deletion")
 		}
-		if err := validateDeletionRoot(root, name, registration.ID); err != nil {
+		if err := validateDeletionRoot(root, registration.ID); err != nil {
 			return config.Config{}, nil, err
 		}
 		if err := mutation.Validate(); err != nil {
@@ -375,7 +375,7 @@ func recordFromRegistration(name string, registration config.WorkspaceRegistrati
 	}
 	manifest, err := ReadManifest(root)
 	record.Available = err == nil
-	record.ManifestValid = err == nil && manifest.Workspace.ID == registration.ID && strings.EqualFold(manifest.Workspace.Name, name)
+	record.ManifestValid = err == nil && manifest.Workspace.ID == registration.ID
 	return record
 }
 
@@ -431,7 +431,7 @@ func validateDefaultReferences(configuration config.Config, name string) error {
 	return nil
 }
 
-func validateDeletionRoot(root, name, id string) error {
+func validateDeletionRoot(root, id string) error {
 	info, err := os.Lstat(root)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("workspace deletion target must be an available real directory")
@@ -441,21 +441,34 @@ func validateDeletionRoot(root, name, id string) error {
 		return errors.New("workspace deletion target must not be a filesystem root")
 	}
 	manifest, err := ReadManifest(root)
-	if err != nil || manifest.Workspace.ID != id || !strings.EqualFold(manifest.Workspace.Name, name) {
+	if err != nil || manifest.Workspace.ID != id {
 		return errors.New("workspace registry and manifest identities do not match")
 	}
 	return nil
 }
 
+// CloneRequest identifies a source and destination and supplies the artifact
+// transaction owner that reconciles the source under snapshot ownership.
+type CloneRequest struct {
+	Source    string
+	Name      string
+	Root      string
+	Reconcile func(context.Context, *Mutation) error
+}
+
 // Clone copies one existing managed workspace to a new machine-local root under
 // a freshly minted identity. Only the artifacts tree is carried over; the clone
 // receives its own empty local state so nothing machine-specific leaks across.
-func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (Record, error) {
+func (m *Manager) Clone(ctx context.Context, request CloneRequest) (Record, error) {
+	source, newName, newRoot := request.Source, request.Name, request.Root
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
 	if m == nil || strings.TrimSpace(m.configPath) == "" {
 		return Record{}, errors.New("workspace manager is not configured")
+	}
+	if request.Reconcile == nil {
+		return Record{}, errors.New("workspace clone requires artifact transaction reconciliation")
 	}
 	if err := config.ValidateWorkspaceName(newName); err != nil {
 		return Record{}, fmt.Errorf("workspace name: %w", err)
@@ -464,16 +477,19 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 	if err != nil {
 		return Record{}, err
 	}
-	use, err := beginWorkspaceUse(ctx, sourceRecord.Root, false)
+	mutation, err := BeginMutation(ctx, sourceRecord.Root)
 	if err != nil {
 		return Record{}, err
 	}
-	defer use.release()
-	sourceRecord.Root = use.root
+	defer mutation.Release()
+	sourceRecord.Root = mutation.Root()
 	if manifest, err := ReadManifest(sourceRecord.Root); err != nil {
 		return Record{}, fmt.Errorf("source workspace %q manifest: %w", sourceRecord.Name, err)
 	} else if manifest.Workspace.ID != sourceRecord.ID {
 		return Record{}, errors.New("clone source workspace identity changed after selection")
+	}
+	if err := request.Reconcile(ctx, mutation); err != nil {
+		return Record{}, fmt.Errorf("reconcile clone source artifact transactions: %w", err)
 	}
 	resolvedRoot, err := CanonicalRoot(newRoot)
 	if err != nil {
@@ -652,7 +668,7 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	if err != nil {
 		return Record{Name: name, SelectionReason: reason}, recoveryError(fmt.Sprintf("workspace %q is unavailable or has no valid tadx.yaml", name), "Restore the registered workspace root and its original tadx.yaml. If the registration is obsolete, preserve any remaining files and remove the registration with: "+commandhint.Command("workspace", "unregister", name))
 	}
-	if manifest.Workspace.ID != registration.ID || !strings.EqualFold(manifest.Workspace.Name, name) {
+	if manifest.Workspace.ID != registration.ID {
 		return Record{Name: name, SelectionReason: reason}, fmt.Errorf("workspace %q registry and manifest identities do not match", name)
 	}
 	return Record{Name: name, ID: registration.ID, Root: reported, Default: strings.EqualFold(configuration.DefaultWorkspace, name), Available: true, ManifestValid: true, SelectionReason: reason}, nil
@@ -729,7 +745,7 @@ func (m *Manager) List(ctx context.Context, limit, offset int) (Page, error) {
 			_, _ = upgradeLegacyManifest(root, Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: registration.ID, Name: name}})
 			manifest, manifestErr := ReadManifest(root)
 			record.Available = manifestErr == nil
-			record.ManifestValid = manifestErr == nil && manifest.Workspace.ID == registration.ID && strings.EqualFold(manifest.Workspace.Name, name)
+			record.ManifestValid = manifestErr == nil && manifest.Workspace.ID == registration.ID
 		}
 		items = append(items, record)
 	}

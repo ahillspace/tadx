@@ -17,6 +17,35 @@ import (
 
 var nativePrimaryExtensions = map[string]string{"workbook": ".twb", "datasource": ".tds", "flow": ".tfl"}
 
+// ValidateNativePath checks the selected file's type and existence without
+// reading its bytes. ReadNative owns complete native validation and hashing.
+func ValidateNativePath(ctx context.Context, path, kind string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := nativeFileType(path, kind); err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return errors.New("native file could not be opened")
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 {
+		return errors.New("native file must be a nonempty regular file")
+	}
+	return nil
+}
+
+func nativeFileType(path, kind string) (bool, error) {
+	extension := strings.ToLower(filepath.Ext(path))
+	isHyper := kind == "datasource" && extension == ".hyper"
+	primary := nativePrimaryExtensions[kind]
+	if primary == "" || (!isHyper && extension != primary && extension != primary+"x") {
+		return false, fmt.Errorf("unsupported native %s file extension", kind)
+	}
+	return isHyper, nil
+}
+
 // Native is a read-only native payload, not a manufactured managed artifact.
 type Native struct {
 	Path, Filename, Name, Fingerprint string
@@ -34,11 +63,9 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	if err := ctx.Err(); err != nil {
 		return Native{}, err
 	}
-	extension := strings.ToLower(filepath.Ext(path))
-	isHyper := kind == "datasource" && extension == ".hyper"
-	primary := nativePrimaryExtensions[kind]
-	if primary == "" || (!isHyper && extension != primary && extension != primary+"x") {
-		return Native{}, fmt.Errorf("unsupported native %s file extension", kind)
+	isHyper, err := nativeFileType(path, kind)
+	if err != nil {
+		return Native{}, err
 	}
 	file, err := os.Open(path)
 	if err != nil {

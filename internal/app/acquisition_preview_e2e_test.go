@@ -111,8 +111,8 @@ func TestPulseAcquisitionPreviewChecksCompleteBundleWithoutWriting(t *testing.T)
 				return
 			}
 			_, _ = fmt.Fprint(w, `{"metrics":[{"id":"metric-1","definition_id":"definition-1","is_default":true}]}`)
-		case "/api/-/pulse/metrics/metric-1":
-			_, _ = fmt.Fprint(w, `{"id":"metric-1","definition_id":"definition-1","is_default":true,"specification":{"measurement_period":{"granularity":"GRANULARITY_BY_MONTH","range":"RANGE_CURRENT_PARTIAL"},"filters":[]}}`)
+		case "/api/-/pulse/metrics:batchGet":
+			_, _ = fmt.Fprint(w, `{"metrics":[{"id":"metric-1","definition_id":"definition-1","is_default":true,"specification":{"measurement_period":{"granularity":"GRANULARITY_BY_MONTH","range":"RANGE_CURRENT_PARTIAL"},"filters":[]}}]}`)
 		default:
 			unexpected = append(unexpected, r.Method+" "+r.URL.Path)
 			http.Error(w, "unexpected acquisition request", http.StatusBadRequest)

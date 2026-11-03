@@ -31,6 +31,7 @@ func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input Delet
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	output.Help = nil
 	current, err := resolver.ResolveDatasource(ctx, input.Selector)
 	if err != nil {
 		return DeleteOutput{}, deleteResolveError(input, "Datasource revalidation failed.", err)
@@ -39,9 +40,11 @@ func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input Delet
 		return DeleteOutput{}, &errs.Error{ID: "datasource.delete.target_changed", Kind: errs.KindOperation, Operation: "datasource.delete", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "The datasource delete target changed during revalidation.", Cause: errors.New("datasource delete target changed during revalidation"), Retryable: new(false), CorrectiveAction: "Review a new preview before deleting."}
 	}
 	result, err := deleter.DeleteDatasource(ctx, item.LUID)
+	if result != (DeleteResult{}) {
+		output.Result = &result
+	}
 	if err != nil {
-		retryable, action := errs.CompleteRetryAdvice(err, "Review the upstream dependency, permission, or missing-resource error before deleting again.")
-		return DeleteOutput{}, &errs.Error{ID: "datasource.delete.failed", Kind: errs.KindOperation, Operation: "datasource.delete", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "Datasource delete failed.", Cause: err, Retryable: retryable, CorrectiveAction: action, TableauRequestID: errs.TableauRequestID(err)}
+		return output, errs.MutationFailure(errs.Error{ID: "datasource.delete.failed", Kind: errs.KindOperation, Operation: "datasource.delete", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "Datasource delete failed.", Cause: err, CorrectiveAction: "Inspect the exact datasource and Tableau request before attempting another deletion: " + commandhint.Environment(input.Environment, "content", "datasource", "inspect", "--id", item.LUID)}, result.Status)
 	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(input.Environment, "content", "datasource", "list")}

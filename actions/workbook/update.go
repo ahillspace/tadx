@@ -38,6 +38,7 @@ func Update(ctx context.Context, resolver UpdateResolver, updater Updater, input
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	current, err := resolver.ResolveWorkbook(ctx, identity.Selector{LUID: identity.LUID(target.LUID)})
 	if err != nil {
 		return UpdateOutput{}, updateOperationError("workbook.update.resolve", input, target.LUID, "Workbook revalidation failed.", "Review a new preview before updating.", err)
@@ -55,10 +56,13 @@ func Update(ctx context.Context, resolver UpdateResolver, updater Updater, input
 		return out, nil
 	}
 	result, err := updater.UpdateWorkbook(ctx, request)
-	out.Result = &result
-	if err != nil {
-		return out, updateOperationError("workbook.update.failed", input, current.LUID, "Workbook update failed.", "Inspect the exact workbook before retrying: "+commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID), err)
+	if result != (UpdateResult{}) {
+		out.Result = &result
 	}
+	if err != nil {
+		return out, errs.MutationFailure(errs.Error{ID: "workbook.update.failed", Kind: errs.KindOperation, Operation: "workbook.update", Resource: current.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook update failed.", Cause: err, CorrectiveAction: "Inspect the exact workbook before attempting another update: " + commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID)}, result.Status)
+	}
+	out.Result = &result
 	out.Help = []string{commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID)}
 	return out, nil
 }

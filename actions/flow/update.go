@@ -32,6 +32,7 @@ func Update(ctx context.Context, resolver Resolver, updater Updater, in UpdateIn
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	current, err := resolver.ResolveFlow(ctx, identity.Selector{LUID: identity.LUID(target.LUID)})
 	if err != nil {
 		return UpdateOutput{}, updateOperationError("flow.update.resolve", in, target.LUID, "Flow revalidation failed.", "Review a new preview before updating.", err)
@@ -46,8 +47,11 @@ func Update(ctx context.Context, resolver Resolver, updater Updater, in UpdateIn
 		return out, nil
 	}
 	result, err := updater.UpdateFlow(ctx, request)
+	if result != (UpdateResult{}) {
+		out.Result = &result
+	}
 	if err != nil {
-		return UpdateOutput{}, updateOperationError("flow.update.failed", in, current.LUID, "Flow update failed.", "Inspect the exact flow before retrying: "+commandhint.Environment(in.Environment, "content", "flow", "inspect", "--id", current.LUID), err)
+		return out, errs.MutationFailure(errs.Error{ID: "flow.update.failed", Kind: errs.KindOperation, Operation: "flow.update", Resource: current.LUID, Environment: in.Environment, Site: in.Site, Summary: "Flow update failed.", Cause: err, CorrectiveAction: "Inspect the exact flow before attempting another update: " + commandhint.Environment(in.Environment, "content", "flow", "inspect", "--id", current.LUID)}, result.Status)
 	}
 	if result.FlowLUID == "" {
 		result.FlowLUID = current.LUID

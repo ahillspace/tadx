@@ -24,6 +24,14 @@ export class Inventory {
   private disposed = false;
   private readonly loading = new Map<string, { promise: Promise<void>; controller: AbortController }>();
   private readonly listeners = new Set<() => void>();
+  private projection?: {
+    environments: EnvironmentProfile[];
+    workspaces: Workspace[];
+    sites: Map<string, SiteInventory>;
+    locals: Map<string, WorkspaceInventory>;
+    artifacts: PanelArtifact[];
+    selections: Map<string, ArtifactSelection>;
+  };
 
   constructor(private readonly client: InventoryClient, selected?: { site?: string; workspace?: string }) {
     this.selectedSite = selected?.site;
@@ -133,15 +141,8 @@ export class Inventory {
   }
 
   selection(key: string): ArtifactSelection | undefined {
-    for (const environment of this.environments) {
-      const artifact = this.sites.get(environment.alias)?.artifacts.find(item => remoteArtifactKey(environment.alias, item) === key);
-      if (artifact) return { location: 'remote', environment, artifact };
-    }
-    for (const workspace of this.workspaces) {
-      const artifact = this.locals.get(workspace.name)?.artifacts.find(item => localArtifactKey(workspace.name, item) === key);
-      if (artifact) return { location: 'local', workspace: this.locals.get(workspace.name)?.workspace ?? workspace, artifact };
-    }
-    return undefined;
+    this.projectArtifacts();
+    return this.projection?.selections.get(key);
   }
 
   transferSelection(keys: readonly string[], location: 'remote'): Extract<ArtifactSelection, { location: 'remote' }>[];
@@ -162,16 +163,22 @@ export class Inventory {
     return selections;
   }
 
-  snapshot(operationBusy = false): PanelSnapshot {
+  private projectArtifacts(): PanelArtifact[] {
+    const previous = this.projection;
+    if (previous && previous.environments === this.environments && previous.workspaces === this.workspaces
+      && sameEntries(previous.sites, this.sites) && sameEntries(previous.locals, this.locals)) return previous.artifacts;
     const artifacts: PanelArtifact[] = [];
+    const selections = new Map<string, ArtifactSelection>();
     for (const environment of this.environments) {
       const inventory = this.sites.get(environment.alias);
       if (!inventory) continue;
       const paths = projectPaths(inventory.projects);
       for (const artifact of inventory.artifacts) {
+        const key = remoteArtifactKey(environment.alias, artifact);
+        selections.set(key, { location: 'remote', environment, artifact });
         const stale = artifact.source?.stale || inventory.cache.stale;
         artifacts.push({
-          key: remoteArtifactKey(environment.alias, artifact), name: artifact.name, kind: artifact.kind,
+          key, name: artifact.name, kind: artifact.kind,
           sourceKind: 'sites', sourceId: environment.alias,
           location: artifact.projectPath ?? paths.get(artifact.projectId) ?? `Unknown project (${artifact.projectId || 'none'})`,
           state: stale ? 'Cached, stale' : 'Cached', description: artifact.description, updatedAt: artifact.updatedAt,
@@ -185,6 +192,8 @@ export class Inventory {
       const inventory = this.locals.get(workspace.name);
       if (!inventory) continue;
       for (const artifact of inventory.artifacts) {
+        const key = localArtifactKey(workspace.name, artifact);
+        selections.set(key, { location: 'local', workspace: inventory.workspace, artifact });
         const manageable = !!artifact.path && ['clean', 'dirty'].includes(artifact.state);
         const actions: PanelArtifact['actions'] = [];
         if (manageable) {
@@ -198,11 +207,17 @@ export class Inventory {
         if (artifact.source?.siteLuid) metadata.push({ label: 'Source site ID', value: artifact.source.siteLuid });
         if (artifact.source?.environment) metadata.push({ label: 'Source environment', value: artifact.source.environment });
         if (artifact.source?.site !== undefined) metadata.push({ label: 'Source site', value: artifact.source.site || 'Default site' });
-        artifacts.push({ key: localArtifactKey(workspace.name, artifact), name: artifact.name || artifact.path || 'Unidentified artifact', kind: artifact.kind,
+        artifacts.push({ key, name: artifact.name || artifact.path || 'Unidentified artifact', kind: artifact.kind,
           sourceKind: 'workspaces', sourceId: workspace.name, location: workspace.name, path: artifact.path,
           state: localStateLabel(artifact.state), artifactId: artifact.id, description: artifact.diagnostic ?? artifact.reason, actions, metadata });
       }
     }
+    this.projection = { environments: this.environments, workspaces: this.workspaces, sites: new Map(this.sites), locals: new Map(this.locals), artifacts, selections };
+    return artifacts;
+  }
+
+  snapshot(operationBusy = false): PanelSnapshot {
+    const artifacts = this.projectArtifacts();
     return {
       sources: {
         sites: this.environments.map(environment => {
@@ -221,6 +236,10 @@ export class Inventory {
       }, artifacts, busy: this.busy || operationBusy, errors: [...this.errors.values()],
     };
   }
+}
+
+function sameEntries<T>(left: ReadonlyMap<string, T>, right: ReadonlyMap<string, T>): boolean {
+  return left.size === right.size && [...left].every(([key, value]) => right.get(key) === value);
 }
 
 export function projectPaths(projects: readonly Project[]): Map<string, string> {

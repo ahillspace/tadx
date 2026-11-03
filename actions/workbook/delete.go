@@ -42,6 +42,7 @@ func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input Delet
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	output.Help = nil
 	current, err := resolver.ResolveWorkbook(ctx, identity.Selector{LUID: identity.LUID(target.LUID)})
 	if err != nil {
 		return DeleteOutput{}, deleteOperationError("workbook.delete.resolve", input, "Workbook revalidation failed.", "Review a new preview before deleting.", err, target.LUID)
@@ -50,8 +51,11 @@ func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input Delet
 		return DeleteOutput{}, deleteOperationError("workbook.delete.target_changed", input, "The workbook delete target identity changed during revalidation.", "Review a new preview before deleting.", fmt.Errorf("resolved workbook LUID changed from %q to %q", target.LUID, current.LUID), target.LUID)
 	}
 	result, err := deleter.DeleteWorkbook(ctx, target.LUID)
+	if result != (DeleteResult{}) {
+		output.Result = &result
+	}
 	if err != nil {
-		return DeleteOutput{}, deleteOperationError("workbook.delete.failed", input, "Workbook delete failed.", "Review the upstream error before deleting again.", err, target.LUID)
+		return output, errs.MutationFailure(errs.Error{ID: "workbook.delete.failed", Kind: errs.KindOperation, Operation: "workbook.delete", Resource: target.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook delete failed.", Cause: err, CorrectiveAction: "Inspect the exact workbook and Tableau request before attempting another deletion: " + commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", target.LUID)}, result.Status)
 	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(input.Environment, "content", "workbook", "list")}

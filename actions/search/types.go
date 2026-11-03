@@ -1,6 +1,10 @@
 // Package search owns bounded live and cache search orchestration.
 package search
 
+// UnsharedCacheGenerationWarning explains why cached results cannot name one
+// shared complete generation, including results assembled across source pages.
+const UnsharedCacheGenerationWarning = "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page."
+
 // Input selects one source and a bounded search page.
 type Input struct {
 	Terms, Type, Environment, Site, ProjectPath, Owner, Cursor string

@@ -82,7 +82,12 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		}
 		input.SiteResolved = true
 		store := c.runtime.cacheStore(environment)
-		return searchaction.Execute(ctx, cacheGlobalSearchSource{store: store}, input, types)
+		reader, err := store.OpenResourceRead(ctx, input.Environment, input.Site)
+		if err != nil {
+			return searchaction.Output{}, capabilitySetupError("search.cache.setup", "search", input.Environment, input.Site, "Cache search setup failed.", "Review the selected environment and cache configuration.", err)
+		}
+		defer reader.Close()
+		return searchaction.Execute(ctx, cacheGlobalSearchSource{reader: reader}, input, types)
 	}
 	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
 		_, environment, err := c.runtime.environment(input.Environment, false)
@@ -338,16 +343,16 @@ func combinedSearchChecksum(state combinedSearchCursor) string {
 }
 
 type cacheGlobalSearchSource struct {
-	store *cache.Store
+	reader *cache.ResourceReadSession
 }
 
 func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
-	lister := &cacheSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cacheSearchObservation)}
+	lister := &cacheSearchLister{reader: s.reader, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cache.ResourceResult)}
 	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
 		if unavailable, ok := errors.AsType[cacheSearchScopeUnavailable](err); ok {
-			recovery, observeErr := s.observeCacheRecovery(ctx, input, types)
+			recovery, observeErr := lister.observeCacheRecovery(ctx, input, types)
 			if observeErr == nil {
 				unavailable.recovery = recovery
 				return searchaction.Result{}, unavailable
@@ -357,12 +362,7 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	}
 	var generation *searchaction.Generation
 	shared := len(lister.observations) > 0
-	for _, observation := range lister.observations {
-		after, err := s.store.ReadResources(ctx, observation.query)
-		if err != nil || cacheResourceFingerprint(after) != cacheResourceFingerprint(observation.result) {
-			return searchaction.Result{}, invalidCacheResourceCursor{}
-		}
-		result := observation.result
+	for _, result := range lister.observations {
 		if result.Coverage != "complete" || result.GenerationID == "" {
 			shared = false
 			continue
@@ -376,14 +376,14 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	if shared {
 		return searchResult(page, generation), nil
 	}
-	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
+	page.Warnings = append(page.Warnings, searchaction.UnsharedCacheGenerationWarning)
 	return searchResult(page, nil), nil
 }
 
-func (s cacheGlobalSearchSource) observeCacheRecovery(ctx context.Context, input searchaction.Input, required []string) (searchaction.CacheRecovery, error) {
+func (s *cacheSearchLister) observeCacheRecovery(ctx context.Context, input searchaction.Input, required []string) (searchaction.CacheRecovery, error) {
 	recovery := searchaction.CacheRecovery{Required: append([]string(nil), required...)}
 	for _, resourceType := range required {
-		result, err := s.store.ReadResources(ctx, cache.ResourceQuery{Environment: input.Environment, Site: input.Site, Kind: resourceType, Limit: 1})
+		result, err := s.reader.ReadResources(ctx, cache.ResourceQuery{Environment: input.Environment, Site: input.Site, Kind: resourceType, Limit: 1})
 		if err == nil {
 			recovery.Available = append(recovery.Available, searchaction.CacheTypeObservation{Type: resourceType, Coverage: result.Coverage, Stale: result.Stale, Count: result.Total})
 			continue
@@ -399,16 +399,13 @@ func (s cacheGlobalSearchSource) observeCacheRecovery(ctx context.Context, input
 	return recovery, nil
 }
 
-type cacheSearchObservation struct {
-	query  cache.ResourceQuery
-	result cache.ResourceResult
-}
-
 type cacheSearchLister struct {
-	store             *cache.Store
+	reader interface {
+		ReadResources(context.Context, cache.ResourceQuery) (cache.ResourceResult, error)
+	}
 	environment, site string
 	skipUnavailable   bool
-	observations      map[string]cacheSearchObservation
+	observations      map[string]cache.ResourceResult
 }
 
 func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor string, limit int) (resourcesearch.Page, error) {
@@ -417,7 +414,7 @@ func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor strin
 		return resourcesearch.Page{}, err
 	}
 	query := cache.ResourceQuery{Environment: s.environment, Site: s.site, Kind: resourceType, Offset: state.Offset, Limit: limit}
-	result, err := s.store.ReadResources(ctx, query)
+	result, err := s.reader.ReadResources(ctx, query)
 	if err != nil {
 		var unavailable interface{ CacheScopeUnavailable() bool }
 		var uninitialized interface{ CacheUninitialized() bool }
@@ -432,10 +429,12 @@ func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor strin
 	}
 	fingerprint := cacheResourceFingerprint(result)
 	if s.observations != nil {
-		if previous, ok := s.observations[resourceType]; ok && cacheResourceFingerprint(previous.result) != fingerprint {
+		if previous, ok := s.observations[resourceType]; ok && cacheResourceFingerprint(previous) != fingerprint {
 			return resourcesearch.Page{}, invalidCacheResourceCursor{}
 		}
-		s.observations[resourceType] = cacheSearchObservation{query: query, result: result}
+		observation := result
+		observation.Entries = nil
+		s.observations[resourceType] = observation
 	}
 	if state.Fingerprint != "" && state.Fingerprint != fingerprint {
 		return resourcesearch.Page{}, invalidCacheResourceCursor{}

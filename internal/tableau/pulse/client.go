@@ -70,7 +70,7 @@ func (c *Client) ListDefinitions(ctx context.Context, input PageRequest) (Defini
 	if err != nil {
 		return DefinitionPage{}, err
 	}
-	response, err := c.do(ctx, http.MethodGet, pulsePath+"/definitions", query, nil, "", "", "pulse.definition.list")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/definitions", Query: query, Operation: "pulse.definition.list", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return DefinitionPage{}, err
 	}
@@ -97,7 +97,7 @@ func (c *Client) GetDefinition(ctx context.Context, luid string) (Definition, er
 	if strings.TrimSpace(luid) == "" {
 		return Definition{}, errors.New("Pulse definition LUID is required")
 	}
-	response, err := c.do(ctx, http.MethodGet, pulsePath+"/definitions/"+url.PathEscape(luid), nil, nil, "", "", "pulse.definition.get")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/definitions/" + url.PathEscape(luid), Operation: "pulse.definition.get", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return Definition{}, err
 	}
@@ -127,7 +127,7 @@ func (c *Client) ListMetrics(ctx context.Context, definitionLUID string, input P
 	if err != nil {
 		return MetricPage{}, err
 	}
-	response, err := c.do(ctx, http.MethodGet, pulsePath+"/definitions/"+url.PathEscape(definitionLUID)+"/metrics", query, nil, "", "", "pulse.metric.list")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/definitions/" + url.PathEscape(definitionLUID) + "/metrics", Query: query, Operation: "pulse.metric.list", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return MetricPage{}, err
 	}
@@ -157,7 +157,7 @@ func (c *Client) GetMetric(ctx context.Context, luid string) (Metric, error) {
 	if strings.TrimSpace(luid) == "" {
 		return Metric{}, errors.New("Pulse metric LUID is required")
 	}
-	response, err := c.do(ctx, http.MethodGet, pulsePath+"/metrics/"+url.PathEscape(luid), nil, nil, "", "", "pulse.metric.get")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/metrics/" + url.PathEscape(luid), Operation: "pulse.metric.get", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return Metric{}, err
 	}
@@ -190,7 +190,7 @@ func (c *Client) GetOrCreateMetric(ctx context.Context, input GetOrCreateRequest
 	if err != nil {
 		return GetOrCreateResult{}, fmt.Errorf("encode Pulse metric get-or-create: %w", err)
 	}
-	response, err := c.do(ctx, http.MethodPost, pulsePath+"/metrics:getOrCreate", nil, body, getOrCreateRequestType, getOrCreateResponseType, "pulse.metric.fork")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodPost, Path: pulsePath + "/metrics:getOrCreate", Body: body, ContentType: getOrCreateRequestType, Accept: getOrCreateResponseType, Operation: "pulse.metric.fork", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return GetOrCreateResult{}, err
 	}
@@ -220,7 +220,7 @@ func (c *Client) ListSubscriptions(ctx context.Context, metricLUID string) ([]Su
 	if strings.TrimSpace(metricLUID) == "" {
 		return nil, errors.New("Pulse metric LUID is required")
 	}
-	response, err := c.do(ctx, http.MethodGet, pulsePath+"/subscriptions", url.Values{"metric_id": {metricLUID}}, nil, "", "", "pulse.metric.followers")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/subscriptions", Query: url.Values{"metric_id": {metricLUID}}, Operation: "pulse.metric.followers", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func (c *Client) ListUserSubscriptions(ctx context.Context, userLUID string, inp
 		return SubscriptionPage{}, err
 	}
 	query.Set("user_id", userLUID)
-	response, err := c.do(ctx, http.MethodGet, pulsePath+"/subscriptions", query, nil, "", "", "pulse.subscription.list")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/subscriptions", Query: query, Operation: "pulse.subscription.list", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return SubscriptionPage{}, err
 	}
@@ -286,6 +286,7 @@ func (c *Client) ListUserSubscriptions(ctx context.Context, userLUID string, inp
 
 // BatchGetMetrics reads only the supplied exact metric IDs.
 func (c *Client) BatchGetMetrics(ctx context.Context, ids []string) ([]Metric, error) {
+	const operation = "pulse.metric.batch_get"
 	if len(ids) == 0 || len(ids) > 100 {
 		return nil, errors.New("Pulse metric batch requires 1 through 100 IDs")
 	}
@@ -295,7 +296,9 @@ func (c *Client) BatchGetMetrics(ctx context.Context, ids []string) ([]Metric, e
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.do(ctx, http.MethodPost, pulsePath+"/metrics:batchGet", nil, body, "application/json", "", "pulse.subscription.list")
+	// A batch combines up to 100 individually bounded metrics. The transport's
+	// shared response ceiling applies; bundle acquisition owns its smaller bound.
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodPost, Path: pulsePath + "/metrics:batchGet", Body: body, ContentType: "application/json", Operation: operation})
 	if err != nil {
 		return nil, err
 	}
@@ -303,13 +306,13 @@ func (c *Client) BatchGetMetrics(ctx context.Context, ids []string) ([]Metric, e
 		Metrics []json.RawMessage `json:"metrics"`
 	}
 	if err := json.Unmarshal(response.Body, &envelope); err != nil || envelope.Metrics == nil {
-		return nil, protocol("pulse.subscription.list", response, errors.New("Pulse metric batch requires a metrics array"), true)
+		return nil, protocol(operation, response, errors.New("Pulse metric batch requires a metrics array"), true)
 	}
 	items := make([]Metric, len(envelope.Metrics))
 	for i, raw := range envelope.Metrics {
 		item, err := decodeMetric(raw, response.TableauRequestID)
 		if err != nil {
-			return nil, protocol("pulse.subscription.list", response, err, true)
+			return nil, protocol(operation, response, err, true)
 		}
 		items[i] = item
 	}
@@ -327,7 +330,7 @@ func (c *Client) BatchGetDefinitions(ctx context.Context, ids []string) ([]Defin
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.do(ctx, http.MethodPost, pulsePath+"/definitions:batchGet", url.Values{"view": {"DEFINITION_VIEW_BASIC"}}, body, "application/json", "", "pulse.subscription.list")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodPost, Path: pulsePath + "/definitions:batchGet", Query: url.Values{"view": {"DEFINITION_VIEW_BASIC"}}, Body: body, ContentType: "application/json", Operation: "pulse.subscription.list", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +376,7 @@ func (c *Client) CreateSubscription(ctx context.Context, input CreateSubscriptio
 	if err != nil {
 		return CreateSubscriptionResult{}, err
 	}
-	response, err := c.do(ctx, http.MethodPost, pulsePath+"/subscriptions:batchCreate", nil, body, createSubscriptionsRequestType, "", "pulse.metric.follow")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodPost, Path: pulsePath + "/subscriptions:batchCreate", Body: body, ContentType: createSubscriptionsRequestType, Operation: "pulse.metric.follow", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		if alreadyFollowing(err) {
 			return CreateSubscriptionResult{Status: "already_following", TableauRequestID: tableau.RequestID(err)}, nil
@@ -390,7 +393,7 @@ func (c *Client) DeleteSubscription(ctx context.Context, subscriptionLUID string
 	if strings.TrimSpace(subscriptionLUID) == "" {
 		return errors.New("Pulse subscription LUID is required")
 	}
-	response, err := c.do(ctx, http.MethodDelete, pulsePath+"/subscriptions/"+url.PathEscape(subscriptionLUID), nil, nil, "", "", "pulse.metric.unfollow")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodDelete, Path: pulsePath + "/subscriptions/" + url.PathEscape(subscriptionLUID), Operation: "pulse.metric.unfollow", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return err
 	}
@@ -426,7 +429,7 @@ func (c *Client) CreateDefinitionDocument(ctx context.Context, body json.RawMess
 }
 
 func (c *Client) createDefinitionDocument(ctx context.Context, body []byte) (CreateResult, error) {
-	response, err := c.do(ctx, http.MethodPost, pulsePath+"/definitions", nil, body, createDefinitionRequestType, createDefinitionResponseType, "pulse.definition.create")
+	response, err := c.do(ctx, tableau.Request{Method: http.MethodPost, Path: pulsePath + "/definitions", Body: body, ContentType: createDefinitionRequestType, Accept: createDefinitionResponseType, Operation: "pulse.definition.create", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
 		return CreateResult{}, err
 	}
@@ -473,13 +476,16 @@ func (c *Client) createDefinitionDocument(ctx context.Context, body []byte) (Cre
 	}
 }
 
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, body []byte, contentType, accept, operation string) (tableau.Response, error) {
+func (c *Client) do(ctx context.Context, request tableau.Request) (tableau.Response, error) {
 	if err := c.validate(); err != nil {
 		return tableau.Response{}, err
 	}
-	header := http.Header{}
-	header.Set("X-Tableau-Site-Id", strings.TrimSpace(c.session.SiteLUID()))
-	return c.transport.Do(ctx, c.session, tableau.Request{Method: method, ServerURL: c.serverURL, Path: path, Query: query, Header: header, Body: body, ContentType: contentType, Accept: accept, Operation: operation, MaxResponseBytes: maxResponseBytes})
+	if request.Header == nil {
+		request.Header = http.Header{}
+	}
+	request.Header.Set("X-Tableau-Site-Id", strings.TrimSpace(c.session.SiteLUID()))
+	request.ServerURL = c.serverURL
+	return c.transport.Do(ctx, c.session, request)
 }
 
 func pageQuery(input PageRequest) (url.Values, error) {

@@ -44,9 +44,10 @@ type UpdateRequest struct {
 	OwnerLUID   *string
 }
 
-// PreparedPublish holds the publish snapshot until Commit sends and releases it.
+// PreparedPublish owns the publish snapshot until Commit or Close releases it.
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
+	Close() error
 }
 
 func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPublish, error) {
@@ -122,7 +123,7 @@ func (c *Client) Delete(ctx context.Context, luid string) (MutationResult, error
 	}
 	response, err := c.transport.Do(ctx, c.session, tableau.Request{Method: http.MethodDelete, ServerURL: c.serverURL, Path: c.sitePath("datasources", luid), Accept: "application/xml", Operation: "datasource.delete", MaxResponseBytes: maxListResponseBytes})
 	if err != nil {
-		if isUncertainDatasourceMutation(err) {
+		if tableau.MutationUncertain(err) {
 			return MutationResult{Status: "unknown", DatasourceLUID: luid, TableauRequestID: tableau.RequestID(err)}, err
 		}
 		return MutationResult{}, err
@@ -168,7 +169,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 	}
 	response, err := c.transport.Do(ctx, c.session, tableau.Request{Method: http.MethodPut, ServerURL: c.serverURL, Path: c.sitePath("datasources", input.LUID), Body: body, ContentType: "application/xml", Accept: "application/xml", Operation: "datasource.update", MaxResponseBytes: maxListResponseBytes})
 	if err != nil {
-		if isUncertainDatasourceMutation(err) {
+		if tableau.MutationUncertain(err) {
 			return MutationResult{Status: "unknown", DatasourceLUID: input.LUID, TableauRequestID: tableau.RequestID(err)}, err
 		}
 		return MutationResult{}, err
@@ -234,7 +235,7 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 	defer func() { _ = p.snapshot.Close() }()
 	response, err := p.client.transport.Do(ctx, p.client.session, tableau.Request{Method: http.MethodPost, ServerURL: p.client.serverURL, Path: p.client.sitePath("datasources"), Query: p.query, Multipart: p.body, Accept: "application/xml", Operation: "datasource.publish", MaxResponseBytes: maxListResponseBytes})
 	if err != nil {
-		if isUncertainDatasourceMutation(err) {
+		if tableau.MutationUncertain(err) {
 			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err)}, err
 		}
 		return PublishResult{}, err
@@ -252,6 +253,8 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 	}
 	return PublishResult{Status: "succeeded", DatasourceLUID: ds.ID, DatasourceName: ds.Name, ProjectLUID: ds.Project.ID, ContentURL: ds.ContentURL, TableauRequestID: response.TableauRequestID}, nil
 }
+
+func (p *preparedDatasourcePublish) Close() error { return p.snapshot.Close() }
 
 type datasourcePublishEnvelope struct {
 	Datasource datasourceXML `xml:"datasource"`
@@ -285,9 +288,4 @@ func datasourcePublishPayload(input PublishRequest) ([]byte, error) {
 		XMLName    xml.Name `xml:"tsRequest"`
 		Datasource ds       `xml:"datasource"`
 	}{Datasource: value})
-}
-
-func isUncertainDatasourceMutation(err error) bool {
-	var status interface{ HTTPStatus() int }
-	return !errors.As(err, &status) || (status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices)
 }

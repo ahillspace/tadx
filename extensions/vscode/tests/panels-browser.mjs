@@ -231,6 +231,20 @@ try {
     assert.equal(await artifact.getByRole('button', { name: 'Open payload', exact: true }).isEnabled(), true);
   });
 
+  await check('busy-only messages preserve projected inventory, selection, and inspection', async () => {
+    await sendState(inventory, { inventorySource: { sourceKind: 'workspaces', sourceId: 'work' }, reveal: true });
+    await inventory.getByRole('checkbox', { name: 'Select Revenue overview', exact: true }).check();
+    const selected = await inventory.locator('.selection-bar p').textContent();
+    await inventory.evaluate(() => window.postMessage({ type: 'status', busy: true, errors: [] }, '*'));
+    await inventory.getByText('An operation is in progress. Artifact changes are temporarily unavailable.').waitFor();
+    assert.equal(await inventory.getByRole('button', { name: 'Upload selected…', exact: true }).isDisabled(), true);
+    assert.equal(await inventory.getByRole('button', { name: 'Revenue overview', exact: true }).isEnabled(), true);
+    assert.equal(await inventory.locator('.selection-bar p').textContent(), selected);
+    await inventory.evaluate(() => window.postMessage({ type: 'status', busy: false, errors: [] }, '*'));
+    await inventory.waitForFunction(() => !document.querySelector('.notice')?.textContent.includes('An operation is in progress'));
+    assert.equal(await inventory.getByRole('button', { name: 'Upload selected…', exact: true }).isEnabled(), true);
+  });
+
   await check('hostile inventory text stays text and the script CSP remains enforced', async () => {
     await sendState(artifact, { artifactKey: 'hostile' });
     assert.equal(await artifact.getByRole('heading', { name: hostileName, exact: true }).count(), 1);

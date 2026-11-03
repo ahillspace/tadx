@@ -11,6 +11,10 @@ import (
 	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
+// A retained tombstone can follow either completed deletion or failed restore.
+// Snapshot validation shares this producer-owned name without inferring outcome.
+const deleteTombstonePrefix = ".tadx-delete-"
+
 // DeleteRequest removes one exact revalidated managed artifact.
 type DeleteRequest struct {
 	Workspace           string
@@ -68,7 +72,7 @@ func deleteWithOperations(ctx context.Context, request DeleteRequest, operations
 	}
 	target := filepath.Join(root, filepath.FromSlash(current.Path))
 	parent := filepath.Dir(target)
-	tombstone, err := os.MkdirTemp(parent, ".tadx-delete-")
+	tombstone, err := os.MkdirTemp(parent, deleteTombstonePrefix)
 	if err != nil {
 		return Item{}, err
 	}

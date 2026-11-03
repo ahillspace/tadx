@@ -157,8 +157,8 @@ func prerequisiteFrom(err error) *Prerequisite {
 }
 
 func inheritRecovery(payload *Payload, err error) {
-	for current := err; current != nil; current = errors.Unwrap(current) {
-		if structured, ok := current.(*Error); ok {
+	for current := err; current != nil; {
+		if structured, ok := errors.AsType[*Error](current); ok {
 			if payload.Phase == "" {
 				payload.Phase = structured.Phase
 			}
@@ -168,6 +168,9 @@ func inheritRecovery(payload *Payload, err error) {
 			if payload.Prerequisite == nil {
 				payload.Prerequisite = structured.Prerequisite
 			}
+			current = structured.Cause
+		} else {
+			break
 		}
 	}
 }
@@ -225,6 +228,7 @@ type Payload struct {
 	Phase                 Phase              `json:"phase,omitempty"`
 	Outcome               Outcome            `json:"outcome,omitempty"`
 	Prerequisite          *Prerequisite      `json:"prerequisite,omitempty"`
+	SecondaryErrors       []Payload          `json:"secondary_errors,omitempty"`
 }
 
 // Envelope is the top-level structured error document.
@@ -309,13 +313,47 @@ func Structure(err error) Envelope {
 			payload.CorrectiveCommands = commands.CorrectiveCommands()
 			payload.CorrectiveExplanation = commands.CorrectiveExplanation()
 		}
+		payload.SecondaryErrors = joinedErrorPayloads(err)
 		return Envelope{Error: payload}
 	}
 	message := "unknown error"
 	if err != nil {
 		message = err.Error()
 	}
-	return Envelope{Error: Payload{Kind: KindRuntime, Summary: message}}
+	return Envelope{Error: Payload{Kind: KindRuntime, Summary: message, SecondaryErrors: joinedErrorPayloads(err)}}
+}
+
+// joinedErrorPayloads retains independent failures without turning ordinary
+// cause wrappers into additional errors. The primary structured error keeps
+// the same precedence as errors.As in Structure.
+func joinedErrorPayloads(err error) []Payload {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		primary, _ := errors.AsType[*Error](err)
+		primaryIndex := -1
+		for index, child := range children {
+			if child != nil && (primary == nil || errors.Is(child, primary)) {
+				primaryIndex = index
+				break
+			}
+		}
+		var secondary []Payload
+		for index, child := range children {
+			if child == nil {
+				continue
+			}
+			if index == primaryIndex {
+				secondary = append(secondary, joinedErrorPayloads(child)...)
+			} else {
+				secondary = append(secondary, Structure(child).Error)
+			}
+		}
+		return secondary
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		return joinedErrorPayloads(cause)
+	}
+	return nil
 }
 
 func recoveryAdvice(outcome Outcome, prerequisite *Prerequisite) string {

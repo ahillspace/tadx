@@ -3,6 +3,7 @@
 package managedpolicy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,6 +62,20 @@ func unixInstallFixture(t *testing.T) (string, string, string) {
 		}
 	})
 	return dir, filepath.Join(dir, "location.json"), filepath.Join(dir, "default", "managed-policy.json")
+}
+
+// UID 0 in a restricted container may lack mapped identities or the capabilities
+// needed for these fixture transitions. Dedicated native jobs remain strict.
+func requireUnixFixtureCapability(t *testing.T, operation string, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+	unsupported := errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS)
+	if !unsupported || os.Getenv("TADX_TEST_REQUIRE_PRIVILEGED_POLICY") == "1" {
+		t.Fatalf("privileged fixture requires %s: %v", operation, err)
+	}
+	t.Skipf("privileged fixture requires %s, unavailable in this environment: %v", operation, err)
 }
 
 func TestPrivilegedUnixInstallLifecycle(t *testing.T) {
@@ -136,14 +151,17 @@ func TestPrivilegedUnixInstallRejectsUntrustedPaths(t *testing.T) {
 				err = os.Chmod(parent, 0777)
 			case "ancestor-owner":
 				err = os.Chown(parent, 65534, 65534)
+				requireUnixFixtureCapability(t, "changing ownership to UID/GID 65534", err)
 			case "leaf-write":
 				err = os.Chmod(dir, 0777)
 			case "leaf-owner":
 				err = os.Chown(dir, 65534, 65534)
+				requireUnixFixtureCapability(t, "changing ownership to UID/GID 65534", err)
 			case "policy-write":
 				err = os.Chmod(path, 0666)
 			case "policy-owner":
 				err = os.Chown(path, 65534, 65534)
+				requireUnixFixtureCapability(t, "changing ownership to UID/GID 65534", err)
 			case "ancestor-symlink":
 				link := filepath.Join(base, "parent-link")
 				err = os.Symlink(parent, link)
@@ -208,6 +226,7 @@ func TestPrivilegedUnixInstallUnsafeLocatorPreservesPartialReceipt(t *testing.T)
 				}
 				if err == nil && kind == "owner" {
 					err = os.Chown(locator, 65534, 65534)
+					requireUnixFixtureCapability(t, "changing ownership to UID/GID 65534", err)
 				}
 			}
 			if err != nil {
@@ -268,8 +287,11 @@ func TestPrivilegedUnixNoTerminalOrPrivilege(t *testing.T) {
 	cmd := exec.Command(child, "-test.run=^TestPrivilegedUnixNoTerminalOrPrivilege$")
 	cmd.Env = append(os.Environ(), "TADX_UNIX_INSTALL_CHILD=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Credential: &syscall.Credential{Uid: 65534, Gid: 65534}}
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("unprivileged child: %v\n%s", err, output)
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	requireUnixFixtureCapability(t, "launching a child as UID/GID 65534", cmd.Start())
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("unprivileged child: %v\n%s", err, output.String())
 	}
 }
 

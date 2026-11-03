@@ -300,6 +300,11 @@
     const message = event.data;
     if (!message || typeof message !== 'object') return;
     if (message.type === 'error') { error = String(message.message || 'The action failed.'); render(); return; }
+    if (message.type === 'status') {
+      snapshot = { ...snapshot, busy: message.busy, errors: message.errors };
+      render();
+      return;
+    }
     if (message.type !== 'state') return;
     snapshot = message.snapshot;
     operation = message.operation;
@@ -323,5 +328,5 @@
     persist();
     render();
   });
-  vscode.postMessage({ type: 'ready' });
+  vscode.postMessage({ type: 'ready', sourceKind: state.sourceKind, sourceId: state.sourceId });
 }());

@@ -35,6 +35,7 @@ func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input Delet
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	output.Help = nil
 	current, err := resolver.ResolveFlow(ctx, input.Selector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")
@@ -44,9 +45,11 @@ func Delete(ctx context.Context, resolver Resolver, deleter Deleter, input Delet
 		return DeleteOutput{}, &errs.Error{ID: "flow.delete.target_changed", Kind: errs.KindOperation, Operation: "flow.delete", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "The flow delete target changed during revalidation.", Cause: errors.New("flow delete target changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before deleting."}
 	}
 	result, err := deleter.DeleteFlow(ctx, flow.LUID)
+	if result != (DeleteResult{}) {
+		output.Result = &result
+	}
 	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the upstream error before deleting again.")
-		return DeleteOutput{}, &errs.Error{ID: "flow.delete.failed", Kind: errs.KindOperation, Operation: "flow.delete", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow delete failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return output, errs.MutationFailure(errs.Error{ID: "flow.delete.failed", Kind: errs.KindOperation, Operation: "flow.delete", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow delete failed.", Cause: err, CorrectiveAction: "Inspect the exact flow and Tableau request before attempting another deletion: " + commandhint.Environment(input.Environment, "content", "flow", "inspect", "--id", flow.LUID)}, result.Status)
 	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(input.Environment, "content", "flow", "list")}

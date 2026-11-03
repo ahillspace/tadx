@@ -303,7 +303,7 @@ func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 
 	response, err := p.client.doMultipart(ctx, http.MethodPost, p.client.sitePath("flows"), p.query, p.body, "flow.publish")
 	if err != nil {
-		if isUncertain(err) {
+		if tableau.MutationUncertain(err) {
 			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err)}, err
 		}
 		return PublishResult{}, err
@@ -323,6 +323,8 @@ func (p *preparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	}
 	return PublishResult{Status: "succeeded", FlowLUID: envelope.Flow.ID, FlowName: envelope.Flow.Name, ProjectLUID: envelope.Flow.Project.ID, TableauRequestID: response.TableauRequestID}, nil
 }
+
+func (p *preparedPublish) Close() error { return p.snapshot.Close() }
 
 func (c *RESTClient) do(ctx context.Context, method, path string, query url.Values, body []byte, contentType, operation string, responseLimit int64) (tableau.Response, error) {
 	if err := c.validate(); err != nil {
@@ -469,15 +471,10 @@ func moveBody(projectLUID string) ([]byte, error) {
 }
 
 func uncertainMutation(flowLUID, projectLUID string, err error) (MutationResult, error) {
-	if isUncertain(err) {
+	if tableau.MutationUncertain(err) {
 		return MutationResult{Status: "unknown", FlowLUID: flowLUID, ProjectLUID: projectLUID, TableauRequestID: tableau.RequestID(err)}, err
 	}
 	return MutationResult{}, err
-}
-
-func isUncertain(err error) bool {
-	var status interface{ HTTPStatus() int }
-	return !errors.As(err, &status) || (status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices)
 }
 
 type paginationXML struct {

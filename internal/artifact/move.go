@@ -13,6 +13,13 @@ import (
 	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
+// Move recovery evidence cannot be reconciled from one workspace alone: the
+// other workspace may have committed. Snapshot validation shares these names.
+const (
+	moveStagePrefix  = ".tadx-move-stage-"
+	moveSourcePrefix = ".tadx-move-source-"
+)
+
 // MoveRequest moves one exact managed artifact between named workspace roots.
 type MoveRequest struct {
 	SourceWorkspace        string
@@ -146,7 +153,7 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 	if err := validateArtifactDirectory(destinationRoot, source.Kind, destinationParent); err != nil {
 		return Item{}, err
 	}
-	stage, err := os.MkdirTemp(destinationParent, ".tadx-move-stage-")
+	stage, err := os.MkdirTemp(destinationParent, moveStagePrefix)
 	if err != nil {
 		return Item{}, err
 	}
@@ -166,7 +173,7 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 		return Item{}, errors.New("source artifact changed while the move was staged")
 	}
 	sourcePath := filepath.Join(sourceRoot, filepath.FromSlash(source.Path))
-	tombstone, err := os.MkdirTemp(filepath.Dir(sourcePath), ".tadx-move-source-")
+	tombstone, err := os.MkdirTemp(filepath.Dir(sourcePath), moveSourcePrefix)
 	if err != nil {
 		return Item{}, err
 	}

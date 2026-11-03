@@ -46,7 +46,7 @@ func TestMovePreviewsThenRevalidatesParent(t *testing.T) {
 	}
 }
 func TestMoveRejectsDescendantParent(t *testing.T) {
-	r := moveResolver{source: projectops.MoveProject{LUID: "p-1", Name: "Root", Path: "Root"}, parent: projectops.MoveProject{LUID: "child", Name: "Child", Path: "Root/Child"}}
+	r := moveResolver{source: projectops.MoveProject{LUID: "p-1", Name: "Root", Path: "Root"}, parent: projectops.MoveProject{LUID: "child", Name: "Child", Path: "Root/Child", ParentLUID: "p-1"}}
 	if _, err := projectops.NewMove(r, &mover{}).Execute(context.Background(), projectops.MoveInput{Environment: "dev", Site: "site", ProjectSelector: identity.Selector{LUID: "p-1"}, ParentSelector: identity.Selector{LUID: "child"}}, false); err == nil {
 		t.Fatal("expected cycle error")
 	}

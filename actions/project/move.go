@@ -118,8 +118,26 @@ func (a *MoveAction) validateMove(ctx context.Context, in MoveInput, source Move
 	if *parentLUID == source.LUID {
 		return moveOperationError("project.move.cycle", in, source.LUID, "A project cannot be its own parent.", "Choose another parent project.", errors.New("project hierarchy cycle"))
 	}
-	if destination != nil && (destination.Path == source.Path || strings.HasPrefix(destination.Path, source.Path+"/")) {
-		return moveOperationError("project.move.cycle", in, source.LUID, "A project cannot move under its descendant.", "Choose a project outside the source hierarchy.", errors.New("project hierarchy cycle"))
+	seen := map[string]bool{}
+	for ancestor := destination; ancestor != nil; {
+		if ancestor.LUID == source.LUID {
+			return moveOperationError("project.move.cycle", in, source.LUID, "A project cannot move under its descendant.", "Choose a project outside the source hierarchy.", errors.New("project hierarchy cycle"))
+		}
+		if seen[ancestor.LUID] {
+			return moveOperationError("project.move.hierarchy", in, source.LUID, "The destination ancestry contains a cycle.", "Repair the project hierarchy before moving.", errors.New("destination parent chain repeats a project identity"))
+		}
+		seen[ancestor.LUID] = true
+		if ancestor.ParentLUID == "" {
+			break
+		}
+		parent, err := a.resolver.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(ancestor.ParentLUID)})
+		if err != nil {
+			return moveOperationError("project.move.hierarchy", in, source.LUID, "Destination ancestry resolution failed.", "Review the complete destination hierarchy before moving.", err)
+		}
+		if parent.LUID != ancestor.ParentLUID {
+			return moveOperationError("project.move.hierarchy", in, source.LUID, "Destination ancestry returned a different identity.", "Review the complete destination hierarchy before moving.", errors.New("destination parent LUID changed during resolution"))
+		}
+		ancestor = &parent
 	}
 	if source.ParentLUID == *parentLUID {
 		return nil

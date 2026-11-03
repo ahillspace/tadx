@@ -52,12 +52,8 @@ func newPulsePreflightFixture(t *testing.T) *pulsePreflightFixture {
 			io.WriteString(w, preflightDefinition)
 		case "/api/-/pulse/definitions/source-definition/metrics":
 			io.WriteString(w, `{"metrics":[{"id":"source-default","definition_id":"source-definition","is_default":true},{"id":"source-variant","definition_id":"source-definition","is_default":false}]}`)
-		case "/api/-/pulse/metrics/source-default", "/api/-/pulse/metrics/source-variant":
-			i := 0
-			if strings.HasSuffix(r.URL.Path, "source-variant") {
-				i = 1
-			}
-			fmt.Fprintf(w, `{"id":%q,"definition_id":"source-definition","site_id":"site-1","is_default":%t,"specification":%s}`, []string{"source-default", "source-variant"}[i], i == 0, specs[i])
+		case "/api/-/pulse/metrics:batchGet":
+			fmt.Fprintf(w, `{"metrics":[{"id":"source-default","definition_id":"source-definition","site_id":"site-1","is_default":true,"specification":%s},{"id":"source-variant","definition_id":"source-definition","site_id":"site-1","is_default":false,"specification":%s}]}`, specs[0], specs[1])
 		case "/api/3.29/sites/site-1/datasources/destination-ds":
 			io.WriteString(w, `<tsResponse><datasource id="destination-ds" name="Orders"><project id="project-1" name="Test"/></datasource></tsResponse>`)
 		case "/api/v1/vizql-data-service/read-metadata":

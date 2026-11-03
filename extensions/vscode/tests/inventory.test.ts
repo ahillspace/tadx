@@ -16,6 +16,24 @@ function client(overrides: Partial<Client> = {}): Client {
     siteInventory: async () => site(), workspaceInventory: async () => local(), ...overrides };
 }
 
+test('busy and selection updates reuse projected rows while a new inventory replaces authoritative selection', async () => {
+  const inventory = new Inventory(client());
+  await inventory.refresh();
+  const original = inventory.snapshot();
+  const selected = original.artifacts[0]!;
+  assert.equal(inventory.snapshot(true).artifacts === original.artifacts, true);
+  await inventory.selectSite('dev');
+  assert.equal(inventory.snapshot().artifacts === original.artifacts, true);
+  inventory.sites.set('dev', site('New generation'));
+  const changed = inventory.snapshot();
+  assert.notEqual(changed.artifacts, original.artifacts);
+  assert.equal(changed.artifacts[0]?.name, 'New generation');
+  assert.equal(inventory.selection(selected.key)?.artifact.name, 'New generation');
+  inventory.sites.clear();
+  assert.equal(inventory.selection(selected.key), undefined);
+  inventory.dispose();
+});
+
 test('a previous refresh cannot overwrite the current generation after resolving late', async () => {
   const oldRead = deferred<SiteInventory>();
   const firstStarted = deferred<void>();

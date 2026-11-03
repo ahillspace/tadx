@@ -23,7 +23,7 @@ func TestCacheSearchReportsScopeGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := executeSearchAction(ctx, cacheGlobalSearchSource{store: store}, searchaction.Input{Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
+	out, err := executeCachedSearchAction(ctx, store, searchaction.Input{Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestCacheSearchReportsScopeGeneration(t *testing.T) {
 	if err := store.UpsertResources(ctx, []cache.ResourceEntry{{Environment: "dev", Site: "site", Kind: "workbook", LUID: "new", Name: "Updated", Coverage: "summary", ObservedAt: now.Add(time.Minute)}}); err != nil {
 		t.Fatal(err)
 	}
-	out, err = executeSearchAction(ctx, cacheGlobalSearchSource{store: store}, searchaction.Input{Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
+	out, err = executeCachedSearchAction(ctx, store, searchaction.Input{Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestReadThroughCacheSearchContinuesAcrossObservationTimes(t *testing.T) {
 	if err := store.UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
 	}
-	lister := &cacheSearchLister{store: store, environment: "dev", site: "site"}
+	lister := &cacheSearchLister{reader: store, environment: "dev", site: "site"}
 	first, err := lister.List(context.Background(), "workbook", "", 100)
 	if err != nil || first.NextCursor == "" {
 		t.Fatalf("first page: %#v %v", first, err)

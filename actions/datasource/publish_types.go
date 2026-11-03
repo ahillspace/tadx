@@ -196,4 +196,5 @@ func (o PublishOutput) FullOutput() any {
 
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
+	Close() error
 }

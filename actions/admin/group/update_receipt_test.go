@@ -37,7 +37,7 @@ func (a *receiptAdapter) RemoveGroupUser(context.Context, string, string) (strin
 
 func TestPartialReceiptKeepsOnlyCompletedResponseEvidence(t *testing.T) {
 	a := &receiptAdapter{}
-	name := "Requested"
+	name := "Confirmed"
 	out, err := runGroupUpdate(context.Background(), a, a, a, UpdateInput{Environment: "test", Site: "site-1", GroupLUID: "group-1", Name: &name, MembershipSet: true, DesiredMemberLUIDs: []string{"new-user"}}, false)
 	var detail *errs.Error
 	if !errors.As(err, &detail) || detail.Failed != "member.remove:old-user" || len(detail.Completed) != 2 {

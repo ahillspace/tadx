@@ -97,8 +97,11 @@ An all-types page may fill entirely with native content before any admin or Puls
 The combined search omits a claimed aggregate total and propagates an encountered source error; it does not return a successful partial result when a later source fails.
 
 `--cache` reads local SQLite resource records through `internal/cache/{resources,store}.go`, not Tableau's relevance index or its Metadata API.
+The cached execution boundary owns one read session for every source page needed to satisfy `--limit`.
+Dense and sparse scans reuse SQL setup and scope metadata; later commands validate their continuations against current state.
 With no type selector, unavailable cached types are omitted with warnings; explicitly requesting an unavailable cached scope fails.
-A shared cache generation is reported only when all observed scopes are complete and share that generation; partial or independently refreshed records carry a warning instead.
+A shared cache generation is reported only when every result page observes complete scopes from that generation.
+Partial or independently refreshed records carry a warning instead.
 Live search does not silently retry against cache or replace unavailable native search with inventory substring matching.
 No-term search calls list services with `Limit`/`Cursor`, not `All`; those bounded calls do not themselves publish complete inventory snapshots.
 

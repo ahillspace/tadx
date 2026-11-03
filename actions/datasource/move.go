@@ -38,6 +38,7 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, in MoveInput,
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	ctx = beginProjectResolution(ctx, resolver)
 	current, currentDestination, err := moveResolve(ctx, resolver, in, identity.Selector{LUID: identity.LUID(source.LUID)}, identity.Selector{LUID: identity.LUID(destination.LUID)})
 	if err != nil {
@@ -54,8 +55,11 @@ func Move(ctx context.Context, resolver MoveResolver, mover Mover, in MoveInput,
 		return out, nil
 	}
 	result, err := mover.MoveDatasource(ctx, source.LUID, destination.LUID)
+	if result != (MoveResult{}) {
+		out.Result = &result
+	}
 	if err != nil {
-		return MoveOutput{}, moveOperationError("datasource.move.failed", in, source.LUID, "Datasource move failed.", "Inspect the exact datasource before retrying: "+commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", source.LUID), err)
+		return out, errs.MutationFailure(errs.Error{ID: "datasource.move.failed", Kind: errs.KindOperation, Operation: "datasource.move", Resource: source.LUID, Environment: in.Environment, Site: in.Site, Summary: "Datasource move failed.", Cause: err, CorrectiveAction: "Inspect the exact datasource before attempting another move: " + commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", source.LUID)}, result.Status)
 	}
 	out.Result = &result
 	out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", source.LUID)}

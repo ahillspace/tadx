@@ -156,7 +156,7 @@ func TestCachedSearchRecoveryOmitsCommandForUnrepresentableFilters(t *testing.T)
 	if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{{Environment: "dev", Site: "test-site", Kind: "datasource", LUID: "ds-1", Name: "Boeing", Owner: "owner-1", ProjectPath: "Ops", Coverage: "summary", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := executeSearchAction(t.Context(), cacheGlobalSearchSource{store: store}, searchaction.Input{
+	_, err := executeCachedSearchAction(t.Context(), store, searchaction.Input{
 		Terms:        "Boeing",
 		Type:         "content",
 		Environment:  "dev",

@@ -46,7 +46,13 @@ func (r *runtimeDependencies) ReadMutationStatus(ctx context.Context, alias stri
 }
 
 func (r *runtimeDependencies) ReadMutationSetting(_ context.Context, alias string) (value.MutationSetting, error) {
-	cfg, environment, err := r.environment(alias, false)
+	_, environment, err := r.environment(alias, false)
+	if err != nil {
+		return value.MutationSetting{}, err
+	}
+	// Target selection belongs to the invocation snapshot, while saved consent
+	// is mutable and must be current when a prepared mutation is dispatched.
+	cfg, err := config.Load(r.configPath)
 	if err != nil {
 		return value.MutationSetting{}, err
 	}
@@ -97,7 +103,7 @@ func (r *runtimeDependencies) WriteMutationSetting(_ context.Context, alias stri
 }
 func (r *runtimeDependencies) mutationPolicy(alias string) (bool, string, error) {
 	if alias == "" {
-		cfg, err := config.Load(r.configPath)
+		cfg, err := r.configuration()
 		if errors.Is(err, os.ErrNotExist) {
 			return false, "site_selection_required", nil
 		}

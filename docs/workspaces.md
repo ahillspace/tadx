@@ -19,6 +19,8 @@ Workspace names are unique under case-insensitive comparison.
 Names must remain portable across supported operating systems, so path separators, Windows-invalid characters, reserved device names, and trailing dots or spaces are rejected.
 Canonical roots are also unique, so one directory cannot be registered under two names.
 Use `--full` with workspace create, clone, list, or status to discover registered machine-local roots.
+An explicit registration name is a machine-local alias and can differ from the portable manifest name.
+Resolution, cleanup, and deletion verify the stable workspace ID without rewriting the shared manifest name.
 
 ## Select a workspace
 

@@ -394,7 +394,7 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 	manager := artifact.NewFlowManager(c.runtime.now)
 	var reader flowops.ArtifactReader
 	if input.File != "" {
-		if _, err := artifact.ReadNative(ctx, input.File, "flow"); err != nil {
+		if err := artifact.ValidateNativePath(ctx, input.File, "flow"); err != nil {
 			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.file", "flow.publish", input.Environment, input.Site, "Native flow validation failed.", "Select a valid native flow file, then retry.", err)
 		}
 		input.ArtifactPath = input.File
@@ -404,7 +404,7 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 		if err != nil {
 			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.workspace", "flow.publish", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 		}
-		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
+		managed, err := artifact.Select(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
 				return flowops.PublishOutput{}, mapArtifactResolutionError("flow.publish", workspace.Name, input.ArtifactID, err)
@@ -413,10 +413,6 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowops.P
 		}
 		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
 		input.WorkspaceName = workspace.Name
-		_, err = manager.Read(ctx, absolutePath)
-		if err != nil {
-			return flowops.PublishOutput{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact read failed.", "Repair or pull the exact flow artifact, then retry.", err)
-		}
 		input.ArtifactPath = absolutePath
 		reader = flowArtifactReader{manager: manager, displayPath: managed.Path}
 	}
@@ -591,11 +587,8 @@ func (a projectCreateAdapter) FindProjectCollisions(ctx context.Context, name, p
 
 func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectops.CreateRequest) (projectops.CreateResult, error) {
 	result, err := a.changes.Create(ctx, tableauproject.CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: input.ParentLUID, ContentPermissions: input.ContentPermissions})
-	if err != nil {
-		return projectops.CreateResult{}, err
-	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectops.CreateResult{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, nil
+	return projectops.CreateResult{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, err
 }
 
 func toProjectCreate(item resourceproject.Project) projectops.CreateProject {
@@ -780,6 +773,8 @@ func (a flowPublishAdapter) Prepare(ctx context.Context, input flowops.PublishRe
 }
 
 type preparedFlowPublish struct{ prepared tableauflow.PreparedPublish }
+
+func (p preparedFlowPublish) Close() error { return p.prepared.Close() }
 
 func (p preparedFlowPublish) Commit(ctx context.Context) (flowops.PublishResult, error) {
 	progress.SetLabel(ctx, "Uploading and submitting flow")
