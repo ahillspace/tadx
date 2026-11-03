@@ -53,7 +53,7 @@ func TestCloneRejectsSourceRetainedByRealMoveRecovery(t *testing.T) {
 			if retained == "" {
 				t.Fatal("move did not retain its source recovery evidence")
 			}
-			assertMoveEvidenceBlocksClone(t, manager, configPath, source, retained)
+			assertRecoveryEvidenceBlocksClone(t, manager, configPath, source, retained)
 			if _, err := os.Lstat(created.ArtifactPath); !os.IsNotExist(err) {
 				t.Fatalf("snapshot preparation restored a source without knowing the other workspace outcome: %v", err)
 			}
@@ -104,7 +104,7 @@ func TestCloneRejectsStageRetainedByInterruptedRealMove(t *testing.T) {
 	if err != nil || len(stages) != 1 {
 		t.Fatalf("interrupted move stages = %v, %v", stages, err)
 	}
-	assertMoveEvidenceBlocksClone(t, manager, configPath, destination, stages[0])
+	assertRecoveryEvidenceBlocksClone(t, manager, configPath, destination, stages[0])
 	if item, err := Resolve(t.Context(), source.Root, Selector{Kind: "workbook", LUID: "wb-1"}); err != nil || item.State != StateClean {
 		t.Fatalf("snapshot preparation changed the active source: %+v, %v", item, err)
 	}
@@ -130,7 +130,7 @@ func moveSnapshotFixture(t *testing.T) (*workspacecore.Manager, string, workspac
 	return manager, configPath, source, destination, created
 }
 
-func assertMoveEvidenceBlocksClone(t *testing.T, manager *workspacecore.Manager, configPath string, selected workspacecore.Record, retained string) {
+func assertRecoveryEvidenceBlocksClone(t *testing.T, manager *workspacecore.Manager, configPath string, selected workspacecore.Record, retained string) {
 	t.Helper()
 	before, err := artifactTreeFingerprint(t.Context(), retained)
 	if err != nil {
@@ -139,17 +139,18 @@ func assertMoveEvidenceBlocksClone(t *testing.T, manager *workspacecore.Manager,
 	cloneRoot := filepath.Join(filepath.Dir(selected.Root), "clone")
 	cloned, err := manager.Clone(t.Context(), workspacecore.CloneRequest{Source: selected.Name, Name: "clone", Root: cloneRoot, Reconcile: PrepareWorkspaceSnapshot})
 	if err == nil || !strings.Contains(err.Error(), "unresolved artifact recovery evidence") || !strings.Contains(err.Error(), filepath.Base(retained)) {
-		t.Fatalf("clone accepted Move recovery state: output=%+v error=%v", cloned, err)
+		t.Fatalf("clone accepted retained recovery state: output=%+v error=%v", cloned, err)
 	}
 	if _, err := os.Lstat(cloneRoot); !os.IsNotExist(err) {
 		t.Fatalf("rejected snapshot created a clone destination: %v", err)
 	}
 	current, err := config.Load(configPath)
-	if err != nil || len(current.Workspaces) != 2 {
+	_, cloneRegistered := current.Workspaces["clone"]
+	if err != nil || len(current.Workspaces) != 2 || cloneRegistered || current.Workspaces[selected.Name].ID != selected.ID {
 		t.Fatalf("rejected snapshot changed registrations: %+v, %v", current.Workspaces, err)
 	}
 	after, err := artifactTreeFingerprint(t.Context(), retained)
 	if err != nil || after != before {
-		t.Fatalf("snapshot preparation changed Move evidence: before=%s after=%s error=%v", before, after, err)
+		t.Fatalf("snapshot preparation changed recovery evidence: before=%s after=%s error=%v", before, after, err)
 	}
 }

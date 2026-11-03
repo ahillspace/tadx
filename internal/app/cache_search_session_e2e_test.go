@@ -246,11 +246,16 @@ func TestCachedSearchNextCommandRevalidatesCursorAndGeneration(t *testing.T) {
 }
 
 func TestCachedSearchCommandKeepsItsSnapshotDuringConcurrentRefresh(t *testing.T) {
-	options, store, replacement := cachedSearchSessionFixture(t, 3000)
+	// Search actions fetch 100 rows per source page; 101 rows exercise both pages.
+	const rowCount = 101
+	options, store, replacement := cachedSearchSessionFixture(t, rowCount)
 	probe := observeCacheSearchConnections(t, filepath.Dir(options.ConfigPath), store)
 	replacement.GeneratedAt = replacement.GeneratedAt.Add(time.Minute)
-	replacement.Entries[0].Name = "Changed by another cache refresh"
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	for index := range replacement.Entries {
+		replacement.Entries[index].Name = fmt.Sprintf("Refreshed %05d", index)
+	}
+	// Bound a stalled refresh while allowing race-instrumented SQLite work.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	var refreshed sync.Once
 	var refreshErr error
@@ -260,15 +265,31 @@ func TestCachedSearchCommandKeepsItsSnapshotDuringConcurrentRefresh(t *testing.T
 		refreshed.Do(func() { _, refreshErr = store.ReplaceResourceScope(ctx, replacement) })
 		return options.Now()
 	}
-	input := searchaction.Input{Type: "workbook", Cache: true, Limit: 2000}
+	input := searchaction.Input{Type: "workbook", Cache: true, Limit: rowCount}
 	first, err := newSearchCommands(&runtimeDependencies{configPath: options.ConfigPath, now: clock}).Execute(ctx, input)
-	if err != nil || refreshErr != nil || len(first.Items) != 2000 || first.Items[0].Name != "Workbook 00000" || first.Items[1999].Name != "Workbook 01999" || probe.count() != 2 {
-		t.Fatalf("one search crossed generations or blocked refresh: rows=%d query=%v refresh=%v connections=%d", len(first.Items), err, refreshErr, probe.count())
+	if err != nil || refreshErr != nil {
+		t.Fatalf("search or concurrent refresh failed: query=%v refresh=%v context=%v", err, refreshErr, ctx.Err())
+	}
+	if len(first.Items) != rowCount || first.Page.Total != rowCount || first.Generation == nil || probe.count() != 2 {
+		t.Fatalf("first search lost rows, generation, or shared ownership: rows=%d page=%+v generation=%+v connections=%d", len(first.Items), first.Page, first.Generation, probe.count())
+	}
+	for index, item := range first.Items {
+		if item.LUID != replacement.Entries[index].LUID || item.Name != fmt.Sprintf("Workbook %05d", index) {
+			t.Fatalf("first search crossed generations at row %d: %+v", index, item)
+		}
 	}
 	probe.requireClosed(t)
 	next, err := newSearchCommands(&runtimeDependencies{configPath: options.ConfigPath, now: options.Now}).Execute(ctx, input)
-	if err != nil || next.Items[0].Name != replacement.Entries[0].Name || next.Generation.ID == first.Generation.ID || probe.count() != 3 {
-		t.Fatalf("next command retained an old read snapshot: result=%+v error=%v connections=%d", next.Generation, err, probe.count())
+	if err != nil {
+		t.Fatalf("next search failed: error=%v context=%v", err, ctx.Err())
+	}
+	if len(next.Items) != rowCount || next.Page.Total != rowCount || next.Generation == nil || next.Generation.ID == first.Generation.ID || probe.count() != 3 {
+		t.Fatalf("next command lost rows or retained an old read snapshot: rows=%d page=%+v generation=%+v connections=%d", len(next.Items), next.Page, next.Generation, probe.count())
+	}
+	for index, item := range next.Items {
+		if item.LUID != replacement.Entries[index].LUID || item.Name != replacement.Entries[index].Name {
+			t.Fatalf("next search retained an old snapshot at row %d: %+v", index, item)
+		}
 	}
 	probe.requireClosed(t)
 }

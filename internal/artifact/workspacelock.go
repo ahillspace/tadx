@@ -119,6 +119,8 @@ func PrepareWorkspaceSnapshot(ctx context.Context, mutation *workspacecore.Mutat
 				action := "Preserve the source workspace recovery entry and complete or repair the interrupted artifact replacement before cloning."
 				if strings.HasPrefix(name, moveSourcePrefix) || strings.HasPrefix(name, moveStagePrefix) {
 					action = "Preserve the move recovery entry and inspect the source and destination workspaces before recovery; do not restore or remove it based on one workspace alone."
+				} else if strings.HasPrefix(name, deleteTombstonePrefix) {
+					action = "Preserve the deletion recovery entry and confirm whether deletion completed or was rejected before restoring or removing retained content; do not infer the outcome from its name."
 				}
 				return &errs.Error{Kind: errs.KindOperation, Summary: "Workspace snapshot has unresolved artifact recovery evidence: " + filepath.ToSlash(relative), Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: action}
 			}
@@ -131,7 +133,7 @@ func PrepareWorkspaceSnapshot(ctx context.Context, mutation *workspacecore.Mutat
 }
 
 func isArtifactRecoveryEntry(name string) bool {
-	for _, prefix := range []string{backupPrefix, stagePrefix, datasourceBackupPrefix, datasourceStagePrefix, moveSourcePrefix, moveStagePrefix, ".tadx-flow-stage-", ".tadx-pulse-definition-stage-", ".tadx-lineage-stage-"} {
+	for _, prefix := range []string{backupPrefix, stagePrefix, datasourceBackupPrefix, datasourceStagePrefix, moveSourcePrefix, moveStagePrefix, deleteTombstonePrefix, ".tadx-flow-stage-", ".tadx-pulse-definition-stage-", ".tadx-lineage-stage-"} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}

@@ -114,6 +114,8 @@ Workspace deletion owns the lifecycle exclusively and revalidates recovery, iden
 Workspace clone holds source lifecycle and artifact ownership while preparing its snapshot and copying the complete artifact tree.
 Supported replacements are reconciled; unresolved recovery evidence blocks copying and remains intact.
 Retained Move stages and source tombstones also block cloning because the other workspace might already contain a committed destination.
+Retained Delete tombstones block cloning because they can represent either completed deletion with incomplete cleanup or rejected deletion with failed restoration.
+Snapshot preparation preserves this ambiguous evidence; its filename cannot establish whether restoration or removal is safe.
 The destination receives a fresh workspace identity and registration only after that consistent copy succeeds.
 Deletion closes locks inside the workspace before renaming its root while retaining the external lifecycle lock.
 The persistent sibling lifecycle lock uses the canonical workspace path, independent of user cache settings.
