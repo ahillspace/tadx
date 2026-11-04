@@ -10,6 +10,11 @@ type Input struct {
 	Terms, Type, Environment, Site, ProjectPath, Owner, Cursor string
 	SiteResolved, Cache                                        bool
 	Limit                                                      int
+	// SourceContract separates continuation identities when source semantics change.
+	SourceContract string `json:",omitempty"`
+	// Budget is the remaining command output bound for source composition.
+	// It never changes the stable provider page size or cursor identity.
+	Budget int `json:"-"`
 }
 
 // Page is the continuation envelope for the selected source.

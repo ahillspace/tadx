@@ -149,6 +149,7 @@ func searchPages(ctx context.Context, source Source, input Input, types []string
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
+		request.Budget = min(request.Limit, input.Limit-len(result.Items))
 		page, err := source.Search(ctx, request, types)
 		if err != nil {
 			return Result{}, err

@@ -90,7 +90,12 @@ The decoder maps `unifieddatasource` to `datasource` and preserves publication, 
 
 The adapter retains the first occurrence of each canonical content identity without local sorting or separate type queries.
 Explicit unpublished datasource hits and hits with a non-Datasource parent are omitted; conflicting canonical name/project metadata still fails rather than silently selecting one version.
-Ranked raw pages are scanned for the requested unique count plus one unique lookahead, so trailing duplicates or omitted connections do not falsely imply more content.
+Ranked raw pages are scanned until the requested unique count is satisfied.
+A satisfied budget retains any unconsumed provider continuation without fetching or resolving further hits solely for lookahead.
+That continuation indicates potential additional results; trailing duplicates, omitted connections, and cross-page repeated identities are classified when the next page is consumed.
+Datasource totals remain unknown until the consumed source establishes the unique count.
+Raw page retrieval and datasource identity resolution have separate command-local caches.
+New output resolves datasource URLs in raw batches bounded by the remaining result budget; cursor replay resolves its required consumed prefix in bulk rather than one URL per hit.
 Version 2 cursors store raw page/offset and a prefix digest; replay reconstructs previously seen identities across pages, while command-local page and REST-ID caches avoid refetching during internal aggregation.
 Legacy page cursors remain accepted.
 Raw-hit totals are not presented as unique datasource/content totals; complete totals are supplied only when established, and the 2,000-hit provider cap remains.
@@ -100,12 +105,19 @@ Consistent raw hits repeated across native pages are retained once with a comple
 
 Native requests use at most 100 hits per page and Tableau's 2,000-hit search window; a warning signals additional matches beyond that window.
 The action expands limits above 100 through internal pages, with a 100-page scan bound.
+Each internal call also carries the remaining output budget, independently of the stable provider page size and cursor identity.
+Native and dedicated adapters stop at that budget, so a satisfied final native batch does not query another source merely to fill a provider-sized page.
+Term-filtered definitions retain only the current normalized provider page on the command-owned lister, keyed by term, provider token, and page size.
+Advancing to another page evicts it; failed or canceled reads are not retained, and a fresh command fetches current data before validating its continuation digest.
 The dedicated/cache adapter also bounds its scan to 100 source pages per call and returns continuation when that scan ends.
 Cursors bind the request's source, environment/site, types, term, filters, and limit; dedicated/cache cursors additionally check source-page identity to detect changed data.
 An all-types page may fill entirely with native content and metric hits before any administration or definition request occurs.
 The combined search omits a claimed aggregate total and propagates an encountered source error; it does not return a successful partial result when a later source fails.
 Search preserves upstream retryability and corrective advice, including rate-limit advice, without automatically retrying.
+Unavailable indexed Pulse metric search directs recovery to the selected Tableau Cloud deployment; it does not recommend moving Pulse operations to Tableau Server.
 Combined cursors use version 2 so continuations from the previous source composition fail explicitly instead of skipping newly indexed metric results.
+Live term searches that include definitions also bind their action cursor to the filtered-definition source contract, rejecting prior unfiltered inventory continuations before querying the filtered endpoint.
+No-term and cache cursors retain their existing source identity.
 
 `--cache` reads local SQLite resource records through `internal/cache/{resources,store}.go`, not Tableau's relevance index or its Metadata API.
 The cached execution boundary owns one read session for every source page needed to satisfy `--limit`.
