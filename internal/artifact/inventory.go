@@ -717,7 +717,7 @@ func validateManagedDirectory(workspace, directory string) error {
 			return err
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return errors.New("managed artifact directories must be real directories, not symbolic links")
+			return errors.New("managed artifact path must be a real directory and must not be a symbolic link")
 		}
 	}
 	return nil
