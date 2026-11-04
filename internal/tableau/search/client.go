@@ -119,10 +119,17 @@ func (c *Client) Search(ctx context.Context, input Request) (Page, error) {
 	if request.Terms != "" {
 		query.Set("terms", request.Terms)
 	}
-	if len(request.Types) == 1 {
-		query.Set("filter", "type:eq:"+request.Types[0])
+	providerTypes := make([]string, len(request.Types))
+	for i, kind := range request.Types {
+		providerTypes[i] = kind
+		if kind == "metric" {
+			providerTypes[i] = "insightmetric"
+		}
+	}
+	if len(providerTypes) == 1 {
+		query.Set("filter", "type:eq:"+providerTypes[0])
 	} else {
-		query.Set("filter", "type:in:["+strings.Join(request.Types, ",")+"]")
+		query.Set("filter", "type:in:["+strings.Join(providerTypes, ",")+"]")
 	}
 	query.Set("limit", strconv.Itoa(request.Limit))
 	query.Set("page", strconv.Itoa(request.Page))
@@ -258,6 +265,7 @@ type rawContent struct {
 	ContentType           string      `json:"contentType"`
 	Name                  string      `json:"name"`
 	Title                 string      `json:"title"`
+	MetricID              string      `json:"metricId"`
 	ProjectLUID           string      `json:"projectLuid"`
 	ProjectName           string      `json:"projectName"`
 	ProjectPath           string      `json:"projectPath"`
@@ -293,6 +301,9 @@ func (item rawItem) normalize() Item {
 	name := content.Name
 	if name == "" {
 		name = content.Title
+	}
+	if kind == "metric" {
+		luid, name = content.MetricID, content.Title
 	}
 	projectLUID := content.ProjectLUID
 	if projectLUID == "" {
@@ -333,6 +344,8 @@ func normalizeContentType(value string) string {
 	switch kind {
 	case "unifieddatasource":
 		return "datasource"
+	case "insightmetric":
+		return "metric"
 	default:
 		return kind
 	}
@@ -340,7 +353,7 @@ func normalizeContentType(value string) string {
 
 func supportedType(kind string) bool {
 	switch kind {
-	case "workbook", "datasource", "flow", "project":
+	case "workbook", "datasource", "flow", "project", "metric":
 		return true
 	default:
 		return false

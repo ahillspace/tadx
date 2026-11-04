@@ -122,7 +122,7 @@ func TestLiveGlobalSearchRoutesNonemptyContentTermsToNativeSearch(t *testing.T) 
 	for _, test := range []struct {
 		selector string
 		types    []string
-	}{{"content", []string{"datasource", "flow", "project", "workbook"}}, {"workbook", []string{"workbook"}}} {
+	}{{"content", []string{"datasource", "flow", "project", "workbook"}}, {"workbook", []string{"workbook"}}, {"metric", []string{"metric"}}} {
 		native := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Sales"}}}}}
 		dedicated := &appSearchFake{}
 		source := globalSearchSource{native: native, dedicated: dedicated}
@@ -139,8 +139,8 @@ func TestLiveGlobalSearchRoutesNonemptyContentTermsToNativeSearch(t *testing.T) 
 	}
 }
 
-func TestLiveGlobalSearchRetainsDedicatedRoutesForAdminAndPulse(t *testing.T) {
-	for _, selector := range []string{"admin", "user", "group", "pulse", "definition", "metric"} {
+func TestLiveGlobalSearchRetainsDedicatedRoutesForAdminAndDefinitions(t *testing.T) {
+	for _, selector := range []string{"admin", "user", "group", "definition"} {
 		native := &appSearchFake{}
 		dedicated := &appSearchFake{pages: []resourcesearch.Page{{}}}
 		source := globalSearchSource{native: native, dedicated: dedicated}
@@ -224,7 +224,7 @@ func TestUntypedLiveSearchReturnsNativeContentBeforeDedicatedResults(t *testing.
 	if err != nil || len(second.Items) != 1 || second.Items[0].LUID != "user-2" || second.Page.NextCursor != "" || len(native.inputs) != 1 || len(dedicated.inputs) != 2 {
 		t.Fatalf("second=%+v error=%v native=%d dedicated=%d", second, err, len(native.inputs), len(dedicated.inputs))
 	}
-	wantTypes := []string{"definition", "group", "metric", "user"}
+	wantTypes := []string{"definition", "group", "user"}
 	if !reflect.DeepEqual(dedicated.inputs[0].Types, wantTypes) || dedicated.inputs[0].Cursor != "" {
 		t.Fatalf("dedicated input=%+v", dedicated.inputs[0])
 	}

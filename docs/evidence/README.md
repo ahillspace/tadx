@@ -3,6 +3,7 @@
 These records preserve the upstream contracts and verification limits supporting TADX capabilities.
 [REST version negotiation](rest-version-negotiation-contract.md) records unauthenticated server discovery and the PAT authentication minimum.
 [Session rejection](session-rejection-contract.md) records how Tableau rejects an expired or superseded session and why TADX renews it and resends the request.
+[Pulse term search](pulse-search-contract.md) records indexed metric discovery, upstream definition filtering, authoritative metric identities, and their bounded verification limits.
 Official documentation is available without a local documentation capture:
 
 | API family | Official documentation |

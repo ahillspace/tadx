@@ -119,6 +119,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
+	lister.terms = strings.TrimSpace(input.Terms)
 	nativeClient, err := tableausearch.NewClient(connection.transport, connection.session, connection.environment.URL)
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
@@ -156,7 +157,7 @@ func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input
 	if dedicatedSearchSelector(input.Type) {
 		return executeAppSearch(ctx, s.dedicated, resourceInput)
 	}
-	if contentSearchSelector(input.Type) {
+	if nativeSearchSelector(input.Type) {
 		return executeAppSearch(ctx, s.native, resourceInput)
 	}
 	return s.searchAll(ctx, input, types)
@@ -184,16 +185,16 @@ func executeAppSearch(ctx context.Context, adapter appSearchAdapter, input resou
 
 func dedicatedSearchSelector(selector string) bool {
 	switch selector {
-	case "admin", "user", "group", "pulse", "definition", "metric":
+	case "admin", "user", "group", "definition":
 		return true
 	default:
 		return false
 	}
 }
 
-func contentSearchSelector(selector string) bool {
+func nativeSearchSelector(selector string) bool {
 	switch selector {
-	case "content", "workbook", "datasource", "flow", "project":
+	case "content", "workbook", "datasource", "flow", "project", "metric":
 		return true
 	default:
 		return false
@@ -203,6 +204,7 @@ func contentSearchSelector(selector string) bool {
 const (
 	combinedSearchContent   = "content"
 	combinedSearchDedicated = "dedicated"
+	combinedSearchVersion   = 2
 	maxCombinedCursorBytes  = 8192
 	maxCombinedSourceBytes  = 4096
 )
@@ -229,14 +231,17 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 		return searchaction.Result{}, err
 	}
 	dedicatedTypes := make([]string, 0, len(types))
+	nativeTypes := make([]string, 0, len(types))
 	for _, kind := range types {
 		if dedicatedSearchSelector(kind) {
 			dedicatedTypes = append(dedicatedTypes, kind)
+		} else if nativeSearchSelector(kind) {
+			nativeTypes = append(nativeTypes, kind)
 		}
 	}
 	if state.Phase == combinedSearchContent {
 		page, err := s.native.Search(ctx, resourcesearch.Input{
-			Types: []string{"datasource", "flow", "project", "workbook"}, Terms: input.Terms,
+			Types: nativeTypes, Terms: input.Terms,
 			ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: state.Source, Limit: input.Limit,
 		})
 		if err != nil {
@@ -247,12 +252,12 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 				return searchaction.Result{}, errors.New("native search continuation exceeded the combined cursor bound")
 			}
 			page.Total = 0
-			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent, Source: page.NextCursor})
+			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: combinedSearchVersion, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent, Source: page.NextCursor})
 			return searchResult(page, nil), nil
 		}
 		if len(page.Items) == input.Limit {
 			page.Total = 0
-			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated})
+			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: combinedSearchVersion, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated})
 			return searchResult(page, nil), nil
 		}
 		state.Phase = combinedSearchDedicated
@@ -275,7 +280,7 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 			if len(dedicatedPage.NextCursor) > maxCombinedSourceBytes {
 				return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
 			}
-			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: dedicatedPage.NextCursor})
+			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: combinedSearchVersion, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: dedicatedPage.NextCursor})
 		}
 		return searchResult(page, nil), nil
 	}
@@ -291,7 +296,7 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 		if len(page.NextCursor) > maxCombinedSourceBytes {
 			return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
 		}
-		page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: page.NextCursor})
+		page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: combinedSearchVersion, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: page.NextCursor})
 	}
 	return searchResult(page, nil), nil
 }
@@ -309,14 +314,14 @@ func executeBoundedAppSearch(ctx context.Context, adapter appSearchAdapter, inpu
 
 func decodeCombinedSearchCursor(value string, input searchaction.Input) (combinedSearchCursor, error) {
 	if value == "" {
-		return combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent}, nil
+		return combinedSearchCursor{Version: combinedSearchVersion, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent}, nil
 	}
 	if len(value) > maxCombinedCursorBytes {
 		return combinedSearchCursor{}, invalidCombinedSearchCursor{}
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	var state combinedSearchCursor
-	if err != nil || json.Unmarshal(data, &state) != nil || state.Version != 1 || state.Fingerprint != combinedSearchFingerprint(input) || (state.Phase != combinedSearchContent && state.Phase != combinedSearchDedicated) || state.Checksum != combinedSearchChecksum(state) || (state.Phase == combinedSearchContent && state.Source == "") {
+	if err != nil || json.Unmarshal(data, &state) != nil || state.Version != combinedSearchVersion || state.Fingerprint != combinedSearchFingerprint(input) || (state.Phase != combinedSearchContent && state.Phase != combinedSearchDedicated) || state.Checksum != combinedSearchChecksum(state) || (state.Phase == combinedSearchContent && state.Source == "") {
 		return combinedSearchCursor{}, invalidCombinedSearchCursor{}
 	}
 	return state, nil
@@ -690,6 +695,7 @@ func completeListSearchPage(items []resourcesearch.Item, total int, nextCursor s
 
 type liveSearchLister struct {
 	environment, site string
+	terms             string
 	workbooks         workbookops.ListReader
 	datasources       datasourceops.ListReader
 	flows             flowops.ListReader
@@ -783,6 +789,17 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "definition":
+		if s.terms != "" {
+			page, err := s.pulse.SearchDefinitions(ctx, s.terms, tableaupulse.PageRequest{PageSize: limit, PageToken: cursor})
+			if err != nil {
+				return resourcesearch.Page{}, err
+			}
+			items := make([]resourcesearch.Item, len(page.Definitions))
+			for i, item := range page.Definitions {
+				items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
+			}
+			return resourcesearch.Page{Items: items, NextCursor: page.NextPageToken, TableauRequestID: page.TableauRequestID}, nil
+		}
 		input := pulsedefinition.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit}
 		if err := pulsedefinition.ListValidateInput(&input); err != nil {
 			return resourcesearch.Page{}, err
@@ -797,6 +814,9 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
 	case "metric":
+		if s.terms != "" {
+			return resourcesearch.Page{}, errors.New("term-based Pulse metric discovery requires native indexed search")
+		}
 		return s.listMetrics(ctx, cursor, limit)
 	default:
 		return resourcesearch.Page{}, fmt.Errorf("unsupported search type %q", resourceType)

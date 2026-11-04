@@ -66,9 +66,27 @@ func (c *Client) validate() error {
 
 // ListDefinitions returns one bounded provider page.
 func (c *Client) ListDefinitions(ctx context.Context, input PageRequest) (DefinitionPage, error) {
+	return c.listDefinitions(ctx, input, "")
+}
+
+// SearchDefinitions returns one provider-filtered page of matching definition names.
+func (c *Client) SearchDefinitions(ctx context.Context, term string, input PageRequest) (DefinitionPage, error) {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return DefinitionPage{}, errors.New("Pulse definition search requires a nonempty term")
+	}
+	// The filter value uses JavaScript encodeURIComponent before query encoding.
+	encodedTerm := strings.NewReplacer("+", "%20", "%21", "!", "%27", "'", "%28", "(", "%29", ")", "%2A", "*").Replace(url.QueryEscape(term))
+	return c.listDefinitions(ctx, input, "name:has:"+encodedTerm)
+}
+
+func (c *Client) listDefinitions(ctx context.Context, input PageRequest, filter string) (DefinitionPage, error) {
 	query, err := pageQuery(input)
 	if err != nil {
 		return DefinitionPage{}, err
+	}
+	if filter != "" {
+		query.Set("filter", filter)
 	}
 	response, err := c.do(ctx, tableau.Request{Method: http.MethodGet, Path: pulsePath + "/definitions", Query: query, Operation: "pulse.definition.list", MaxResponseBytes: maxResponseBytes})
 	if err != nil {
