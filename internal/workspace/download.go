@@ -135,7 +135,7 @@ func (d *Downloads) open(ctx context.Context) error {
 		_ = held.Release()
 		return fmt.Errorf("create workspace download directory: %w", err)
 	}
-	d.held, d.directory, d.use = held, directory, use
+	d.root, d.held, d.directory, d.use = use.root, held, directory, use
 	success = true
 	return nil
 }

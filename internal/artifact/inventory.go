@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 const (
@@ -204,11 +206,11 @@ func inventoryWithScanLimit(ctx context.Context, workspace string, options Inven
 // fingerprints suitable for dirty-state checks and mutation ownership.
 func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, err error) {
 	defer func() { err = withWorkspaceRelativePaths(err, workspace) }()
-	item, err := selectArtifactMetadata(ctx, workspace, selector)
+	root, err := validateWorkspaceRoot(workspace)
 	if err != nil {
 		return Item{}, err
 	}
-	root, err := filepath.Abs(workspace)
+	item, err := selectArtifactMetadata(ctx, root, selector)
 	if err != nil {
 		return Item{}, err
 	}
@@ -220,11 +222,11 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, 
 // a mutation snapshot; those checks belong to the selected operation.
 func Select(ctx context.Context, workspace string, selector Selector) (_ Item, err error) {
 	defer func() { err = withWorkspaceRelativePaths(err, workspace) }()
-	item, err := selectArtifactMetadata(ctx, workspace, selector)
+	root, err := validateWorkspaceRoot(workspace)
 	if err != nil {
 		return Item{}, err
 	}
-	root, err := filepath.Abs(workspace)
+	item, err := selectArtifactMetadata(ctx, root, selector)
 	if err != nil {
 		return Item{}, err
 	}
@@ -237,11 +239,7 @@ func Select(ctx context.Context, workspace string, selector Selector) (_ Item, e
 	return item, nil
 }
 
-func selectArtifactMetadata(ctx context.Context, workspace string, selector Selector) (Item, error) {
-	root, err := validateWorkspaceRoot(workspace)
-	if err != nil {
-		return Item{}, err
-	}
+func selectArtifactMetadata(ctx context.Context, root string, selector Selector) (Item, error) {
 	if err := requireWorkspaceIdentity(root, selector.ExpectedWorkspaceID); err != nil {
 		return Item{}, err
 	}
@@ -676,7 +674,7 @@ func validateWorkspaceRoot(workspace string) (string, error) {
 	if _, err := os.Lstat(filepath.Join(root, "tadx.yaml")); err != nil {
 		return "", errors.New("workspace root does not contain tadx.yaml")
 	}
-	return root, nil
+	return workspacecore.CanonicalRoot(root)
 }
 
 // validateArtifactDirectory checks managed roots and artifact directories without
@@ -698,9 +696,15 @@ func validateArtifactDirectory(workspace, kind, directory string) error {
 			return errors.New("artifact directory escapes its managed root")
 		}
 	}
-	relative, err = filepath.Rel(workspace, directory)
-	if err != nil {
-		return err
+	return validateManagedDirectory(workspace, directory)
+}
+
+// validateManagedDirectory admits existing managed ancestors before any read,
+// creation, or recovery through them. Missing descendants remain prospective.
+func validateManagedDirectory(workspace, directory string) error {
+	relative, err := filepath.Rel(workspace, directory)
+	if err != nil || !filepath.IsLocal(relative) {
+		return errors.New("artifact directory escapes the workspace")
 	}
 	current := workspace
 	for segment := range strings.SplitSeq(relative, string(filepath.Separator)) {
@@ -717,4 +721,20 @@ func validateArtifactDirectory(workspace, kind, directory string) error {
 		}
 	}
 	return nil
+}
+
+// ensureArtifactRoot shares managed-parent admission across acquisition owners.
+func ensureArtifactRoot(workspace, kind string, children ...string) (string, error) {
+	parts := append([]string{workspace, "artifacts", kind}, children...)
+	root := filepath.Join(parts...)
+	if err := validateArtifactDirectory(workspace, kind, root); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	if err := validateArtifactDirectory(workspace, kind, root); err != nil {
+		return "", err
+	}
+	return root, nil
 }

@@ -164,13 +164,17 @@ func TestDeleteFinishesWhenUnregistrationStaysInstalled(t *testing.T) {
 	}
 	installedUpdates(m)
 
+	canonical, err := CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = m.Delete(context.Background(), DeleteRequest{Expected: resolved})
 	assertInstalled(t, err)
 	entries, readErr := os.ReadDir(filepath.Dir(root))
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if len(entries) != 1 || entries[0].Name() != filepath.Base(lifecycleLockPath(root)) {
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(lifecycleLockPath(canonical)) {
 		t.Fatalf("unexpected files remain after installed unregistration: %v", entries)
 	}
 	m.update, m.updateWithRollback = nil, nil

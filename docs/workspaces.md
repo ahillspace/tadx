@@ -73,6 +73,9 @@ Active artifact operations and downloads also block deletion; `--force` does not
 Deletion rechecks workspace identity and dirty state after obtaining exclusive lifecycle ownership.
 
 Workspace mutations coordinate through a persistent lock beside the canonical workspace root.
+Equivalent Windows short-name and long-name paths share that physical identity and the same locks.
+Registration and full output preserve the caller-facing root, while storage comparisons use canonical paths and artifact output stays workspace-relative.
+An alternate spelling does not permit parent traversal, linked managed directories, or escape from the selected workspace.
 Creating this lock requires write permission in the parent directory.
 The lock remains after deletion so waiting processes cannot acquire a different lock for the same path.
 Do not remove coordination locks while TADX operations are active.

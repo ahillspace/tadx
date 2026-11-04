@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/artifact"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestMetadataSelectionKeepsFullPayloadValidationWithItsConsumer(t *testing.T) {
@@ -16,7 +17,11 @@ func TestMetadataSelectionKeepsFullPayloadValidationWithItsConsumer(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	relative, err := filepath.Rel(root, created.ArtifactPath)
+	canonical, err := workspacecore.CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(canonical, created.ArtifactPath)
 	if err != nil {
 		t.Fatal(err)
 	}

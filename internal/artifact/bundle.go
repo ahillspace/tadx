@@ -584,6 +584,9 @@ func writeBundleJournal(workspace string, journal bundleJournal, operations dire
 }
 
 func recoverBundleTransaction(workspace string, operations directoryOperations) error {
+	if err := validateManagedDirectory(workspace, filepath.Join(workspace, "artifacts")); err != nil {
+		return err
+	}
 	operations = operations.withDefaults()
 	path := bundleCommittedPath(workspace)
 	committed := true

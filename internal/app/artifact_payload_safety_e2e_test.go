@@ -10,6 +10,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestWorkspaceArtifactRejectsCanonicalPayloadDirectory(t *testing.T) {
@@ -76,7 +77,11 @@ func TestWorkspaceArtifactRejectsCanonicalPayloadDirectory(t *testing.T) {
 							args = append(args, "--source", "source", "--destination", "destination")
 						}
 						if selector == "path" {
-							relative, err := filepath.Rel(root, created.ArtifactPath)
+							canonicalRoot, err := workspacecore.CanonicalRoot(root)
+							if err != nil {
+								t.Fatal(err)
+							}
+							relative, err := filepath.Rel(canonicalRoot, created.ArtifactPath)
 							if err != nil {
 								t.Fatal(err)
 							}

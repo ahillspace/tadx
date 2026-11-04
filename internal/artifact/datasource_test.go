@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/lock"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestDatasourceManagerPullPreservesNativePayloadAndRecordsProvenance(t *testing.T) {
@@ -31,11 +32,15 @@ func TestDatasourceManagerPullPreservesNativePayloadAndRecordsProvenance(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantRoot := filepath.Join(workspace, "artifacts", "datasource") + string(filepath.Separator)
+			canonical, err := workspacecore.CanonicalRoot(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantRoot := filepath.Join(canonical, "artifacts", "datasource") + string(filepath.Separator)
 			if !strings.HasPrefix(result.ArtifactPath, wantRoot) || filepath.Dir(result.ArtifactPath) != strings.TrimSuffix(wantRoot, string(filepath.Separator)) {
 				t.Fatalf("artifact path = %q", result.ArtifactPath)
 			}
-			wantRelative, err := filepath.Rel(workspace, result.ArtifactPath)
+			wantRelative, err := filepath.Rel(canonical, result.ArtifactPath)
 			if err != nil {
 				t.Fatal(err)
 			}

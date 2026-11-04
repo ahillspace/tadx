@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestInvalidArtifactDiagnosticPrecedence(t *testing.T) {
@@ -65,7 +67,11 @@ func TestArtifactOperationsRejectLinkedManagedParents(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					relative, err = filepath.Rel(outside, pulled.ArtifactPath)
+					canonical, err := workspacecore.CanonicalRoot(outside)
+					if err != nil {
+						t.Fatal(err)
+					}
+					relative, err = filepath.Rel(canonical, pulled.ArtifactPath)
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestManagedPublishSelectionHasNoSnapshotEntryLimit(t *testing.T) {
@@ -24,7 +26,11 @@ func TestManagedPublishSelectionHasNoSnapshotEntryLimit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	relative, err := filepath.Rel(root, created.ArtifactPath)
+	canonical, err := workspacecore.CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(canonical, created.ArtifactPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +39,16 @@ func TestManagedPublishSelectionHasNoSnapshotEntryLimit(t *testing.T) {
 		t.Fatalf("managed publish selection rejected a large artifact tree: %v", err)
 	}
 	loaded, err := manager.Read(t.Context(), filepath.Join(root, filepath.FromSlash(selected.Path)))
-	if err != nil || loaded.PayloadPath != created.CanonicalPath || selected.TreeFingerprint == "" {
+	if err != nil || selected.TreeFingerprint == "" {
 		t.Fatalf("selected = %#v, payload = %#v, error = %v", selected, loaded, err)
+	}
+	loadedInfo, err := os.Stat(loaded.PayloadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdInfo, err := os.Stat(created.CanonicalPath)
+	if err != nil || !os.SameFile(loadedInfo, createdInfo) {
+		t.Fatalf("selected payload identifies a different file: %q, want %q: %v", loaded.PayloadPath, created.CanonicalPath, err)
 	}
 }
 
@@ -129,7 +143,11 @@ func TestResolveMissingCanonicalPayloadRetainsTreeSnapshot(t *testing.T) {
 	if err := os.Remove(created.CanonicalPath); err != nil {
 		t.Fatal(err)
 	}
-	relative, err := filepath.Rel(root, created.ArtifactPath)
+	canonical, err := workspacecore.CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(canonical, created.ArtifactPath)
 	if err != nil {
 		t.Fatal(err)
 	}

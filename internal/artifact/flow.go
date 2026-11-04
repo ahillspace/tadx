@@ -168,7 +168,7 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResul
 	defer func() { _ = handle.Release() }()
 	workspace = handle.Root()
 	input.Workspace = workspace
-	root, err := ensureFlowRoot(workspace)
+	root, err := ensureArtifactRoot(workspace, "flow")
 	if err != nil {
 		return FlowPullResult{}, err
 	}
@@ -178,6 +178,9 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResul
 	}
 	if target == "" {
 		target = filepath.Join(root, flowIdentityComponent(input.Metadata.Name, origin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID))
+	}
+	if err := validateArtifactDirectory(workspace, "flow", target); err != nil {
+		return FlowPullResult{}, err
 	}
 	warnings := []string{}
 	if existing != nil {
@@ -310,16 +313,6 @@ func validateLineage(value LineageDocument) error {
 	return nil
 }
 
-func ensureFlowRoot(workspace string) (string, error) {
-	root := filepath.Join(workspace, "artifacts", "flow")
-	if info, err := os.Lstat(root); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("flow artifact root must not be a symbolic link")
-	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return "", err
-	}
-	return root, nil
-}
 func findFlow(root, origin, site, luid string) (string, *FlowMetadata, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {

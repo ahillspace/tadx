@@ -106,12 +106,15 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (_ Lineage
 	if err := requireWorkspaceIdentity(workspace, input.ExpectedWorkspaceID); err != nil {
 		return LineagePullResult{}, err
 	}
-	root, err := ensureStandaloneLineageRoot(workspace, input.Metadata.ResourceKind)
+	root, err := ensureArtifactRoot(workspace, "lineage", input.Metadata.ResourceKind)
 	if err != nil {
 		return LineagePullResult{}, err
 	}
 	target := filepath.Join(root, lineageIdentityComponent(input.Metadata.Name, origin, input.Metadata.SourceSiteLUID, input.Metadata.ResourceKind, input.Metadata.TableauID))
 	if err := requirePullDestination(workspace, target, input.ExpectedPath); err != nil {
+		return LineagePullResult{}, err
+	}
+	if err := validateArtifactDirectory(workspace, "lineage", target); err != nil {
 		return LineagePullResult{}, err
 	}
 	if err := protectExistingStandaloneLineage(ctx, target, input, origin); err != nil {
@@ -211,21 +214,6 @@ func validateLineagePull(input LineagePull) error {
 		return errors.New("complete lineage artifact requires the root Metadata ID")
 	}
 	return validateLineage(input.Lineage)
-}
-
-func ensureStandaloneLineageRoot(workspace, kind string) (string, error) {
-	base := filepath.Join(workspace, "artifacts", "lineage")
-	for _, path := range []string{base, filepath.Join(base, kind)} {
-		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("lineage artifact root must not be a symbolic link")
-		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", err
-		}
-		if err := os.MkdirAll(path, 0o700); err != nil {
-			return "", err
-		}
-	}
-	return filepath.Join(base, kind), nil
 }
 
 func protectExistingStandaloneLineage(ctx context.Context, target string, input LineagePull, origin string) error {
