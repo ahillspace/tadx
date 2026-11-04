@@ -73,7 +73,11 @@ func TestCloneCopiesOneCompleteGenerationDuringNormalPull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relative, err := filepath.Rel(source.Root, first.ArtifactPath)
+	canonical, err := workspace.CanonicalRoot(source.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(canonical, first.ArtifactPath)
 	if err != nil {
 		t.Fatal(err)
 	}

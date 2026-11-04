@@ -140,7 +140,7 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 	if err := requireWorkspaceIdentity(workspace, input.ExpectedWorkspaceID); err != nil {
 		return PulseDefinitionPullResult{}, err
 	}
-	root, err := ensurePulseDefinitionRoot(workspace)
+	root, err := ensureArtifactRoot(workspace, "pulse-definition")
 	if err != nil {
 		return PulseDefinitionPullResult{}, err
 	}
@@ -150,6 +150,9 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 	}
 	if target == "" {
 		target = filepath.Join(root, pulseDefinitionIdentityComponent(input.Metadata.Name, origin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID))
+	}
+	if err := validateArtifactDirectory(workspace, "pulse-definition", target); err != nil {
+		return PulseDefinitionPullResult{}, err
 	}
 	if err := requirePullDestination(workspace, target, input.ExpectedPath); err != nil {
 		return PulseDefinitionPullResult{}, err
@@ -316,17 +319,6 @@ func canonicalPulseDefinition(value []byte) ([]byte, pulseDefinitionIdentity, er
 func jsonString(value any) string {
 	text, _ := value.(string)
 	return strings.TrimSpace(text)
-}
-
-func ensurePulseDefinitionRoot(workspace string) (string, error) {
-	root := filepath.Join(workspace, "artifacts", "pulse-definition")
-	if info, err := os.Lstat(root); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("Pulse definition artifact root must not be a symbolic link")
-	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return "", err
-	}
-	return root, nil
 }
 
 func findPulseDefinition(root, origin, site, luid string) (string, *PulseDefinitionMetadata, error) {

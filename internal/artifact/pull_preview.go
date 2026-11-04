@@ -61,18 +61,8 @@ func PreviewPull(ctx context.Context, input PullPreview) (_ PullPreviewResult, e
 	default:
 		return PullPreviewResult{}, errors.New("unsupported acquisition artifact kind")
 	}
-	// Check each existing parent independently; never create missing roots.
-	for candidate := root; candidate != workspace; candidate = filepath.Dir(candidate) {
-		info, statErr := os.Lstat(candidate)
-		if errors.Is(statErr, os.ErrNotExist) {
-			continue
-		}
-		if statErr != nil {
-			return PullPreviewResult{}, statErr
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return PullPreviewResult{}, errors.New("artifact root must be a directory and not a symbolic link")
-		}
+	if err := validateArtifactDirectory(workspace, input.Kind, root); err != nil {
+		return PullPreviewResult{}, err
 	}
 	target := filepath.Join(root, component)
 	exists := false

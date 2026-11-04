@@ -6,7 +6,6 @@ import (
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	"io"
 	"path/filepath"
-	"strings"
 
 	"github.com/ahillspace/tadx/actions/batchinput"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
@@ -364,9 +363,9 @@ func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowops.Pull
 	if err := flowops.ValidatePullInput(input); err != nil {
 		return flowops.PullOutput{}, err
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	workspace, err := resolvePullWorkspace(ctx, c.runtime, "flow.pull", input.Environment, input.Workspace, "", "")
 	if err != nil {
-		return flowops.PullOutput{}, capabilitySetupError("flow.pull.workspace", "flow.pull", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return flowops.PullOutput{}, err
 	}
 	input.Workspace = workspace.Root
 	input.WorkspaceName = workspace.Name
@@ -705,30 +704,15 @@ func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowops.PullArt
 	if err != nil {
 		return flowops.PullArtifactResult{}, err
 	}
-	canonicalPath, err := containWorkspacePath(input.Workspace, result.CanonicalPath, "canonical path")
+	canonicalPath, err := artifactWorkspaceRelativePath(input.Workspace, result.CanonicalPath, "flow", "canonical path")
 	if err != nil {
 		return flowops.PullArtifactResult{}, err
 	}
-	lineagePath, err := containWorkspacePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "lineage path")
+	lineagePath, err := artifactWorkspaceRelativePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "flow", "lineage path")
 	if err != nil {
 		return flowops.PullArtifactResult{}, err
 	}
 	return flowops.PullArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, Warnings: append([]string(nil), result.Warnings...)}, nil
-}
-
-// containWorkspacePath normalizes an absolute artifact path to a
-// workspace-relative slash path and rejects any path that escapes the
-// resolved workspace tree.
-func containWorkspacePath(workspace, absolute, label string) (string, error) {
-	relative, err := filepath.Rel(workspace, absolute)
-	if err != nil {
-		return "", err
-	}
-	relative = filepath.ToSlash(filepath.Clean(relative))
-	if relative == ".." || strings.HasPrefix(relative, "../") {
-		return "", errors.New("flow artifact " + label + " escapes the resolved workspace")
-	}
-	return relative, nil
 }
 
 type flowArtifactReader struct {

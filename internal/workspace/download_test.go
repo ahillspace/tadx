@@ -17,6 +17,7 @@ import (
 func TestDownloadsStageEachPayloadPrivatelyAndCloseRemovesThem(t *testing.T) {
 	root := t.TempDir()
 	downloads := workspacecore.NewDownloads(root)
+	defer downloads.Close()
 	if _, err := os.Stat(filepath.Join(root, ".tadx")); !os.IsNotExist(err) {
 		t.Fatalf("staging touched the workspace before a download: %v", err)
 	}
@@ -29,7 +30,11 @@ func TestDownloadsStageEachPayloadPrivatelyAndCloseRemovesThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	directory := filepath.Dir(first)
-	if first == second || filepath.Dir(second) != directory || filepath.Dir(directory) != filepath.Join(root, ".tadx", "tmp") {
+	canonical, err := workspacecore.CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || filepath.Dir(second) != directory || filepath.Dir(directory) != filepath.Join(canonical, ".tadx", "tmp") {
 		t.Fatalf("staged files = %q, %q", first, second)
 	}
 	if content, err := os.ReadFile(second); err != nil || string(content) != "second" {

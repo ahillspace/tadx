@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/artifact"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestDeleteRevalidatesExactFingerprint(t *testing.T) {
@@ -58,7 +59,11 @@ func TestDeleteRemovesOnlyExactManagedArtifact(t *testing.T) {
 
 func itemRelative(t *testing.T, root, target string) string {
 	t.Helper()
-	relative, err := filepath.Rel(root, target)
+	canonical, err := workspacecore.CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(canonical, target)
 	if err != nil {
 		t.Fatal(err)
 	}

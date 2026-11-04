@@ -16,6 +16,7 @@ import (
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/config"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestRunCapabilityListRendersTOON(t *testing.T) {
@@ -263,7 +264,11 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifactSelector, err := filepath.Rel(workspace, pulled.ArtifactPath)
+	canonicalRoot, err := workspacecore.CanonicalRoot(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactSelector, err := filepath.Rel(canonicalRoot, pulled.ArtifactPath)
 	if err != nil {
 		t.Fatal(err)
 	}

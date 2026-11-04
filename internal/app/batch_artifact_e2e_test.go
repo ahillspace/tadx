@@ -10,6 +10,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestLocalArtifactBatchesRejectPathAndIdentityAliasesBeforeChanges(t *testing.T) {
@@ -35,7 +36,11 @@ func TestLocalArtifactBatchesRejectPathAndIdentityAliasesBeforeChanges(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			relative, err := filepath.Rel(root, pulled.ArtifactPath)
+			canonicalRoot, err := workspacecore.CanonicalRoot(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			relative, err := filepath.Rel(canonicalRoot, pulled.ArtifactPath)
 			if err != nil {
 				t.Fatal(err)
 			}

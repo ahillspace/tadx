@@ -521,9 +521,9 @@ func (s *pullService) Execute(ctx context.Context, input workbookops.PullInput) 
 	if err := workbookops.ValidatePullInput(input); err != nil {
 		return workbookops.PullOutput{}, err
 	}
-	resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	resolvedWorkspace, err := resolvePullWorkspace(ctx, s.runtime, "workbook.pull", input.Environment, input.Workspace, "", "")
 	if err != nil {
-		return workbookops.PullOutput{}, capabilitySetupError("workbook.pull.workspace", "workbook.pull", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return workbookops.PullOutput{}, err
 	}
 	input.Workspace = resolvedWorkspace.Root
 	input.WorkspaceName = resolvedWorkspace.Name
@@ -645,7 +645,17 @@ func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookops.Pul
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, SourceSite: item.SourceSite, LocalArtifactPath: item.LocalArtifactPath}
 	}
 	result, err := w.workbooks.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, PayloadPath: input.Path, Overwrite: input.Overwrite, Lineage: workbookLineageDocument(input.Lineage), LineageCountsKnown: input.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, Portability: input.Portability, PublishedDatasources: references, DependenciesAcquired: input.DependenciesAcquired}})
-	return workbookops.PullArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, LineagePath: result.LineagePath, LineageStatus: result.LineageStatus, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
+	output := workbookops.PullArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, LineagePath: result.LineagePath, LineageStatus: result.LineageStatus, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}
+	if err == nil {
+		output.Path, err = artifactWorkspaceRelativePath(input.Workspace, result.ArtifactPath, "workbook", "path")
+		if err == nil {
+			output.CanonicalPath, err = artifactWorkspaceRelativePath(input.Workspace, result.CanonicalPath, "workbook", "canonical path")
+		}
+		if err == nil && result.LineagePath != "" {
+			output.LineagePath, err = artifactWorkspaceRelativePath(input.Workspace, result.LineagePath, "workbook", "lineage path")
+		}
+	}
+	return output, err
 }
 
 func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookops.PullArtifact, datasources []workbookops.DatasourceArtifact) (workbookops.PullArtifactResult, error) {
@@ -669,7 +679,11 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookops.Pu
 	pathByLUID := make(map[string]string, len(result.Datasources))
 	for index, item := range result.Datasources {
 		source := datasources[index]
-		dependencies[index] = workbookops.DependencyArtifactResult{LUID: source.TableauID, Name: source.Name, Path: item.WorkspaceRelativePath, CanonicalPath: item.CanonicalPath, BaselineFingerprint: item.BaselineFingerprint, Warnings: item.Warnings}
+		canonicalPath, err := artifactWorkspaceRelativePath(source.Workspace, item.CanonicalPath, "datasource", "canonical path")
+		if err != nil {
+			return workbookops.PullArtifactResult{}, err
+		}
+		dependencies[index] = workbookops.DependencyArtifactResult{LUID: source.TableauID, Name: source.Name, Path: item.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: item.BaselineFingerprint, Warnings: item.Warnings}
 		pathByLUID[source.TableauID] = item.WorkspaceRelativePath
 	}
 	outputReferences := make([]workbookops.PublishedDatasourceRef, len(workbook.PublishedDatasources))
@@ -677,7 +691,22 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookops.Pu
 		item.LocalArtifactPath = pathByLUID[item.LUID]
 		outputReferences[index] = item
 	}
-	return workbookops.PullArtifactResult{Path: result.Workbook.ArtifactPath, CanonicalPath: result.Workbook.CanonicalPath, LineagePath: result.Workbook.LineagePath, LineageStatus: result.Workbook.LineageStatus, BaselineFingerprint: result.Workbook.BaselineFingerprint, Portability: workbook.Portability, PublishedDatasources: outputReferences, DependenciesAcquired: true, Dependencies: dependencies, Warnings: result.Workbook.Warnings}, nil
+	path, err := artifactWorkspaceRelativePath(workbook.Workspace, result.Workbook.ArtifactPath, "workbook", "path")
+	if err != nil {
+		return workbookops.PullArtifactResult{}, err
+	}
+	canonicalPath, err := artifactWorkspaceRelativePath(workbook.Workspace, result.Workbook.CanonicalPath, "workbook", "canonical path")
+	if err != nil {
+		return workbookops.PullArtifactResult{}, err
+	}
+	lineagePath := ""
+	if result.Workbook.LineagePath != "" {
+		lineagePath, err = artifactWorkspaceRelativePath(workbook.Workspace, result.Workbook.LineagePath, "workbook", "lineage path")
+		if err != nil {
+			return workbookops.PullArtifactResult{}, err
+		}
+	}
+	return workbookops.PullArtifactResult{Path: path, CanonicalPath: canonicalPath, LineagePath: lineagePath, LineageStatus: result.Workbook.LineageStatus, BaselineFingerprint: result.Workbook.BaselineFingerprint, Portability: workbook.Portability, PublishedDatasources: outputReferences, DependenciesAcquired: true, Dependencies: dependencies, Warnings: result.Workbook.Warnings}, nil
 }
 
 func workbookLineageDocument(input workbookops.LineageCapture) artifact.LineageDocument {

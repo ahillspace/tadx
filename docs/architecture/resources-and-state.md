@@ -106,6 +106,8 @@ Dependency previews use private OS temporary staging, owned and removed by the c
 It protects local edits with the saved baseline fingerprint and requires overwrite before replacing dirty native bytes.
 [`WorkbookBundleManager.Pull`](../../internal/artifact/bundle.go) stages the workbook and datasources, journals the installation, and recovers interrupted bundle transactions.
 Artifact mutations acquire the workspace lifecycle lease and exclusive artifact lock before reconciling shared bundle journals.
+Managed directory admission runs before journal recovery, including legacy marker cleanup, and before acquisition creates roots or stages content.
+Flow, Pulse-definition, and standalone-lineage acquisition share the same parent and destination checks as preview and metadata selection.
 Rollback verifies transaction ownership and prepared content before replacing or removing an artifact; conflicting newer generations require explicit recovery.
 Rollback validates every surviving stage before changing any transaction entry, including stages whose original artifact remains untouched.
 Unverifiable legacy stages remain in place with an explicit recovery conflict.
@@ -120,6 +122,10 @@ The destination receives a fresh workspace identity and registration only after 
 Deletion closes locks inside the workspace before renaming its root while retaining the external lifecycle lock.
 The persistent sibling lifecycle lock uses the canonical workspace path, independent of user cache settings.
 Creating that lock requires write permission in the workspace's parent directory; failure stops the operation before mutation.
+Registry roots retain their caller-facing spelling, including valid parent aliases.
+Pull composition resolves the physical workspace through `resolvePullWorkspace` before acquisition, and artifact metadata selection retains one admitted canonical root through payload inspection.
+The application artifact adapters project storage results through physical path identity before returning relative paths to actions, so Windows short names and long names cannot produce a false containment failure.
+Error rendering retains both caller-facing and physical root context while preserving the original filesystem cause.
 
 Datasource and flow pulls have their own contracts in [`datasource/pull.go`](../../actions/datasource/pull.go) and [`flow/pull.go`](../../actions/flow/pull.go).
 Standalone [`lineage.Execute`](../../actions/lineage/pull/action.go) resolves its REST root, captures the requested bounded graph, and saves confirmed partial evidence when capture fails.

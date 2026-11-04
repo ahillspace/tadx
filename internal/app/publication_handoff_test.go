@@ -19,6 +19,7 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/operationrun"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -92,7 +93,11 @@ func TestPublicationHandoffReleasesForegroundCredentials(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					relative, err := filepath.Rel(workspace, pulled.ArtifactPath)
+					root, err := workspacecore.CanonicalRoot(workspace)
+					if err != nil {
+						t.Fatal(err)
+					}
+					relative, err := filepath.Rel(root, pulled.ArtifactPath)
 					if err != nil {
 						t.Fatal(err)
 					}

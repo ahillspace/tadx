@@ -66,6 +66,14 @@ func TestCleanRemovalFailureRendersRelativePathsAndReleasesLock(t *testing.T) {
 	if err := os.WriteFile(file, []byte("keep until the handle closes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	fileInfo, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := workspacecore.CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	name, err := windows.UTF16PtrFromString(file)
 	if err != nil {
 		t.Fatal(err)
@@ -82,12 +90,16 @@ func TestCleanRemovalFailureRendersRelativePathsAndReleasesLock(t *testing.T) {
 		}
 	})
 	_, err = workspacecore.Clean(t.Context(), root, "temporary")
-	if err == nil || strings.Contains(err.Error(), root) || !strings.Contains(err.Error(), ".tadx/tmp/held.txt") {
+	if err == nil || strings.Contains(err.Error(), root) || strings.Contains(err.Error(), canonical) || !strings.Contains(err.Error(), ".tadx/tmp/held.txt") {
 		t.Fatalf("unsafe or incomplete removal error: %v", err)
 	}
 	cause, ok := errors.AsType[*fs.PathError](err)
-	if !ok || cause.Path != file || !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+	if !ok || !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 		t.Fatalf("relative rendering lost the original sharing violation: %v", err)
+	}
+	causeInfo, statErr := os.Stat(cause.Path)
+	if statErr != nil || !os.SameFile(fileInfo, causeInfo) {
+		t.Fatalf("filesystem cause identifies a different held file: %#v, %v", cause, statErr)
 	}
 	if _, err := os.Stat(file); err != nil {
 		t.Fatalf("failed cleanup removed the held file: %v", err)

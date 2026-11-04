@@ -6,7 +6,6 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"io"
 	"path/filepath"
-	"strings"
 
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cli/progress"
@@ -22,9 +21,9 @@ func (c *remoteContentCommands) PullDatasource(ctx context.Context, input dataso
 	if err := datasourceops.ValidatePullInput(input); err != nil {
 		return datasourceops.PullOutput{}, err
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	workspace, err := resolvePullWorkspace(ctx, c.runtime, "datasource.pull", input.Environment, input.Workspace, "", "")
 	if err != nil {
-		return datasourceops.PullOutput{}, capabilitySetupError("datasource.pull.workspace", "datasource.pull", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return datasourceops.PullOutput{}, err
 	}
 	input.Workspace = workspace.Root
 	input.WorkspaceName = workspace.Name
@@ -170,29 +169,17 @@ func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input dat
 	if err != nil {
 		return datasourceops.PullArtifactResult{}, err
 	}
-	canonicalPath, err := containDatasourceWorkspacePath(input.Workspace, result.CanonicalPath, "canonical path")
+	canonicalPath, err := artifactWorkspaceRelativePath(input.Workspace, result.CanonicalPath, "datasource", "canonical path")
 	if err != nil {
 		return datasourceops.PullArtifactResult{}, err
 	}
-	lineagePath, err := containDatasourceWorkspacePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "lineage path")
+	lineagePath, err := artifactWorkspaceRelativePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "datasource", "lineage path")
 	if err != nil {
 		return datasourceops.PullArtifactResult{}, err
 	}
 	// LineageStatus and CountsKnown are single-sourced from lineage completeness in the
 	// pull action; leave LineageStatus unset here so the two fields cannot diverge.
 	return datasourceops.PullArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, CompositionStatus: result.CompositionStatus, ParentDataSourceURLs: append([]string(nil), result.ParentDataSourceURLs...), Warnings: append([]string(nil), result.Warnings...)}, nil
-}
-
-func containDatasourceWorkspacePath(workspace, absolute, label string) (string, error) {
-	relative, err := filepath.Rel(workspace, absolute)
-	if err != nil {
-		return "", err
-	}
-	relative = filepath.ToSlash(filepath.Clean(relative))
-	if relative == ".." || strings.HasPrefix(relative, "../") {
-		return "", errors.New("datasource artifact " + label + " escapes the resolved workspace")
-	}
-	return relative, nil
 }
 
 type datasourceArtifactReader struct {

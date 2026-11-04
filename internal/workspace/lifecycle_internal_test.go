@@ -39,7 +39,11 @@ func TestMutationRejectsManifestReplacedWhileWaitingForArtifactOwner(t *testing.
 		}
 		done <- err
 	}()
-	path := lifecycleLockPath(root)
+	canonical, err := CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := lifecycleLockPath(canonical)
 	// Observe the real shared lifecycle lease, proving the mutation captured its
 	// root identity and reached the artifact-lock wait before the replacement.
 	for {
