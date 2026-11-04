@@ -129,7 +129,7 @@ func TestSearchRejectsUnsupportedInputsBeforeNetwork(t *testing.T) {
 	client := newClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) { calls++ }), "3.29")
 	tests := []tableausearch.Request{
 		{Terms: "sales", Types: []string{"user"}, Limit: 10},
-		{Terms: "sales", Types: []string{"metric"}, Limit: 10},
+		{Terms: "sales", Types: []string{"definition"}, Limit: 10},
 		{Terms: "sales", Limit: 10},
 		{Types: []string{"workbook"}, Limit: 0},
 		{Types: []string{"workbook"}, Limit: 101},

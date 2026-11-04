@@ -54,6 +54,12 @@ type nativeCursor struct {
 // Search projects native ranked hits into content, retaining the first occurrence
 // of each published datasource. Cursors record raw progress, not content counts.
 func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
+	return a.SearchBounded(ctx, input, input.Limit)
+}
+
+// SearchBounded limits unique output rows without changing native page sizes or
+// cursor identity. The budget may change between calls using the same input.
+func (a *NativeAdapter) SearchBounded(ctx context.Context, input Input, budget int) (Page, error) {
 	if a == nil || a.client == nil {
 		return Page{}, errors.New("native search adapter is not configured")
 	}
@@ -62,6 +68,9 @@ func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
 	}
 	if input.Limit < 1 || input.Limit > 100 {
 		return Page{}, errors.New("native content search requires a limit between 1 and 100")
+	}
+	if budget < 1 || budget > input.Limit {
+		return Page{}, errors.New("native content search requires an output budget between 1 and the requested limit")
 	}
 	state := nativeCursor{Version: 2, Fingerprint: nativeFingerprint(input)}
 	if input.Cursor != "" {
@@ -124,11 +133,10 @@ func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
 		if pageIndex >= state.Page && result.TableauRequestID == "" {
 			result.TableauRequestID = page.TableauRequestID
 		}
-		for offset, hit := range page.Items {
+		pageEnd := min(len(page.Items), maxNativeHits-pageIndex*input.Limit)
+		resolvedUntil := 0
+		for offset, hit := range page.Items[:pageEnd] {
 			position := pageIndex*input.Limit + offset
-			if position >= maxNativeHits {
-				break
-			}
 			if !resumed && position > resumeAt {
 				return Page{}, cursorError{}
 			}
@@ -137,6 +145,17 @@ func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
 					return Page{}, cursorError{}
 				}
 				resumed = true
+			}
+			if offset == resolvedUntil {
+				// Replay needs the entire consumed prefix. New output resolves
+				// only a bounded raw prefix that could satisfy the remaining budget.
+				resolvedUntil = min(pageEnd, offset+budget-len(result.Items))
+				if !resumed {
+					resolvedUntil = min(pageEnd, resumeAt-pageIndex*input.Limit)
+				}
+				if err := a.resolveDatasourceIDs(ctx, page.Items[offset:resolvedUntil]); err != nil {
+					return Page{}, err
+				}
 			}
 			if !requested[hit.Type] || strings.TrimSpace(hit.LUID) == "" || strings.TrimSpace(hit.Name) == "" {
 				return Page{}, errors.New("native search returned invalid authoritative content identity")
@@ -160,18 +179,6 @@ func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
 				}
 				if !duplicate {
 					if position >= resumeAt {
-						// One unique lookahead distinguishes further content from
-						// trailing duplicates or excluded embedded connections.
-						if len(result.Items) == input.Limit {
-							result.NextCursor = encodeNativeCursor(nativeCursor{Version: 2, Fingerprint: state.Fingerprint, Page: pageIndex, Offset: offset, Prefix: hex.EncodeToString(prefix.Sum(nil))})
-							result.MoreAvailable = true
-							if !result.UnresolvedMoreAvailable && !page.HasNext && offset == len(page.Items)-1 && total <= maxNativeHits {
-								result.Total = len(seen) + 1
-							} else if !result.UnresolvedMoreAvailable && !requested["datasource"] {
-								result.Total = total
-							}
-							return result, nil
-						}
 						result.Items = append(result.Items, item)
 					}
 					seen[key] = item
@@ -183,6 +190,20 @@ func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
 			}{hit, item})
 			_, _ = prefix.Write(encoded)
 			_, _ = prefix.Write([]byte{'\n'})
+			if len(result.Items) == budget && (offset+1 < len(page.Items) || page.HasNext) {
+				nextPage, nextOffset := pageIndex, offset+1
+				if nextOffset == len(page.Items) {
+					nextPage, nextOffset = pageIndex+1, 0
+				}
+				result.MoreAvailable = true
+				if !result.UnresolvedMoreAvailable && !requested["datasource"] {
+					result.Total = total
+				}
+				if nextPage*input.Limit+nextOffset < maxNativeHits {
+					result.NextCursor = encodeNativeCursor(nativeCursor{Version: 2, Fingerprint: state.Fingerprint, Page: nextPage, Offset: nextOffset, Prefix: hex.EncodeToString(prefix.Sum(nil))})
+				}
+				return result, nil
+			}
 		}
 		if !page.HasNext {
 			break
@@ -215,8 +236,6 @@ func (a *NativeAdapter) nativePage(ctx context.Context, input Input, index int) 
 	if page.PageIndex != index || page.Limit != input.Limit || len(page.Items) > input.Limit || page.Total < index*input.Limit+len(page.Items) || (page.HasNext && len(page.Items) == 0) {
 		return tableausearch.Page{}, errors.New("native search response changed the requested page")
 	}
-	urls := []string{}
-	requested := make(map[string]bool)
 	seen := make(map[string]bool)
 	for _, hit := range page.Items {
 		key := hit.Type + "\x00" + hit.LUID
@@ -224,11 +243,20 @@ func (a *NativeAdapter) nativePage(ctx context.Context, input Input, index int) 
 			return tableausearch.Page{}, errors.New("native search returned a duplicate hit within one page")
 		}
 		seen[key] = true
+	}
+	a.pages[index] = page
+	return page, nil
+}
+
+func (a *NativeAdapter) resolveDatasourceIDs(ctx context.Context, hits []tableausearch.Item) error {
+	urls := []string{}
+	requested := make(map[string]bool)
+	for _, hit := range hits {
 		if !publishedDatasource(hit) {
 			continue
 		}
 		if hit.ContentURL == "" || a.datasourceResolver == nil {
-			return tableausearch.Page{}, errors.New("native datasource search result cannot be mapped to a classic REST LUID")
+			return errors.New("native datasource search result cannot be mapped to a classic REST LUID")
 		}
 		if _, resolved := a.datasourceIDs[hit.ContentURL]; !resolved && !requested[hit.ContentURL] {
 			requested[hit.ContentURL] = true
@@ -238,18 +266,17 @@ func (a *NativeAdapter) nativePage(ctx context.Context, input Input, index int) 
 	if len(urls) != 0 {
 		resolved, err := a.datasourceResolver.ResolveContentURLs(ctx, urls)
 		if err != nil {
-			return tableausearch.Page{}, err
+			return err
 		}
 		for _, url := range urls {
 			id := strings.TrimSpace(resolved[url].LUID)
 			if id == "" {
-				return tableausearch.Page{}, errors.New("native datasource search result has no classic REST LUID")
+				return errors.New("native datasource search result has no classic REST LUID")
 			}
 			a.datasourceIDs[url] = id
 		}
 	}
-	a.pages[index] = page
-	return page, nil
+	return nil
 }
 
 func (a *NativeAdapter) contentItem(hit tableausearch.Item) (Item, bool, error) {

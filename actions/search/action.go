@@ -149,6 +149,7 @@ func searchPages(ctx context.Context, source Source, input Input, types []string
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
+		request.Budget = min(request.Limit, input.Limit-len(result.Items))
 		page, err := source.Search(ctx, request, types)
 		if err != nil {
 			return Result{}, err
@@ -243,7 +244,8 @@ func decodeCursor(value string, input Input) (string, error) {
 	return e.Cursor, nil
 }
 func searchError(kind errs.Kind, input Input, summary string, cause error) error {
-	return &errs.Error{ID: "search." + string(kind), Kind: kind, Operation: "search", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Review the search source and filters, then retry."}
+	retryable, correctiveAction := errs.CompleteRetryAdvice(cause, "Review the search source and filters, then retry.")
+	return &errs.Error{ID: "search." + string(kind), Kind: kind, Operation: "search", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(cause)}
 }
 
 func cacheUnavailableError(input Input, cause error) error {

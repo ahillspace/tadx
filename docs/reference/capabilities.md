@@ -2928,10 +2928,10 @@ Search native Tableau content plus administration and Pulse resources through on
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --cache is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite
+- Safety and guard: Nonempty live content and Cloud Pulse metric terms use native indexed search; metricId and classic datasource LUIDs are authoritative; Pulse definitions use upstream name filtering without metric inventory scans; administration retains dedicated adapters; --cache is local-only; blank text requires a type and uses list semantics; internal pagination satisfies --limit with more_available; ordinary live searches do not read or write SQLite
 - Artifact effect: None
-- Upstream operation: GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized cache index
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests
+- Upstream operation: GET /api/-/search for content and Cloud insightmetric hits; Query Datasources by contentUrl for classic datasource LUIDs; GET /api/-/pulse/definitions with name:has for definition terms; dedicated administration and no-term Pulse inventories; local normalized cache index
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/pulse-search-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests
 - Validation or blocker: Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx search`

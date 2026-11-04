@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,8 +74,9 @@ type Client struct {
 
 // AvailabilityError identifies Tableau versions or deployments without the requested search feature.
 type AvailabilityError struct {
-	reason string
-	cause  error
+	reason       string
+	cause        error
+	pulseMetrics bool
 }
 
 func (e *AvailabilityError) Error() string {
@@ -94,7 +96,20 @@ func (e *AvailabilityError) Retryable() bool { return false }
 
 // CorrectiveAction describes the stable deployment requirement.
 func (e *AvailabilityError) CorrectiveAction() string {
-	return "Use Tableau Server 2022.3 or later with native content search available."
+	if e.pulseMetrics {
+		return "Verify that indexed Pulse metric search is available on the selected Tableau Cloud deployment; contact the site administrator if it remains unavailable."
+	}
+	return "Verify that native content search is available on the selected deployment. If using Tableau Server, use version 2022.3 or later."
+}
+
+func newAvailabilityError(request Request, reason string, cause error) *AvailabilityError {
+	return &AvailabilityError{
+		reason: reason,
+		cause:  cause,
+		pulseMetrics: slices.ContainsFunc(request.Types, func(kind string) bool {
+			return strings.EqualFold(strings.TrimSpace(kind), "metric")
+		}),
+	}
 }
 
 // NewClient creates a native content search client with authenticated site identity.
@@ -119,10 +134,17 @@ func (c *Client) Search(ctx context.Context, input Request) (Page, error) {
 	if request.Terms != "" {
 		query.Set("terms", request.Terms)
 	}
-	if len(request.Types) == 1 {
-		query.Set("filter", "type:eq:"+request.Types[0])
+	providerTypes := make([]string, len(request.Types))
+	for i, kind := range request.Types {
+		providerTypes[i] = kind
+		if kind == "metric" {
+			providerTypes[i] = "insightmetric"
+		}
+	}
+	if len(providerTypes) == 1 {
+		query.Set("filter", "type:eq:"+providerTypes[0])
 	} else {
-		query.Set("filter", "type:in:["+strings.Join(request.Types, ",")+"]")
+		query.Set("filter", "type:in:["+strings.Join(providerTypes, ",")+"]")
 	}
 	query.Set("limit", strconv.Itoa(request.Limit))
 	query.Set("page", strconv.Itoa(request.Page))
@@ -133,7 +155,7 @@ func (c *Client) Search(ctx context.Context, input Request) (Page, error) {
 	})
 	if err != nil {
 		if httpStatus(err) == http.StatusNotFound || httpStatus(err) == http.StatusMethodNotAllowed {
-			return Page{}, &AvailabilityError{reason: "the independently versioned /api/-/search resource is not available", cause: err}
+			return Page{}, newAvailabilityError(request, "the independently versioned /api/-/search resource is not available", err)
 		}
 		return Page{}, err
 	}
@@ -143,10 +165,10 @@ func (c *Client) Search(ctx context.Context, input Request) (Page, error) {
 func (c *Client) normalize(input Request) (Request, error) {
 	major, minor, err := apiVersion(c.transport.APIVersion())
 	if err != nil {
-		return Request{}, &AvailabilityError{reason: "the configured Tableau API version is invalid", cause: err}
+		return Request{}, newAvailabilityError(input, "the configured Tableau API version is invalid", err)
 	}
 	if major < 3 || (major == 3 && minor < 16) {
-		return Request{}, &AvailabilityError{reason: "Tableau Server 2022.3 or Tableau REST API 3.16 and later is required"}
+		return Request{}, newAvailabilityError(input, "Tableau Server 2022.3 or Tableau REST API 3.16 and later is required", nil)
 	}
 	input.Terms = strings.TrimSpace(input.Terms)
 	if input.Limit < 1 || input.Limit > maxPageSize {
@@ -172,7 +194,7 @@ func (c *Client) normalize(input Request) (Request, error) {
 	}
 	sort.Strings(types)
 	if len(types) > 1 && major == 3 && minor < 17 {
-		return Request{}, &AvailabilityError{reason: "multi-type native search requires Tableau REST API 3.17 and later"}
+		return Request{}, newAvailabilityError(input, "multi-type native search requires Tableau REST API 3.17 and later", nil)
 	}
 	input.Types = types
 	return input, nil
@@ -258,6 +280,7 @@ type rawContent struct {
 	ContentType           string      `json:"contentType"`
 	Name                  string      `json:"name"`
 	Title                 string      `json:"title"`
+	MetricID              string      `json:"metricId"`
 	ProjectLUID           string      `json:"projectLuid"`
 	ProjectName           string      `json:"projectName"`
 	ProjectPath           string      `json:"projectPath"`
@@ -293,6 +316,9 @@ func (item rawItem) normalize() Item {
 	name := content.Name
 	if name == "" {
 		name = content.Title
+	}
+	if kind == "metric" {
+		luid, name = content.MetricID, content.Title
 	}
 	projectLUID := content.ProjectLUID
 	if projectLUID == "" {
@@ -333,6 +359,8 @@ func normalizeContentType(value string) string {
 	switch kind {
 	case "unifieddatasource":
 		return "datasource"
+	case "insightmetric":
+		return "metric"
 	default:
 		return kind
 	}
@@ -340,7 +368,7 @@ func normalizeContentType(value string) string {
 
 func supportedType(kind string) bool {
 	switch kind {
-	case "workbook", "datasource", "flow", "project":
+	case "workbook", "datasource", "flow", "project", "metric":
 		return true
 	default:
 		return false

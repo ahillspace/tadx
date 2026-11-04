@@ -27,8 +27,10 @@ Live branches use the command's authenticated Tableau connection and shared tran
 | --- | --- | --- |
 | Term, `--type content` or workbook/datasource/flow/project | Native search adapter | Tableau relevance order; matching can extend beyond names. |
 | Term, `--type admin`, user, or group | Dedicated classic REST inventories | TADX case-insensitive name substring match. |
-| Term, `--type pulse`, definition, or metric | Dedicated Pulse inventories on Tableau Cloud | TADX case-insensitive name substring match. |
-| Term, no type | Native content phase, then product-supported dedicated inventories | Content is returned first; no globally merged relevance score. |
+| Term, `--type metric` | Native indexed `insightmetric` search on Tableau Cloud | Tableau relevance order and authoritative metric IDs. |
+| Term, `--type definition` | Pulse definitions with upstream `name:has:<term>` filtering | Bounded pages of matching definition names. |
+| Term, `--type pulse` | Native metric phase, then filtered definitions on Tableau Cloud | Native metric relevance order, then definition matches. |
+| Term, no type | Native content and Cloud metric phase, then filtered definitions and administration inventories | Tableau ranks the native phase; later sources have no globally merged relevance score. |
 | No term, content/admin or a concrete non-Pulse type | `completeLiveSearchLister` calls normal list commands | Bounded inventories, without relevance search. |
 | No term, pulse/definition/metric | Dedicated Pulse inventories | Same list traversal, without term filtering. |
 | `--cache` | `cacheGlobalSearchSource` and `cacheSearchLister` | Local resource records; same substring matcher as dedicated inventories. |
@@ -55,33 +57,45 @@ One content type uses `type:eq:<type>`; multiple types use `type:in:[...]`.
 The client gates native search at REST 3.16 and multi-type search at 3.17, validates response pagination, and never follows the server's next URL directly.
 These request versions and filters are documented in Tableau's [content exploration reference](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_content_exploration.htm) and [OpenAPI search contract](https://help.tableau.com/current/api/rest_api/en-us/REST/TAG/index.html).
 
-TADX requests only workbook, datasource, flow, and project from native search.
+TADX requests workbook, datasource, flow, project, and Cloud Pulse metrics from native search.
+The public `metric` selector maps to Tableau's indexed `insightmetric` category.
+An untyped Cloud request includes those categories in one native query rather than running a query per category or definition.
+An explicit `content` request continues to select only workbook, datasource, flow, and project.
 Views, databases, tables, virtual connections, collections, data roles, and lenses have no selector or result model in this command.
 Filtering therefore starts in the request; the decoder also checks returned types against the requested set.
-Tableau's documented native categories do not include users, groups, or Pulse definitions/metrics, so those TADX results require additional APIs rather than just a different UI presentation.
+Users, groups, and Pulse definitions use additional APIs.
+The native Pulse category is supported by the bounded authenticated evidence and public frontend implementation recorded in the [Pulse search contract](../evidence/pulse-search-contract.md); the public content-type documentation does not enumerate that category.
 The OpenAPI contract lists no collapse/grouping parameter or published-datasource filter; arbitrary content properties are not a promise of supported request filters.
 
 | Additional source | Internal implementation | Endpoint |
 | --- | --- | --- |
 | Users and groups | `internal/app/search.go:liveSearchLister`, `internal/resources/admin`, `internal/tableau/admin/client.go` | `GET /api/{version}/sites/{site}/users` and `/groups` |
-| Pulse definitions | `actions/pulse/definition/list.go`, `internal/tableau/pulse/client.go` | `GET /api/-/pulse/definitions` |
-| Pulse metrics | `internal/app/search.go:listMetrics`, Pulse client | List definitions, then `GET /api/-/pulse/definitions/{id}/metrics` for each definition. |
+| Pulse definitions | `internal/app/search.go:liveSearchLister`, `internal/tableau/pulse/client.go:SearchDefinitions` | Term requests use `GET /api/-/pulse/definitions?filter=name:has:<encoded-term>`; no-term requests retain the normal definition list. |
+| No-term Pulse metric inventory | `internal/app/search.go:listMetrics`, Pulse client | List definitions, then `GET /api/-/pulse/definitions/{id}/metrics` for each definition. Term searches never enter this path. |
 | Native datasource identity | `internal/tableau/datasource/client.go:ResolveContentURLs` | Classic REST datasource listing filtered by content URL, in batches of at most 25 URLs. |
 | No-term inventories | `internal/app/{workbook_inventory,datasource_inventory,content_remote,admin}.go` | Corresponding classic REST workbook, datasource, flow, project, user, or group list. |
 
-Metric names fall back to the definition name when the metric has none.
-Definition pages are memoized within the command, and metric continuation records both definition and metric progress.
+Indexed metric names come from the search hit's `title`, and their LUIDs come only from `metricId`.
+Definition name filters encode the term as a URI component inside `name:has:`, then encode the complete filter as a query parameter.
+For explicit no-term metric inventory, names fall back to the definition name when the metric has none.
+That inventory memoizes definition pages within the command, and its continuation records both definition and metric progress.
 These calls retrieve Pulse identities/configuration, not metric values or insights, and search never delegates to Tableau MCP.
 
 ## Identity boundary
 
 Public results identify resources by `(type, LUID)`, never by display name; equally named datasources in separate projects must remain separate.
+An `insightmetric` hit's generic index `id` or `luid` is not a substitute for its authoritative `metricId`.
 Tableau search's datasource hit LUID can identify an indexed connection rather than the published datasource used by classic REST.
 The decoder maps `unifieddatasource` to `datasource` and preserves publication, parent identity/name, and datasource update time; the resource adapter resolves `repositoryUrl` into a classic REST datasource LUID and checks explicit parent/datasource IDs against that mapping.
 
 The adapter retains the first occurrence of each canonical content identity without local sorting or separate type queries.
 Explicit unpublished datasource hits and hits with a non-Datasource parent are omitted; conflicting canonical name/project metadata still fails rather than silently selecting one version.
-Ranked raw pages are scanned for the requested unique count plus one unique lookahead, so trailing duplicates or omitted connections do not falsely imply more content.
+Ranked raw pages are scanned until the requested unique count is satisfied.
+A satisfied budget retains any unconsumed provider continuation without fetching or resolving further hits solely for lookahead.
+That continuation indicates potential additional results; trailing duplicates, omitted connections, and cross-page repeated identities are classified when the next page is consumed.
+Datasource totals remain unknown until the consumed source establishes the unique count.
+Raw page retrieval and datasource identity resolution have separate command-local caches.
+New output resolves datasource URLs in raw batches bounded by the remaining result budget; cursor replay resolves its required consumed prefix in bulk rather than one URL per hit.
 Version 2 cursors store raw page/offset and a prefix digest; replay reconstructs previously seen identities across pages, while command-local page and REST-ID caches avoid refetching during internal aggregation.
 Legacy page cursors remain accepted.
 Raw-hit totals are not presented as unique datasource/content totals; complete totals are supplied only when established, and the 2,000-hit provider cap remains.
@@ -91,10 +105,19 @@ Consistent raw hits repeated across native pages are retained once with a comple
 
 Native requests use at most 100 hits per page and Tableau's 2,000-hit search window; a warning signals additional matches beyond that window.
 The action expands limits above 100 through internal pages, with a 100-page scan bound.
+Each internal call also carries the remaining output budget, independently of the stable provider page size and cursor identity.
+Native and dedicated adapters stop at that budget, so a satisfied final native batch does not query another source merely to fill a provider-sized page.
+Term-filtered definitions retain only the current normalized provider page on the command-owned lister, keyed by term, provider token, and page size.
+Advancing to another page evicts it; failed or canceled reads are not retained, and a fresh command fetches current data before validating its continuation digest.
 The dedicated/cache adapter also bounds its scan to 100 source pages per call and returns continuation when that scan ends.
 Cursors bind the request's source, environment/site, types, term, filters, and limit; dedicated/cache cursors additionally check source-page identity to detect changed data.
-An all-types page may fill entirely with native content before any admin or Pulse request occurs.
+An all-types page may fill entirely with native content and metric hits before any administration or definition request occurs.
 The combined search omits a claimed aggregate total and propagates an encountered source error; it does not return a successful partial result when a later source fails.
+Search preserves upstream retryability and corrective advice, including rate-limit advice, without automatically retrying.
+Unavailable indexed Pulse metric search directs recovery to the selected Tableau Cloud deployment; it does not recommend moving Pulse operations to Tableau Server.
+Combined cursors use version 2 so continuations from the previous source composition fail explicitly instead of skipping newly indexed metric results.
+Live term searches that include definitions also bind their action cursor to the filtered-definition source contract, rejecting prior unfiltered inventory continuations before querying the filtered endpoint.
+No-term and cache cursors retain their existing source identity.
 
 `--cache` reads local SQLite resource records through `internal/cache/{resources,store}.go`, not Tableau's relevance index or its Metadata API.
 The cached execution boundary owns one read session for every source page needed to satisfy `--limit`.

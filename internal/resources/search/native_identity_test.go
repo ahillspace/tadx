@@ -70,15 +70,22 @@ func TestNativeAdapterRejectsConflictingPublishedIdentity(t *testing.T) {
 	}
 }
 
-func TestNativeAdapterTrailingConnectionsDoNotClaimMoreContent(t *testing.T) {
+func TestNativeAdapterDefersTrailingConnectionClassificationUntilContinuation(t *testing.T) {
 	client := &nativeClient{pages: map[int]tableausearch.Page{
 		0: {PageIndex: 0, Limit: 1, Total: 2, HasNext: true, Items: []tableausearch.Item{publishedHit("a", "ds-1", "sales")}},
 		1: {PageIndex: 1, Limit: 1, Total: 2, Items: []tableausearch.Item{publishedHit("b", "ds-1", "sales")}},
 	}}
 	resolver := &datasourceResolver{results: map[string]value.Datasource{"sales": {LUID: "ds-1"}}}
-	page, err := resourcesearch.NewNativeAdapter(client, resolver).Search(t.Context(), resourcesearch.Input{Types: []string{"datasource"}, Limit: 1})
-	if err != nil || len(page.Items) != 1 || page.NextCursor != "" || page.MoreAvailable || page.Total != 1 || len(resolver.calls) != 1 {
+	adapter := resourcesearch.NewNativeAdapter(client, resolver)
+	input := resourcesearch.Input{Types: []string{"datasource"}, Limit: 1}
+	page, err := adapter.Search(t.Context(), input)
+	if err != nil || len(page.Items) != 1 || page.NextCursor == "" || !page.MoreAvailable || page.Total != 0 || len(resolver.calls) != 1 || len(client.requests) != 1 {
 		t.Fatalf("page=%+v error=%v resolver calls=%v", page, err, resolver.calls)
+	}
+	input.Cursor = page.NextCursor
+	last, err := adapter.Search(t.Context(), input)
+	if err != nil || len(last.Items) != 0 || last.NextCursor != "" || last.MoreAvailable || last.Total != 1 || len(resolver.calls) != 1 || len(client.requests) != 2 {
+		t.Fatalf("continuation=%+v error=%v resolver calls=%v requests=%v", last, err, resolver.calls, client.requests)
 	}
 }
 
@@ -155,7 +162,7 @@ func TestNativeAdapterOverlappingPagesPreserveFirstRankAndQualifyCompleteness(t 
 	adapter := resourcesearch.NewNativeAdapter(client, nil)
 	input := resourcesearch.Input{Types: []string{"workbook"}, Limit: 2}
 	page, err := adapter.Search(t.Context(), input)
-	if err != nil || len(page.Items) != 2 || page.Items[0].LUID != "wb-1" || page.Items[1].LUID != "wb-2" || !page.UnresolvedMoreAvailable || len(page.Warnings) != 1 || page.Total != 0 {
+	if err != nil || len(page.Items) != 2 || page.Items[0].LUID != "wb-1" || page.Items[1].LUID != "wb-2" || page.UnresolvedMoreAvailable || len(page.Warnings) != 0 || page.Total != 4 || len(client.requests) != 1 || page.NextCursor == "" {
 		t.Fatalf("page=%+v error=%v", page, err)
 	}
 	input.Cursor = page.NextCursor
