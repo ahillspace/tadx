@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
@@ -23,7 +24,7 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 		{name: "full JSON", args: []string{"--json", "--full"}, full: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			gets, puts := 0, 0
+			var gets, puts atomic.Int64
 			server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", "application/xml")
 				switch {
@@ -31,14 +32,14 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 					writer.Header().Set("Content-Type", "application/json")
 					_, _ = io.WriteString(writer, `{"credentials":{"token":"fixture-session","site":{"id":"site-1","contentUrl":""},"user":{"id":"user-1"}}}`)
 				case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
-					if puts != 0 {
+					if puts.Load() != 0 {
 						t.Error("workbook update performed an extra project read after the write")
 					}
-					gets++
+					gets.Add(1)
 					_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Operations"/></projects></tsResponse>`)
 				case request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-1":
 					if request.Method == http.MethodPut {
-						puts++
+						puts.Add(1)
 						writer.Header().Set("X-Tableau-Request-Id", "sensitive-request-id")
 						_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance" description="Confirmed description"><project id="project-1" name="Operations"/><owner id="user-1"/></workbook></tsResponse>`)
 						return
@@ -46,10 +47,10 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 					if request.Method != http.MethodGet {
 						t.Errorf("unexpected method %s", request.Method)
 					}
-					if puts != 0 {
+					if puts.Load() != 0 {
 						t.Error("workbook update performed an extra workbook read after the write")
 					}
-					gets++
+					gets.Add(1)
 					_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance" description="Before"><project id="project-1" name="Operations"/><owner id="user-1"/></workbook></tsResponse>`)
 				default:
 					t.Errorf("unexpected request %s %s", request.Method, request.URL.Path)
@@ -65,8 +66,8 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 			args = append(args, test.args...)
 			var output strings.Builder
 			code := app.Run(t.Context(), args, &output, withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, true))
-			if code != 0 || gets != 4 || puts != 1 {
-				t.Fatalf("code=%d gets=%d puts=%d output=%s", code, gets, puts, output.String())
+			if code != 0 || gets.Load() != 4 || puts.Load() != 1 {
+				t.Fatalf("code=%d gets=%d puts=%d output=%s", code, gets.Load(), puts.Load(), output.String())
 			}
 			for _, want := range []string{"description", "Confirmed description", "evidence_source", "tableau_update_response", "content workbook inspect", "wb-1"} {
 				if !strings.Contains(output.String(), want) {
@@ -84,7 +85,7 @@ func TestWorkbookUpdateReceiptReportsDescriptionFromTableauResponse(t *testing.T
 }
 
 func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
-	gets, puts := 0, 0
+	var gets, puts atomic.Int64
 	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		switch {
@@ -92,15 +93,15 @@ func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"fixture-session","site":{"id":"site-1","contentUrl":""},"user":{"id":"user-1"}}}`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
-			gets++
+			gets.Add(1)
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Operations"/></projects></tsResponse>`)
 		case request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-1":
 			if request.Method == http.MethodPut {
-				puts++
+				puts.Add(1)
 				_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance" description=""><project id="project-1"/><owner id="user-1"/></workbook></tsResponse>`)
 				return
 			}
-			gets++
+			gets.Add(1)
 			_, _ = fmt.Fprint(writer, `<tsResponse><workbook id="wb-1" name="Finance" description="Before"><project id="project-1"/><owner id="user-1"/></workbook></tsResponse>`)
 		default:
 			t.Errorf("unexpected request %s %s", request.Method, request.URL.Path)
@@ -114,8 +115,8 @@ func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	var output strings.Builder
 	code := app.Run(t.Context(), []string{"content", "workbook", "update", "--environment", "production", "--id", "wb-1", "--description=", "--json"}, &output, withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, true))
-	if code != 0 || gets != 4 || puts != 1 {
-		t.Fatalf("code=%d gets=%d puts=%d output=%s", code, gets, puts, output.String())
+	if code != 0 || gets.Load() != 4 || puts.Load() != 1 {
+		t.Fatalf("code=%d gets=%d puts=%d output=%s", code, gets.Load(), puts.Load(), output.String())
 	}
 	for _, want := range []string{`"description":""`, `"evidence_source":"tableau_update_response"`} {
 		if !strings.Contains(output.String(), want) {
@@ -125,7 +126,7 @@ func TestWorkbookUpdateReceiptDistinguishesConfirmedClear(t *testing.T) {
 }
 
 func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
-	gets, puts := 0, 0
+	var gets, puts atomic.Int64
 	descriptions := map[string]string{"wb-1": "Confirmed one", "wb-2": "Confirmed two"}
 	server := tableauFixtureServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
@@ -134,10 +135,10 @@ func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(writer, `{"credentials":{"token":"fixture-session","site":{"id":"site-1","contentUrl":""},"user":{"id":"user-1"}}}`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
-			if puts != 0 && puts != 1 {
+			if writes := puts.Load(); writes != 0 && writes != 1 {
 				t.Errorf("unexpected project read after completed writes")
 			}
-			gets++
+			gets.Add(1)
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Operations"/></projects></tsResponse>`)
 		case strings.HasPrefix(request.URL.Path, "/api/3.29/sites/site-1/workbooks/"):
 			luid := strings.TrimPrefix(request.URL.Path, "/api/3.29/sites/site-1/workbooks/")
@@ -148,7 +149,7 @@ func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
 				return
 			}
 			if request.Method == http.MethodPut {
-				puts++
+				puts.Add(1)
 				writer.Header().Set("X-Tableau-Request-Id", "batch-sensitive-"+luid)
 				_, _ = fmt.Fprintf(writer, `<tsResponse><workbook id="%s" name="Finance %s" description="%s"><project id="project-1"/><owner id="user-1"/></workbook></tsResponse>`, luid, luid, description)
 				return
@@ -156,7 +157,7 @@ func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
 			if request.Method != http.MethodGet {
 				t.Errorf("unexpected method %s", request.Method)
 			}
-			gets++
+			gets.Add(1)
 			_, _ = fmt.Fprintf(writer, `<tsResponse><workbook id="%s" name="Finance %s" description="Before"><project id="project-1"/><owner id="user-1"/></workbook></tsResponse>`, luid, luid)
 		default:
 			t.Errorf("unexpected request %s %s", request.Method, request.URL.Path)
@@ -174,8 +175,8 @@ func TestWorkbookUpdateBatchReceiptKeepsPerItemEvidenceBounded(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	var output strings.Builder
 	code := app.Run(t.Context(), []string{"content", "workbook", "update", "--environment", "production", "--batch-file", batchFile, "--json"}, &output, withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, true))
-	if code != 0 || gets != 8 || puts != 2 {
-		t.Fatalf("code=%d gets=%d puts=%d output=%s", code, gets, puts, output.String())
+	if code != 0 || gets.Load() != 8 || puts.Load() != 2 {
+		t.Fatalf("code=%d gets=%d puts=%d output=%s", code, gets.Load(), puts.Load(), output.String())
 	}
 	if strings.Count(output.String(), `"evidence_source":"tableau_update_response"`) != 2 || strings.Count(output.String(), "Confirmed one") < 2 || strings.Count(output.String(), "Confirmed two") < 2 {
 		t.Fatalf("batch receipt lost per-item evidence: %s", output.String())
