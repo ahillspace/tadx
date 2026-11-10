@@ -269,3 +269,22 @@ func TestTagsAndContactWireContracts(t *testing.T) {
 		}
 	})
 }
+
+func TestGraphQLIssuesSurfaceTableauReason(t *testing.T) {
+	for name, tc := range map[string]struct{ body, want, absent string }{
+		"coded error":    {`{"errors":[{"message":"Invalid search text","extensions":{"code":"INVALID_ARGUMENT"}}],"data":null}`, "requested coverage is not established: INVALID_ARGUMENT: Invalid search text", ""},
+		"uncoded error":  {`{"errors":[{"message":"Internal Server Error(s) while executing query","locations":[]}]}`, "requested coverage is not established: Internal Server Error(s) while executing query", ""},
+		"many issues":    {`{"errors":[{"message":"first"},{"message":"second"}],"warnings":[{"message":"third","extensions":{"code":"NODE_LIMIT_EXCEEDED"}}]}`, "requested coverage is not established: first (3 issues)", "second"},
+		"warning only":   {`{"data":{"items":{"nodes":[]}},"warnings":[{"message":"Results incomplete","extensions":{"code":"TIME_LIMIT_EXCEEDED"}}]}`, "requested coverage is not established: TIME_LIMIT_EXCEEDED: Results incomplete", ""},
+		"redacted token": {`{"errors":[{"message":"rejected fixture-token"}]}`, "requested coverage is not established: rejected", "fixture-token"},
+		"opaque issues":  {`{"errors":"unavailable"}`, "Metadata API returned errors or warnings; requested coverage is not established", "unavailable"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, tc.body) })
+			_, err := c.DiscoverTables(context.Background(), Query{Text: "orders", Limit: 1})
+			if err == nil || !strings.Contains(err.Error(), tc.want) || (tc.absent != "" && strings.Contains(err.Error(), tc.absent)) {
+				t.Fatalf("error %v, want %q without %q", err, tc.want, tc.absent)
+			}
+		})
+	}
+}

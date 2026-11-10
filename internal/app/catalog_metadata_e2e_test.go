@@ -247,3 +247,18 @@ func TestCatalogMetadataSetupErrorsRetainOperation(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalogMetadataGraphQLIssueReachesAgent(t *testing.T) {
+	s := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if catalogMetadataSignIn(w, r) {
+			return
+		}
+		io.WriteString(w, `{"errors":[{"message":"Invalid search text","extensions":{"code":"INVALID_ARGUMENT"}}],"data":null}`)
+	}))
+	defer s.Close()
+	code, payload := resultContractJSON(t, []string{"catalog", "search", "orders", "--type", "table", "--env", "production", "--limit", "1"}, catalogMetadataOptions(t, s, false))
+	failure := contractObject(t, payload["error"])
+	if code == 0 || failure["id"] != "catalog.search.failed" || !strings.HasSuffix(fmt.Sprint(failure["upstream_cause"]), "requested coverage is not established: INVALID_ARGUMENT: Invalid search text") {
+		t.Fatalf("Tableau's GraphQL reason did not reach the agent: exit %d: %#v", code, payload)
+	}
+}
