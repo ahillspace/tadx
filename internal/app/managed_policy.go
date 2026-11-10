@@ -304,9 +304,9 @@ func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string
 	if path == "" {
 		instructions = append(instructions, "The managed policy location could not be verified. Run tadx policy status and ask an administrator to inspect and repair the locator before deployment; system_path is unknown.")
 	} else {
-		instructions = append(instructions, "An administrator deploys the selected JSON document at system_path and protects the file and its parent directories against non-administrator changes.")
+		instructions = append(instructions, "An administrator copies the chosen candidate to system_path as managed-policy.json; tadx policy install --template <name> deploys an unedited one.")
 	}
-	instructions = append(instructions, "On Windows, use the native administrator-owned policy location with a protected DACL. On Unix, use root ownership and remove group and other write permissions from the file and its parent directories.", "Run tadx policy status after deployment. These samples do not install or activate policy; local mutation consent remains separate.")
+	instructions = append(instructions, "On Windows, use the native administrator-owned policy location with a protected DACL. On Unix, use root ownership and remove group and other write permissions from the file and every parent directory.", "Run tadx policy status after deployment. These samples do not install or activate policy; local mutation consent remains separate.")
 	out := policyops.SamplesOutput{Status: "not_created", Files: []string{}, SystemPath: path, Instructions: instructions}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return out, policyToolError("policy.samples", "The output directory could not be created.", err)

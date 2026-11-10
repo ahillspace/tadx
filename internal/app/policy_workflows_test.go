@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	policyops "github.com/ahillspace/tadx/actions/policy"
@@ -136,5 +137,25 @@ func TestPolicySamplesRetainsConfirmedFilesOnCancellation(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(directory, "read-write-no-admin.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unexpected second candidate: %v", err)
+	}
+}
+
+func TestPolicySamplesInstructionsNameDeploymentTarget(t *testing.T) {
+	options := overviewOptions(t, t.TempDir())
+	options.managedPolicy = fixtureManagedPolicy{state: managedpolicy.StateUnmanaged}
+	var out bytes.Buffer
+	if code := Run(t.Context(), []string{"policy", "samples", "--output", filepath.Join(t.TempDir(), "samples"), "--json"}, &out, options); code != 0 {
+		t.Fatalf("samples code=%d output=%s", code, &out)
+	}
+	var result policyops.SamplesOutput
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	instructions := strings.Join(result.Instructions, " ")
+	// An edited candidate must be renamed at system_path; an unedited one has a supported installer.
+	for _, want := range []string{"system_path", "managed-policy.json", "tadx policy install --template", "tadx policy validate", "tadx policy status"} {
+		if !strings.Contains(instructions, want) {
+			t.Errorf("instructions omit %q: %q", want, result.Instructions)
+		}
 	}
 }
