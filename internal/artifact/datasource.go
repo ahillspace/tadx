@@ -535,7 +535,7 @@ func findDatasourceBySourceIdentity(root, origin, siteLUID, datasourceLUID strin
 	var path string
 	var found *DatasourceMetadata
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".tadx-") {
+		if hiddenArtifactEntry(entry.Name()) {
 			continue
 		}
 		candidate := filepath.Join(root, entry.Name())
@@ -705,7 +705,7 @@ func recoverDatasourceRoot(root string, operations directoryOperations) ([]strin
 			backups = append(backups, entry.Name())
 		case strings.HasPrefix(entry.Name(), datasourceStagePrefix):
 			stages = append(stages, entry.Name())
-		case strings.HasPrefix(entry.Name(), ".tadx-"):
+		case hiddenArtifactEntry(entry.Name()):
 			continue
 		case entry.IsDir() && entry.Type()&os.ModeSymlink == 0:
 			metadata, err := readDatasourceMetadata(filepath.Join(root, entry.Name()))

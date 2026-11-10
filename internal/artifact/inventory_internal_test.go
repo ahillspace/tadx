@@ -248,3 +248,66 @@ func TestInventoryReportsStrayLineageResourceKindEntries(t *testing.T) {
 		})
 	}
 }
+
+func TestInventoryIgnoresHiddenEntries(t *testing.T) {
+	for _, parent := range []string{"artifacts/datasource", "artifacts/lineage", "artifacts/lineage/flow"} {
+		for _, hidden := range []struct {
+			name      string
+			directory bool
+		}{{".DS_Store", false}, {"._Finance", false}, {".hidden", true}} {
+			t.Run(parent+"/"+hidden.name, func(t *testing.T) {
+				workspace := createMoveTestWorkspace(t, "workspace")
+				pullSampleLineage(t, workspace)
+				path := filepath.Join(workspace, filepath.FromSlash(parent), hidden.name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if hidden.directory {
+					if err := os.Mkdir(path, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.WriteFile(path, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				page, err := Inventory(t.Context(), workspace, InventoryOptions{Limit: 20})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if page.Clean != 1 || page.Invalid != 0 || len(page.Items) != 1 || len(page.Warnings) != 0 {
+					t.Fatalf("Inventory() with hidden entry %s = %#v, want only the lineage artifact", path, page)
+				}
+			})
+		}
+	}
+}
+
+func TestResolveRejectsHiddenArtifactPaths(t *testing.T) {
+	workspace := createMoveTestWorkspace(t, "workspace")
+	pulled, err := NewWorkbookManager(time.Now).Pull(t.Context(), WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: PayloadFile(t, []byte("owned payload")), Metadata: moveTestMetadata()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineage := pullSampleLineage(t, workspace)
+	for _, source := range []string{pulled.ArtifactPath, filepath.Join(workspace, filepath.FromSlash(lineage.Path))} {
+		relative := func(path string) string {
+			t.Helper()
+			rel, err := filepath.Rel(workspace, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return filepath.ToSlash(rel)
+		}
+		for _, name := range []string{".tadx-stage-copy", ".hidden-copy"} {
+			hidden := filepath.Join(filepath.Dir(source), name)
+			if err := os.CopyFS(hidden, os.DirFS(source)); err != nil {
+				t.Fatal(err)
+			}
+			if item, err := Resolve(t.Context(), workspace, Selector{Path: relative(hidden)}); err == nil {
+				t.Fatalf("Resolve(%s) = %#v, want hidden entries outside the artifact namespace", relative(hidden), item)
+			}
+		}
+		if _, err := Resolve(t.Context(), workspace, Selector{Path: relative(source)}); err != nil {
+			t.Fatalf("Resolve(%s) beside hidden copies: %v", relative(source), err)
+		}
+	}
+}

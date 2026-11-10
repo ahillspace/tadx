@@ -318,7 +318,7 @@ func scanManagedArtifactMetadata(ctx context.Context, workspace, onlyKind string
 			if err := ctx.Err(); err != nil {
 				return nil, false, err
 			}
-			if strings.HasPrefix(entry.Name(), ".tadx-") {
+			if hiddenArtifactEntry(entry.Name()) {
 				continue
 			}
 			if len(items) >= scanLimit {
@@ -358,7 +358,7 @@ func scanManagedArtifactMetadata(ctx context.Context, workspace, onlyKind string
 		if err := ctx.Err(); err != nil {
 			return nil, false, err
 		}
-		if strings.HasPrefix(resourceKind.Name(), ".tadx-") {
+		if hiddenArtifactEntry(resourceKind.Name()) {
 			continue
 		}
 		if resourceKind.Type()&os.ModeSymlink != 0 || !resourceKind.IsDir() || !isLineageResourceKind(resourceKind.Name()) {
@@ -385,7 +385,7 @@ func scanManagedArtifactMetadata(ctx context.Context, workspace, onlyKind string
 			if err := ctx.Err(); err != nil {
 				return nil, false, err
 			}
-			if strings.HasPrefix(entry.Name(), ".tadx-") {
+			if hiddenArtifactEntry(entry.Name()) {
 				continue
 			}
 			if len(items) >= scanLimit {
@@ -419,9 +419,9 @@ func resolveRelativePath(ctx context.Context, workspace string, selector Selecto
 	parts := strings.Split(clean, "/")
 	var kind string
 	switch {
-	case len(parts) == 3 && parts[0] == "artifacts" && isDirectManagedArtifactKind(parts[1]):
+	case len(parts) == 3 && parts[0] == "artifacts" && isDirectManagedArtifactKind(parts[1]) && !hiddenArtifactEntry(parts[2]):
 		kind = parts[1]
-	case len(parts) == 4 && parts[0] == "artifacts" && parts[1] == "lineage" && isLineageResourceKind(parts[2]):
+	case len(parts) == 4 && parts[0] == "artifacts" && parts[1] == "lineage" && isLineageResourceKind(parts[2]) && !hiddenArtifactEntry(parts[3]):
 		kind = "lineage"
 	default:
 		return Item{}, errors.New("artifact path is outside a managed artifact root")
@@ -620,6 +620,15 @@ func isDirectManagedArtifactKind(kind string) bool {
 		}
 	}
 	return false
+}
+
+// hiddenArtifactEntry reports whether an entry in a managed artifact root is
+// outside the artifact namespace. Artifact components never begin with a dot
+// (safeName trims leading dots), so dot-prefixed entries are either TADX
+// transaction state (.tadx-*) or foreign metadata such as .DS_Store and
+// AppleDouble files, and neither is a managed artifact.
+func hiddenArtifactEntry(name string) bool {
+	return strings.HasPrefix(name, ".")
 }
 
 func invalidArtifactDiagnostic(err error) (reason, warning string) {
