@@ -142,17 +142,56 @@ func (c *Client) graph(ctx context.Context, query string, variables map[string]a
 	if e = json.Unmarshal(r.Body, &out); e != nil {
 		return out, r, protocol("catalog.metadata.read", r, e)
 	}
-	for _, issues := range []json.RawMessage{out.Errors, out.Warnings} {
-		s := strings.TrimSpace(string(issues))
-		if s != "" && s != "null" && s != "[]" {
-			return out, r, protocol("catalog.metadata.read", r, errors.New("Metadata API returned errors or warnings; requested coverage is not established"))
-		}
+	if e = graphIssues(out.Errors, out.Warnings); e != nil {
+		return out, r, protocol("catalog.metadata.read", r, e)
 	}
 	if out.Data == nil {
 		return out, r, protocol("catalog.metadata.read", r, errors.New("Metadata API omitted data"))
 	}
 	return out, r, nil
 }
+
+// graphIssues fails closed on any GraphQL errors or warnings and carries
+// Tableau's first reason, so callers see why coverage was not established.
+func graphIssues(lists ...json.RawMessage) error {
+	var issues []graphIssue
+	present, decoded := false, true
+	for _, raw := range lists {
+		s := strings.TrimSpace(string(raw))
+		if s == "" || s == "null" || s == "[]" {
+			continue
+		}
+		present = true
+		var batch []graphIssue
+		if json.Unmarshal(raw, &batch) != nil {
+			decoded = false
+		}
+		issues = append(issues, batch...)
+	}
+	if !present {
+		return nil
+	}
+	const summary = "Metadata API returned errors or warnings; requested coverage is not established"
+	if !decoded || len(issues) == 0 || strings.TrimSpace(issues[0].Message) == "" {
+		return errors.New(summary)
+	}
+	reason := strings.TrimSpace(issues[0].Message)
+	if code := strings.TrimSpace(issues[0].Extensions.Code); code != "" {
+		reason = code + ": " + reason
+	}
+	if len(issues) > 1 {
+		reason = fmt.Sprintf("%s (%d issues)", reason, len(issues))
+	}
+	return fmt.Errorf("%s: %s", summary, reason)
+}
+
+type graphIssue struct {
+	Message    string `json:"message"`
+	Extensions struct {
+		Code string `json:"code"`
+	} `json:"extensions"`
+}
+
 func normalizeQuery(q Query) (Query, map[string]any, error) {
 	if q.Limit == 0 {
 		q.Limit = 25
