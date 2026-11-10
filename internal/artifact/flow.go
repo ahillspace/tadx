@@ -319,7 +319,7 @@ func findFlow(root, origin, site, luid string) (string, *FlowMetadata, error) {
 		return "", nil, err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.HasPrefix(entry.Name(), ".tadx-") {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || hiddenArtifactEntry(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(root, entry.Name())

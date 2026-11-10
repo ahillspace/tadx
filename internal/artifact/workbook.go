@@ -545,7 +545,7 @@ func findBySourceIdentity(root, serverOrigin, siteLUID, workbookLUID string) (st
 	var path string
 	var found *WorkbookMetadata
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".tadx-") {
+		if hiddenArtifactEntry(entry.Name()) {
 			continue
 		}
 		// A symbolic link inside the managed artifact root is a tamper or
@@ -617,7 +617,7 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		case strings.HasPrefix(name, stagePrefix):
 			stages = append(stages, name)
 			continue
-		case strings.HasPrefix(name, ".tadx-"):
+		case hiddenArtifactEntry(name):
 			continue
 		}
 		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {

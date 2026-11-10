@@ -248,3 +248,57 @@ func TestInventoryReportsStrayLineageResourceKindEntries(t *testing.T) {
 		})
 	}
 }
+
+func TestInventoryIgnoresHiddenEntries(t *testing.T) {
+	for _, parent := range []string{"artifacts/datasource", "artifacts/lineage", "artifacts/lineage/flow"} {
+		for _, hidden := range []struct {
+			name      string
+			directory bool
+		}{{".DS_Store", false}, {"._Finance", false}, {".hidden", true}} {
+			t.Run(parent+"/"+hidden.name, func(t *testing.T) {
+				workspace := createMoveTestWorkspace(t, "workspace")
+				pullSampleLineage(t, workspace)
+				path := filepath.Join(workspace, filepath.FromSlash(parent), hidden.name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if hidden.directory {
+					if err := os.Mkdir(path, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.WriteFile(path, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				page, err := Inventory(t.Context(), workspace, InventoryOptions{Limit: 20})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if page.Clean != 1 || page.Invalid != 0 || len(page.Items) != 1 || len(page.Warnings) != 0 {
+					t.Fatalf("Inventory() with hidden entry %s = %#v, want only the lineage artifact", path, page)
+				}
+			})
+		}
+	}
+}
+
+func TestResolveRejectsHiddenArtifactPaths(t *testing.T) {
+	workspace := createMoveTestWorkspace(t, "workspace")
+	pulled, err := NewWorkbookManager(time.Now).Pull(t.Context(), WorkbookPull{Workspace: workspace, Filename: "Finance.twb", PayloadPath: PayloadFile(t, []byte("owned payload")), Metadata: moveTestMetadata()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineage := pullSampleLineage(t, workspace)
+	for _, source := range []string{pulled.ArtifactPath, filepath.Join(workspace, filepath.FromSlash(lineage.Path))} {
+		hidden := filepath.Join(filepath.Dir(source), ".tadx-stage-copy")
+		if err := os.CopyFS(hidden, os.DirFS(source)); err != nil {
+			t.Fatal(err)
+		}
+		relative, err := filepath.Rel(workspace, hidden)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item, err := Resolve(t.Context(), workspace, Selector{Path: filepath.ToSlash(relative)}); err == nil {
+			t.Fatalf("Resolve(%s) = %#v, want hidden entries outside the artifact namespace", relative, item)
+		}
+	}
+}
