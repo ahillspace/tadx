@@ -289,16 +289,25 @@ func TestResolveRejectsHiddenArtifactPaths(t *testing.T) {
 	}
 	lineage := pullSampleLineage(t, workspace)
 	for _, source := range []string{pulled.ArtifactPath, filepath.Join(workspace, filepath.FromSlash(lineage.Path))} {
-		hidden := filepath.Join(filepath.Dir(source), ".tadx-stage-copy")
-		if err := os.CopyFS(hidden, os.DirFS(source)); err != nil {
-			t.Fatal(err)
+		relative := func(path string) string {
+			t.Helper()
+			rel, err := filepath.Rel(workspace, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return filepath.ToSlash(rel)
 		}
-		relative, err := filepath.Rel(workspace, hidden)
-		if err != nil {
-			t.Fatal(err)
+		for _, name := range []string{".tadx-stage-copy", ".hidden-copy"} {
+			hidden := filepath.Join(filepath.Dir(source), name)
+			if err := os.CopyFS(hidden, os.DirFS(source)); err != nil {
+				t.Fatal(err)
+			}
+			if item, err := Resolve(t.Context(), workspace, Selector{Path: relative(hidden)}); err == nil {
+				t.Fatalf("Resolve(%s) = %#v, want hidden entries outside the artifact namespace", relative(hidden), item)
+			}
 		}
-		if item, err := Resolve(t.Context(), workspace, Selector{Path: filepath.ToSlash(relative)}); err == nil {
-			t.Fatalf("Resolve(%s) = %#v, want hidden entries outside the artifact namespace", relative, item)
+		if _, err := Resolve(t.Context(), workspace, Selector{Path: relative(source)}); err != nil {
+			t.Fatalf("Resolve(%s) beside hidden copies: %v", relative(source), err)
 		}
 	}
 }
