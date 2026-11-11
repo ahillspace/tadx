@@ -236,7 +236,7 @@ export function createLauncher(root, { now = () => Date.now(), revision = null }
     if (spawn) result.spawn = {
       task_name: `explore_${run.run_id.replaceAll('-', '_')}_${passId}`,
       model: 'gpt-6-luna', reasoning_effort: 'medium', fork_turns: 'none',
-      message: `Read ${instructionPath}, then ${result.paths.run_manifest} and ${result.paths.pass_manifest}. Authority is limited to this run; fixture writes require its explicit authorization. Never change consent, auth, policy, shared content, or installed tools.`,
+      message: `Read ${instructionPath}, then ${result.paths.run_manifest} and ${result.paths.pass_manifest}, and run that pass to completion: explore within budget, capture evidence, finish the report and journal, clean up, and return the handoff. Authority is limited to this run; fixture writes require its explicit authorization. Never change consent, auth, policy, shared content, or installed tools.`,
     };
     return result;
   }
