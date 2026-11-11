@@ -44,6 +44,8 @@ test('preparation isolates runs and returns only a compact fresh-worker payload'
   assert.equal(first.spawn.fork_turns, 'none');
   assert.ok(first.spawn.message.length < 1000);
   assert.match(first.spawn.message, /references\/worker\.md/);
+  assert.match(first.spawn.message, /run that pass to completion/);
+  for (const step of [/evidence/, /report/, /journal/, /clean up/, /handoff/]) assert.match(first.spawn.message, step);
   assert.equal(f.read(first.paths.pass_manifest).previous_brief, null);
   assert.equal(f.read(first.paths.run_manifest).authority.allow_fixture_writes, false);
   assert.equal(f.read(first.paths.report).status, 'pending');
