@@ -77,17 +77,23 @@ func TestPulseCreateRejectionDiagnosticsThroughCLI(t *testing.T) {
 // rejected with a bare HTTP 409 whatever its name or dimensions.
 func TestPulseCreateNamesEquivalentDefinitionBeforeSubmission(t *testing.T) {
 	const equivalent = `"basic_specification":{"measure":{"field":"Revenue","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"},"filters":[]},"is_running_total":false,"temporality":"TEMPORALITY_OVER_TIME"`
+	fixed := strings.Replace(equivalent, `"filters":[]`, `"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"},{"string_value":"East"}]}]`, 1)
 	for _, tt := range []struct {
 		name, specification string
 		rejected            bool
+		filters             bool
 	}{
-		{"equivalent", equivalent, true},
-		{"aggregation", strings.Replace(equivalent, "AGGREGATION_SUM", "AGGREGATION_MAX", 1), false},
-		{"time dimension", strings.Replace(equivalent, `"field":"Order Date"`, `"field":"Ship Date"`, 1), false},
-		{"running total", strings.Replace(equivalent, `"is_running_total":false`, `"is_running_total":true`, 1), false},
-		{"temporality", strings.Replace(equivalent, "TEMPORALITY_OVER_TIME", "TEMPORALITY_LATEST_POINT_IN_TIME", 1), false},
-		{"filters", strings.Replace(equivalent, `"filters":[]`, `"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"West"}]}]`, 1), false},
-		{"filters unknown", strings.Replace(equivalent, `,"filters":[]`, "", 1), false},
+		{name: "equivalent", specification: equivalent, rejected: true},
+		{name: "aggregation", specification: strings.Replace(equivalent, "AGGREGATION_SUM", "AGGREGATION_MAX", 1)},
+		{name: "time dimension", specification: strings.Replace(equivalent, `"field":"Order Date"`, `"field":"Ship Date"`, 1)},
+		{name: "running total", specification: strings.Replace(equivalent, `"is_running_total":false`, `"is_running_total":true`, 1)},
+		{name: "temporality", specification: strings.Replace(equivalent, "TEMPORALITY_OVER_TIME", "TEMPORALITY_LATEST_POINT_IN_TIME", 1)},
+		{name: "filters unknown", specification: strings.Replace(equivalent, `,"filters":[]`, "", 1)},
+		{name: "new filters", specification: equivalent, filters: true},
+		{name: "existing filters", specification: fixed},
+		{name: "equivalent filters", specification: fixed, filters: true, rejected: true},
+		{name: "different filters", specification: strings.Replace(fixed, "West", "South", 1), filters: true},
+		{name: "different null handling", specification: strings.Replace(fixed, `"field":"Region"`, `"field":"Region","include_null":true`, 1), filters: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			creates := 0
@@ -115,9 +121,12 @@ func TestPulseCreateNamesEquivalentDefinitionBeforeSubmission(t *testing.T) {
 			}))
 			defer server.Close()
 			args := []string{"pulse", "definition", "create", "--environment", "test", "--name", "Revenue", "--datasource-id", "ds-1", "--measure-field", "Revenue", "--aggregation", "SUM", "--date-field", "Order Date", "--dimension", "Region"}
+			if tt.filters {
+				args = append(args, "--filter", "Region=East", "--filter", "Region=West")
+			}
 			var out bytes.Buffer
 			options := diagnosticOptions(t, server)
-			code := app.Run(context.Background(), args, &out, options)
+			code := app.Run(t.Context(), args, &out, options)
 			failure := decodeDiagnosticFailure(t, out.String())
 			if !tt.rejected {
 				if creates != 1 || failure.ID != "pulse.definition.create.failed" {

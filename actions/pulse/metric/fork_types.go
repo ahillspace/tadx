@@ -1,5 +1,7 @@
 package metric
 
+import "github.com/ahillspace/tadx/internal/value"
+
 type ForkInput struct {
 	period        map[string]any
 	Environment   string
@@ -11,11 +13,7 @@ type ForkInput struct {
 	CustomDaysSet bool `json:"-"`
 	Filters       []ForkFilter
 }
-type ForkFilter struct {
-	Field   string   `json:"field"`
-	Values  []string `json:"values"`
-	Exclude bool     `json:"exclude"`
-}
+type ForkFilter = value.PulseFilterSelection
 type ForkDefinition struct {
 	LUID                 string
 	DatasourceLUID       string

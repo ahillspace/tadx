@@ -43,7 +43,7 @@ func (c CreateCandidate) equivalent(spec CreateSpecification) bool {
 	basic := spec.BasicSpecification
 	return c.MeasureField == basic.Measure.Field && c.Aggregation == basic.Measure.Aggregation && c.TimeDimension == basic.TimeDimension.Field &&
 		c.RunningTotal == spec.RunningTotal && c.Temporality == spec.Temporality &&
-		c.FixedFiltersKnown && len(c.FixedFilters) == 0 && len(basic.Filters) == 0
+		c.FixedFiltersKnown && equivalentFixedFilters(c.FixedFilters, basic.Filters)
 }
 
 // Creator creates one definition and performs bounded default-metric resolution.
@@ -54,23 +54,32 @@ type CreateCreator interface {
 // createPlan resolves live field and collision state for the validated request.
 func createPlan(ctx context.Context, validator CreateFieldValidator, finder CreateCollisionFinder, input CreateInput) (CreatePlan, error) {
 	request := input.request
+	basic := &request.Specification.BasicSpecification
 	references := CreateFieldReferences{
 		DatasourceLUID:    request.Specification.Datasource.ID,
 		MeasureField:      request.Specification.BasicSpecification.Measure.Field,
 		Aggregation:       request.Specification.BasicSpecification.Measure.Aggregation,
 		TimeDimension:     request.Specification.BasicSpecification.TimeDimension.Field,
 		AllowedDimensions: append([]string(nil), request.ExtensionOptions.AllowedDimensions...),
+		FilterFields:      make([]string, len(basic.Filters)),
+	}
+	for i, filter := range basic.Filters {
+		references.FilterFields[i] = filter.Field
 	}
 	references, err := validator.ResolveDefinitionFields(ctx, references)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect current datasource fields, then review a new definition preview.")
 		return CreatePlan{}, &errs.Error{ID: "pulse.definition.create.fields", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field validation failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
 	}
-	request.Specification.BasicSpecification.Measure.Field = references.MeasureField
-	request.Specification.BasicSpecification.TimeDimension.Field = references.TimeDimension
+	basic.Measure.Field = references.MeasureField
+	basic.TimeDimension.Field = references.TimeDimension
 	request.ExtensionOptions.AllowedDimensions, err = createCanonicalIdentifiers(references.AllowedDimensions)
 	if err != nil {
 		return CreatePlan{}, createError("pulse.definition.create.fields", errs.KindOperation, input, "Resolved Pulse dimensions are invalid.", err)
+	}
+	basic.Filters, err = resolveFixedFilters(basic.Filters, references.FilterFields)
+	if err != nil {
+		return CreatePlan{}, createError("pulse.definition.create.fields", errs.KindUsage, input, "Resolved Pulse filters are invalid.", err)
 	}
 	if err := createCheckCollision(ctx, finder, input, request); err != nil {
 		return CreatePlan{}, err
@@ -170,7 +179,8 @@ func createCheckCollision(ctx context.Context, finder CreateCollisionFinder, inp
 	}
 	for _, item := range items {
 		if item.equivalent(request.Specification) {
-			return &errs.Error{ID: "pulse.definition.create.equivalent", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: fmt.Sprintf("Pulse definition %q already uses this datasource, measure, aggregation, time dimension, running total, temporality, and filters; Tableau rejects an equivalent definition whatever its name or dimensions.", item.Name), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID) + "; reuse that definition, or change the measure, aggregation, time dimension, running total, or temporality.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
+			inspect := commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID)
+			return &errs.Error{ID: "pulse.definition.create.equivalent", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: fmt.Sprintf("Pulse definition %q already uses this datasource, measure, aggregation, time dimension, running total, temporality, and filters. Tableau rejects equivalent definitions regardless of name or dimensions.", item.Name), Retryable: errs.Bool(false), CorrectiveAction: "Inspect the existing definition with " + inspect + " before deciding whether to reuse it or revise the requested settings, including fixed filters.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 		}
 	}
 	return nil
@@ -232,6 +242,10 @@ func createRequestFromIntent(intent CreateIntent) (CreateRequest, error) {
 	if err != nil {
 		return CreateRequest{}, err
 	}
+	filters, err := createFixedFilters(intent.FixedFilters)
+	if err != nil {
+		return CreateRequest{}, err
+	}
 	representation := CreateRepresentationOptions{Type: format, SentimentType: sentiment}
 	if format == "NUMBER_FORMAT_TYPE_CURRENCY" {
 		representation.CurrencyCode = "CURRENCY_CODE_" + currency
@@ -240,7 +254,7 @@ func createRequestFromIntent(intent CreateIntent) (CreateRequest, error) {
 		Name: intent.Name, Description: intent.Description,
 		Specification: CreateSpecification{
 			Datasource:         CreateDatasource{ID: intent.DatasourceLUID},
-			BasicSpecification: CreateBasicSpecification{Measure: CreateMeasure{Field: intent.MeasureField, Aggregation: aggregation}, TimeDimension: CreateTimeDimension{Field: intent.TimeDimension}, Filters: []CreateFilter{}},
+			BasicSpecification: CreateBasicSpecification{Measure: CreateMeasure{Field: intent.MeasureField, Aggregation: aggregation}, TimeDimension: CreateTimeDimension{Field: intent.TimeDimension}, Filters: filters},
 			RunningTotal:       intent.RunningTotal, Temporality: temporality,
 		},
 		ExtensionOptions:      CreateExtensionOptions{AllowedDimensions: dimensions, AllowedGranularities: granularities, OffsetFromToday: 0, UseDynamicOffset: false},

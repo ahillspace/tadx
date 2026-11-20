@@ -107,7 +107,7 @@ func TestCategoryHelpExplainsRequiredAlternatives(t *testing.T) {
 		{"content flow publish", []string{"Usage: tadx content flow publish", "(--artifact <directory>... | --file <file.tfl|file.tflx> | --id <luid> | --artifact-name <name>)", "TADX-managed artifact directory", "standalone native file"}},
 		{"content workbook", []string{"--artifact <directory>...", "TADX-managed artifact directory", "standalone native file"}},
 		{"content flow", []string{"--artifact <directory>...", "TADX-managed artifact directory", "standalone native file"}},
-		{"pulse definition", []string{"--name", "--datasource-id", "--measure-field", "--date-field", "--dimension", "--datasource-map"}},
+		{"pulse definition", []string{"--name", "--datasource-id", "--measure-field", "--date-field", "--dimension", "--filter <field=value>", "--exclude-filter <field=value>", "--datasource-map"}},
 		{"pulse metric", []string{"at least one of: --period, --filter, --exclude-filter", "CUSTOM_N_DAYS", "exactly one of: --user-id, --group-id"}},
 		{"workspace artifact", []string{"--artifact", "both --kind and --id"}},
 		{"pulse", []string{"does not retrieve current metric values or generated insights"}},

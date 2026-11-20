@@ -2,10 +2,11 @@
 package pulse
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/ahillspace/tadx/actions/batchinput"
@@ -295,6 +296,7 @@ func newDefinitionPublish(deps Dependencies) *cobra.Command {
 
 func newDefinitionCreate(deps Dependencies) *cobra.Command {
 	var input pulsedefinition.CreateInput
+	var includeFilters, excludeFilters []string
 	var preview bool
 	command := &cobra.Command{
 		Use:         "create",
@@ -307,6 +309,11 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 			if input.Environment == "" || input.Intent.Name == "" || input.Intent.DatasourceLUID == "" || input.Intent.MeasureField == "" || input.Intent.TimeDimension == "" {
 				return usage("pulse.definition.create", "--environment, --name, --datasource-id, --measure-field, and --date-field are required")
 			}
+			filters, err := parseFilters(includeFilters, excludeFilters)
+			if err != nil {
+				return clierr.Usage("pulse.definition.create", err)
+			}
+			input.Intent.FixedFilters = filters
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -325,6 +332,8 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Intent.Aggregation, "aggregation", "", "aggregation: SUM, AVERAGE, MIN, MAX, COUNT, COUNT_DISTINCT, or USER; defaults to SUM")
 	command.Flags().StringVar(&input.Intent.TimeDimension, "date-field", "", "exact Tableau date field ID or unique display name; resolved to the raw ID")
 	command.Flags().StringArrayVar(&input.Intent.AllowedDimensions, "dimension", nil, "exact Tableau dimension field ID or unique display name; repeat for each allowed dimension")
+	command.Flags().StringArrayVar(&includeFilters, "filter", nil, "fixed included value as <dimension field ID or unique display name>=<value> (repeatable)")
+	command.Flags().StringArrayVar(&excludeFilters, "exclude-filter", nil, "fixed excluded value as <dimension field ID or unique display name>=<value> (repeatable)")
 	command.Flags().StringVar(&input.Intent.MinimumGranularity, "minimum-granularity", "", "minimum date granularity: DAY, WEEK, MONTH, QUARTER, or YEAR; defaults to DAY")
 	command.Flags().StringVar(&input.Intent.NumberFormat, "number-format", "", "number format: NUMBER, CURRENCY, or PERCENT; defaults to NUMBER")
 	command.Flags().StringVar(&input.Intent.CurrencyCode, "currency", "", "three-letter currency code when --number-format is CURRENCY; defaults to USD")
@@ -581,7 +590,7 @@ type filterKey struct {
 	exclude bool
 }
 
-func parseFilters(included, excluded []string) ([]pulsemetric.ForkFilter, error) {
+func parseFilters(included, excluded []string) ([]pulsedefinition.CreateFilterSelection, error) {
 	grouped := make(map[filterKey][]string, len(included)+len(excluded))
 	modes := make(map[string]bool, len(included)+len(excluded))
 	for _, group := range []struct {
@@ -602,11 +611,13 @@ func parseFilters(included, excluded []string) ([]pulsemetric.ForkFilter, error)
 			grouped[key] = append(grouped[key], value)
 		}
 	}
-	filters := make([]pulsemetric.ForkFilter, 0, len(grouped))
+	filters := make([]pulsedefinition.CreateFilterSelection, 0, len(grouped))
 	for key, values := range grouped {
-		sort.Strings(values)
-		filters = append(filters, pulsemetric.ForkFilter{Field: key.field, Values: values, Exclude: key.exclude})
+		slices.Sort(values)
+		filters = append(filters, pulsedefinition.CreateFilterSelection{Field: key.field, Values: values, Exclude: key.exclude})
 	}
-	sort.Slice(filters, func(i, j int) bool { return filters[i].Field < filters[j].Field })
+	slices.SortFunc(filters, func(left, right pulsedefinition.CreateFilterSelection) int {
+		return cmp.Compare(left.Field, right.Field)
+	})
 	return filters, nil
 }

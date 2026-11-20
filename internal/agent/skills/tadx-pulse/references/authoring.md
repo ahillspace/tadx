@@ -83,7 +83,7 @@ A fixed definition such as sales excluding returns requires actual implementing 
 
 Month-to-date is a reporting period, not a reason to choose MONTH minimum granularity.
 If the task requires a particular period or population, check the variants contract before creating its base.
-Resolve missing fixed filters, inline calculations, custom calendars, comparisons, or offsets before writing a materially different substitute.
+Resolve required inline calculations, custom calendars, comparisons, or offsets before writing a materially different substitute.
 For a current or demo-ready result, establish data recency from available evidence or a bounded authorized data query when needed.
 LATEST and a different grain do not make historical data current.
 State when current values or insight readiness remain unverified.

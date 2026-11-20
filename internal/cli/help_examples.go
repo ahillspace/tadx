@@ -112,7 +112,7 @@ var categoryHelpExamples = []helpExampleSet{
 	}},
 	{"pulse definition", "Create requires --name, --datasource-id, --measure-field, and --date-field. Repeat --dimension for allowed slicers.\nPublish requires one of --artifact, --id, or --artifact-name, plus explicit --datasource-map source=destination mappings.", []string{
 		"tadx pulse definition inspect --env dev --id <definition-luid>",
-		"tadx pulse definition create --env dev --name <definition-name> --datasource-id <datasource-luid> --measure-field <measure-field> --date-field <date-field> --dimension <dimension-field> --preview",
+		"tadx pulse definition create --env dev --name <definition-name> --datasource-id <datasource-luid> --measure-field <measure-field> --date-field <date-field> --dimension <dimension-field> --filter <field>=<value> --preview",
 		"tadx pulse definition publish --env dev --workspace dev --id <definition-luid> --datasource-map <source-luid>=<destination-luid> --preview",
 	}},
 	{"pulse metric", "Fork requires --id and at least one of --period, --filter, or --exclude-filter. CUSTOM_N_DAYS also requires --days.\nFollow requires --id and exactly one of --user-id or --group-id.", []string{

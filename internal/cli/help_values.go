@@ -76,6 +76,8 @@ func applyHelpValues(root *cobra.Command) {
 				choices("elevated", "true", "false")
 			}
 		case "pulse definition create":
+			value("filter", "field=value")
+			value("exclude-filter", "field=value")
 			choices("aggregation", "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "USER")
 			choices("minimum-granularity", "DAY", "WEEK", "MONTH", "QUARTER", "YEAR")
 			choices("number-format", "NUMBER", "CURRENCY", "PERCENT")
