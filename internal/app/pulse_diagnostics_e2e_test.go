@@ -93,6 +93,12 @@ func TestPulseCreateNamesEquivalentDefinitionBeforeSubmission(t *testing.T) {
 		{name: "existing filters", specification: fixed},
 		{name: "equivalent filters", specification: fixed, filters: true, rejected: true},
 		{name: "different filters", specification: strings.Replace(fixed, "West", "South", 1), filters: true},
+		{name: "matching text mirror", specification: strings.Replace(fixed, `"operator":"OPERATOR_EQUAL",`, `"operator":"OPERATOR_EQUAL","values":["East","West"],`, 1), filters: true, rejected: true},
+		{name: "legacy text values", specification: strings.Replace(fixed, `"categorical_values":[{"string_value":"West"},{"string_value":"East"}]`, `"values":["West","East"]`, 1), filters: true, rejected: true},
+		{name: "conflicting text mirror", specification: strings.Replace(fixed, `"operator":"OPERATOR_EQUAL",`, `"operator":"OPERATOR_EQUAL","values":["East","South"],`, 1), filters: true},
+		{name: "omitted default temporality", specification: strings.Replace(fixed, `,"temporality":"TEMPORALITY_OVER_TIME"`, "", 1), filters: true, rejected: true},
+		{name: "unspecified default temporality", specification: strings.Replace(fixed, "TEMPORALITY_OVER_TIME", "TEMPORALITY_UNSPECIFIED", 1), filters: true, rejected: true},
+		{name: "unknown filter setting", specification: strings.Replace(fixed, `"field":"Region"`, `"field":"Region","extension":{"value":9007199254740993}`, 1), filters: true},
 		{name: "different null handling", specification: strings.Replace(fixed, `"field":"Region"`, `"field":"Region","include_null":true`, 1), filters: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

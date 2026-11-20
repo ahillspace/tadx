@@ -41,6 +41,10 @@ type CreateCandidate struct {
 // candidate; name, dimensions, and presentation options do not distinguish them.
 func (c CreateCandidate) equivalent(spec CreateSpecification) bool {
 	basic := spec.BasicSpecification
+	switch c.Temporality {
+	case "", "TEMPORALITY_UNSPECIFIED":
+		c.Temporality = "TEMPORALITY_OVER_TIME"
+	}
 	return c.MeasureField == basic.Measure.Field && c.Aggregation == basic.Measure.Aggregation && c.TimeDimension == basic.TimeDimension.Field &&
 		c.RunningTotal == spec.RunningTotal && c.Temporality == spec.Temporality &&
 		c.FixedFiltersKnown && equivalentFixedFilters(c.FixedFilters, basic.Filters)

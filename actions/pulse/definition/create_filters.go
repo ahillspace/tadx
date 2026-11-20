@@ -1,13 +1,17 @@
 package definition
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 func createFixedFilters(selections []CreateFilterSelection) ([]CreateFilter, error) {
@@ -67,46 +71,40 @@ func resolveFixedFilters(filters []CreateFilter, fields []string) ([]CreateFilte
 	return result, nil
 }
 
-// Compare only fully understood filters. Saved payloads can contain settings
-// outside the categorical string filters that this command constructs.
 func equivalentFixedFilters(saved []any, requested []CreateFilter) bool {
 	if len(saved) != len(requested) {
 		return false
 	}
-	byField := make(map[string]map[string]any, len(saved))
-	for _, raw := range saved {
-		filter, ok := raw.(map[string]any)
-		field, validField := filter["field"].(string)
-		if !ok || !validField || byField[field] != nil {
-			return false
-		}
-		byField[field] = filter
+	if len(saved) == 0 {
+		return true
 	}
-	for _, filter := range requested {
-		record := byField[filter.Field]
-		nulls, hasNulls := record["include_null"]
-		if record["operator"] != filter.Operator || (hasNulls && nulls != false) || len(record) != 3 && !(hasNulls && len(record) == 4) {
-			return false
-		}
-		categorical, ok := record["categorical_values"].([]any)
-		if !ok || len(categorical) != len(filter.CategoricalValues) {
-			return false
-		}
-		values := make([]string, len(categorical))
-		for i, raw := range categorical {
-			value, ok := raw.(map[string]any)
-			text, validText := value["string_value"].(string)
-			if !ok || !validText || len(value) != 1 {
-				return false
-			}
-			values[i] = text
-		}
-		slices.Sort(values)
-		for i, value := range filter.CategoricalValues {
-			if values[i] != *value.StringValue {
-				return false
-			}
+	savedJSON, err := canonicalDefinitionFilters(saved)
+	if err != nil {
+		return false
+	}
+	requestedJSON, err := canonicalDefinitionFilters(requested)
+	return err == nil && bytes.Equal(savedJSON, requestedJSON)
+}
+
+func canonicalDefinitionFilters(filters any) ([]byte, error) {
+	data, err := json.Marshal(filters)
+	if err != nil {
+		return nil, err
+	}
+	// Normalize an owned copy and preserve values in any unknown settings.
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var comparison []any
+	if err := decoder.Decode(&comparison); err != nil {
+		return nil, err
+	}
+	for _, raw := range comparison {
+		if filter, ok := raw.(map[string]any); ok && filter["include_null"] == false {
+			delete(filter, "include_null")
 		}
 	}
-	return true
+	if err := value.NormalizePulseFilterArray(comparison); err != nil {
+		return nil, err
+	}
+	return json.Marshal(comparison)
 }
