@@ -35,7 +35,43 @@ func createCompactPlan(plan CreatePlan) CreateCompactPlan {
 	if temporality == "LATEST_POINT_IN_TIME" {
 		temporality = "LATEST"
 	}
-	return CreateCompactPlan{Mode: plan.Mode, Operation: plan.Operation, Environment: plan.Environment, Site: plan.Site, Name: plan.Name, Description: request.Description, Datasource: plan.Datasource, Measure: CreateMeasure{Field: plan.Measure.Field, Aggregation: strings.TrimPrefix(plan.Measure.Aggregation, "AGGREGATION_")}, TimeField: plan.TimeField, Dimensions: dimensions, DimensionsOmitted: omitted, Population: "ALL_ROWS", MinimumGranularity: minimum, AllowedGranularities: granularities, NumberFormat: strings.TrimPrefix(request.RepresentationOptions.Type, "NUMBER_FORMAT_TYPE_"), Currency: strings.TrimPrefix(request.RepresentationOptions.CurrencyCode, "CURRENCY_CODE_"), Sentiment: sentiment, Temporality: temporality, RunningTotal: request.Specification.RunningTotal, OffsetFromToday: request.ExtensionOptions.OffsetFromToday, UseDynamicOffset: request.ExtensionOptions.UseDynamicOffset, Comparisons: comparisons, InsightsEnabled: request.InsightsOptions.ShowInsights, DisabledInsights: disabled, Certified: request.Certification.IsCertified, RequiresFull: omitted > 0, ReviewComplete: omitted == 0}
+	filters := request.Specification.BasicSpecification.Filters
+	filtersOmitted := max(0, len(filters)-25)
+	requiresFull := omitted > 0 || filtersOmitted > 0
+	population := "ALL_ROWS"
+	var fixedFilters []CreateCompactFilter
+	if len(filters) > 0 {
+		population = "FILTERED"
+	}
+	for _, filter := range filters[:min(25, len(filters))] {
+		summary := CreateCompactFilter{
+			Field: filter.Field, Operator: strings.TrimPrefix(filter.Operator, "OPERATOR_"),
+			IncludeNull: filter.IncludeNull, ValuesOmitted: max(0, len(filter.CategoricalValues)-10),
+		}
+		for _, value := range filter.CategoricalValues[:min(10, len(filter.CategoricalValues))] {
+			if value.StringValue == nil {
+				summary.ValuesOmitted++
+				continue
+			}
+			summary.Values = append(summary.Values, *value.StringValue)
+		}
+		fixedFilters = append(fixedFilters, summary)
+		requiresFull = requiresFull || summary.ValuesOmitted > 0
+	}
+	return CreateCompactPlan{
+		Mode: plan.Mode, Operation: plan.Operation, Environment: plan.Environment, Site: plan.Site,
+		Name: plan.Name, Description: request.Description, Datasource: plan.Datasource,
+		Measure:   CreateMeasure{Field: plan.Measure.Field, Aggregation: strings.TrimPrefix(plan.Measure.Aggregation, "AGGREGATION_")},
+		TimeField: plan.TimeField, Dimensions: dimensions, DimensionsOmitted: omitted,
+		Population: population, FixedFilters: fixedFilters, FiltersOmitted: filtersOmitted,
+		MinimumGranularity: minimum, AllowedGranularities: granularities,
+		NumberFormat: strings.TrimPrefix(request.RepresentationOptions.Type, "NUMBER_FORMAT_TYPE_"),
+		Currency:     strings.TrimPrefix(request.RepresentationOptions.CurrencyCode, "CURRENCY_CODE_"),
+		Sentiment:    sentiment, Temporality: temporality, RunningTotal: request.Specification.RunningTotal,
+		OffsetFromToday: request.ExtensionOptions.OffsetFromToday, UseDynamicOffset: request.ExtensionOptions.UseDynamicOffset,
+		Comparisons: comparisons, InsightsEnabled: request.InsightsOptions.ShowInsights, DisabledInsights: disabled,
+		Certified: request.Certification.IsCertified, RequiresFull: requiresFull, ReviewComplete: !requiresFull,
+	}
 }
 
 // Input contains one small definition-authoring intent.
@@ -56,6 +92,7 @@ type CreateIntent struct {
 	Aggregation        string
 	TimeDimension      string
 	AllowedDimensions  []string
+	FixedFilters       []CreateFilterSelection
 	MinimumGranularity string
 	NumberFormat       string
 	CurrencyCode       string
@@ -71,6 +108,7 @@ type CreateFieldReferences struct {
 	Aggregation       string
 	TimeDimension     string
 	AllowedDimensions []string
+	FilterFields      []string
 }
 
 // These aliases preserve the action's authoring vocabulary and output types.
@@ -80,6 +118,7 @@ type CreateDatasource = value.PulseDatasource
 type CreateBasicSpecification = value.PulseBasicSpecification
 type CreateMeasure = value.PulseMeasure
 type CreateTimeDimension = value.PulseTimeDimension
+type CreateFilterSelection = value.PulseFilterSelection
 type CreateFilter = value.PulseFilter
 type CreateCategoricalValue = value.PulseCategoricalValue
 type CreateExtensionOptions = value.PulseExtensionOptions
@@ -125,33 +164,43 @@ type CreateOutput struct {
 
 // CompactPlan contains the safety-critical target and references.
 type CreateCompactPlan struct {
-	Mode                 string        `json:"mode"`
-	Operation            string        `json:"operation"`
-	Environment          string        `json:"environment"`
-	Site                 string        `json:"site"`
-	Name                 string        `json:"name"`
-	Description          string        `json:"description"`
-	Datasource           string        `json:"datasource_luid"`
-	Measure              CreateMeasure `json:"measure"`
-	TimeField            string        `json:"time_dimension"`
-	Dimensions           []string      `json:"allowed_dimensions"`
-	DimensionsOmitted    int           `json:"dimensions_omitted,omitempty"`
-	Population           string        `json:"population"`
-	MinimumGranularity   string        `json:"minimum_granularity"`
-	AllowedGranularities []string      `json:"allowed_granularities"`
-	NumberFormat         string        `json:"number_format"`
-	Currency             string        `json:"currency"`
-	Sentiment            string        `json:"sentiment"`
-	Temporality          string        `json:"temporality"`
-	RunningTotal         bool          `json:"running_total"`
-	OffsetFromToday      int           `json:"offset_from_today"`
-	UseDynamicOffset     bool          `json:"use_dynamic_offset"`
-	Comparisons          []string      `json:"comparisons"`
-	InsightsEnabled      bool          `json:"insights_enabled"`
-	DisabledInsights     []string      `json:"disabled_insights"`
-	Certified            bool          `json:"certified"`
-	RequiresFull         bool          `json:"requires_full"`
-	ReviewComplete       bool          `json:"review_complete"`
+	Mode                 string                `json:"mode"`
+	Operation            string                `json:"operation"`
+	Environment          string                `json:"environment"`
+	Site                 string                `json:"site"`
+	Name                 string                `json:"name"`
+	Description          string                `json:"description"`
+	Datasource           string                `json:"datasource_luid"`
+	Measure              CreateMeasure         `json:"measure"`
+	TimeField            string                `json:"time_dimension"`
+	Dimensions           []string              `json:"allowed_dimensions"`
+	DimensionsOmitted    int                   `json:"dimensions_omitted,omitempty"`
+	Population           string                `json:"population"`
+	FixedFilters         []CreateCompactFilter `json:"fixed_filters,omitempty"`
+	FiltersOmitted       int                   `json:"filters_omitted,omitempty"`
+	MinimumGranularity   string                `json:"minimum_granularity"`
+	AllowedGranularities []string              `json:"allowed_granularities"`
+	NumberFormat         string                `json:"number_format"`
+	Currency             string                `json:"currency"`
+	Sentiment            string                `json:"sentiment"`
+	Temporality          string                `json:"temporality"`
+	RunningTotal         bool                  `json:"running_total"`
+	OffsetFromToday      int                   `json:"offset_from_today"`
+	UseDynamicOffset     bool                  `json:"use_dynamic_offset"`
+	Comparisons          []string              `json:"comparisons"`
+	InsightsEnabled      bool                  `json:"insights_enabled"`
+	DisabledInsights     []string              `json:"disabled_insights"`
+	Certified            bool                  `json:"certified"`
+	RequiresFull         bool                  `json:"requires_full"`
+	ReviewComplete       bool                  `json:"review_complete"`
+}
+
+type CreateCompactFilter struct {
+	Field         string   `json:"field"`
+	Operator      string   `json:"operator"`
+	Values        []string `json:"values"`
+	IncludeNull   bool     `json:"include_null"`
+	ValuesOmitted int      `json:"values_omitted,omitempty"`
 }
 
 // CompactCreateResult omits transport diagnostics.

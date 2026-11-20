@@ -95,12 +95,16 @@ func TestPulseCaptionForkThroughCLI(t *testing.T) {
 
 // Exercise the CLI, live metadata adapter, validation, and provider payload together.
 func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
-	for _, ambiguous := range []bool{false, true} {
-		name := "unique captions resolve to raw IDs"
-		if ambiguous {
-			name = "ambiguous caption rejects preview and execution"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, test := range []struct {
+		name, filterFlag, filter, wantError string
+		ambiguous                           bool
+	}{
+		{name: "unique captions resolve to raw IDs"},
+		{name: "ambiguous caption", ambiguous: true, wantError: "ambiguous"},
+		{name: "conflicting operators after resolution", filterFlag: "--filter", filter: "Regional Manager=Alice", wantError: "conflicting include and exclude filters"},
+		{name: "date field as a filter", filterFlag: "--filter", filter: "Order Date=2026-01-01", wantError: "fixed filter field"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			creates := 0
 			var created pulsedefinition.CreateRequest
 			server := tableauFixtureServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +116,7 @@ func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
 					io.WriteString(w, `<tsResponse><datasource id="datasource-1" name="Orders"><project id="project-1" name="Test"/></datasource></tsResponse>`)
 				case r.Method == http.MethodPost && r.URL.Path == "/api/v1/vizql-data-service/read-metadata":
 					extra := ""
-					if ambiguous {
+					if test.ambiguous {
 						extra = `,{"fieldName":"OtherPeople","fieldCaption":"Regional Manager","dataType":"STRING","fieldRole":"DIMENSION"}`
 					}
 					io.WriteString(w, `{"data":[{"fieldName":"People","fieldCaption":"Regional Manager","dataType":"STRING","fieldRole":"DIMENSION"},{"fieldName":"OrderDate","fieldCaption":"Order Date","dataType":"DATE","fieldRole":"DIMENSION"},{"fieldName":"Territory","fieldCaption":"Sales Region","dataType":"STRING","fieldRole":"DIMENSION"}`+extra+`]}`)
@@ -134,7 +138,11 @@ func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
 			}))
 			defer server.Close()
 			options := pulseEfficiencyOptions(t, server)
-			args := []string{"pulse", "definition", "create", "--environment", "test", "--name", "Managers", "--datasource-id", "datasource-1", "--measure-field", "Regional Manager", "--aggregation", "COUNT_DISTINCT", "--date-field", "Order Date", "--dimension", "Sales Region", "--full"}
+			args := []string{"pulse", "definition", "create", "--environment", "test", "--name", "Managers", "--datasource-id", "datasource-1", "--measure-field", "Regional Manager", "--aggregation", "COUNT_DISTINCT", "--date-field", "Order Date", "--dimension", "Sales Region",
+				"--filter", "Sales Region=West", "--filter", "Territory=East", "--filter", "Territory=West", "--exclude-filter", "People= Unassigned, temp=1 "}
+			if test.filterFlag != "" {
+				args = append(args, test.filterFlag, test.filter)
+			}
 			for _, preview := range []bool{true, false} {
 				invocation := append([]string(nil), args...)
 				opts := options
@@ -143,9 +151,9 @@ func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
 					opts = disabledPreviewOptions(t, opts)
 				}
 				var stdout bytes.Buffer
-				code := app.Run(context.Background(), invocation, &stdout, opts)
-				if ambiguous {
-					if code == 0 || creates != 0 || !strings.Contains(strings.ToLower(stdout.String()), "ambiguous") {
+				code := app.Run(t.Context(), invocation, &stdout, opts)
+				if test.wantError != "" {
+					if code == 0 || creates != 0 || !strings.Contains(strings.ToLower(stdout.String()), test.wantError) {
 						t.Fatalf("preview=%t code=%d creates=%d output=%s", preview, code, creates, stdout.String())
 					}
 					continue
@@ -157,8 +165,21 @@ func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
 					if creates != 0 || !strings.Contains(stdout.String(), "People") || !strings.Contains(stdout.String(), "OrderDate") || !strings.Contains(stdout.String(), "Territory") {
 						t.Fatalf("preview must expose canonical fields without writes: creates=%d output=%s", creates, stdout.String())
 					}
+					for _, want := range []string{"population: FILTERED", "fixed_filters", "NOT_EQUAL", "Unassigned", "East", "West", "review_complete: true"} {
+						if !strings.Contains(stdout.String(), want) {
+							t.Errorf("missing %q in preview: %s", want, stdout.String())
+						}
+					}
 				} else if creates != 1 || created.Specification.BasicSpecification.Measure.Field != "People" || created.Specification.BasicSpecification.TimeDimension.Field != "OrderDate" || !reflect.DeepEqual(created.ExtensionOptions.AllowedDimensions, []string{"Territory"}) {
 					t.Fatalf("wrong publish payload: creates=%d request=%+v", creates, created)
+				} else {
+					want := []pulsedefinition.CreateFilter{
+						{Field: "People", Operator: "OPERATOR_NOT_EQUAL", CategoricalValues: []pulsedefinition.CreateCategoricalValue{{StringValue: new(" Unassigned, temp=1 ")}}},
+						{Field: "Territory", Operator: "OPERATOR_EQUAL", CategoricalValues: []pulsedefinition.CreateCategoricalValue{{StringValue: new("East")}, {StringValue: new("West")}}},
+					}
+					if got := created.Specification.BasicSpecification.Filters; !reflect.DeepEqual(got, want) {
+						t.Fatalf("submitted filters = %+v, want %+v", got, want)
+					}
 				}
 			}
 		})

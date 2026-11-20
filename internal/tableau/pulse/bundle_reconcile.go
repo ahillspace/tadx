@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 // VerifyBundleDefinition checks the shared definition once before recreating its
@@ -251,10 +253,10 @@ func normalizeBundleComparison(value any, path string) error {
 	return nil
 }
 
-func normalizeBundleFilters(value any) error {
-	if basic, ok := value.(map[string]any); ok {
+func normalizeBundleFilters(specification any) error {
+	if basic, ok := specification.(map[string]any); ok {
 		if filters, ok := basic["filters"].([]any); ok {
-			return normalizeFilterArray(filters)
+			return value.NormalizePulseFilterArray(filters)
 		}
 	}
 	return nil

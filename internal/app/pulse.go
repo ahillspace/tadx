@@ -651,17 +651,23 @@ func (v *pulseDefinitionFieldValidator) ResolveDefinitionFields(ctx context.Cont
 	for _, field := range schema.Fields {
 		fields[field.ID] = append(fields[field.ID], field)
 	}
-	selectors := make([]string, 0, 2+len(references.AllowedDimensions))
+	dimensionEnd := 2 + len(references.AllowedDimensions)
+	selectors := make([]string, 0, dimensionEnd+len(references.FilterFields))
 	selectors = append(selectors, references.MeasureField, references.TimeDimension)
 	selectors = append(selectors, references.AllowedDimensions...)
+	selectors = append(selectors, references.FilterFields...)
 	resolved, err := fieldcatalog.ResolveFields(schema.Fields, selectors)
 	if err != nil {
 		return references, err
 	}
 	references.MeasureField, references.TimeDimension = resolved[0].ID, resolved[1].ID
-	references.AllowedDimensions = make([]string, len(resolved)-2)
-	for i, field := range resolved[2:] {
+	references.AllowedDimensions = make([]string, dimensionEnd-2)
+	for i, field := range resolved[2:dimensionEnd] {
 		references.AllowedDimensions[i] = field.ID
+	}
+	references.FilterFields = make([]string, len(resolved)-dimensionEnd)
+	for i, field := range resolved[dimensionEnd:] {
+		references.FilterFields[i] = field.ID
 	}
 	return references, v.validateFields(fields, references)
 }
@@ -685,6 +691,11 @@ func (v *pulseDefinitionFieldValidator) validateFields(fields map[string][]field
 	for _, fieldID := range references.AllowedDimensions {
 		if _, err := exactPulseField(fields, fieldID, "dimension"); err != nil {
 			return fmt.Errorf("allowed dimension %q: %w", fieldID, err)
+		}
+	}
+	for _, fieldID := range references.FilterFields {
+		if _, err := exactPulseField(fields, fieldID, "dimension"); err != nil {
+			return fmt.Errorf("fixed filter field %q: %w", fieldID, err)
 		}
 	}
 	if measure.RequiresUserAggregation && aggregation != "AGGREGATION_USER" {

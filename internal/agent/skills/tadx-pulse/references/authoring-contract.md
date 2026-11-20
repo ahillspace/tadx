@@ -19,14 +19,15 @@ Honor `requires_user_aggregation`: true requires USER; false requires an appropr
 Read the semantics reference for nontrivial calculation and grain decisions.
 Table calculations and calculations depending on them are excluded.
 A visible calculation can use hidden ordinary components; use TADX's dependency-aware classification.
-The date must have date role, and adjustable fields must have dimension role.
+The date must have date role, and adjustable and fixed filter fields must have dimension role.
+Fixed filters apply to every metric based on the definition and use literal string values.
 Metadata discovery does not establish source connectivity or every viewer's access.
 
 ## Settings without create flags
 
-Creation uses no fixed definition filters, zero date offset with dynamic offset disabled, prior-period and prior-year comparisons, and built-in insight settings.
+Creation defaults to zero date offset with dynamic offset disabled, prior-period and prior-year comparisons, and built-in insight settings.
 It does not add goals, related links, or certification.
-No create flags expose inline calculations, fixed definition filters, custom calendars or comparisons, custom units, goals, or insight settings.
+No create flags expose inline calculations, custom calendars or comparisons, custom units, goals, or insight settings.
 A required unsupported option must be resolved before creating a substitute.
 Enabled insights do not prove that values or insights are available.
 
@@ -34,7 +35,7 @@ Enabled insights do not prove that values or insights are available.
 
 For an underspecified request, confirm the authorized source and business scope, any required period or filter feasibility, inspected existing definitions, and exact field evidence.
 Consider the complete dimension inventory and retain the generous relevant set in intentional order only when design or unresolved meaning requires it.
-For a fully specified configuration, validate the supplied measure, aggregation, date, dimensions, allowed grains, temporality, running total, units, currency, sentiment, and fixed defaults directly.
+For a fully specified configuration, validate the supplied measure, aggregation, date, dimensions, fixed filters, allowed grains, temporality, running total, units, currency, sentiment, and fixed defaults directly.
 Use the default preview when unresolved material choices need a local review; a truncated or failed preview is not a completed review.
 `review_complete: false` or `requires_full: true` means the returned summary needs more evidence; expanded output cannot repair missing source information.
 
@@ -48,7 +49,7 @@ Inspect again only when that read-back omits evidence needed to verify the reque
 
 Compare saved settings, definition linkage, complete population, and actual period.
 The minimum-granularity flag does not determine the default metric's reporting period.
-Use the variants route for a requested period or population.
+Use the variants route for a requested period or adjustable filter.
 The configuration-context reference explains what these saved settings establish; actual numbers require separate data evidence.
 Do not follow an unfiltered default when the user requested a filtered variant.
 For batches, verify a representative before scaling and separately verify different semantic families.

@@ -65,8 +65,8 @@ TADX preserves your supplied order while deduplicating IDs.
 Keep useful fields beyond 20 instead of silently truncating the set.
 
 Allowed dimensions enable slicing but do not select members or change the headline population.
-Use a metric variant for a requested region or segment.
-A fixed definition such as sales excluding returns requires actual implementing logic; an allowed Status dimension does not implement it.
+Use a fixed definition filter for a population shared by every metric, such as sales excluding returns.
+Use a metric variant when a region or segment should vary within the definition.
 
 ## Resolve settings and feasibility
 
@@ -82,8 +82,8 @@ A fixed definition such as sales excluding returns requires actual implementing 
 | Sentiment | UP for favorable increases, DOWN for favorable decreases, NONE when neither direction is universally favorable. |
 
 Month-to-date is a reporting period, not a reason to choose MONTH minimum granularity.
-If the task requires a particular period or population, check the variants contract before creating its base.
-Resolve missing fixed filters, inline calculations, custom calendars, comparisons, or offsets before writing a materially different substitute.
+If the metric needs a particular period or adjustable filter, check the variants contract before creating its base.
+Resolve required inline calculations, custom calendars, comparisons, or offsets before writing a materially different substitute.
 For a current or demo-ready result, establish data recency from available evidence or a bounded authorized data query when needed.
 LATEST and a different grain do not make historical data current.
 State when current values or insight readiness remain unverified.

@@ -41,6 +41,13 @@ type PulseTimeDimension struct {
 	Field string `json:"field"`
 }
 
+// PulseFilterSelection describes literal categorical values supplied for a field.
+type PulseFilterSelection struct {
+	Field   string   `json:"field"`
+	Values  []string `json:"values"`
+	Exclude bool     `json:"exclude"`
+}
+
 type PulseFilter struct {
 	Field             string                  `json:"field"`
 	Operator          string                  `json:"operator"`

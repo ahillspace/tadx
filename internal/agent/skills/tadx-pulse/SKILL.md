@@ -11,7 +11,7 @@ Use `tadx pulse -h` to locate resources, then use focused `tadx pulse definition
 Use `tadx content datasource -h` for schema discovery when that reference is not already loaded.
 The references below retain authoring judgment and verification contracts that command syntax alone does not provide.
 
-A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
+A definition owns the shared measure, aggregation, date, allowed dimensions, fixed filters, and display settings.
 A metric is a period and population variant of that definition; Tableau creates a default metric with each new definition.
 Followers subscribe to metrics, and insights are computed analytical results.
 This Guidance covers TADX authoring and lifecycle commands, respecting the user's chosen tools for other work.
@@ -24,7 +24,7 @@ TADX configuration reads do not return current metric values or generated insigh
 | Recommend KPIs, select fields or slicers, or design a definition | [Authoring](references/authoring.md) |
 | Create a definition or review its preview | [Creation contract](references/authoring-contract.md); read [Authoring](references/authoring.md) when the source, fields, dimensions, or business meaning remain unresolved |
 | Choose a calculation, entity count, average, rate, percentage, snapshot, or measure spanning multiple facts | Also read [Semantics](references/semantics.md) before finalizing that choice |
-| Fork a metric or satisfy a particular period or filtered population | [Variants](references/variants.md), before creating a base that depends on that choice |
+| Fork a metric for a particular period or adjustable filter | [Variants](references/variants.md), before creating a base that depends on that choice |
 | Resolve names, list, inspect, pull or publish a portable bundle, follow, unfollow, delete, or assess an edit | [Operations](references/operations.md) |
 | Verify saved settings or retain configuration context for numeric validation | [Configuration context](references/analytics-context.md) |
 
