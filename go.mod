@@ -2,6 +2,8 @@ module github.com/ahillspace/tadx
 
 go 1.26.0
 
+toolchain go1.26.10
+
 require (
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/cobra v1.10.2
