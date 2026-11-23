@@ -66,11 +66,11 @@ func TestStructureDescribesWhatAnElementHolds(t *testing.T) {
 	}
 
 	code, document, out = runStructure(t, options, "datasource", "structure", "worksheet")
-	if code == 0 || structureField(t, document, "error", "id") != "datasource.structure.not_found" || structureField(t, document, "error", "summary") != "a Tableau 2026.3 datasource has no element <worksheet>" {
+	if code != 2 || structureField(t, document, "error", "id") != "datasource.structure.not_found" || structureField(t, document, "error", "summary") != "a Tableau 2026.3 datasource has no element <worksheet>" {
 		t.Fatalf("unknown element: code=%d\n%s", code, out)
 	}
 	code, document, out = runStructure(t, options, "workbook", "structure", "table", "--schema-version", "2017.1")
-	if code == 0 || structureField(t, document, "error", "id") != "workbook.structure.usage" || !strings.Contains(structureField(t, document, "error", "summary").(string), "no Tableau schema for \"2017.1\"; available: 2018.1,") {
+	if code != 2 || structureField(t, document, "error", "id") != "workbook.structure.usage" || !strings.Contains(structureField(t, document, "error", "summary").(string), "no Tableau schema for \"2017.1\"; available: 2018.1,") {
 		t.Fatalf("unknown version: code=%d\n%s", code, out)
 	}
 }
