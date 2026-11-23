@@ -29,30 +29,23 @@ Tell users to rerun the platform installer because version checks cannot disting
 
 ## Website files
 
-Edit `site/index.html` for the homepage.
-Run `node --test scripts/tests/site_test.mjs` to validate its packaging and installer commands.
-Run `node scripts/build-site.mjs` to create `_site` from `index.html`, `security.html`, `capabilities.html`, `capabilities.json`, `install.sh`, and `install.ps1`.
-The static packaging test is the required automated check and does not need a browser or npm dependencies.
-For an optional real-browser check of the capability map, run `node scripts/check-capability-map.mjs <chromium-browser-path> [page-path]`.
+Edit the homepage, security overview, and capabilities browser under `site/`.
+Run `node --test scripts/tests/site_test.mjs` to validate the allowlisted build.
+Run `node scripts/build-site.mjs` to create `_site` with the pages, their local assets, the capability inventory, and the two installers.
+The output directory must be new or empty.
+To preview the packaged routes locally, run `python -m http.server 8735 --bind 127.0.0.1 --directory _site` and open `http://127.0.0.1:8735/`.
+
 For an optional real-browser check of the homepage, run `node scripts/tests/site_browser.mjs <chromium-browser-path>`.
 For an optional real-browser check of the security page, run `node scripts/tests/security_browser.mjs <chromium-browser-path> [screenshot-directory]`.
-All three browser checks use a supplied headless Chromium executable; the site and security checks create temporary profiles, and none contacts Tableau or modifies the authored pages.
-The output directory must be new or empty; move an earlier local build aside before rebuilding.
-The homepage's Docs links open `capabilities.html` on the same site.
-The homepage links to `security.html`, the packaged concise security overview.
-Its expandable details use native HTML and remain usable without JavaScript.
-Its authorization checks use a compact HTML table with no diagram assets or rendering dependencies.
-The security page links to the repository's detailed security and managed policy guides for more information.
-The build copies the v2 command browser from the canonical `docs/reference/capability-map.html` to `capabilities.html`, alongside its generated `capabilities.json` inventory.
-The original map is preserved under `archived/docs/2026-10-30/reference/capability-map.html` and is excluded from the website build.
-Maintain only the canonical map; its published URL stays `capabilities.html`.
-The command tree, filters, and totals include only registry entries owned by the CLI.
-External entries remain in the complete JSON inventory; the page explains Tableau MCP querying and Desktop MCP authoring as companion tools.
-Keep the map's authored layout and styling separate from its generated `capability-data` script block and static command totals.
+The security page uses native HTML disclosures that remain usable without JavaScript.
+It leads with the three authorization checks for a remote write and links to the detailed security and managed policy guides.
+
+The public browser at `capabilities.html` reads the generated `capabilities.json` from the same site.
+Its filters and counts include only CLI-owned commands.
+Companion integrations are described separately below the command browser.
+The repository's self-contained offline map at `docs/reference/capability-map.html` embeds the same registry snapshot.
+Use `node scripts/check-capability-map.mjs <chromium-browser-path>` to exercise the offline map.
 Use `go generate ./internal/capability` when registry changes require a new snapshot.
-Repository-only references in the map must use published GitHub URLs; the public build does not copy Markdown guides.
-The allowlist excludes configuration, workspace files, repository source, and other local material from the website artifact.
-The Pages workflow builds without publishing by default and permits publication only from `main` in a public repository.
 
 ## Installation contract
 

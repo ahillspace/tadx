@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { buildSite } from '../build-site.mjs';
 
 const browser = process.argv[2];
 if (!browser) throw new Error('Usage: node scripts/tests/security_browser.mjs <chromium-browser-path> [screenshot-directory]');
@@ -13,16 +14,17 @@ const screenshots = process.argv[3] ? resolve(process.argv[3]) : null;
 if (screenshots) mkdirSync(screenshots, { recursive: true });
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const folder = mkdtempSync(join(tmpdir(), 'tadx-security-browser-'));
-const html = readFileSync(join(repo, 'site/security.html'), 'utf8');
 
 function exercise() {
   const check = (condition, message) => { if (!condition) throw new Error(message); };
   const noOverflow = () => check(document.documentElement.scrollWidth <= innerWidth, 'Security page overflows horizontally');
-  check(getComputedStyle(document.body).backgroundColor === 'rgb(243, 243, 235)', 'Homepage theme missing');
   check(document.querySelector('[aria-current="page"]').textContent === 'Security', 'Current page navigation missing');
-  const checksTable = document.querySelector('.checks-table');
-  check(checksTable.tBodies[0].rows.length === 3, 'Authorization checks are missing');
-  check(checksTable.getBoundingClientRect().height < 350, 'Authorization table is not compact');
+  const checks = [...document.querySelectorAll('.write-checks ol li')];
+  check(checks.map(item => item.querySelector('h3').textContent).join(',') === 'Managed policy,Site write access,Tableau permissions', 'Authorization checks are missing or out of order');
+  const positions = checks.map(item => item.getBoundingClientRect());
+  check(positions.every(item => item.height > 0), 'An authorization check is hidden');
+  if (innerWidth > 700) check(positions.every(item => item.top === positions[0].top), 'Desktop checks are not in a row');
+  else check(positions[1].top >= positions[0].bottom, 'Narrow checks are not stacked');
   for (const card of document.querySelectorAll('.control-card')) {
     check(card.querySelector('pre').getBoundingClientRect().height > 0, 'Status command is hidden');
     check(!card.closest('details'), 'Status command must be visible without expanding details');
@@ -43,7 +45,7 @@ function exercise() {
     check(!detail.open, 'Detail did not close');
   }
   const cards = [...document.querySelectorAll('.template-card')].map(card => card.getBoundingClientRect());
-  if (innerWidth > 960) check(cards.every(card => card.top === cards[0].top), 'Desktop template comparison is not a row');
+  if (innerWidth > 900) check(cards.every(card => card.top === cards[0].top), 'Desktop template comparison is not a row');
   else check(cards[1].top > cards[0].bottom, 'Narrow template comparison is not stacked');
   for (const anchor of document.querySelectorAll('a[href^="#"]')) {
     check(document.getElementById(anchor.getAttribute('href').slice(1)), 'In-page link has no target');
@@ -59,6 +61,8 @@ function exercise() {
 }
 
 try {
+  await buildSite(repo, folder);
+  const html = readFileSync(join(folder, 'security.html'), 'utf8');
   const probe = '<script>addEventListener("load", () => { let report; try { report = (' + exercise.toString() + ')(); } catch(error) { report = {passed:false,error:String(error)}; } parent.postMessage({securityTest:report}, "*"); });</script>';
   for (const [width, section] of [[1280, ''], [768, ''], [390, ''], [1280, 'controls'], [390, 'controls'], [1280, 'checks-title'], [390, 'checks-title']]) {
     const label = String(width) + (section ? '-' + section : '');

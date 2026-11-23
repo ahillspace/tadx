@@ -88,7 +88,7 @@ The architecture explanations and diagram assets are maintained separately; capa
 | Operating Guidance | [`internal/agent/skills`](../../internal/agent/skills) | Embedded in the CLI, then installed into supported agent homes |
 | Repository engineering and exploration skills | [`.agents/skills`](../../.agents/skills) | Checkout tooling; not embedded or installed by `tadx agent install` |
 | Capability references | [`internal/capability`](../../internal/capability), [`cmd/gencapdocs`](../../cmd/gencapdocs/main.go) | Generated Markdown, JSON, and the data block inside the authored capability map |
-| Public website | [`site`](../../site), [`buildSite`](../../scripts/build-site.mjs) | Explicit six-file public input list, plus generated `.nojekyll` |
+| Public website | [`site`](../../site), [`buildSite`](../../scripts/build-site.mjs) | Allowlisted pages, local assets, capability data, and installers, plus generated `.nojekyll` |
 | VS Code extension | [`extensions/vscode`](../../extensions/vscode) | Independent VSIX containing bundled JavaScript, media, maintained installers, manifest, README, and license |
 
 The root Go module and extension have separate tooling boundaries.

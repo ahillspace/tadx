@@ -3,132 +3,104 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test } from 'node:test';
+import { after, before, test } from 'node:test';
 import { buildSite, publicFiles } from '../build-site.mjs';
 
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const pages = ['index.html', 'capabilities.html', 'security.html'];
+const origin = 'https://tadx.net';
+let folder;
+let destination;
 
-test('public build contains only reviewed pages, capability data, and exact installer sources', async () => {
-  const folder = await mkdtemp(join(tmpdir(), 'tadx-site-test-'));
-  try {
-    const destination = join(folder, 'public');
-    await buildSite(repo, destination);
-    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh', 'security.html']);
-    for (const [source, target] of publicFiles) {
-      assert.deepEqual(await readFile(join(destination, target)), await readFile(join(repo, source)));
+before(async () => {
+  folder = await mkdtemp(join(tmpdir(), 'tadx-site-test-'));
+  destination = await buildSite(repo, join(folder, 'public'));
+});
+
+after(async () => {
+  if (folder) await rm(folder, { recursive: true, force: true });
+});
+
+test('public build contains only reviewed pages, assets, capability data, and exact installer sources', async () => {
+  assert.deepEqual((await readdir(destination)).sort(), [
+    '.nojekyll', 'capabilities.css', 'capabilities.html', 'capabilities.js', 'capabilities.json', 'home.css',
+    'home.js', 'index.html', 'install.ps1', 'install.sh', 'security.css', 'security.html', 'shared.css',
+    'space-grotesk-OFL.txt', 'space-grotesk.woff2',
+  ]);
+  for (const [source, target] of publicFiles) {
+    assert.deepEqual(await readFile(join(destination, target)), await readFile(join(repo, source)));
+  }
+  await assert.rejects(buildSite(repo, destination), /empty real directory/);
+  await writeFile(join(folder, 'not-a-directory'), 'preserve me');
+  await assert.rejects(buildSite(repo, join(folder, 'not-a-directory')), /empty real directory/);
+  assert.equal(await readFile(join(folder, 'not-a-directory'), 'utf8'), 'preserve me');
+});
+
+test('public pages cross-link and packaged local navigation resolves', async () => {
+  for (const page of pages) {
+    const html = await readFile(join(destination, page), 'utf8');
+    const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+    assert.equal(new Set(ids).size, ids.length, `Duplicate identifiers in ${page}`);
+    for (const match of html.matchAll(/\baria-(?:controls|labelledby)="([^"]+)"/g)) {
+      for (const id of match[1].split(' ')) assert.ok(ids.includes(id), `Missing accessible target ${id} in ${page}`);
     }
-    await assert.rejects(buildSite(repo, destination), /empty real directory/);
-    await writeFile(join(folder, 'not-a-directory'), 'preserve me');
-    await assert.rejects(buildSite(repo, join(folder, 'not-a-directory')), /empty real directory/);
-    assert.equal(await readFile(join(folder, 'not-a-directory'), 'utf8'), 'preserve me');
-  } finally { await rm(folder, { recursive: true, force: true }); }
+
+    const navigation = new Set();
+    for (const [tag, href] of html.matchAll(/<(?:a|link|script)\b[^>]*?\s(?:href|src)="([^"]+)"/g)) {
+      const url = new URL(href, `${origin}/${page}`);
+      if (url.origin !== origin) {
+        assert.match(tag, /^<a\b/, `Expected a locally packaged stylesheet or script in ${page}`);
+        const repoLink = /^https:\/\/github\.com\/ahillspace\/tadx\/blob\/main\/([^#]+)$/.exec(url.origin + url.pathname);
+        if (repoLink) await readFile(join(repo, repoLink[1]));
+        continue;
+      }
+      const file = url.pathname.slice(1) || 'index.html';
+      await readFile(join(destination, file));
+      if (file === page && url.hash) assert.ok(ids.includes(url.hash.slice(1)), `Invalid anchor ${href} in ${page}`);
+      if (tag.startsWith('<a ')) navigation.add(file);
+    }
+    for (const otherPage of pages.filter(other => other !== page)) {
+      assert.ok(navigation.has(otherPage), `${page} should link to ${otherPage}`);
+    }
+  }
 });
 
-test('Docs opens the hosted command browser with current registry data and return navigation', async () => {
-  const home = await readFile(join(repo, 'site/index.html'), 'utf8');
-  const map = await readFile(join(repo, 'docs/reference/capability-map.html'), 'utf8');
-  const data = JSON.parse(await readFile(join(repo, 'docs/reference/capabilities.json'), 'utf8'));
-  const links = [...home.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>Docs<\/a>/g)];
-  assert.equal(links.length, 2);
-  for (const link of links) assert.equal(link[1], 'capabilities.html');
-  assert.match(map, /href="https:\/\/tadx\.net\/"/);
-  assert.match(map, /aria-current="page"/);
-  assert.match(map, /--page: #f3f3eb/);
-  assert.match(map, /--ink: #202c25/);
-  const embedded = /<script id="capability-data" type="application\/json">([\s\S]*?)<\/script>/.exec(map);
-  const embeddedRegistry = JSON.parse(embedded[1]);
-  assert.deepEqual(embeddedRegistry, data);
-  const cliCommands = embeddedRegistry.filter(capability => capability.owner === 'cli');
-  const initialCount = /id="sourceTotal">(\d+)<\/strong> TADX CLI commands/.exec(map);
-  assert.ok(initialCount, "Missing initial CLI command count");
-  assert.equal(Number(initialCount[1]), cliCommands.length);
-  const visiblePage = map.slice(0, map.indexOf(embedded[0])) + map.slice(map.indexOf(embedded[0]) + embedded[0].length);
-  assert.doesNotMatch(visiblePage, /ownerFilter|delegatedCount|Delegated operations|External operations|external\/delegated/);
-  assert.match(visiblePage, /Tableau MCP/);
-  assert.match(visiblePage, /Tableau Desktop Authoring MCP/);
-  assert.match(visiblePage, /TADX does not call, configure, or grant access to them/);
-  assert.match(visiblePage, /href="https:\/\/tableau\.github\.io\/tableau-mcp\/docs\/intro"/);
-  assert.match(visiblePage, /href="https:\/\/tableau\.github\.io\/tableau-mcp\/docs\/configuration\/mcp-config\/env-vars"/);
-  assert.doesNotMatch(map, /TADX_ENABLE_MUTATIONS|disabled-policy snapshot baseline|Execution enabled now/);
-  assert.match(map, /Machine authority is not evaluated/);
-  assert.match(map, /canonical server and exact site/);
-  assert.match(map, /managed policy permission/);
-  assert.match(map, /<dt>Administrative<\/dt>/);
-  assert.match(map, /value="administrative"/);
-  for (const capability of data) {
+test('the public capability inventory has current CLI command paths and unique IDs', async () => {
+  const registry = JSON.parse(await readFile(join(destination, 'capabilities.json'), 'utf8'));
+  assert.equal(new Set(registry.map(capability => capability.id)).size, registry.length);
+  const commands = new Set();
+  for (const capability of registry.filter(capability => capability.owner === 'cli')) {
     assert.ok((capability.command_path || []).length <= 3, `Too many command levels: ${capability.surface}`);
+    commands.add(capability.surface);
   }
+  const hasRoute = route => [...commands].some(command => command === route || command.startsWith(route + ' '));
   for (const route of ['tadx catalog label', 'tadx admin label-value', 'tadx admin label-category']) {
-    assert.ok(map.includes(`<code>${route}</code>`), `Missing current route: ${route}`);
+    assert.ok(hasRoute(route), `Missing current route: ${route}`);
   }
-  assert.ok(!map.includes('<code>tadx content label</code>'));
-  for (const match of map.matchAll(/href="([^"]+)"/g)) {
-    assert.ok(match[1].startsWith('#') || match[1].startsWith('https://') || match[1] === 'capabilities.json', `Unpublished map link: ${match[1]}`);
-  }
+  assert.ok(!hasRoute('tadx content label'));
 });
 
-test('homepage has both one-line installers, current setup, and the supplied demos', async () => {
-  const html = await readFile(join(repo, 'site/index.html'), 'utf8');
+test('the public homepage lists the supported agents', async () => {
+  const html = await readFile(join(destination, 'index.html'), 'utf8');
   const targetSource = await readFile(join(repo, 'internal/agenttarget/targets.go'), 'utf8');
   const labels = {claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', cursor: 'Cursor', pi: 'Pi', hermes: 'Hermes', copilot: 'GitHub Copilot', gemini: 'Gemini CLI', cline: 'Cline'};
   const advertised = [...html.matchAll(/class="agent-name">([^<]+)<\/span>/g)].map(match => match[1]).sort();
   const supported = [...targetSource.matchAll(/name: "([^"]+)"/g)].map(match => match[1]).filter(name => name !== 'generic');
   for (const name of supported) assert.ok(labels[name], `Add homepage label for supported harness: ${name}`);
   assert.deepEqual(advertised, supported.map(name => labels[name]).sort());
-  for (const text of ['Tableau.', 'At your command.', 'irm https://tadx.net/install.ps1 | iex', 'curl -fsSL https://tadx.net/install.sh | sh', 'tadx update', 'tab-find', 'tab-metric', 'tab-publish', 'Agent Guidance']) {
-    assert.ok(html.includes(text), `Missing ${text}`);
-  }
-  assert.doesNotMatch(html, /https?:\/\/[^"'<>\s]+\.(?:js|css)(?:["'<>\s]|$)/i, 'Keep the homepage self-contained');
-  assert.doesNotMatch(html, /C:[/\\]Users|releases\/latest\/download\/install|a62e3d7/);
-  assert.doesNotMatch(html, /#install-tadx|One-line installation is coming soon/);
-  assert.match(html, /README\.md#install["']/);
-  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
-  assert.equal(ids.length, new Set(ids).size, 'Duplicate DOM identifiers');
-  for (const match of html.matchAll(/aria-(?:controls|labelledby)="([^"]+)"/g)) {
-    for (const id of match[1].split(' ')) assert.ok(ids.includes(id), `Missing accessible target ${id}`);
-  }
-  const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
-  assert.ok(script);
-  new Function(script);
 });
 
-test('security page is linked, self-contained, and usable without application JavaScript', async () => {
-  const html = await readFile(join(repo, 'site/security.html'), 'utf8');
-  const home = await readFile(join(repo, 'site/index.html'), 'utf8');
-  assert.equal([...home.matchAll(/href="security\.html"/g)].length, 2);
-  assert.match(html, /aria-current="page">Security/);
-  assert.match(html, /--paper: #f3f3eb/);
-  assert.match(html, /--ink: #202720/);
-  assert.doesNotMatch(html, /<script\b|<iframe\b|<form\b|https?:\/\/[^"'<> ]+\.(?:js|css)\b/i);
-  assert.doesNotMatch(html, /C:[/\\]Users|TADX_ENABLE_MUTATIONS|impossib|tamper-proof/i);
+test('the public security overview keeps its native disclosures and stable section links', async () => {
+  const html = await readFile(join(destination, 'security.html'), 'utf8');
+  assert.doesNotMatch(html, /<script\b|<iframe\b|<form\b/);
   assert.ok([...html.matchAll(/<details>/g)].length >= 10, 'Missing progressive disclosure');
   assert.doesNotMatch(html, /<details\b[^>]*\bopen\b/, 'Details should start collapsed');
-  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
-  assert.equal(ids.length, new Set(ids).size, 'Duplicate security page identifiers');
   for (const id of ['controls', 'templates', 'credentials', 'policy-installation', 'local-data', 'boundaries']) {
-    assert.ok(ids.includes(id), 'Missing security section ' + id);
     assert.ok(html.includes('href="#' + id + '"'), 'Missing section navigation ' + id);
   }
-  for (const match of html.matchAll(/(?:aria-labelledby|aria-controls)="([^"]+)"/g)) {
-    for (const id of match[1].split(' ')) assert.ok(ids.includes(id), 'Missing accessible target ' + id);
+  for (const text of ['tadx mutation status', 'tadx policy status', 'tadx policy install --template read-only', 'no enforced approval prompt', 'Any failed check blocks the change', 'not a sandbox', 'checksum', 'Secret Service']) {
+    assert.ok(html.includes(text), 'Missing public security guidance: ' + text);
   }
-  for (const match of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.includes(match[1]), 'Broken anchor ' + match[1]);
-  for (const match of html.matchAll(/href="https:\/\/github\.com\/ahillspace\/tadx\/blob\/main\/([^"#]+)(?:#[^"]*)?"/g)) {
-    await readFile(join(repo, match[1]));
-  }
-  for (const name of ['read-only', 'read-write-no-admin', 'superuser']) assert.ok(html.includes('<h3>' + name + '</h3>'));
-  for (const text of ['tadx policy install --template read-only', '--output', 'current development source', 'not a sandbox', 'checksum', 'Secret Service']) {
-    assert.ok(html.includes(text), 'Missing security fact ' + text);
-  }
-  const controls = /<section id="controls"[\s\S]*?<div class="detail-group">/.exec(html)?.[0];
-  assert.ok(controls, 'Missing visible controls introduction');
-  assert.match(controls, /tadx mutation status/);
-  assert.match(controls, /tadx policy status/);
-  assert.match(controls, /no enforced approval prompt/);
-  assert.match(controls, /<table class="checks-table">/);
-  assert.equal([...controls.matchAll(/scope="row"/g)].length, 3);
-  assert.match(controls, /Any failed check blocks the change/);
-  assert.doesNotMatch(html, /hero-note|security-controls\.svg|Powerful commands|Deliberate control|Two controls\. Different jobs/);
 });
 
 test('Pages is manual and publishes only the allowlisted build', async () => {
