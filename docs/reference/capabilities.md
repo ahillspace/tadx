@@ -65,6 +65,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `datasource.publish` | cli | ship | ready | implemented | `tadx content datasource publish` |
 | `datasource.pull` | cli | ship | ready | implemented | `tadx content datasource pull` |
 | `datasource.schema` | cli | ship | ready | implemented | `tadx content datasource schema` |
+| `datasource.structure` | cli | ship | ready | implemented | `tadx content datasource structure` |
 | `datasource.update` | cli | ship | ready | implemented | `tadx content datasource update` |
 | `doctor.run` | cli | ship | ready | implemented | `tadx doctor` |
 | `env.profile.add` | cli | ship | ready | implemented | `tadx env add` |
@@ -122,6 +123,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
 | `workbook.schema` | cli | ship | ready | implemented | `tadx content workbook schema` |
+| `workbook.structure` | cli | ship | ready | implemented | `tadx content workbook structure` |
 | `workbook.update` | cli | ship | ready | implemented | `tadx content workbook update` |
 | `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
 | `workspace.clean` | cli | ship | ready | implemented | `tadx workspace clean` |
@@ -1667,6 +1669,33 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Blocker ID: None
 - Command binding: `tadx content datasource schema`
 
+### `datasource.structure`
+
+Show what the Tableau document schema allows at one datasource element: the children it takes in order, its attributes and their values, and the paths that reach it.
+
+- Surface: tadx content datasource structure
+- Operation type: inspect
+- Owner: cli
+- Selectors: positional element name or &gt; chain, optional --attribute, and --schema-version Tableau release (default newest)
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Read-only; reads only the schemas built into TADX; no authentication or network
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: internal/app/content_structure_e2e_test.go
+- Validation or blocker: Local contract: schema lookup tests and end-to-end tests
+- Blocker ID: None
+- Command binding: `tadx content datasource structure`
+
 ### `datasource.update`
 
 Rename one exact published datasource or replace its owner, or preview the operation.
@@ -3205,6 +3234,33 @@ Inspect embedded and connected published datasource fields, local overrides, des
 - Validation or blocker: Hermetic metadata contracts; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content workbook schema`
+
+### `workbook.structure`
+
+Show what the Tableau document schema allows at one workbook element: the children it takes in order, its attributes and their values, and the paths that reach it.
+
+- Surface: tadx content workbook structure
+- Operation type: inspect
+- Owner: cli
+- Selectors: positional element name or &gt; chain, optional --attribute, and --schema-version Tableau release (default newest)
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Read-only; reads only the schemas built into TADX; no authentication or network
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: internal/app/content_structure_e2e_test.go
+- Validation or blocker: Local contract: schema lookup tests and end-to-end tests
+- Blocker ID: None
+- Command binding: `tadx content workbook structure`
 
 ### `workbook.update`
 

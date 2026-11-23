@@ -30,6 +30,10 @@ func contentReferenceFlagSyntax(resource, action *cobra.Command, flag *pflag.Fla
 		value = "name"
 	case "project-name":
 		value = "leaf"
+	case "attribute":
+		value = "name"
+	case "schema-version":
+		value = "release"
 	case "project", "parent", "destination-project":
 		value = "path"
 	case "artifact":
@@ -122,6 +126,8 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 			return []string{"Live fields; total limit. Scope duplicate IDs with --datasource."}
 		}
 		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata. Live schema reads attempt cache updates; --cache needs prior live schema observations. Cache refresh omits schema."}
+	case "structure":
+		return []string{"Element: name or chain (worksheet > table). Children: ? optional, * many, + 1+, | one of."}
 	case "create":
 		return []string{"Omit parent for top level; omit content-permissions for the server default."}
 	case "move":

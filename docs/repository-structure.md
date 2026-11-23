@@ -21,6 +21,7 @@ The [editable Excalidraw source](architecture/tadx-architecture.excalidraw) acco
 | `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
 | `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
+| `actions/structure` | Schema lookup shared by the workbook and datasource `structure` commands, with one output contract |
 | `actions/env/profile` | Profile operations with a shared profile representation |
 | `actions/catalog/update`, `actions/catalog/read` | Related database, table, and column operations with shared rules and explicit projections or mutation sequences |
 | Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
@@ -51,6 +52,7 @@ They do not form a second operation framework.
 | `internal/batchspec` | Bounded batch-file parsing and shared per-item options |
 | `internal/contentbatch` | Ordered selected content operations and preserved per-item outcomes |
 | `internal/pathspec` | Workspace-relative, portable path validation |
+| `internal/twbschema` | Standard-library-only Tableau document schema validation and lookup over the embedded per-release XSDs |
 | `internal/pulsecontract` | Standard-library-only Pulse authoring contract and capability schema values |
 | `internal/errs`, `internal/cli/clierr` | Structured failures and CLI argument-error translation |
 | `internal/commandhint` | Shell-appropriate contextual follow-up commands |

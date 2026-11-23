@@ -68,6 +68,12 @@ This schema selector does not rebind published workbook dependencies; use `--dat
 Workbook schema is live-only; cached workbook inspection explicitly identifies datasource details not captured by the cache.
 Use `catalog audit --type workbook --id <workbook-luid>` for description and supported tag checks, separated into local and published-source groups.
 Field tags are not independently authored metadata; reported upstream column tags retain their source identity.
+
+## Document structure
+
+Before writing workbook or datasource XML by hand, run `tadx content workbook structure "<parent> > <element>"` or `tadx content datasource structure <element>` to see what the Tableau document schema allows there.
+It lists each place the element can appear, its children in order (`?` optional, `*` any number, `+` one or more, `|` one of), and its attributes; add `--attribute <name>` for one attribute, `--schema-version <release>` for an older release, and `--full` for the schema's documentation.
+It is local: it reads only the schemas built into TADX, with no credential, workspace, or network.
 Field IDs, upstream REST LUIDs, and GraphQL metadata IDs identify different things; use the identity returned for the intended surface.
 Literal slashes in project names can resemble nested paths; select a LUID when paths are ambiguous.
 

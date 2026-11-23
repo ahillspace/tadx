@@ -505,6 +505,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/operationrun",
 				"internal/paging",
 				"internal/readsource",
+				"internal/twbschema",
 				"internal/value",
 				"internal/version",
 				"internal/update",
@@ -781,7 +782,8 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/value") ||
 		hasPathPrefix(file, "internal/version") ||
 		hasPathPrefix(file, "internal/workspace") ||
-		hasPathPrefix(file, "internal/toon")
+		hasPathPrefix(file, "internal/toon") ||
+		hasPathPrefix(file, "internal/twbschema")
 }
 
 func hasPathPrefix(path, prefix string) bool {

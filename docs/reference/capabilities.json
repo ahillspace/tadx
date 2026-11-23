@@ -1756,6 +1756,35 @@
     "raw_capable": false
   },
   {
+    "id": "datasource.structure",
+    "surface": "tadx content datasource structure",
+    "outcome": "Show what the Tableau document schema allows at one datasource element: the children it takes in order, its attributes and their values, and the paths that reach it.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "positional element name or \u003e chain, optional --attribute, and --schema-version Tableau release (default newest)",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Read-only; reads only the schemas built into TADX; no authentication or network",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/content_structure_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract: schema lookup tests and end-to-end tests",
+    "command_path": [
+      "content",
+      "datasource",
+      "structure"
+    ],
+    "raw_capable": false
+  },
+  {
     "id": "datasource.update",
     "surface": "tadx content datasource update",
     "outcome": "Rename one exact published datasource or replace its owner, or preview the operation.",
@@ -3546,6 +3575,35 @@
       "content",
       "workbook",
       "schema"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.structure",
+    "surface": "tadx content workbook structure",
+    "outcome": "Show what the Tableau document schema allows at one workbook element: the children it takes in order, its attributes and their values, and the paths that reach it.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "positional element name or \u003e chain, optional --attribute, and --schema-version Tableau release (default newest)",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Read-only; reads only the schemas built into TADX; no authentication or network",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/content_structure_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract: schema lookup tests and end-to-end tests",
+    "command_path": [
+      "content",
+      "workbook",
+      "structure"
     ],
     "raw_capable": false
   },

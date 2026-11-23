@@ -71,6 +71,8 @@ type Dependencies struct {
 	DatasourceDeleter   DatasourceDeleter
 	DatasourceMover     DatasourceMover
 	DatasourceUpdater   DatasourceUpdater
+	WorkbookStructure   StructureDescriber
+	DatasourceStructure StructureDescriber
 	ProjectLister       ProjectLister
 	ProjectInspector    ProjectInspector
 	ProjectCreator      ProjectCreator
@@ -124,6 +126,9 @@ func New(deps Dependencies, selected ...string) *cobra.Command {
 	if deps.WorkbookUpdater != nil {
 		selection.Add(workbook, "workbook.update", func() *cobra.Command { return newWorkbookUpdate(deps) })
 	}
+	if deps.WorkbookStructure != nil {
+		selection.Add(workbook, "workbook.structure", func() *cobra.Command { return newStructure(deps.WorkbookStructure, deps.Renderer, "workbook") })
+	}
 	content.AddCommand(workbook)
 	if deps.DatasourceLister != nil && deps.DatasourceInspector != nil && selection.Wants("datasource") {
 		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceInspector, deps.Renderer, selected...)
@@ -138,6 +143,9 @@ func New(deps Dependencies, selected ...string) *cobra.Command {
 		}
 		if deps.DatasourceUpdater != nil {
 			selection.Add(datasource, "datasource.update", func() *cobra.Command { return newDatasourceUpdate(deps) })
+		}
+		if deps.DatasourceStructure != nil {
+			selection.Add(datasource, "datasource.structure", func() *cobra.Command { return newStructure(deps.DatasourceStructure, deps.Renderer, "datasource") })
 		}
 		content.AddCommand(datasource)
 	}

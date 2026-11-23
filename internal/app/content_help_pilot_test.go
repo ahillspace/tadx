@@ -97,7 +97,9 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 	resources := []string{"workbook", "datasource", "flow", "project"}
 	// Complete generated references use the same 4000-character ceiling as every
 	// other resource, including selectors and constraints omitted by the old text pages.
-	budgets := map[string]int{"workbook": 4000, "datasource": 4000, "flow": 4000, "project": 4000}
+	// The workbook and datasource references add 190 and 206 bytes for the
+	// local structure lookup, without dropping any other fact.
+	budgets := map[string]int{"workbook": 4000 + 190, "datasource": 4000 + 206, "flow": 4000, "project": 4000}
 	for _, name := range resources {
 		t.Run(name, func(t *testing.T) {
 			resource, _, err := content.Find([]string{name})
@@ -170,7 +172,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				if got == want {
 					t.Errorf("%v repeats the complete resource reference", args)
 				}
-				usage := "Usage: " + action.CommandPath() + " [flags]"
+				usage := "Usage: " + action.CommandPath() + strings.TrimPrefix(action.Use, action.Name()) + " [flags]"
 				if !strings.Contains(got, usage) {
 					t.Errorf("%v omits focused usage %q", args, usage)
 				}
@@ -205,7 +207,11 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				for _, help := range []string{"-h", "--help"} {
 					assertFocused(append(append([]string{}, verbPath...), help), action)
 				}
-				args := append(append([]string{}, verbPath...), "--environment", "private-help-input-environment", "--full", "--json")
+				args := append([]string{}, verbPath...)
+				if action.Flags().Lookup("environment") != nil {
+					args = append(args, "--environment", "private-help-input-environment")
+				}
+				args = append(args, "--full", "--json")
 				if action.Flags().Lookup("name") != nil {
 					args = append(args, "--name", "private-help-input-name")
 				}
