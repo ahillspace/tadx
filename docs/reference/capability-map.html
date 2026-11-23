@@ -403,10 +403,10 @@ code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
         <article class="default-card"><div class="default-card-head"><h3>Remote mutations</h3><span class="default-count" id="remoteMutationCount">44</span></div><p>Remote writes require saved consent for the canonical server and exact site, plus managed policy permission. Check <code>tadx mutation status --environment &lt;alias&gt;</code> and <code>tadx policy status</code>. Supported previews stay read-only when their capability IDs are allowed.</p></article>
       </div>
       <section class="mcp-companions" aria-labelledby="mcp-companions-title">
-        <div class="mcp-heading"><h3 id="mcp-companions-title">Two useful companions to the lifecycle CLI</h3><p>TADX manages Tableau content and local artifacts. Use MCP tools when you want an agent to query data or author in Desktop.</p></div>
+        <div class="mcp-heading"><h3 id="mcp-companions-title">Tableau companion tools</h3><p>TADX manages Tableau content and local artifacts.</p></div>
         <div class="mcp-grid">
-          <article class="mcp-card"><h4><a href="https://tableau.github.io/tableau-mcp/docs/intro">Tableau MCP</a></h4><p>Query published data sources, inspect workbook view data and images, and explore Pulse metrics and insights. Pair it with TADX when analytical answers need to connect to content you manage through the CLI.</p></article>
-          <article class="mcp-card"><h4><a href="https://tableau.github.io/tableau-mcp/docs/configuration/mcp-config/env-vars">Tableau Desktop Authoring MCP</a></h4><p>Give a compatible agent access to Tableau Desktop authoring tools to build or edit workbooks. Pair it with TADX to organize, inspect, or publish the resulting content through lifecycle commands. Requires a compatible Tableau Desktop authoring setup.</p></article>
+          <article class="mcp-card"><h4><a href="https://tableau.github.io/tableau-mcp/docs/intro">Tableau MCP</a></h4><p>Query published data, inspect views, and explore Pulse insights. For local workbook, dashboard, or data source authoring, use the <a href="https://tableau.github.io/tableau-mcp/docs/getting-started/desktop">desktop build with Tableau Studio</a>.</p></article>
+          <article class="mcp-card"><h4><a href="https://github.com/tableau/tableau-plugin">Tableau Plugin</a></h4><p>Add skills for analytics, content viewing, workbook authoring, and data apps, plus templates, workbook XML examples, and tools for local validation. Hosted plugin workflows use Tableau MCP.</p></article>
         </div>
         <p class="mcp-boundary">These are separate integrations your agent environment may connect to. TADX does not call, configure, or grant access to them.</p>
       </section>

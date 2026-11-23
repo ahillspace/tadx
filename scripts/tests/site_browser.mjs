@@ -6,29 +6,25 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { buildSite } from '../build-site.mjs';
 
 const browser = process.argv[2];
 if (!browser) throw new Error('Usage: node scripts/tests/site_browser.mjs <chromium-browser-path>');
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const html = readFileSync(join(repo, 'site/index.html'), 'utf8');
 const folder = mkdtempSync(join(tmpdir(), 'tadx-site-browser-'));
 
 async function exercise() {
   const check = (condition, message) => { if (!condition) throw new Error(message); };
   const id = value => document.getElementById(value);
-  for (const demo of ['metric', 'publish', 'find']) {
+  for (const [demo, expected] of [['metric', 'Created'], ['publish', 'Published'], ['blocked', 'Blocked by policy'], ['find', 'Read only']]) {
     id(`tab-${demo}`).click();
     check(id(`tab-${demo}`).getAttribute('aria-selected') === 'true', `${demo} not selected`);
     check(id('demo-panel').getAttribute('aria-labelledby') === `tab-${demo}`, `${demo} panel inaccessible`);
     check(id('session-body').querySelector('.command').textContent.startsWith('tadx '), `${demo} lacks command`);
-    check(!id('session-body').querySelector('.preview-note'), `${demo} shows the repeated no-change note`);
-    if (demo === 'metric' || demo === 'publish') {
-      check(id('session-status').textContent === 'Preview only', `${demo} lost its preview status`);
-      check(id('session-body').querySelector('.command').textContent.includes('--preview'), `${demo} lost its preview command`);
-    }
+    check(id('session-status').textContent === expected, `Unexpected outcome for ${demo}`);
   }
-  id('tab-publish').click();
-  id('tab-publish').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  id('tab-blocked').click();
+  id('tab-blocked').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   check(id('tab-find').getAttribute('aria-selected') === 'true', 'Keyboard tab navigation failed');
   check(document.documentElement.scrollWidth <= innerWidth, 'Homepage overflows horizontally');
   document.querySelector('[data-install]').click();
@@ -121,12 +117,14 @@ async function exercise() {
   check(id('install-dialog').scrollWidth <= id('install-dialog').clientWidth, 'Install dialog overflows horizontally');
   document.querySelector('.close-dialog').click();
   check(!id('install-dialog').open, 'Installer did not close');
-  return { passed: true, width: innerWidth, demos: 3, copyPaths: 3 };
+  return { passed: true, width: innerWidth, demos: 4, copyPaths: 3 };
 }
 
 try {
-  const probe = `<script>(${exercise.toString()})().then(report => { document.body.dataset.siteTest = JSON.stringify(report); }, error => { document.body.dataset.siteTest = JSON.stringify({passed:false,error:String(error)}); });</script>`;
+  await buildSite(repo, folder);
+  const probe = `<script>addEventListener("load", () => (${exercise.toString()})().then(report => { document.body.dataset.siteTest = JSON.stringify(report); }, error => { document.body.dataset.siteTest = JSON.stringify({passed:false,error:String(error)}); }));</script>`;
   const path = join(folder, 'index.html');
+  const html = readFileSync(path, 'utf8');
   writeFileSync(path, html.replace('</body>', `${probe}</body>`));
   for (const width of [1280, 390]) {
     const result = spawnSync(browser, ['--headless=new', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--virtual-time-budget=2500', `--window-size=${width},1000`, `--user-data-dir=${join(folder, `profile-${width}`)}`, '--dump-dom', pathToFileURL(path).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true });

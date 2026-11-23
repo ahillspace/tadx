@@ -40,7 +40,8 @@ function checkPage() {
   check(![...control('stateFilter').options].some(option => option.value.includes('delegated')), 'Non-CLI state remains filterable');
   check(!document.querySelector('.stat-card[data-card-value="external/delegated"]'), 'Non-CLI status card is present');
   check(document.querySelector('.mcp-companions'), 'MCP companion guidance is missing');
-  check(document.querySelector('.mcp-companions').innerText.includes('Tableau Desktop Authoring MCP'), 'Desktop authoring companion is missing');
+  check(document.querySelector('.mcp-companions a[href="https://tableau.github.io/tableau-mcp/docs/getting-started/desktop"]'), 'Desktop authoring setup link is missing');
+  check(document.querySelector('.mcp-companions a[href="https://github.com/tableau/tableau-plugin"]'), 'Tableau Plugin link is missing');
   check(document.querySelector('.mcp-companions').innerText.includes('TADX does not call, configure, or grant access'), 'MCP boundary is unclear');
   for (const id of ['catalog.database.update', 'catalog.table.update', 'catalog.column.update', 'catalog.audit', 'content.label.update', 'admin.label.category.update']) {
     check(definitions.some(item => item.id === id), `Missing capability ${id}`);

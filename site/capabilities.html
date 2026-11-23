@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ec">
+  <meta name="description" content="Search TADX CLI commands and check their syntax, defaults, and safety requirements.">
+  <title>TADX Capabilities | Command reference</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="stylesheet" href="capabilities.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="shell masthead">
+    <a class="brand" href="index.html" aria-label="TADX home"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="m4 5 8 9-8 9"/><path class="cursor" d="M16 23h8"/></svg>TADX</a>
+    <nav class="site-nav" aria-label="Main navigation"><a href="capabilities.html" aria-current="page">Capabilities</a><a href="security.html">Security</a><a href="https://github.com/ahillspace/tadx">GitHub</a></nav>
+  </header>
+  <main id="main" class="shell">
+    <header class="page-intro capability-intro">
+      <div>
+        <h1>Capabilities</h1>
+        <p>Find a TADX command, then check its syntax, side effects, and requirements.</p>
+      </div>
+      <a class="text-link" href="./capabilities.json">JSON inventory</a>
+    </header>
+    <p id="load-status" role="status" hidden>Loading the command inventory. <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">Open the text reference.</a></p>
+    <noscript><p>The interactive command reference requires JavaScript. <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">Open the text reference.</a></p></noscript>
+    <section class="command-browser" aria-label="Command browser" hidden>
+      <form class="command-controls" role="search">
+        <div class="search-row">
+          <label class="search-field">
+            <span class="sr-only">Search commands, tasks, or IDs</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg>
+            <input id="command-search" type="search" placeholder="Search commands, tasks, or IDs" autocomplete="off" aria-keyshortcuts="/">
+            <kbd aria-hidden="true">/</kbd>
+          </label>
+          <label class="field family-field"><span class="sr-only">Command family</span><select name="domain"><option value="">All command families</option></select></label>
+        </div>
+        <details class="filter-tools">
+          <summary>More filters <span id="filter-count" hidden></span></summary>
+          <div class="filter-grid">
+            <label class="field">Execution<select name="effect"><option value="">Any execution</option><option value="read">Read only</option><option value="remote">Remote write</option><option value="not-remote">No remote write</option><option value="local">Local write</option><option value="write">Any write</option><option value="admin">Administrative</option></select></label>
+            <label class="field">Default behavior<select name="behavior"><option value="">Any behavior</option><option value="preview">Supports --preview</option><option value="cache">Supports --cache</option><option value="search">Native Tableau search</option><option value="list">Bounded live list</option><option value="pull">Pulls by default</option><option value="remote">Mutation gate required</option><option value="local">Local write</option></select></label>
+            <label class="field">Implementation<select name="state"><option value="">Any state</option><option value="implemented">Implemented</option><option value="planned">Planned</option></select></label>
+            <label class="field">Verification<select name="verification"><option value="">Any verification</option><option value="blocked">Blocked</option><option value="unblocked">Unblocked</option></select></label>
+          </div>
+        </details>
+        <div class="results-bar"><p id="result-count" role="status"></p><button class="plain-button" type="reset" hidden>Reset search and filters</button></div>
+      </form>
+      <div class="command-layout">
+        <section class="command-list-pane" aria-labelledby="command-list-title">
+          <div class="pane-heading"><h2 id="command-list-title" tabindex="-1">Commands</h2><button type="button" class="plain-button" id="toggle-groups">Expand all</button></div>
+          <div id="command-list"></div>
+          <div class="empty-state" id="no-results" hidden><strong>No matching commands</strong><p>Try fewer words or reset the filters.</p></div>
+        </section>
+        <section class="command-detail" aria-label="Selected command">
+          <div class="pane-heading"><h2>Command details</h2><button type="button" id="back-to-list" class="plain-button">Back to commands</button></div>
+          <div id="command-detail"></div>
+        </section>
+      </div>
+      <p class="authority">This is a static reference. Check your local policy, site consent, and Tableau permissions before running a command. <a href="security.html">How authorization works</a></p>
+    </section>
+    <section class="reference-section" id="command-behavior" aria-label="Command behavior reference">
+    <details class="reference-disclosure">
+      <summary>How commands behave</summary>
+      <div class="runtime-model">
+        <article class="default-card"><div class="default-card-head"><h3>Search</h3></div><p><code>tadx search</code> uses Tableau native content search for nonempty content terms. Admin and Pulse use dedicated live adapters. <code>--cache</code> reads local state only.</p></article>
+        <article class="default-card"><div class="default-card-head"><h3>Resource lists</h3></div><p>Bounded live reads by default. <code>--all</code> collects matching inventory in memory, with best-effort cache persistence. Filtered collections save observations; only complete, unfiltered collections replace resource scope. <code>--cache</code> is local-only.</p></article>
+        <article class="default-card"><div class="default-card-head"><h3>Pull operations</h3></div><p>Pull commands retrieve from Tableau and write managed artifacts by default. Where supported, <code>--preview</code> inspects the planned artifact write.</p></article>
+        <article class="default-card"><div class="default-card-head"><h3>Remote mutations</h3></div><p>Remote writes require saved consent for the canonical server and exact site, plus managed policy permission. Check <code>tadx mutation status --environment &lt;alias&gt;</code> and <code>tadx policy status</code>. Supported previews stay read-only when their capability IDs are allowed.</p></article>
+      </div>
+      <div class="catalog-note"><h3>Catalog is Tableau metadata.<br>Cache is local state.</h3><p><code>tadx catalog</code> inspects upstream databases, tables, and columns, updates descriptions and tags, and audits coverage. Datasource inspection includes upstream dependencies; schema inspection exposes fields and requested descriptions. <code>tadx catalog label</code> manages attachments; <code>tadx admin label-value</code> and <code>tadx admin label-category</code> manage definitions. Local catalog commands now live under <code>tadx cache</code>.</p></div>
+    </details>
+  </section>
+    <section class="companion-section" id="companion-tools" aria-labelledby="companion-title">
+      <h2 id="companion-title">Tableau companion tools</h2>
+      <p>TADX handles content lifecycle and local artifacts. Connect Tableau MCP in your agent to work with Tableau, and add the Tableau Plugin for guided workflows and authoring resources.</p>
+      <div class="companion-grid">
+        <article>
+          <h3>Tableau MCP</h3>
+          <p><strong>Published content.</strong> Query data sources and inspect workbook views on Tableau Cloud and Server. Explore Pulse metrics and insights on Tableau Cloud.</p>
+          <p><strong>Tableau Studio.</strong> The Tableau MCP desktop build includes tools to create and edit workbooks, worksheets, dashboards, and data sources. Live authoring requires a running Tableau Studio instance with the External Client API enabled.</p>
+          <p class="companion-links">
+            <a href="https://tableau.github.io/tableau-mcp/docs/intro">Tableau MCP docs</a>
+            <a href="https://tableau.github.io/tableau-mcp/docs/getting-started/desktop">Desktop authoring setup</a>
+          </p>
+        </article>
+        <article>
+          <h3>Tableau Plugin</h3>
+          <p>The plugin gives compatible agents skills for analytics, viewing Tableau content, authoring workbooks, and building data apps. Its hosted workflows use Tableau MCP to connect to your site.</p>
+          <p>It also supplies chart templates, workbook XML examples, schemas, and a validator for local workbook files.</p>
+          <p class="companion-links"><a href="https://github.com/tableau/tableau-plugin">Tableau Plugin on GitHub</a></p>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer class="shell site-footer">
+    <p>TADX is independent and is not affiliated with Tableau or Salesforce.</p>
+    <nav aria-label="Footer navigation"><a href="https://github.com/ahillspace/tadx/releases">Releases</a><a href="https://github.com/ahillspace/tadx">GitHub</a></nav>
+  </footer>
+  <script src="capabilities.js" type="module"></script>
+</body>
+</html>
