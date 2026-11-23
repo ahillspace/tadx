@@ -300,13 +300,13 @@ code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
       <p class="hero-copy">Every TADX CLI command, what it does, and its execution context.</p>
     </div>
     <div class="source-meta">
-      <p><strong id="sourceTotal">125</strong> TADX CLI commands.<br>Static inventory. Machine authority is not evaluated.</p>
+      <p><strong id="sourceTotal">127</strong> TADX CLI commands.<br>Static inventory. Machine authority is not evaluated.</p>
       <p><a href="capabilities.json">JSON inventory <span aria-hidden="true">↗</span></a></p>
     </div>
   </header>
   <div class="inventory-band">
     <section class="stats" aria-label="Filter TADX CLI commands by registry status">
-      <button class="stat-card implemented" type="button" data-card-filter="state" data-card-value="implemented" aria-pressed="false" title="Filter implemented capabilities"><span class="stat-number" id="implementedCount">125</span><span>Implemented</span></button>
+      <button class="stat-card implemented" type="button" data-card-filter="state" data-card-value="implemented" aria-pressed="false" title="Filter implemented capabilities"><span class="stat-number" id="implementedCount">127</span><span>Implemented</span></button>
       <button class="stat-card planned" type="button" data-card-filter="state" data-card-value="planned" aria-pressed="false" title="Filter planned capabilities"><span class="stat-number" id="plannedCount">0</span><span>Planned</span></button>
       <button class="stat-card blocked" type="button" data-card-filter="blocker" data-card-value="blocked" aria-pressed="false" title="Filter verification-blocked capabilities"><span class="stat-number" id="blockedCount">0</span><span>Blocked</span></button>
     </section>
@@ -320,7 +320,7 @@ code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
         <input id="searchInput" type="search" placeholder="Search commands, tasks, or IDs" autocomplete="off" aria-keyshortcuts="/">
         <kbd aria-hidden="true">/</kbd>
       </div>
-      <div class="result-count" role="status"><strong id="matchedCount">0</strong> / <span id="totalCount">125</span> commands shown</div>
+      <div class="result-count" role="status"><strong id="matchedCount">0</strong> / <span id="totalCount">127</span> commands shown</div>
     </div>
     <div class="workspace">
       <aside class="controls" aria-labelledby="filters-heading">
@@ -414,7 +414,7 @@ code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
     </details>
   </section>
   <footer class="footer">
-    <div><p>Source: <a href="https://github.com/ahillspace/tadx/tree/main/internal/capability">executable capability registry</a>. <span id="footerTotal">125</span> CLI commands in this snapshot. Self-contained; no external libraries or network requests.</p><p>Use <code>tadx -h</code> for the command index and resource help, such as <code>tadx content workbook -h</code>, for action syntax.</p></div>
+    <div><p>Source: <a href="https://github.com/ahillspace/tadx/tree/main/internal/capability">executable capability registry</a>. <span id="footerTotal">127</span> CLI commands in this snapshot. Self-contained; no external libraries or network requests.</p><p>Use <code>tadx -h</code> for the command index and resource help, such as <code>tadx content workbook -h</code>, for action syntax.</p></div>
     <nav aria-label="Reference links"><a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">Text reference</a><a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/shorthand.md">Shorthand</a><a href="https://github.com/ahillspace/tadx/blob/main/docs/architecture/tadx-architecture.excalidraw">Architecture</a></nav>
   </footer>
   <p id="copyStatus" class="sr-only" role="status"></p>
@@ -2175,6 +2175,35 @@ code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
       "content",
       "datasource",
       "schema"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.structure",
+    "surface": "tadx content datasource structure",
+    "outcome": "Show what the Tableau document schema allows at one datasource element: the children it takes in order, its attributes and their values, and the paths that reach it.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "positional element name or \u003e chain, optional --attribute, and --schema-version Tableau release (default newest)",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Read-only; reads only the schemas built into TADX; no authentication or network",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/content_structure_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract: schema lookup tests and end-to-end tests",
+    "command_path": [
+      "content",
+      "datasource",
+      "structure"
     ],
     "raw_capable": false
   },
@@ -3969,6 +3998,35 @@ code { font-family: var(--mono); font-size: .93em; overflow-wrap: anywhere; }
       "content",
       "workbook",
       "schema"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.structure",
+    "surface": "tadx content workbook structure",
+    "outcome": "Show what the Tableau document schema allows at one workbook element: the children it takes in order, its attributes and their values, and the paths that reach it.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "positional element name or \u003e chain, optional --attribute, and --schema-version Tableau release (default newest)",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Read-only; reads only the schemas built into TADX; no authentication or network",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/content_structure_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract: schema lookup tests and end-to-end tests",
+    "command_path": [
+      "content",
+      "workbook",
+      "structure"
     ],
     "raw_capable": false
   },

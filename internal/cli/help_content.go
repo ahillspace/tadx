@@ -67,15 +67,16 @@ func writeContentReference(out io.Writer, resource *cobra.Command, focused ...*c
 
 func contentActionSummary(action *cobra.Command) string {
 	summaries := map[string]string{
-		"list":    "List remote or cached matches",
-		"inspect": "Read details, not files",
-		"pull":    "Download local files",
-		"publish": "Publish local content to Tableau",
-		"move":    "Change remote project",
-		"update":  "Change remote metadata",
-		"delete":  "Delete remote content",
-		"create":  "Create a remote project",
-		"schema":  "Read tables/fields, not data values",
+		"list":      "List remote or cached matches",
+		"inspect":   "Read details, not files",
+		"pull":      "Download local files",
+		"publish":   "Publish local content to Tableau",
+		"move":      "Change remote project",
+		"update":    "Change remote metadata",
+		"delete":    "Delete remote content",
+		"create":    "Create a remote project",
+		"schema":    "Read tables/fields, not data values",
+		"structure": "Schema rules for one element (local)",
 	}
 	if action.Name() == "move" && action.Parent().Name() == "project" {
 		return "Change the project's parent or move it to the top level"
