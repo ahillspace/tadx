@@ -39,6 +39,4 @@ Bundled operating Guidance lives in `internal/agent/skills`; repository build in
 
 ## Historical material
 
-Completed plans, dated validation logs, superseded diagrams, and speculative discussions belong under `archived/`.
-The [2026-10-30 sweep record](../archived/docs/2026-10-30/README.md) accounts for every document examined and preserves the original archived files.
-Their links and observations describe their original snapshots; use the guides above for current work.
+Use Git history for completed plans, past validation logs, and superseded diagrams.

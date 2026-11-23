@@ -55,7 +55,6 @@ Never put a developer username, home directory, checkout path, private site name
 Start new builds from updated `main` on one feature branch shared by all assigned agents, unless continuing an assigned branch or authorized stack.
 Assign disjoint paths and reserve shared integration files for one coordinator.
 Do not create per-agent worktrees unless the user requests them.
-Do not read `archived/` for current guidance.
 Local API captures are optional and ignored; [docs/evidence/README.md](docs/evidence/README.md) links the official documentation available to fresh clones.
 
 The maintainer runs agent-based code reviews in ChatGPT.
