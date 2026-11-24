@@ -24,6 +24,7 @@ func All() []Definition {
 // private, and copy at public boundaries so callers never share mutable data.
 var canonicalRegistry = sync.OnceValue(func() []Definition {
 	source := append(slices.Clone(canonicalDefinitions), metadataDefinitions...)
+	source = append(source, datasourceEditDefinitions()...)
 	definitions := make([]Definition, len(source))
 	batchSelectors := BatchSelectors()
 	for index, definition := range source {
@@ -93,6 +94,9 @@ func Validate(definitions []Definition) error {
 		}
 		if definition.Implementation != ImplementationImplemented && len(definition.CommandPath) != 0 {
 			return fmt.Errorf("%s: non-implemented capability has command binding", prefix)
+		}
+		if definition.Implementation == ImplementationGated && definition.Verification != VerificationBlocked {
+			return fmt.Errorf("%s: gated implementation requires a verification blocker", prefix)
 		}
 		if definition.Verification == VerificationBlocked {
 			if !validBlocker(definition.Blocker) {
@@ -189,7 +193,7 @@ func validateRequired(prefix string, definition Definition) error {
 	if !slices.Contains([]VerificationReadiness{VerificationReady, VerificationBlocked}, definition.Verification) {
 		return fmt.Errorf("%s has invalid verification readiness %q", prefix, definition.Verification)
 	}
-	if !slices.Contains([]ImplementationState{ImplementationPlanned, ImplementationImplemented, ImplementationExternalDelegated}, definition.Implementation) {
+	if !slices.Contains([]ImplementationState{ImplementationPlanned, ImplementationImplemented, ImplementationGated, ImplementationExternalDelegated}, definition.Implementation) {
 		return fmt.Errorf("%s has invalid implementation state %q", prefix, definition.Implementation)
 	}
 	return nil
@@ -200,5 +204,5 @@ func validOwner(owner Owner) bool {
 }
 
 func validBlocker(blocker BlockerID) bool {
-	return slices.Contains([]BlockerID{BlockerB1, BlockerB2, BlockerB3, BlockerB4, BlockerB6}, blocker)
+	return slices.Contains([]BlockerID{BlockerB1, BlockerB2, BlockerB3, BlockerB4, BlockerB6, BlockerProviderQualification}, blocker)
 }

@@ -245,6 +245,59 @@ tadx admin user create --environment dev --name USERNAME --site-role SITE_ROLE -
 
 Choose a supported Tableau site role and use the site's identity configuration for the authentication setting.
 
+## Prepare datasource semantic edits
+
+Use `tadx content datasource validate-changes` to check a changes file locally.
+This build exposes remote work-copy and datasource tag operations in help and capability discovery while they await live qualification.
+Their availability and evidence requirements are listed in the [TDS Edit contract](evidence/tds-edit-contract.md).
+
+Save the following as `changes.yaml` in a registered workspace.
+Use the canonical server, signed-in site LUID, work-copy LUID and exact TDS element names when preparing a real intent file.
+A known original datasource LUID can be added as `datasource_luid` under `target`.
+
+```yaml
+target:
+  server: https://tableau.example.test
+  site_luid: 11111111-1111-4111-8111-111111111111
+  work_copy_luid: 22222222-2222-4222-8222-222222222222
+changes:
+  - op: set-field-description
+    field: Sales
+    description: Gross invoiced amount before discounts.
+  - op: set-table-description
+    table: Orders
+    description: One row per order line.
+```
+
+```text
+tadx content datasource validate-changes --workspace demo --from-changes changes.yaml
+tadx capability get datasource.set-field-description --full
+```
+
+The validator accepts one document up to 256 KiB and one to 50 distinct edits.
+A successful check establishes local syntax, target shape and edit consistency.
+Work-copy existence, permissions and current values require Tableau observations.
+
+| YAML operation | Entry properties after `op` |
+| --- | --- |
+| `set-field-description`, `remove-field-description` | `field`. Setting also requires `description` |
+| `set-table-description`, `remove-table-description` | `table`. Setting also requires `description` |
+| `set-column-caption` | `field` and `caption` |
+| `set-column-role` | `field` and `role` |
+| `set-column-type` | `field` and `type` |
+| `delete-column` | `field` |
+
+The work-copy workflow separates direct description changes and ordered file edits from publication.
+An audit reports observed metadata and its coverage.
+A changes template starts with an empty list and commented examples using observed fields.
+Explicit save modes protect the original datasource and any existing destination.
+Native TDS/TDSX publication remains available through `tadx content datasource publish`.
+
+Tags have a different target.
+`datasource.add-tag` and `datasource.remove-tag` target membership on the published datasource.
+Use `tadx catalog column update --help` for tagging a physical upstream column by its Catalog identity.
+Tableau's TDS element schema provides no direct field-tag write contract.
+
 ## Explore Pulse authoring
 
 Start from an exact published datasource and inspect its field metadata:

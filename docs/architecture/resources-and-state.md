@@ -28,6 +28,12 @@ The composition root supplies explicit conversions between these contracts; ever
 | Cache | [`actions/cache`](../../actions/cache) | [`tableau/cache`](../../internal/tableau/cache), [`internal/cache`](../../internal/cache) | Remote collection and local generation publication have separate owners. |
 | Workspaces | [`actions/workspace`](../../actions/workspace) | [`internal/workspace`](../../internal/workspace), [`internal/artifact`](../../internal/artifact) | Registry lifecycle and managed artifact operations, separate from remote deletion. |
 
+Datasource work-copy editing uses a separate REST resource from native TDS/TDSX uploads.
+The datasource actions own typed element intent, exact preflight and readback, and ordered partial results.
+The private attempt journal coordinates checkout and publication across configuration paths for one OS account.
+Published datasource tags use the ordinary datasource item resource.
+The [TDS Edit evidence record](../evidence/tds-edit-contract.md) identifies the production gates for these operations.
+
 Administrative label categories and values use the metadata asset client rather than the user/group client.
 Pulse uses composition-root adapters without a separate `internal/resources/pulse` package.
 Tableau MCP owns data queries, view data and images, and Pulse values and generated insights; these CLI paths do not proxy MCP.

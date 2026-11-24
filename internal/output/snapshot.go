@@ -36,6 +36,20 @@ func SnapshotWithConfig(value any, maxBytes int, configPath string) (json.RawMes
 // SnapshotWithOptions captures expanded result metadata and redacts secrets.
 // The serialized size bound includes the result and its shared diagnostics.
 func SnapshotWithOptions(value any, maxBytes int, options Options) (json.RawMessage, error) {
+	var redact func(string) string
+	if len(options.Secrets) > 0 {
+		redact = newRedactor(options.Secrets)
+	}
+	return snapshot(value, maxBytes, options, redact)
+}
+
+// SnapshotRedacted protects string values using a caller-owned redactor.
+// The caller can retain secret values behind an authentication boundary.
+func SnapshotRedacted(value any, maxBytes int, redact func(string) string) (json.RawMessage, error) {
+	return snapshot(value, maxBytes, Options{}, redact)
+}
+
+func snapshot(value any, maxBytes int, options Options, redact func(string) string) (json.RawMessage, error) {
 	if err, ok := value.(error); ok {
 		var carrier interface{ OperationOutput() any }
 		if errors.As(err, &carrier) {
@@ -78,8 +92,8 @@ func SnapshotWithOptions(value any, maxBytes int, options Options) (json.RawMess
 		normalized = mergeMetadata(normalized, metadata)
 	}
 	redactSnapshot(normalized)
-	if len(options.Secrets) > 0 {
-		normalized = transform(normalized, newRedactor(options.Secrets), 0, true)
+	if redact != nil {
+		normalized = transform(normalized, redact, 0, true)
 	}
 	b.Reset()
 	if err := json.NewEncoder(b).Encode(normalized); err != nil {

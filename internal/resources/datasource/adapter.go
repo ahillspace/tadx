@@ -439,7 +439,7 @@ func validateDatasourcePage(page tableaudatasource.Page, number, requestedSize i
 func normalizeDatasource(item tableaudatasource.Datasource, path string) Datasource {
 	return Datasource{
 		LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: path,
-		Description: item.Description, Type: item.Type, ContentURL: item.ContentURL, OwnerLUID: item.OwnerLUID,
+		Description: item.Description, DescriptionPresent: item.DescriptionPresent, Type: item.Type, ContentURL: item.ContentURL, OwnerLUID: item.OwnerLUID,
 		CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Size: item.Size, EncryptExtracts: item.EncryptExtracts,
 		HasExtracts: item.HasExtracts, IsCertified: item.IsCertified, CertificationNote: item.CertificationNote,
 		UseRemoteQueryAgent: item.UseRemoteQueryAgent, WebpageURL: item.WebpageURL, Tags: append([]string(nil), item.Tags...),

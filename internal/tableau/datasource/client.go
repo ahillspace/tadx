@@ -34,6 +34,7 @@ type Datasource struct {
 	ProjectLUID         string
 	ProjectName         string
 	Description         string
+	DescriptionPresent  bool
 	Type                string
 	ContentURL          string
 	OwnerLUID           string
@@ -267,20 +268,20 @@ type datasourceListXML struct {
 }
 
 type datasourceXML struct {
-	ID                  string `xml:"id,attr"`
-	Name                string `xml:"name,attr"`
-	Description         string `xml:"description,attr"`
-	Type                string `xml:"type,attr"`
-	ContentURL          string `xml:"contentUrl,attr"`
-	CreatedAt           string `xml:"createdAt,attr"`
-	UpdatedAt           string `xml:"updatedAt,attr"`
-	Size                *int64 `xml:"size,attr"`
-	EncryptExtracts     *bool  `xml:"encryptExtracts,attr"`
-	HasExtracts         *bool  `xml:"hasExtracts,attr"`
-	IsCertified         *bool  `xml:"isCertified,attr"`
-	CertificationNote   string `xml:"certificationNote,attr"`
-	UseRemoteQueryAgent *bool  `xml:"useRemoteQueryAgent,attr"`
-	WebpageURL          string `xml:"webpageUrl,attr"`
+	ID                  string  `xml:"id,attr"`
+	Name                string  `xml:"name,attr"`
+	Description         *string `xml:"description,attr"`
+	Type                string  `xml:"type,attr"`
+	ContentURL          string  `xml:"contentUrl,attr"`
+	CreatedAt           string  `xml:"createdAt,attr"`
+	UpdatedAt           string  `xml:"updatedAt,attr"`
+	Size                *int64  `xml:"size,attr"`
+	EncryptExtracts     *bool   `xml:"encryptExtracts,attr"`
+	HasExtracts         *bool   `xml:"hasExtracts,attr"`
+	IsCertified         *bool   `xml:"isCertified,attr"`
+	CertificationNote   string  `xml:"certificationNote,attr"`
+	UseRemoteQueryAgent *bool   `xml:"useRemoteQueryAgent,attr"`
+	WebpageURL          string  `xml:"webpageUrl,attr"`
 	Project             struct {
 		ID   string `xml:"id,attr"`
 		Name string `xml:"name,attr"`
@@ -412,10 +413,14 @@ func normalizeDatasource(item datasourceXML) Datasource {
 		}
 	}
 	sort.Strings(tags)
+	description := ""
+	if item.Description != nil {
+		description = *item.Description
+	}
 	return Datasource{
 		LUID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name),
 		ProjectLUID: strings.TrimSpace(item.Project.ID), ProjectName: strings.TrimSpace(item.Project.Name),
-		Description: item.Description, Type: strings.TrimSpace(item.Type), ContentURL: strings.TrimSpace(item.ContentURL),
+		Description: description, DescriptionPresent: item.Description != nil, Type: strings.TrimSpace(item.Type), ContentURL: strings.TrimSpace(item.ContentURL),
 		OwnerLUID: strings.TrimSpace(item.Owner.ID), CreatedAt: strings.TrimSpace(item.CreatedAt), UpdatedAt: strings.TrimSpace(item.UpdatedAt),
 		Size: item.Size, EncryptExtracts: item.EncryptExtracts, HasExtracts: item.HasExtracts, IsCertified: item.IsCertified,
 		CertificationNote: item.CertificationNote, UseRemoteQueryAgent: item.UseRemoteQueryAgent,

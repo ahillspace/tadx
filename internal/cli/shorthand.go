@@ -9,6 +9,7 @@ import (
 )
 
 var commandAliases = map[string]string{
+	"checkout": "cko", "elements": "elm", "work-copy": "wcp", "set-field-description": "sfd", "set-table-description": "std", "remove-field-description": "rfd", "remove-table-description": "rtd", "apply-changes": "apc", "validate-changes": "vlc", "save": "sav", "as-new": "asn", "overwrite": "ovr", "add-tag": "atg", "remove-tag": "rtg",
 	"policy": "pol", "samples": "smp", "validate": "vld",
 	"group-member": "gm", "label-value": "lv", "label-category": "lc",
 	"catalog": "cat", "database": "db", "table": "tbl", "column": "col", "audit": "aud", "label": "lbl", "value": "val", "category": "ctg",
@@ -35,6 +36,7 @@ var flagShorthands = map[string]string{
 }
 
 var flagLongAliases = map[string]string{
+	"work-copy": "wcp", "from-changes": "fch", "audit-file": "auf", "changes-file": "chf", "template-field": "tpf", "acknowledge-unknown": "aku", "field": "fld", "attempt": "atm", "attempts": "ats", "verify": "vfy", "expect-preview": "exp",
 	"fields": "fds", "datasource": "ds",
 	"output":   "out",
 	"template": "tpl",

@@ -40,6 +40,7 @@ const (
 type ImplementationState string
 
 const (
+	ImplementationGated             ImplementationState = "implemented-gated"
 	ImplementationPlanned           ImplementationState = "planned"
 	ImplementationImplemented       ImplementationState = "implemented"
 	ImplementationExternalDelegated ImplementationState = "external/delegated"
@@ -57,11 +58,12 @@ const (
 type BlockerID string
 
 const (
-	BlockerB1 BlockerID = "B1"
-	BlockerB2 BlockerID = "B2"
-	BlockerB3 BlockerID = "B3"
-	BlockerB4 BlockerID = "B4"
-	BlockerB6 BlockerID = "B6"
+	BlockerProviderQualification BlockerID = "provider-qualification"
+	BlockerB1                    BlockerID = "B1"
+	BlockerB2                    BlockerID = "B2"
+	BlockerB3                    BlockerID = "B3"
+	BlockerB4                    BlockerID = "B4"
+	BlockerB6                    BlockerID = "B6"
 )
 
 // Definition is one public CLI operation or delegated discoverable operation.

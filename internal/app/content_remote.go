@@ -3,8 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	ds "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	"github.com/ahillspace/tadx/actions/structure"
+	"github.com/ahillspace/tadx/internal/capability"
+	tds "github.com/ahillspace/tadx/internal/tableau/datasource"
 	"io"
 	"path/filepath"
 
@@ -30,7 +33,11 @@ import (
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
-type remoteContentCommands struct{ runtime *runtimeDependencies }
+type remoteContentCommands struct {
+	runtime        *runtimeDependencies
+	tdsDefinitions []capability.Definition
+	saveProvider   ds.TDSSaveProvider
+}
 
 type projectMutationClient interface {
 	Create(context.Context, tableauproject.CreateRequest) (tableauproject.MutationResult, error)
@@ -44,6 +51,7 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
+		DatasourceEditor: c, DatasourceEditBlocker: c.tdsBlocker,
 		WorkbookLister: c, WorkbookInspector: c, WorkbookSchema: c, WorkbookDeleter: c, WorkbookMover: c, WorkbookUpdater: c,
 		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c, DatasourceMover: c, DatasourceUpdater: c,
 		WorkbookStructure: structure.New(structure.Workbook, structureService{}), DatasourceStructure: structure.New(structure.Datasource, structureService{}),
@@ -54,6 +62,8 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 }
 
 type remoteConnection struct {
+	tds               *tds.Client
+	callerLUID        string
 	metadataAssets    *metadataassets.Client
 	environment       config.Environment
 	siteLUID          string
@@ -82,6 +92,7 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	}
 	flowClient, datasourceClient := clients.flows, clients.datasources
 	return remoteConnection{
+		tds: datasourceClient, callerLUID: connection.session.UserLUID(),
 		metadataAssets:    clients.metadataAssets,
 		environment:       connection.environment,
 		siteLUID:          connection.session.SiteLUID(),

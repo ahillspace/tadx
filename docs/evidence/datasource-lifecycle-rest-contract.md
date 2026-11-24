@@ -65,7 +65,8 @@ That released API updates metadata and connection-related properties, not dataso
 The captured Metadata API is read-only and cannot update field descriptions or composition.
 The captured virtual datasource guidance for Tableau 2026.2 describes re-publishing the latest composed datasource rather than mutating composition through a released relationship API.
 Datasource composition authoring is deferred indefinitely and has no executable action or transport method.
-Datasource field-description updates are deferred.
+REST 3.30 introduced TDS work-copy field-description edits.
+The separate [TDS Edit contract](tds-edit-contract.md) covers their local implementation, exact readback and live qualification requirements.
 
 ## Verification status
 

@@ -13,7 +13,7 @@ import (
 )
 
 // MaximumAPIVersion is the highest released REST contract implemented by this build.
-const MaximumAPIVersion = "3.29"
+const MaximumAPIVersion = "3.30"
 
 // NegotiateAPIVersion discovers the server's REST version before credentials are sent.
 // Command construction calls it once per canonical server before constructing clients.

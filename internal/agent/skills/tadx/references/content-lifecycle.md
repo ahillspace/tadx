@@ -69,6 +69,20 @@ Workbook schema is live-only; cached workbook inspection explicitly identifies d
 Use `catalog audit --type workbook --id <workbook-luid>` for description and supported tag checks, separated into local and published-source groups.
 Field tags are not independently authored metadata; reported upstream column tags retain their source identity.
 
+## Datasource semantic edits
+
+Identify who owns the metadata before proposing an edit.
+Field and table descriptions live in the Tableau datasource definition.
+A TDS work copy has its own LUID and retains draft edits until publication.
+Published datasource tags belong to the published item and take effect on that item directly.
+Catalog column tags belong to the physical upstream column and require its exact Catalog identity.
+
+Consult capability availability for the specific operation.
+This build can validate typed intent locally.
+Remote TDS editing and published datasource tag changes require outstanding provider qualification.
+Use a fresh named read for a field outside a bounded inventory or after a lost response.
+A matching value shows what is observable now and leaves an uncertain submission unattributed.
+
 ## Document structure
 
 Before writing workbook or datasource XML by hand, run `tadx content workbook structure "<parent> > <element>"` or `tadx content datasource structure <element>` to see what the Tableau document schema allows there.

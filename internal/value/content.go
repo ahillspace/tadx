@@ -54,6 +54,7 @@ type Datasource struct {
 	Type                string              `json:"type,omitempty"`
 	ContentURL          string              `json:"content_url,omitempty"`
 	Description         string              `json:"description,omitempty"`
+	DescriptionPresent  bool                `json:"-"`
 	OwnerLUID           string              `json:"owner_luid,omitempty"`
 	CreatedAt           string              `json:"created_at,omitempty"`
 	UpdatedAt           string              `json:"updated_at,omitempty"`

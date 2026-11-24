@@ -51,6 +51,11 @@ type Request struct {
 	ContentType string
 	// MaxResponseBytes bounds the buffered body. Zero uses the shared 256 MiB limit.
 	MaxResponseBytes int64
+	// StructuredFailures returns the bounded non-2xx response to the operation decoder.
+	// These endpoints can reject an individual element with HTTP 401, so only
+	// an explicit REST session rejection code permits renewing and resending.
+	StructuredFailures bool
+	sessionRedactor    func(string) string
 	// OpenResponseBody streams a successful response body instead of buffering
 	// it, so package downloads have no size limit. It receives the response
 	// headers before any body byte and returns the destination, or an error
@@ -66,6 +71,21 @@ type Response struct {
 	Body             []byte
 	TableauRequestID string
 	redact           func(string) string
+	credential       func(string) string
+}
+
+// ContainsCredential detects an unusable identity or value before the operation
+// stores it. Replacing a secret in an exact selector would target another element.
+func (r Response) ContainsCredential(s string) bool {
+	return r.credential != nil && r.credential(s) != s
+}
+
+// Diagnostic redacts and bounds a provider diagnostic embedded in a resource envelope.
+func (r Response) Diagnostic(message string) string {
+	if r.redact != nil {
+		return r.redact(message)
+	}
+	return sanitizeDiagnostic(message, nil)
 }
 
 // UpstreamError preserves Tableau's stable error fields.
@@ -343,8 +363,11 @@ func (t *Transport) SetStallTimeout(timeout time.Duration) {
 // rejects the session before it processes the request, so the rejected
 // attempt changed nothing. No other failure is retried.
 func (t *Transport) Do(ctx context.Context, session auth.Session, input Request) (Response, error) {
+	if input.StructuredFailures {
+		input.sessionRedactor = auth.SessionRedactor(session)
+	}
 	response, sent, err := t.send(ctx, session, input)
-	if session == nil || !sessionRejected(err) {
+	if session == nil || !sessionRejected(err, input.StructuredFailures) {
 		return response, err
 	}
 	if renewErr := session.Renew(ctx, sent); renewErr != nil {
@@ -357,9 +380,17 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 // sessionRejected reports Tableau refusing a request's session token: HTTP
 // 401 with REST code 401002, or with no code from the Metadata, search, and
 // Pulse APIs, which return none. Other 401 codes are sign-in failures.
-func sessionRejected(err error) bool {
+func sessionRejected(err error, requireCode bool) bool {
 	upstream, ok := errors.AsType[*UpstreamError](err)
-	return ok && upstream.StatusCode == http.StatusUnauthorized && (upstream.Code == "" || upstream.Code == "401002")
+	return ok && upstream.StatusCode == http.StatusUnauthorized && (upstream.Code == "401002" || (!requireCode && upstream.Code == ""))
+}
+
+type submissionCheckKey struct{}
+
+// WithSubmissionCheck rechecks mutable authorization at each consequential
+// request in an ordered workflow, including a resend after session rejection.
+func WithSubmissionCheck(ctx context.Context, check func(context.Context) error) context.Context {
+	return context.WithValue(ctx, submissionCheckKey{}, check)
 }
 
 // send performs one HTTP request and returns the request headers it sent.
@@ -446,28 +477,47 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 	}
 	effectiveSecrets := append([]string(nil), input.Secrets...)
 	effectiveSecrets = append(effectiveSecrets, request.Header.Values(auth.TableauAuthHeader)...)
-	response, err := t.client.Do(request)
+	protect := func(s string) string {
+		if input.sessionRedactor != nil {
+			s = input.sessionRedactor(s)
+		}
+		return auth.Redact(s, effectiveSecrets...)
+	}
+	diagnostic := func(s string) string { return sanitizeDiagnostic(protect(s), nil) }
+	client := t.client
+	if input.StructuredFailures && !retrySafe(input.Method, input.Operation) {
+		// A redirect cannot authorize sending the mutation to a new target.
+		once := *client
+		once.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &once
+	}
+	if check, ok := ctx.Value(submissionCheckKey{}).(func(context.Context) error); ok && !retrySafe(input.Method, input.Operation) {
+		if err := check(ctx); err != nil {
+			return Response{}, nil, err
+		}
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		if stall := watchdog.expired(); stall != nil {
 			err = stall
 		}
 		retryable, correctiveAction := requestAdvice(ctx, input.Method, input.Operation, err)
-		return Response{}, request.Header, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+		return Response{}, request.Header, &requestError{operation: input.Operation, cause: errors.New(diagnostic(err.Error())), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	defer response.Body.Close()
 	watchdog.enter(stallReadingResponse)
-	requestID := sanitizeDiagnostic(tableauRequestID(response.Header), effectiveSecrets)
-	redactionSecrets := append([]string(nil), effectiveSecrets...)
+	requestID := diagnostic(tableauRequestID(response.Header))
+
 	result := Response{
 		StatusCode: response.StatusCode, Header: response.Header.Clone(), TableauRequestID: requestID,
-		redact: func(value string) string { return sanitizeDiagnostic(value, redactionSecrets) },
+		redact: diagnostic, credential: protect,
 	}
 	readFailure := func(err error) error {
 		if stall := watchdog.expired(); stall != nil {
 			err = stall
 		}
 		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
-		return &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
+		return &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: errors.New(diagnostic(err.Error())), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	success := response.StatusCode >= 200 && response.StatusCode < 300
 	if success && input.OpenResponseBody != nil {
@@ -495,9 +545,14 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 		result.Body = body
 		return result, request.Header, nil
 	}
-	code, summary, detail := parseError(body, effectiveSecrets)
+	code, summary, detail := parseError(body, diagnostic)
 	retryAfter, retryAfterSet := parseRetryAfter(response.Header)
-	return Response{}, request.Header, &UpstreamError{
+	failureResponse := Response{}
+	if input.StructuredFailures {
+		result.Body = body
+		failureResponse = result
+	}
+	return failureResponse, request.Header, &UpstreamError{
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
 		Summary: summary, Detail: detail, TableauRequestID: requestID,
 		retryAfter: retryAfter, retryAfterSet: retryAfterSet,
@@ -765,7 +820,7 @@ func tableauRequestID(header http.Header) string {
 	return ""
 }
 
-func parseError(body []byte, secrets []string) (string, string, string) {
+func parseError(body []byte, diagnostic func(string) string) (string, string, string) {
 	var jsonEnvelope struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -774,7 +829,7 @@ func parseError(body []byte, secrets []string) (string, string, string) {
 		} `json:"error"`
 	}
 	if json.Unmarshal(body, &jsonEnvelope) == nil && (jsonEnvelope.Error.Code != "" || jsonEnvelope.Error.Summary != "") {
-		return sanitizeDiagnostic(jsonEnvelope.Error.Code, secrets), sanitizeDiagnostic(jsonEnvelope.Error.Summary, secrets), sanitizeDiagnostic(jsonEnvelope.Error.Detail, secrets)
+		return diagnostic(jsonEnvelope.Error.Code), diagnostic(jsonEnvelope.Error.Summary), diagnostic(jsonEnvelope.Error.Detail)
 	}
 	var xmlEnvelope struct {
 		Error struct {
@@ -784,9 +839,9 @@ func parseError(body []byte, secrets []string) (string, string, string) {
 		} `xml:"error"`
 	}
 	if xml.Unmarshal(body, &xmlEnvelope) == nil && (xmlEnvelope.Error.Code != "" || xmlEnvelope.Error.Summary != "") {
-		return sanitizeDiagnostic(xmlEnvelope.Error.Code, secrets), sanitizeDiagnostic(xmlEnvelope.Error.Summary, secrets), sanitizeDiagnostic(xmlEnvelope.Error.Detail, secrets)
+		return diagnostic(xmlEnvelope.Error.Code), diagnostic(xmlEnvelope.Error.Summary), diagnostic(xmlEnvelope.Error.Detail)
 	}
-	return "", "Upstream request failed", sanitizeDiagnostic(string(body), secrets)
+	return "", "Upstream request failed", diagnostic(string(body))
 }
 
 func sanitizeDiagnostic(value string, secrets []string) string {
@@ -800,13 +855,6 @@ func sanitizeDiagnostic(value string, secrets []string) string {
 		limit--
 	}
 	return strings.TrimSpace(value[:limit]) + suffix
-}
-
-func redact(err error, secrets []string) error {
-	if err == nil {
-		return nil
-	}
-	return errors.New(sanitizeDiagnostic(err.Error(), secrets))
 }
 
 // Page is the normalized classic REST pagination envelope.

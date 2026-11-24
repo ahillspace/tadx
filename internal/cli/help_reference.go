@@ -423,6 +423,9 @@ func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 }
 
 func referenceActionNotes(action *cobra.Command) []string {
+	if reason := action.Annotations["tadx.evidence-required"]; reason != "" {
+		return []string{reason}
+	}
 	if isContentReference(action.Parent()) {
 		return contentReferenceActionNotes(action)
 	}

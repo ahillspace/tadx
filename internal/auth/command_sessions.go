@@ -341,7 +341,7 @@ func (c *CommandSessions) install(key sessionKey, epoch uint64, response SignInR
 			return nil, err
 		}
 	} else {
-		entry.session = newSession(response, origin)
+		entry.session = newSession(response, origin.credentials, origin)
 	}
 	c.sessions[key] = sessionEntry{session: entry.session, epoch: epoch}
 	return entry.session, nil

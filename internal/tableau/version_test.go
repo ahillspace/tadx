@@ -12,7 +12,7 @@ import (
 
 func TestNegotiateAPIVersionUsesUnauthenticatedXMLBaseline(t *testing.T) {
 	for _, test := range []struct{ serverVersion, want string }{
-		{"3.29", "3.29"}, {"3.30", "3.29"}, {"4.0", "3.29"},
+		{"3.29", "3.29"}, {"3.30", "3.30"}, {"4.0", "3.30"},
 		{"3.9", "3.9"}, {"3.16", "3.16"}, {"3.6", "3.6"},
 	} {
 		t.Run(test.serverVersion, func(t *testing.T) {

@@ -443,3 +443,22 @@ func TestClientDecodesFormEncodedDatasourceDownloadFilename(t *testing.T) {
 		t.Fatalf("filename = %q", download.Filename)
 	}
 }
+
+func TestDatasourceDescriptionReadDistinguishesAbsentAndEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		attr, value string
+		present     bool
+	}{{"", "", false}, {`description=""`, "", true}, {`description=" exact "`, " exact ", true}} {
+		t.Run(tc.attr, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `<tsResponse><datasource id="ds" name="Sales" `+tc.attr+`><project id="project" name="Default" /></datasource></tsResponse>`)
+			}))
+			defer server.Close()
+			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.30", nil), session{}, server.URL)
+			d, err := client.Get(t.Context(), "ds")
+			if err != nil || d.Description != tc.value || d.DescriptionPresent != tc.present {
+				t.Fatalf("description=%q present=%t err=%v", d.Description, d.DescriptionPresent, err)
+			}
+		})
+	}
+}

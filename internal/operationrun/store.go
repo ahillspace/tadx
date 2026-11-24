@@ -1,9 +1,6 @@
-// Package operationrun stores durable records for detached TADX operation
-// workers and provides the process-lifetime lease used to observe them.
-//
-// The package deliberately persists only Request fields. In particular, it has
-// no process-environment or credential field, and Launch inherits the caller's
-// environment only in memory.
+// Package operationrun stores detached worker requests and work-copy lifecycle
+// receipts and coordinates their ownership across local processes.
+// Detached workers inherit the caller's environment in memory.
 package operationrun
 
 import (
@@ -538,6 +535,10 @@ func writeAtomic(path string, record Record) error {
 	if int64(len(data)) > MaxRecordBytes {
 		return ErrRecordTooLarge
 	}
+	return installRecord(path, data)
+}
+
+func installRecord(path string, data []byte) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
 	if err != nil {
 		return fmt.Errorf("create operation run temporary record: %w", err)

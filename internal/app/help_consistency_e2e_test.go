@@ -27,7 +27,11 @@ func TestContentResourceHelpScopesWorkspaceToLocalFileActions(t *testing.T) {
 	for _, resource := range []string{"workbook", "datasource", "flow"} {
 		t.Run(resource, func(t *testing.T) {
 			complete := contentHelpPilotRun(t, dir, options, "content", resource, "--help")
-			if !strings.Contains(complete, "--workspace (publish,pull)") {
+			scope := "--workspace (publish,pull)"
+			if resource == "datasource" {
+				scope = "--workspace (publish,pull,validate-changes)"
+			}
+			if !strings.Contains(complete, scope) {
 				t.Errorf("workspace scope is not explicit:\n%s", complete)
 			}
 			for _, verb := range []string{"list", "inspect", "move", "update", "delete"} {

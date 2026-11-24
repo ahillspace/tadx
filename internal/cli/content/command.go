@@ -55,45 +55,47 @@ type Renderer interface{ Render(any) error }
 
 // Dependencies contains content command wiring.
 type Dependencies struct {
-	Puller              Puller
-	Publisher           Publisher
-	WorkbookLister      WorkbookLister
-	WorkbookInspector   WorkbookInspector
-	WorkbookSchema      WorkbookSchemaGetter
-	WorkbookDeleter     WorkbookDeleter
-	WorkbookMover       WorkbookMover
-	WorkbookUpdater     WorkbookUpdater
-	DatasourceLister    DatasourceLister
-	DatasourceInspector DatasourceInspector
-	DatasourceSchema    DatasourceSchemaGetter
-	DatasourcePuller    DatasourcePuller
-	DatasourcePublisher DatasourcePublisher
-	DatasourceDeleter   DatasourceDeleter
-	DatasourceMover     DatasourceMover
-	DatasourceUpdater   DatasourceUpdater
-	WorkbookStructure   StructureDescriber
-	DatasourceStructure StructureDescriber
-	ProjectLister       ProjectLister
-	ProjectInspector    ProjectInspector
-	ProjectCreator      ProjectCreator
-	ProjectUpdater      ProjectUpdater
-	ProjectDeleter      ProjectDeleter
-	ProjectMover        ProjectMover
-	FlowLister          FlowLister
-	FlowInspector       FlowInspector
-	FlowPuller          FlowPuller
-	FlowPublisher       FlowPublisher
-	FlowMover           FlowMover
-	FlowDeleter         FlowDeleter
-	FlowUpdater         FlowUpdater
-	LineagePuller       LineagePuller
-	Renderer            Renderer
-	BatchTargets        batchinput.Resolver
-	MutationsEnabled    bool
-	PullUse             string
-	PullShort           string
-	PublishUse          string
-	PublishShort        string
+	DatasourceEditor      DatasourceEditor
+	DatasourceEditBlocker func(string) string
+	Puller                Puller
+	Publisher             Publisher
+	WorkbookLister        WorkbookLister
+	WorkbookInspector     WorkbookInspector
+	WorkbookSchema        WorkbookSchemaGetter
+	WorkbookDeleter       WorkbookDeleter
+	WorkbookMover         WorkbookMover
+	WorkbookUpdater       WorkbookUpdater
+	DatasourceLister      DatasourceLister
+	DatasourceInspector   DatasourceInspector
+	DatasourceSchema      DatasourceSchemaGetter
+	DatasourcePuller      DatasourcePuller
+	DatasourcePublisher   DatasourcePublisher
+	DatasourceDeleter     DatasourceDeleter
+	DatasourceMover       DatasourceMover
+	DatasourceUpdater     DatasourceUpdater
+	WorkbookStructure     StructureDescriber
+	DatasourceStructure   StructureDescriber
+	ProjectLister         ProjectLister
+	ProjectInspector      ProjectInspector
+	ProjectCreator        ProjectCreator
+	ProjectUpdater        ProjectUpdater
+	ProjectDeleter        ProjectDeleter
+	ProjectMover          ProjectMover
+	FlowLister            FlowLister
+	FlowInspector         FlowInspector
+	FlowPuller            FlowPuller
+	FlowPublisher         FlowPublisher
+	FlowMover             FlowMover
+	FlowDeleter           FlowDeleter
+	FlowUpdater           FlowUpdater
+	LineagePuller         LineagePuller
+	Renderer              Renderer
+	BatchTargets          batchinput.Resolver
+	MutationsEnabled      bool
+	PullUse               string
+	PullShort             string
+	PublishUse            string
+	PublishShort          string
 }
 
 // New creates the content workbook command tree.
@@ -146,6 +148,9 @@ func New(deps Dependencies, selected ...string) *cobra.Command {
 		}
 		if deps.DatasourceStructure != nil {
 			selection.Add(datasource, "datasource.structure", func() *cobra.Command { return newStructure(deps.DatasourceStructure, deps.Renderer, "datasource") })
+		}
+		if deps.DatasourceEditor != nil && deps.DatasourceEditBlocker != nil {
+			addDatasourceEditCommands(datasource, deps, selection)
 		}
 		content.AddCommand(datasource)
 	}

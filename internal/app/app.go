@@ -17,6 +17,7 @@ import (
 	authops "github.com/ahillspace/tadx/actions/auth"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	ds "github.com/ahillspace/tadx/actions/datasource"
 	lastaction "github.com/ahillspace/tadx/actions/last"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -48,6 +49,7 @@ import (
 // Options contains process-level discovery settings.
 type Options struct {
 	managedPolicy managedPolicySource
+	tdsSave       ds.TDSSaveProvider
 	ConfigPath    string
 	HTTPClient    *http.Client
 	PATStore      coreauth.PATStore
@@ -68,6 +70,10 @@ type Options struct {
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
 func Run(ctx context.Context, args []string, stdout io.Writer, options Options) (exitCode int) {
+	return run(ctx, args, stdout, options, capability.All())
+}
+
+func run(ctx context.Context, args []string, stdout io.Writer, options Options, definitions []capability.Definition) (exitCode int) {
 	if len(args) > 0 && args[0] == "__publication-worker" {
 		if len(args) != 3 {
 			return 2
@@ -75,7 +81,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return runPublicationWorker(context.Background(), args[1], args[2], options)
 	}
 	ctx = ensurePublicationScopes(ctx)
-	definitions := capability.All()
 	renderOptions := &cli.RenderOptions{HintConfig: func() string { return options.ConfigPath }}
 	renderOptions.JSON = hasJSONFlag(args)
 	runtime, err := newRuntime(options)
@@ -127,6 +132,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	}
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
+	remoteContent.tdsDefinitions = definitions
+	remoteContent.saveProvider = options.tdsSave
 	remoteAdmin := newRemoteAdminCommands(runtime)
 	pulseActions := newPulseCommands(runtime)
 	credentialStore := authCredentialStore{runtime: runtime}

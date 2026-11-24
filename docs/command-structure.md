@@ -9,6 +9,7 @@ Use this standard for new help work; operating skills explain discovery and Tabl
 Resource operations use `tadx <category> <resource> <verb>`, with at most three command words after `tadx`.
 Categories organize related work; resources identify the object; verbs identify the operation.
 Direct-action categories such as `auth` and `env`, and standalone utilities such as `search` and `update`, remain shorter.
+Datasource work-copy publication reserves separate `save as-new` and `save overwrite` leaves because creation and replacement have independent policy and provider evidence gates.
 Do not introduce artificial levels to fill the pattern.
 The depth limit applies to public syntax, not internal action package directories.
 

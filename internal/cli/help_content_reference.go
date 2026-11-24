@@ -41,6 +41,8 @@ func contentReferenceFlagSyntax(resource, action *cobra.Command, flag *pflag.Fla
 		if action.Name() == "publish" && (resource.Name() == "workbook" || resource.Name() == "flow") {
 			value = "directory"
 		}
+	case "from-changes":
+		value = "path"
 	case "file":
 		if action.Name() == "publish" {
 			value = map[string]string{"workbook": "file.twb|file.twbx", "datasource": "file.tds|file.tdsx|file.hyper", "flow": "file.tfl|file.tflx"}[resource.Name()]
@@ -108,7 +110,7 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 			notes = []string{"--artifact: TADX-managed artifact directory; --file: standalone native file (no workspace)."}
 		}
 		if resource == "datasource" {
-			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.", "Output: content_url; renamed_from if not the file's URL.")
+			return []string{"Project: destination. create: collision fails. overwrite: replace. append/replace: data in exact match, prepared .hyper only.", "Returns content_url and any renamed_from."}
 		}
 		if resource == "workbook" {
 			notes = append(notes, "Publish missing datasources first; Tableau binds them by content URL.")
@@ -125,7 +127,7 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 		if resource == "workbook" {
 			return []string{"Live fields; total limit. Scope duplicate IDs with --datasource."}
 		}
-		return []string{"Limit: fields. --field-id: <=10000, match filters; --table resolves duplicate IDs.", "Descriptions/tags: sourced metadata. Live schema reads attempt cache updates; --cache needs prior live schema observations. Cache refresh omits schema."}
+		return []string{"--field-id: <=10000 matching fields. Scope duplicate IDs with --table.", "Live schema reads attempt cache updates. --cache requires a prior schema read. Cache refresh omits schema."}
 	case "structure":
 		return []string{"Element: name or chain (worksheet > table). Children: ? optional, * many, + 1+, | one of."}
 	case "create":

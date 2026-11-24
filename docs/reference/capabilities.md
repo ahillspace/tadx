@@ -58,15 +58,32 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `content.label.inspect` | cli | ship | ready | implemented | `tadx catalog label inspect` |
 | `content.label.list` | cli | ship | ready | implemented | `tadx catalog label list` |
 | `content.label.update` | cli | ship | ready | implemented | `tadx catalog label update` |
+| `datasource.add-tag` | cli | ship | blocked | implemented-gated | None |
+| `datasource.apply-changes` | cli | ship | blocked | implemented-gated | None |
+| `datasource.checkout` | cli | ship | blocked | implemented-gated | None |
 | `datasource.delete` | cli | ship | ready | implemented | `tadx content datasource delete` |
+| `datasource.delete-column` | cli | ship | blocked | implemented-gated | None |
+| `datasource.elements` | cli | ship | blocked | implemented-gated | None |
 | `datasource.inspect` | cli | ship | ready | implemented | `tadx content datasource inspect` |
 | `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
 | `datasource.move` | cli | ship | ready | implemented | `tadx content datasource move` |
 | `datasource.publish` | cli | ship | ready | implemented | `tadx content datasource publish` |
 | `datasource.pull` | cli | ship | ready | implemented | `tadx content datasource pull` |
+| `datasource.remove-field-description` | cli | ship | blocked | implemented-gated | None |
+| `datasource.remove-table-description` | cli | ship | blocked | implemented-gated | None |
+| `datasource.remove-tag` | cli | ship | blocked | implemented-gated | None |
+| `datasource.save.as-new` | cli | ship | blocked | implemented-gated | None |
+| `datasource.save.overwrite` | cli | ship | blocked | planned | None |
 | `datasource.schema` | cli | ship | ready | implemented | `tadx content datasource schema` |
+| `datasource.set-column-caption` | cli | ship | blocked | implemented-gated | None |
+| `datasource.set-column-role` | cli | ship | blocked | implemented-gated | None |
+| `datasource.set-column-type` | cli | ship | blocked | implemented-gated | None |
+| `datasource.set-field-description` | cli | ship | blocked | implemented-gated | None |
+| `datasource.set-table-description` | cli | ship | blocked | implemented-gated | None |
 | `datasource.structure` | cli | ship | ready | implemented | `tadx content datasource structure` |
 | `datasource.update` | cli | ship | ready | implemented | `tadx content datasource update` |
+| `datasource.validate-changes` | cli | ship | ready | implemented | `tadx content datasource validate-changes` |
+| `datasource.work-copy` | cli | ship | blocked | implemented-gated | None |
 | `doctor.run` | cli | ship | ready | implemented | `tadx doctor` |
 | `env.profile.add` | cli | ship | ready | implemented | `tadx env add` |
 | `env.profile.get` | cli | ship | ready | implemented | `tadx env get` |
@@ -1480,6 +1497,87 @@ Update supported content label attachments on exact database, table, column, dat
 - Blocker ID: None
 - Command binding: `tadx catalog label update`
 
+### `datasource.add-tag`
+
+Add one published datasource tag and read back membership.
+
+- Surface: tadx content datasource add-tag
+- Operation type: change
+- Owner: cli
+- Selectors: Published datasource LUID and exact tag label
+- Products and availability: Tableau datasource REST tagging API 1.0+ with an authenticated TADX connection; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Add Tags to Data Source
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized tag addition and removal on an exact published datasource, including empty membership and independently observed readback.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.apply-changes`
+
+Preview or apply ordered edits and preserve each observed result.
+
+- Surface: tadx content datasource apply-changes
+- Operation type: change
+- Owner: cli
+- Selectors: One bound changes file with up to 50 typed edits
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Add, Update and Delete Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.checkout`
+
+Allocate a work copy and preserve checkout provenance.
+
+- Surface: tadx content datasource checkout
+- Operation type: change
+- Owner: cli
+- Selectors: Exact source LUID or name and project; optional new audit and template paths
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: Yes
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: Private scoped recovery receipts or explicitly requested workspace exports according to operation
+- Upstream operation: Create Work Copy
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
 ### `datasource.delete`
 
 Delete one exact remote datasource, or preview the operation.
@@ -1506,6 +1604,60 @@ Delete one exact remote datasource, or preview the operation.
 - Validation or blocker: Contract-verified exact DELETE with authoritative LUID revalidation
 - Blocker ID: None
 - Command binding: `tadx content datasource delete`
+
+### `datasource.delete-column`
+
+Delete one named column in a typed changes file.
+
+- Surface: tadx content datasource apply-changes (YAML op delete-column)
+- Operation type: change
+- Owner: cli
+- Selectors: Bound YAML target and exact field
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Delete Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.elements`
+
+Inspect published TDS columns and descriptions.
+
+- Surface: tadx content datasource elements
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact published LUID; optional exact field and table names
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact identities, operation qualification and independent scope checks
+- Artifact effect: None
+- Upstream operation: Read Data Source Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires authorized exact and collection reads on an eligible REST 3.30 datasource, including named absence and incomplete records.
+- Blocker ID: provider-qualification
+- Command binding: None
 
 ### `datasource.inspect`
 
@@ -1642,6 +1794,141 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs in
 - Blocker ID: None
 - Command binding: `tadx content datasource pull`
 
+### `datasource.remove-field-description`
+
+Remove a field description from the work copy and verify absence.
+
+- Surface: tadx content datasource remove-field-description
+- Operation type: change
+- Owner: cli
+- Selectors: Exact copy and field
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Delete Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.remove-table-description`
+
+Remove a table description from the work copy and verify absence.
+
+- Surface: tadx content datasource remove-table-description
+- Operation type: change
+- Owner: cli
+- Selectors: Exact copy and table
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Delete Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.remove-tag`
+
+Remove one published datasource tag and read back membership.
+
+- Surface: tadx content datasource remove-tag
+- Operation type: change
+- Owner: cli
+- Selectors: Published datasource LUID and exact tag label
+- Products and availability: Tableau datasource REST tagging API 1.0+ with an authenticated TADX connection; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Delete Tag from Data Source
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized tag addition and removal on an exact published datasource, including empty membership and independently observed readback.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.save.as-new`
+
+Save the work copy to a new datasource and verify identity, placement and selected properties.
+
+- Surface: tadx content datasource save as-new
+- Operation type: change
+- Owner: cli
+- Selectors: Exact copy or changes file; new datasource name and optional description
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: Yes
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: Private scoped recovery receipts or explicitly requested workspace exports according to operation
+- Upstream operation: Publish Work Copy
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires verified destination placement and create-only protection when another publisher claims the name during submission.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.save.overwrite`
+
+Save the work copy over its verified original.
+
+- Surface: tadx content datasource save overwrite
+- Operation type: change
+- Owner: cli
+- Selectors: Exact copy or changes file and verified source revision
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: docs-only
+- Verification readiness: blocked
+- Implementation state: planned
+- Local write: Yes
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: Private scoped recovery receipts or explicitly requested workspace exports according to operation
+- Upstream operation: Unverified overwrite contract
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires a documented work-copy overwrite route, original identity, and a revision check covering the entire published definition.
+- Blocker ID: provider-qualification
+- Command binding: None
+
 ### `datasource.schema`
 
 Inspect one datasource's logical tables and search a bounded field projection.
@@ -1668,6 +1955,141 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Validation or blocker: VDS-first fields; exact identity enrichment preserving direct/inherited descriptions and upstream column tags; no caption joins; explicit coverage and local-only cached metadata
 - Blocker ID: None
 - Command binding: `tadx content datasource schema`
+
+### `datasource.set-column-caption`
+
+Set one column caption in a typed changes file.
+
+- Surface: tadx content datasource apply-changes (YAML op set-column-caption)
+- Operation type: change
+- Owner: cli
+- Selectors: Bound YAML target and exact field; caption
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Update Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.set-column-role`
+
+Set one column role in a typed changes file.
+
+- Surface: tadx content datasource apply-changes (YAML op set-column-role)
+- Operation type: change
+- Owner: cli
+- Selectors: Bound YAML target and exact field; Tableau FieldRole
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Update Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.set-column-type`
+
+Set one column type in a typed changes file.
+
+- Surface: tadx content datasource apply-changes (YAML op set-column-type)
+- Operation type: change
+- Owner: cli
+- Selectors: Bound YAML target and exact field; Tableau FieldType
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Update Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.set-field-description`
+
+Set a field description on the work copy and verify its exact value.
+
+- Surface: tadx content datasource set-field-description
+- Operation type: change
+- Owner: cli
+- Selectors: Exact copy and field; nonempty description
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Add or Update Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
+
+### `datasource.set-table-description`
+
+Set a table description on the work copy and verify its exact value.
+
+- Surface: tadx content datasource set-table-description
+- Operation type: change
+- Owner: cli
+- Selectors: Exact copy and table; nonempty description
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: No
+- Remote mutation: Yes
+- Administrative: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact target, managed policy, saved site consent, fresh preflight and readback; independent provider activation gate
+- Artifact effect: None
+- Upstream operation: Add or Update Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires an authorized disposable source, exact-name reads, permission and entitlement observations, mutation acknowledgement and independent readback on a supported Tableau installation.
+- Blocker ID: provider-qualification
+- Command binding: None
 
 ### `datasource.structure`
 
@@ -1722,6 +2144,60 @@ Rename one exact published datasource or replace its owner, or preview the opera
 - Validation or blocker: Contract-verified bounded rename and owner replacement with preview, no-op, drift, and uncertain outcome
 - Blocker ID: None
 - Command binding: `tadx content datasource update`
+
+### `datasource.validate-changes`
+
+Validate one local changes file and list its ordered edit kinds.
+
+- Surface: tadx content datasource validate-changes
+- Operation type: inspect
+- Owner: cli
+- Selectors: Workspace and relative --from-changes path
+- Products and availability: Local
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Strict typed YAML validation of a bounded local workspace file
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Validates edit and target syntax. Remote eligibility requires live preflight.
+- Blocker ID: None
+- Command binding: `tadx content datasource validate-changes`
+
+### `datasource.work-copy`
+
+Read and export an exact work copy, compare an intent file, or recover an attempt.
+
+- Surface: tadx content datasource work-copy
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact work-copy LUID, changes file or authenticated attempt selection
+- Products and availability: REST 3.30+, Tableau+ Cloud or Server Data Management; provider qualification pending
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: blocked
+- Implementation state: implemented-gated
+- Local write: Yes
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact identities, operation qualification and independent scope checks
+- Artifact effect: Private scoped recovery receipts or explicitly requested workspace exports according to operation
+- Upstream operation: Read Work Copy Elements
+- Evidence: docs/evidence/tds-edit-contract.md
+- Validation or blocker: Requires authorized exact and collection reads on an eligible REST 3.30 datasource, including named absence and incomplete records.
+- Blocker ID: provider-qualification
+- Command binding: None
 
 ### `doctor.run`
 

@@ -27,6 +27,10 @@ A project create carrying a superseded token returned 401002, and an exact-name 
 Tableau therefore rejects the session before processing the request.
 TADX treats HTTP 401 with code 401002, or with no Tableau code, as a session rejection, signs in again once, and resends the identical request.
 
+For endpoints with operation-specific failure envelopes, only the explicit 401002 code authorizes this retry.
+The TDS Edit API can return HTTP 401 for an individual rejected element.
+A hermetic fixture verifies that this response does not start a second submission.
+
 A live run of the built CLI observed the saved-session epoch, which advances once per TADX sign-in with the PAT.
 A second command reused the saved session without signing in.
 After a sign-in outside TADX superseded the saved session, the next read, a parallel batch pull of three workbooks, and a project delete each renewed with exactly one sign-in and succeeded.

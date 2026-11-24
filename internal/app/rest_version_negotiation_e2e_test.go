@@ -20,7 +20,9 @@ func TestRESTVersionNegotiationThroughCLI(t *testing.T) {
 		unsupported              bool
 	}{
 		{name: "older server", reported: "3.9", selected: "3.9"},
-		{name: "newer server", reported: "4.0", selected: "3.29"},
+		{name: "previous ceiling", reported: "3.29", selected: "3.29"},
+		{name: "TDS Edit server", reported: "3.30", selected: "3.30"},
+		{name: "newer server", reported: "4.0", selected: "3.30"},
 		{name: "below PAT minimum", reported: "3.5", unsupported: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {

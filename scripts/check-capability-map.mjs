@@ -66,6 +66,16 @@ function checkPage() {
     check(control('stateFilter').value === '', `Second click did not clear ${state}`);
   }
   clear();
+  control('stateFilter').value = 'implemented-gated';
+  control('stateFilter').dispatchEvent(new Event('change', { bubbles: true }));
+  const gated = definitions.filter(item => item.implementation === 'implemented-gated');
+  check(Number(control('matchedCount').textContent) === gated.length, 'Gated filter does not match the registry');
+  control('expandAll').click();
+  const fieldDescription = [...document.querySelectorAll('.tree-row')].find(row => row.querySelector('.node-id')?.textContent === 'datasource.set-field-description');
+  check(fieldDescription, 'Gated field-description command missing from filtered tree');
+  fieldDescription.click();
+  check(control('detailContent').textContent.includes('provider-qualification'), 'Gated command details omit the verification blocker');
+  clear();
   control('searchInput').value = 'catalog';
   control('searchInput').dispatchEvent(new Event('input', { bubbles: true }));
   press('blocked');
@@ -119,7 +129,7 @@ function checkPage() {
   const displayedIDs = [...document.querySelectorAll('.tree-row .node-id')].map(node => node.textContent);
   check(displayedIDs.every(id => definitions.some(item => item.id === id)), 'Non-CLI registry entry appeared in the command tree');
   check(!control('capability-tree').innerText.includes('Delegated operations'), 'Delegated branch appeared in the command tree');
-  return { passed: true, width: innerWidth, registry: registry.length, commands: definitions.length, scenarios: 9 };
+  return { passed: true, width: innerWidth, registry: registry.length, commands: definitions.length, scenarios: 10 };
 }
 
 try {

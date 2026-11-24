@@ -153,21 +153,20 @@ func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session,
 	if err != nil {
 		return nil, err
 	}
-	return newSession(response, &providerRenewal{target: target, credentials: credentials, signer: p.signer}), nil
+	return newSession(response, credentials, &providerRenewal{target: target, signer: p.signer}), nil
 }
 
 // providerRenewal signs a provider session in again with the PAT it was issued for.
 type providerRenewal struct {
-	target      Target
-	credentials PATCredentials
-	signer      Signer
+	target Target
+	signer Signer
 }
 
 func (r *providerRenewal) renew(ctx context.Context, current *session, rejected string) error {
 	if current.currentToken() != rejected {
 		return nil
 	}
-	response, err := signIn(ctx, r.target, r.credentials, r.signer)
+	response, err := signIn(ctx, r.target, current.credentials, r.signer)
 	if err != nil {
 		return err
 	}
@@ -206,13 +205,14 @@ func signIn(ctx context.Context, target Target, credentials PATCredentials, sign
 // session holds one site's token, which renewal replaces in place so every
 // client sharing the session sends the current token.
 type session struct {
-	mu       sync.RWMutex
-	token    string
-	siteLUID string
-	userLUID string
-	renewal  renewal
-	renewMu  sync.Mutex
-	flight   *renewalFlight
+	credentials PATCredentials
+	mu          sync.RWMutex
+	token       string
+	siteLUID    string
+	userLUID    string
+	renewal     renewal
+	renewMu     sync.Mutex
+	flight      *renewalFlight
 }
 
 // renewalFlight shares one attempt among callers already waiting for it.
@@ -230,8 +230,8 @@ type renewal interface {
 	renew(ctx context.Context, current *session, rejected string) error
 }
 
-func newSession(response SignInResponse, renewal renewal) *session {
-	return &session{token: response.Token, siteLUID: response.SiteLUID, userLUID: response.UserLUID, renewal: renewal}
+func newSession(response SignInResponse, credentials PATCredentials, renewal renewal) *session {
+	return &session{credentials: credentials, token: response.Token, siteLUID: response.SiteLUID, userLUID: response.UserLUID, renewal: renewal}
 }
 
 func (s *session) Authorize(request *http.Request) {
@@ -313,6 +313,8 @@ func (s *session) UserLUID() string { return s.userLUID }
 func (s *session) String() string {
 	return fmt.Sprintf("authenticated Tableau session for site %s", s.siteLUID)
 }
+
+func (s *session) GoString() string { return s.String() }
 
 func redactError(err error, secrets ...string) error {
 	redacted := &redactedCarrierError{message: Redact(err.Error(), secrets...)}

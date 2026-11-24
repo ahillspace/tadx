@@ -26,7 +26,7 @@ This minimum is an authentication requirement; individual capabilities retain th
 
 TADX discovers the server version before sending PAT credentials.
 No baseline sign-in or authenticated discovery request is required.
-The selected version is the numeric minimum of the reported server version and TADX's build maximum, currently 3.29.
+The selected version is the numeric minimum of the reported server version and TADX's build maximum, currently 3.30.
 The command retains the negotiated transport by canonical server and reuses it for sign-in and resource clients.
 The version is not a user setting and is not persisted in configuration.
 Legacy saved version fields are ignored and removed during the next configuration write.
