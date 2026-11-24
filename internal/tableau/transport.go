@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,7 +56,6 @@ type Request struct {
 	// These endpoints can reject an individual element with HTTP 401, so only
 	// an explicit REST session rejection code permits renewing and resending.
 	StructuredFailures bool
-	sessionRedactor    func(string) string
 	// OpenResponseBody streams a successful response body instead of buffering
 	// it, so package downloads have no size limit. It receives the response
 	// headers before any body byte and returns the destination, or an error
@@ -85,7 +85,7 @@ func (r Response) Diagnostic(message string) string {
 	if r.redact != nil {
 		return r.redact(message)
 	}
-	return sanitizeDiagnostic(message, nil)
+	return sanitizeDiagnostic(message)
 }
 
 // UpstreamError preserves Tableau's stable error fields.
@@ -96,6 +96,7 @@ type UpstreamError struct {
 	Summary          string
 	Detail           string
 	TableauRequestID string
+	rejectedSession  bool
 	retryAfter       time.Duration
 	retryAfterSet    bool
 }
@@ -363,16 +364,16 @@ func (t *Transport) SetStallTimeout(timeout time.Duration) {
 // rejects the session before it processes the request, so the rejected
 // attempt changed nothing. No other failure is retried.
 func (t *Transport) Do(ctx context.Context, session auth.Session, input Request) (Response, error) {
-	if input.StructuredFailures {
-		input.sessionRedactor = auth.SessionRedactor(session)
-	}
 	response, sent, err := t.send(ctx, session, input)
-	if session == nil || !sessionRejected(err, input.StructuredFailures) {
+	upstream, ok := errors.AsType[*UpstreamError](err)
+	if session == nil || !ok || !upstream.rejectedSession {
 		return response, err
 	}
 	if renewErr := session.Renew(ctx, sent); renewErr != nil {
 		return Response{}, fmt.Errorf("%w; signing in again failed: %w", err, renewErr)
 	}
+	// A response to the resend may refer to the token used on the first attempt.
+	input.Secrets = append(slices.Clone(input.Secrets), sent.Values(auth.TableauAuthHeader)...)
 	response, _, err = t.send(ctx, session, input)
 	return response, err
 }
@@ -380,9 +381,9 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 // sessionRejected reports Tableau refusing a request's session token: HTTP
 // 401 with REST code 401002, or with no code from the Metadata, search, and
 // Pulse APIs, which return none. Other 401 codes are sign-in failures.
-func sessionRejected(err error, requireCode bool) bool {
-	upstream, ok := errors.AsType[*UpstreamError](err)
-	return ok && upstream.StatusCode == http.StatusUnauthorized && (upstream.Code == "401002" || (!requireCode && upstream.Code == ""))
+func sessionRejected(status int, code string, requireCode bool) bool {
+	code = strings.TrimSpace(code)
+	return status == http.StatusUnauthorized && (code == "401002" || (!requireCode && code == ""))
 }
 
 type submissionCheckKey struct{}
@@ -475,15 +476,8 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 	if session != nil {
 		session.Authorize(request)
 	}
-	effectiveSecrets := append([]string(nil), input.Secrets...)
-	effectiveSecrets = append(effectiveSecrets, request.Header.Values(auth.TableauAuthHeader)...)
-	protect := func(s string) string {
-		if input.sessionRedactor != nil {
-			s = input.sessionRedactor(s)
-		}
-		return auth.Redact(s, effectiveSecrets...)
-	}
-	diagnostic := func(s string) string { return sanitizeDiagnostic(protect(s), nil) }
+	protect := auth.RequestRedactor(session, request.Header, input.Secrets...)
+	diagnostic := func(s string) string { return sanitizeDiagnostic(protect(s)) }
 	client := t.client
 	if input.StructuredFailures && !retrySafe(input.Method, input.Operation) {
 		// A redirect cannot authorize sending the mutation to a new target.
@@ -545,7 +539,7 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 		result.Body = body
 		return result, request.Header, nil
 	}
-	code, summary, detail := parseError(body, diagnostic)
+	code, summary, detail := parseError(body)
 	retryAfter, retryAfterSet := parseRetryAfter(response.Header)
 	failureResponse := Response{}
 	if input.StructuredFailures {
@@ -553,9 +547,10 @@ func (t *Transport) send(ctx context.Context, session auth.Session, input Reques
 		failureResponse = result
 	}
 	return failureResponse, request.Header, &UpstreamError{
-		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
-		Summary: summary, Detail: detail, TableauRequestID: requestID,
-		retryAfter: retryAfter, retryAfterSet: retryAfterSet,
+		Operation: input.Operation, StatusCode: response.StatusCode, Code: diagnostic(code),
+		Summary: diagnostic(summary), Detail: diagnostic(detail), TableauRequestID: requestID,
+		rejectedSession: sessionRejected(response.StatusCode, code, input.StructuredFailures),
+		retryAfter:      retryAfter, retryAfterSet: retryAfterSet,
 	}
 }
 
@@ -820,7 +815,7 @@ func tableauRequestID(header http.Header) string {
 	return ""
 }
 
-func parseError(body []byte, diagnostic func(string) string) (string, string, string) {
+func parseError(body []byte) (string, string, string) {
 	var jsonEnvelope struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -829,7 +824,7 @@ func parseError(body []byte, diagnostic func(string) string) (string, string, st
 		} `json:"error"`
 	}
 	if json.Unmarshal(body, &jsonEnvelope) == nil && (jsonEnvelope.Error.Code != "" || jsonEnvelope.Error.Summary != "") {
-		return diagnostic(jsonEnvelope.Error.Code), diagnostic(jsonEnvelope.Error.Summary), diagnostic(jsonEnvelope.Error.Detail)
+		return jsonEnvelope.Error.Code, jsonEnvelope.Error.Summary, jsonEnvelope.Error.Detail
 	}
 	var xmlEnvelope struct {
 		Error struct {
@@ -839,13 +834,13 @@ func parseError(body []byte, diagnostic func(string) string) (string, string, st
 		} `xml:"error"`
 	}
 	if xml.Unmarshal(body, &xmlEnvelope) == nil && (xmlEnvelope.Error.Code != "" || xmlEnvelope.Error.Summary != "") {
-		return diagnostic(xmlEnvelope.Error.Code), diagnostic(xmlEnvelope.Error.Summary), diagnostic(xmlEnvelope.Error.Detail)
+		return xmlEnvelope.Error.Code, xmlEnvelope.Error.Summary, xmlEnvelope.Error.Detail
 	}
-	return "", "Upstream request failed", diagnostic(string(body))
+	return "", "Upstream request failed", string(body)
 }
 
-func sanitizeDiagnostic(value string, secrets []string) string {
-	value = strings.TrimSpace(auth.Redact(strings.ToValidUTF8(value, "\uFFFD"), secrets...))
+func sanitizeDiagnostic(value string) string {
+	value = strings.TrimSpace(strings.ToValidUTF8(value, "\uFFFD"))
 	if len(value) <= maxUpstreamDiagnosticBytes {
 		return value
 	}

@@ -106,6 +106,9 @@ func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveW
 	if err != nil {
 		return out, lifecycleFailure(op, in.WorkCopyLUID, "Could not read checkout provenance.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
 	}
+	if err := CheckRetainedSource(op, in.WorkCopyLUID, in.Redact, origin.SourceLUID, origin.SourceRevision); err != nil {
+		return out, err
+	}
 	out.SourceLUID = origin.SourceLUID
 	if in.Mode == "overwrite" && (origin.SourceLUID == "" || origin.SourceRevision == "") {
 		return out, lifecycleFailure(op, in.WorkCopyLUID, "Overwrite requires a verified source and its checkout revision.", errs.PhaseValidation, errs.OutcomeNotAttempted, nil)
@@ -250,7 +253,13 @@ func planTDSSave(ctx context.Context, p TDSSaveProvider, in SaveWorkCopyInput, a
 		a.Projections = append(a.Projections, value.TDSProjection{ElementType: o.Selector.ElementType, Name: o.Selector.Name, Property: o.Selector.Property, Digest: lifecycleDigest(o.State)})
 	}
 	a.DestinationDigest = tdsDestinationDigest(dest.Name, dest.ProjectLUID, in.Description)
-	a.IntentDigest = lifecycleDigest([]any{a.Scope, a.Operation, a.SourceLUID, a.SourceRevision, a.WorkCopyLUID, a.DestinationDigest, a.CompleteCollection, a.Projections, in.FromChanges, in.Changes})
+	intent := []any{a.Scope, a.Operation, a.SourceLUID, a.SourceRevision, a.WorkCopyLUID, a.DestinationDigest, a.CompleteCollection, a.Projections, in.FromChanges, in.Changes}
+	// Admission orders matched attempts by ID and enumerates each attempt's
+	// guards under the site lock, independently of the user's flag order.
+	if len(out.AcknowledgementScopes) > 0 {
+		intent = append(intent, out.AcknowledgementScopes)
+	}
+	a.IntentDigest = lifecycleDigest(intent)
 	return dest, nil
 }
 

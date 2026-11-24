@@ -61,6 +61,8 @@ The [CLI workflow fixtures](../../internal/app/tds_workflow_e2e_test.go) exercis
 The [session redaction tests](../../internal/auth/session_redaction_test.go) cover environment credentials, a simulated native credential store, saved session adoption and renewed session tokens.
 A checkout or save acknowledgement preview includes each matched attempt ID, operation, submit status and guard resource.
 An overwrite can clear an earlier overwrite's guard on a different work copy of the same original.
+Save preview tokens cover the matched attempts and their guard resources.
+The CLI fixture rejects stale approval before publication and accepts a fresh approval with equivalent acknowledgement flags in a different order. [Save approval fixture](../../internal/app/tds_acknowledged_preview_test.go)
 The private journal commits the fresh pending attempt with every acknowledgement link in one transaction.
 A lifecycle fixture starts with 24,780 acknowledged checkout attempts older than 30 days in a 16,776,733-byte legacy journal and recovers the newly allocated copy by source and attempt ID after reopening the store.
 The same fixture resolves an older copy's original source and revision after its attempt history has expired.
@@ -73,6 +75,9 @@ Entitlement, permission, source compatibility and quota stay unknown until a pro
 Named and collection reads report their own scope.
 The CLI retains known refusal reasons and leaves ambiguous 403 and 429 responses unclassified when the provider supplies insufficient evidence.
 The [eligibility fixtures](../../internal/app/tds_eligibility_test.go) exercise these distinctions with simulated responses.
+
+Direct edits and saves check the retained source fields they use against the current session's credentials before building the target or save plan. [Rotated credential fixtures](../../internal/app/datasource_edit_credentials_test.go)
+A checkout preview's exact datasource lookup preserves safe refusal diagnostics and redacts credentials from command output and the saved command receipt. [Native lookup diagnostic fixture](../../internal/app/tds_read_diagnostics_test.go)
 
 Audit and template exports use the authenticated session's redactor.
 Bindings containing protected values cannot be exported as actionable selectors.

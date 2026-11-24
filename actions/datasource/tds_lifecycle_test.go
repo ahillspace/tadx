@@ -734,3 +734,64 @@ func TestCheckoutRecoversWithAFullLegacyJournalOfExpiredAttempts(t *testing.T) {
 		}
 	}
 }
+
+func TestSavePreviewBindsMatchedAcknowledgementsAndGuards(t *testing.T) {
+	ctx := t.Context()
+	j := operationrun.TDSJournal{Directory: filepath.Join(t.TempDir(), "state")}
+	f := &lifecycleFixture{revision: "v1", copyValue: "new", destName: "Report"}
+	if _, err := ds.Checkout(ctx, f, f, j, checkoutIn(), false); err != nil {
+		t.Fatal(err)
+	}
+	in := saveIn("overwrite")
+	preview := func(ids ...string) string {
+		t.Helper()
+		in.AcknowledgeUnknown, in.ExpectPreview = ids, ""
+		out, err := ds.SaveWorkCopy(ctx, f, j, in, true)
+		if err != nil || out.PreviewToken == "" {
+			t.Fatal(out, err)
+		}
+		return out.PreviewToken
+	}
+	rejectStale := func(token string, ids ...string) {
+		t.Helper()
+		in.AcknowledgeUnknown, in.ExpectPreview = ids, token
+		out, err := ds.SaveWorkCopy(ctx, f, j, in, false)
+		var e *errs.Error
+		if !errors.As(err, &e) || e.Phase != errs.PhaseValidation || e.Outcome != errs.OutcomeNotAttempted || !strings.Contains(e.Summary, "differs from its preview") || out.AttemptID != "" || f.publishCalls != 0 {
+			t.Fatalf("stale approval was not rejected before submission: %+v %v", out, err)
+		}
+	}
+	base := preview()
+	a, err := j.Begin(ctx, value.TDSAttempt{Scope: tdsScope, Operation: "datasource.save.as-new", WorkCopyLUID: copyUUID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := j.Begin(ctx, value.TDSAttempt{Scope: tdsScope, Operation: "datasource.save.overwrite", SourceLUID: sourceUUID, WorkCopyLUID: alternateCopyUUID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejectStale(base, a.ID, b.ID)
+	both := preview(a.ID, b.ID)
+	if reversed := preview(b.ID, a.ID); reversed != both {
+		t.Fatal("equivalent acknowledgement order changed approval")
+	}
+	// A recovery record with the same attempt ID but a different protected
+	// copy clears different guards, even though it still overlaps the source.
+	b.WorkCopyLUID = "66666666-6666-6666-6666-666666666666"
+	if err := j.Record(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	rejectStale(both, a.ID, b.ID)
+	moved := preview(a.ID, b.ID)
+	replaced, err := j.Begin(ctx, value.TDSAttempt{Scope: tdsScope, Operation: b.Operation, SourceLUID: b.SourceLUID, WorkCopyLUID: b.WorkCopyLUID}, []string{b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejectStale(moved, a.ID, replaced.ID)
+	last := preview(a.ID, replaced.ID)
+	replaced.Status = "not_applied"
+	if err := j.Record(ctx, replaced); err != nil {
+		t.Fatal(err)
+	}
+	rejectStale(last, a.ID)
+}

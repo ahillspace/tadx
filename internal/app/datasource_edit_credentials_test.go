@@ -68,3 +68,64 @@ func TestTDSCLIProtectsAuthenticatedEditInputs(t *testing.T) {
 		t.Fatal("private receipt contains protected data")
 	}
 }
+
+func TestTDSCLIRotatedPATProtectsRetainedCheckoutFields(t *testing.T) {
+	h := newTDSWorkflowCLI(t)
+	h.options = withSiteMutationConsent(t, h.options, true)
+	h.ds(true, "checkout", "--id", fixtureTDSOriginal)
+	edit := []string{"set-field-description", "--work-copy", fixtureTDSCopy, "--field", "Sales", "--description", "Gross sales"}
+	save := []string{"save", "as-new", "--work-copy", fixtureTDSCopy, "--name", "Reviewed", "--field", "Sales"}
+	before := h.fixture.writeCount()
+	// Only the synthetic credential changes. The site and authenticated
+	// caller still own exactly the same checkout receipt.
+	for _, tc := range []struct {
+		name, secret string
+		args         []string
+	}{
+		{"direct source", fixtureTDSOriginal, edit},
+		{"save source", fixtureTDSOriginal, save},
+		{"save revision", "fixture-revision", save},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TADX_FIXTURE_SECRET", tc.secret)
+			for _, preview := range []bool{true, false} {
+				args := append([]string{"content", "datasource"}, tc.args...)
+				if preview {
+					args = append(args, "--preview")
+				}
+				cmd := h.process(append(args, "--json", "--full")...)
+				var stdout, stderr bytes.Buffer
+				cmd.Stdout, cmd.Stderr = &stdout, &stderr
+				err := cmd.Run()
+				if err == nil || !json.Valid(stdout.Bytes()) || !strings.Contains(stdout.String(), "protected credential") || bytes.Contains(stdout.Bytes(), []byte(tc.secret)) || bytes.Contains(stderr.Bytes(), []byte(tc.secret)) {
+					t.Fatalf("credential-bearing origin passed or appeared in script output (preview=%t, rejected=%t)", preview, err != nil)
+				}
+				last := h.command(true, "last")
+				if strings.Contains(last, tc.secret) || !strings.Contains(last, "protected credential") {
+					t.Fatal("saved command receipt did not protect retained provenance")
+				}
+				if h.fixture.writeCount() != before {
+					t.Fatalf("submitted a mutation with protected provenance (preview=%t)", preview)
+				}
+			}
+		})
+	}
+	j, err := operationrun.DefaultTDSJournal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, more, err := j.Attempts(t.Context(), value.TDSScope{Server: h.server.URL, SiteLUID: fixtureTDSSite, CallerLUID: "user-luid"}, "", "", "")
+	if err != nil || more || len(rows) != 1 || rows[0].Operation != "datasource.checkout" {
+		t.Fatalf("expected only the original checkout receipt; got %d, more=%t err=%v", len(rows), more, err)
+	}
+	// A direct edit uses only the source identity. A credential collision
+	// with the unused checkout revision still permits its safe preview.
+	t.Setenv("TADX_FIXTURE_SECRET", "fixture-revision")
+	if out := h.ds(true, append(edit, "--preview")...); strings.Contains(out, "fixture-revision") {
+		t.Fatal("direct preview disclosed an unused revision")
+	}
+	t.Setenv("TADX_FIXTURE_SECRET", "rotated-safe-value")
+	for _, args := range [][]string{edit, save} {
+		requireTDSJSON(t, h.ds(true, append(args, "--preview")...), fixtureTDSOriginal, "preview_token")
+	}
+}

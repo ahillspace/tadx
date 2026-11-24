@@ -225,3 +225,48 @@ func TestTransportParallelRejectionsOfOneCommandSessionSignInOnce(t *testing.T) 
 		t.Fatalf("sign-ins = %d, accepted = %d; want one renewal shared by every rejected request", signer.calls.Load(), accepted.Load())
 	}
 }
+
+func TestTransportUsesProviderCodeForRenewalAndRedactsBothAttempts(t *testing.T) {
+	for name, structured := range map[string]bool{"native": false, "structured": true} {
+		t.Run(name, func(t *testing.T) {
+			var attempts int
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				switch r.Header.Get(auth.TableauAuthHeader) {
+				case "first":
+					w.WriteHeader(http.StatusUnauthorized)
+					io.WriteString(w, restSessionRejection)
+				case "second":
+					w.Header().Set("X-Request-Id", "ref-first")
+					w.WriteHeader(http.StatusForbidden)
+					io.WriteString(w, `{"error":{"code":"403004","summary":"first and second","detail":"401002 and fixture-secret"}}`)
+				default:
+					t.Error("request missing fixture authorization")
+					w.WriteHeader(http.StatusBadRequest)
+				}
+			}))
+			defer server.Close()
+			// A PAT name may coincide with a provider code. Renewal uses the
+			// original code even when its diagnostic rendering masks it.
+			sessions := auth.NewCommandSessions(auth.LookupEnvFunc(func(key string) (string, bool) {
+				if key == "NAME" {
+					return "401002", true
+				}
+				return "fixture-secret", true
+			}), nil, t.TempDir())
+			defer sessions.Close()
+			session, err := sessions.Authenticate(t.Context(), auth.Target{ServerURL: server.URL, SiteContentURL: "Sales", PATNameVariable: "NAME", PATSecretVariable: "SECRET"}, &secondTokenSigner{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := NewTransport(server.Client(), "3.29", nil).Do(t.Context(), session, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/api/3.29/sites", Operation: "site.list", StructuredFailures: structured})
+			upstream, ok := errors.AsType[*UpstreamError](err)
+			if !ok || attempts != 2 || upstream.Code != "403004" || upstream.Summary != "***** and ******" || upstream.Detail != "****** and [REDACTED]" || upstream.TableauRequestID != "ref-*****" {
+				t.Fatalf("unexpected diagnostic after %d request(s): %v", attempts, err)
+			}
+			if structured != (len(response.Body) > 0) {
+				t.Fatalf("structured=%t retained provider body=%t", structured, len(response.Body) > 0)
+			}
+		})
+	}
+}

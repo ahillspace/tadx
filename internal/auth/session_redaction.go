@@ -1,24 +1,29 @@
 package auth
 
-import "net/http"
+import (
+	"net/http"
+	"slices"
+)
 
-// SessionRedactor captures the PAT and token used for a request without
-// exposing their values to consumers. A response processed after renewal may
-// refer to the token used before the request was sent or the current token.
+// SessionRedactor protects metadata observed across requests and session renewal.
 func SessionRedactor(s Session) func(string) string {
+	var header http.Header
+	if s != nil {
+		header = make(http.Header)
+		s.Authorize(&http.Request{Header: header})
+	}
+	return RequestRedactor(s, header)
+}
+
+// RequestRedactor protects diagnostics with the credentials actually sent, the
+// session's PAT, and its current token if another request has since renewed it.
+func RequestRedactor(s Session, sent http.Header, additional ...string) func(string) string {
+	secrets := append(slices.Clone(additional), sent.Values(TableauAuthHeader)...)
 	if live, ok := s.(*session); ok {
-		original := live.currentToken()
 		return func(value string) string {
-			return Redact(value, live.credentials.Name, live.credentials.Secret, original, live.currentToken())
+			credentials := []string{live.credentials.Name, live.credentials.Secret, live.currentToken()}
+			return Redact(value, append(credentials, secrets...)...)
 		}
 	}
-	// Other session implementations may supply token authorization without a PAT.
-	// Observe the same authorization boundary used to send a request.
-	var token string
-	if s != nil {
-		req := &http.Request{Header: make(http.Header)}
-		s.Authorize(req)
-		token = req.Header.Get(TableauAuthHeader)
-	}
-	return func(value string) string { return Redact(value, token) }
+	return func(value string) string { return Redact(value, secrets...) }
 }

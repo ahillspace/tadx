@@ -113,9 +113,12 @@ func (c *remoteContentCommands) tdsConnect(ctx context.Context, op, env string, 
 	}
 	return tdsConnection{conn, value.TDSScope{Server: server, SiteLUID: conn.siteLUID, CallerLUID: conn.callerLUID}, journal}, nil
 }
-func (c tdsConnection) editTarget(ctx context.Context, id string, expect ds.EditTarget) (ds.EditTarget, error) {
+func (c tdsConnection) editTarget(ctx context.Context, operation, id string, expect ds.EditTarget) (ds.EditTarget, error) {
 	origin, err := c.journal.Origin(ctx, c.scope, id)
 	if err != nil {
+		return ds.EditTarget{}, err
+	}
+	if err := ds.CheckRetainedSource(operation, id, c.tds.TDSRedactor(), origin.SourceLUID); err != nil {
 		return ds.EditTarget{}, err
 	}
 	t := ds.EditTarget{Server: c.scope.Server, SiteLUID: c.siteLUID, WorkCopyLUID: id, DatasourceLUID: origin.SourceLUID}
@@ -368,7 +371,7 @@ func (c *remoteContentCommands) ApplyEdits(ctx context.Context, in contentcli.Ap
 	if err := checkTDSEditInputs(conn.tds.TDSRedactor(), in.EditFiles, doc, in.WorkCopy, in.ExpectPreview); err != nil {
 		return nil, err
 	}
-	target, err := conn.editTarget(ctx, in.WorkCopy, doc.Target)
+	target, err := conn.editTarget(ctx, op, in.WorkCopy, doc.Target)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +428,7 @@ func (c *remoteContentCommands) SaveCopy(ctx context.Context, in contentcli.Save
 	}
 	input.Redact = redact
 	if in.FromChanges != "" {
-		if _, err = conn.editTarget(ctx, in.WorkCopy, doc.Target); err != nil {
+		if _, err = conn.editTarget(ctx, "datasource.save."+in.Mode, in.WorkCopy, doc.Target); err != nil {
 			return nil, err
 		}
 	}

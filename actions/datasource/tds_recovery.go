@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -62,6 +63,15 @@ func (o TDSAttemptsOutput) CompactOutput() any {
 	}{compact, o.More || n < len(o.Attempts), "--full"}
 }
 func (o TDSAttemptsOutput) FullOutput() any { return o }
+
+// CheckRetainedSource validates the historical fields this operation will
+// consume against the credentials of the current authenticated session.
+func CheckRetainedSource(operation, copyID string, redact func(string) string, fields ...string) error {
+	if err := checkLifecycleMetadata(redact, fields...); err != nil {
+		return lifecycleFailure(operation, copyID, "Retained checkout provenance contains protected credential material.", errs.PhaseValidation, errs.OutcomeNotAttempted, err)
+	}
+	return nil
+}
 
 // CheckRetainedAttempt protects provider-owned strings when a different PAT for
 // the same Tableau caller reopens this private journal.
