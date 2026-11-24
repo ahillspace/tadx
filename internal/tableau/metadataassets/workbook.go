@@ -15,7 +15,6 @@ import (
 
 const workbookEmbeddedFields = `id name hasExtracts hasUserReference containsUnsupportedCustomSql extractLastUpdateTime extractLastRefreshTime extractLastIncrementalUpdateTime`
 const workbookRelationPage = `{totalCount pageInfo{hasNextPage endCursor} nodes{`
-const workbookFieldDescriptionFields = fieldProvenanceFields + ` __typename isHidden folderName ... on DataField {role dataType} ... on AnalyticsField {aggregation} ... on CalculatedField {formula} ... on DatasourceField {remoteField{__typename id name fullyQualifiedName}}`
 
 // WorkbookDatasources observes the workbook and its embedded data sources by exact Metadata API identity.
 func (c *Client) WorkbookDatasources(ctx context.Context, luid string) (value.MetadataWorkbookDatasources, error) {
@@ -160,10 +159,14 @@ func (c *Client) workbookPublishedDescriptions(ctx context.Context, out *value.M
 	out.Datasources = append(out.Datasources, published...)
 	complete := true
 	var failures []error
+	view := fieldProvenance
+	if extended {
+		view = fieldLineage
+	}
 	for index := publishedStart; index < len(out.Datasources); index++ {
 		target := &out.Datasources[index]
 		p := target.Identity
-		d, fieldErr := c.datasourceFieldDescriptions(ctx, p.LUID, requests, extended)
+		d, fieldErr := c.datasourceFieldDescriptions(ctx, p.LUID, requests, view)
 		if d.TableauRequestID != "" {
 			out.TableauRequestID = d.TableauRequestID
 		}
@@ -290,7 +293,7 @@ func (c *Client) workbookEmbeddedDescriptions(ctx context.Context, id string, g 
 	if err != nil {
 		return err
 	}
-	fields := workbookFieldDescriptionFields
+	fields := fieldSchemaFields
 	if extended {
 		fields = fieldDescriptionFields
 	}

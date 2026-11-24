@@ -91,12 +91,15 @@ func TestTDSAuditRetainsHistoricalSourceAndBoundedExport(t *testing.T) {
 }
 
 func TestTDSAuditReadsOnlyIndexedSourceFieldsInSameSession(t *testing.T) {
-	for _, mode := range []string{"complete", "partial", "unavailable", "denied"} {
+	for _, mode := range []string{"complete", "partial", "unavailable", "denied", "schema-only"} {
 		t.Run(mode, func(t *testing.T) {
 			h := newTDSWorkflowCLI(t)
 			h.options = withSiteMutationConsent(t, h.options, true)
 			if mode == "denied" {
 				delete(h.options.managedPolicy.(fixtureManagedPolicy).allowed, "datasource.schema")
+			}
+			if mode == "schema-only" {
+				delete(h.options.managedPolicy.(fixtureManagedPolicy).allowed, "lineage.pull")
 			}
 			signIns, graph, vdscalls := 0, 0, 0
 			h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
@@ -122,6 +125,17 @@ func TestTDSAuditReadsOnlyIndexedSourceFieldsInSameSession(t *testing.T) {
 				if r.Header.Get("X-Tableau-Auth") != "secret-token" || in.Variables["parent"] != fixtureTDSOriginal || !strings.Contains(in.Query, "fieldsConnection") {
 					t.Error("invalid source enrichment session, selector or query")
 				}
+				relations := strings.Contains(in.Query, "referencedFields:fieldsConnection")
+				if !strings.Contains(in.Query, "formula") || relations != (mode != "schema-only") || strings.Contains(in.Query, "downstreamSheetsConnection") != relations {
+					t.Errorf("audit requested the wrong calculated-field or lineage projection")
+				}
+				extras := ""
+				if strings.Contains(in.Query, "formula") {
+					extras += `"formula":"[Revenue] - [Cost]","__typename":"CalculatedField","role":"MEASURE",`
+				}
+				if relations {
+					extras += `"referencedFields":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"ColumnField","id":"cost-id","name":"Unit cost"}]},"relatedSheets":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"Sheet","id":"sheet-id","name":"Profit overview"}]},`
+				}
 				// The second page fails. The successfully identified first field remains useful.
 				if mode == "unavailable" || graph > 1 {
 					w.WriteHeader(403)
@@ -138,19 +152,19 @@ func TestTDSAuditReadsOnlyIndexedSourceFieldsInSameSession(t *testing.T) {
  "tagsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},
  "items":{"totalCount":%d,"pageInfo":{"hasNextPage":%t,"endCursor":"more"},"nodes":[{
    "id":"index-only","name":"Index only","fullyQualifiedName":"[Only in the index]",
-   "description":"Session: secret-token","descriptionInherited":[],
+   %s"description":"Session: secret-token","descriptionInherited":[],
    "upstreamColumnsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{
      "id":"upstream-only","luid":"column-id","name":"Physical only","description":"PAT: test-name"
    }]}
  }]}
-}]}}}`, fixtureTDSOriginal, total, more)
+}]}}}`, fixtureTDSOriginal, total, more, extras)
 				return true
 			}
 			h.ds(true, "checkout", "--id", fixtureTDSOriginal, "--workspace", "work", "--audit-file", "audit.md", "--changes-file", "draft.yaml")
 			h.fixture.mu.Lock()
 			actualSignIns, actualGraph, actualVDS := signIns, graph, vdscalls
 			h.fixture.mu.Unlock()
-			expected := map[string]int{"complete": 1, "denied": 0, "unavailable": 1, "partial": 2}[mode]
+			expected := map[string]int{"complete": 1, "schema-only": 1, "denied": 0, "unavailable": 1, "partial": 2}[mode]
 			if actualSignIns != 1 || actualGraph != expected || actualVDS != 0 {
 				t.Fatalf("sign-ins %d, Metadata requests %d, VDS requests %d", actualSignIns, actualGraph, actualVDS)
 			}
@@ -163,14 +177,20 @@ func TestTDSAuditReadsOnlyIndexedSourceFieldsInSameSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			switch mode {
-			case "complete", "partial":
-				for _, name := range []string{"Index only", "upstream-only", "Physical only", "Protected: [REDACTED]", "Session: [REDACTED]", "PAT: *********"} {
+			case "complete", "partial", "schema-only":
+				for _, name := range []string{"[Revenue] - [Cost]", "Index only", "upstream-only", "Physical only", "Protected: [REDACTED]", "Session: [REDACTED]", "PAT: *********"} {
 					if !strings.Contains(string(audit), name) {
 						t.Fatalf("missing redacted Metadata API observation %q", name)
 					}
 				}
-				if !strings.Contains(string(audit), fmt.Sprintf(`"provider_complete": %t`, mode == "complete")) {
+				if !strings.Contains(string(audit), fmt.Sprintf(`"provider_complete": %t`, mode != "partial")) {
 					t.Fatal("incorrect Metadata API coverage")
+				}
+				if strings.Contains(string(audit), "Unit cost") != (mode != "schema-only") || strings.Contains(string(audit), "Profit overview") != (mode != "schema-only") {
+					t.Fatal("exported field dependencies and sheets do not match the authorized lineage scope")
+				}
+				if mode == "schema-only" && !strings.Contains(string(audit), "lineage.pull") {
+					t.Fatal("audit omitted the lineage coverage limitation")
 				}
 			case "denied":
 				if !strings.Contains(string(audit), "denied by managed policy") {

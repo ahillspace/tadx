@@ -121,6 +121,7 @@ const databaseFields = `__typename id luid name description connectionType isEmb
 const tableFields = `__typename id luid name description fullName schema database{__typename id luid name}`
 const columnFields = `__typename id luid name description remoteType isNullable table{__typename id name ... on DatabaseTable {luid}}`
 const fieldProvenanceFields = `id name fullyQualifiedName description descriptionInherited(inheritanceType:FIRST,permissionMode:OBFUSCATE_RESULTS){value assetId attribute distance edges} upstreamColumnsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}`
+const fieldSchemaFields = fieldProvenanceFields + ` __typename isHidden folderName ... on DataField {role dataType} ... on AnalyticsField {aggregation} ... on CalculatedField {formula} ... on DatasourceField {remoteField{__typename id name fullyQualifiedName}}`
 const fieldDescriptionFields = `__typename id name fullyQualifiedName description isHidden folderName descriptionInherited(inheritanceType:FIRST,permissionMode:OBFUSCATE_RESULTS){value assetId attribute distance edges} ... on DataField {role dataType} ... on AnalyticsField {aggregation} ... on CalculatedField {formula referencedFields:fieldsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id name}}} ... on DatasourceField {remoteField{__typename id name fullyQualifiedName}} relatedSheets:downstreamSheetsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{__typename id luid name}} upstreamColumnsConnection(first:100,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}`
 
 func (c *Client) graph(ctx context.Context, query string, variables map[string]any) (graphEnvelope, tableau.Response, error) {
@@ -493,17 +494,38 @@ func (c *Client) datasourceUpstream(ctx context.Context, luid string, budget *in
 	return out, nil
 }
 
+type publishedFieldView uint8
+
+const (
+	fieldProvenance publishedFieldView = iota
+	fieldSchema
+	fieldLineage
+)
+
 func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (DatasourceDescriptions, error) {
-	return c.datasourceFieldDescriptions(ctx, luid, nil, false)
+	return c.datasourceFieldDescriptions(ctx, luid, nil, fieldProvenance)
 }
 
-func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, budget *int, extended bool) (DatasourceDescriptions, error) {
+// DatasourceAuditFields includes scalar schema metadata such as calculations.
+// Additional field references and downstream sheets require lineage read access.
+func (c *Client) DatasourceAuditFields(ctx context.Context, luid string, includeLineage bool) (DatasourceDescriptions, error) {
+	view := fieldSchema
+	if includeLineage {
+		view = fieldLineage
+	}
+	return c.datasourceFieldDescriptions(ctx, luid, nil, view)
+}
+
+func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, budget *int, view publishedFieldView) (DatasourceDescriptions, error) {
 	out := DatasourceDescriptions{LUID: luid, Fields: []value.FieldDescription{}, ObservedAt: time.Now().UTC().Format(time.RFC3339)}
 	if e := exact(luid); e != nil {
 		return out, e
 	}
 	fields := fieldProvenanceFields
-	if extended {
+	switch view {
+	case fieldSchema:
+		fields = fieldSchemaFields
+	case fieldLineage:
 		fields = fieldDescriptionFields
 	}
 	cursor := ""
@@ -550,7 +572,7 @@ func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, b
 			pending = append(pending, n)
 		}
 		start := len(out.Fields)
-		if e := observeFieldPage(pending, &out.Fields, &totalColumns, extended); e != nil {
+		if e := observeFieldPage(pending, &out.Fields, &totalColumns, view == fieldLineage); e != nil {
 			if _, ok := errors.AsType[*ConstraintError](e); ok {
 				return out, e
 			}
@@ -559,7 +581,7 @@ func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, b
 		if pageErr != nil {
 			return out, pageErr
 		}
-		if e := c.enrichFieldPage(ctx, luid, pending, out.Fields[start:], &totalColumns, &requests, false, budget, extended); e != nil {
+		if e := c.enrichFieldPage(ctx, luid, pending, out.Fields[start:], &totalColumns, &requests, false, budget, view == fieldLineage); e != nil {
 			return out, e
 		}
 		if e := coverage.Page(*p.Total, len(seen), !*p.Info.More); e != nil {

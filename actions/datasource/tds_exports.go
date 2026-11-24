@@ -300,15 +300,21 @@ func editAudit(inspect CopyInspection, redact func(string) string) ([]byte, erro
 		// omissions from the audit's own projection of provider observations.
 		type auditField struct {
 			value.FieldDescription
-			UpstreamOmitted int `json:"upstream_columns_omitted,omitempty"`
+			UpstreamOmitted   int `json:"upstream_columns_omitted,omitempty"`
+			ReferencesOmitted int `json:"referenced_fields_omitted,omitempty"`
+			SheetsOmitted     int `json:"sheets_omitted,omitempty"`
 		}
 		limit := min(len(metadata.Fields), maxTDSElements)
 		fields := make([]auditField, 0, limit)
 		for _, field := range metadata.Fields[:limit] {
-			count := min(len(field.UpstreamColumns), maxTDSElements)
-			omitted := len(field.UpstreamColumns) - count
-			field.UpstreamColumns = field.UpstreamColumns[:count]
-			fields = append(fields, auditField{field, omitted})
+			row := auditField{FieldDescription: field}
+			row.UpstreamColumns = field.UpstreamColumns[:min(len(field.UpstreamColumns), maxTDSElements)]
+			row.ReferencedFields = field.ReferencedFields[:min(len(field.ReferencedFields), maxTDSElements)]
+			row.Sheets = field.Sheets[:min(len(field.Sheets), maxTDSElements)]
+			row.UpstreamOmitted = len(field.UpstreamColumns) - len(row.UpstreamColumns)
+			row.ReferencesOmitted = len(field.ReferencedFields) - len(row.ReferencedFields)
+			row.SheetsOmitted = len(field.Sheets) - len(row.Sheets)
+			fields = append(fields, row)
 		}
 		view := struct {
 			Identity         value.MetadataIdentity `json:"datasource"`

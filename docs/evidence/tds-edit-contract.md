@@ -60,7 +60,6 @@ The [CLI workflow fixtures](../../internal/app/tds_workflow_e2e_test.go) exercis
 The [session redaction tests](../../internal/auth/session_redaction_test.go) cover environment credentials, a simulated native credential store, saved session adoption and renewed session tokens.
 An acknowledged checkout receipt retains the exact source LUID, observed name and project, source observation time and acknowledgement time.
 A later audit labels those historical observations separately from its current TDS read and optional Metadata API observations of the published source.
-The [audit fixtures](../../internal/app/tds_audit_e2e_test.go) exercise direct GraphQL reads on the checkout session, retention of indexed fields and upstream columns outside the TDS results, partial pagination, denied enrichment and redaction of credential values without writing a schema cache entry.
 Receiptless copies can still identify their own observed fields and export candidates.
 The checkout preview reports the negotiated REST version.
 Entitlement, permission, source compatibility and quota stay unknown until a provider response supplies evidence for that specific request.
@@ -70,6 +69,11 @@ The [eligibility fixtures](../../internal/app/tds_eligibility_test.go) exercise 
 
 Audit and template exports use the authenticated session's redactor.
 Bindings containing protected values cannot be exported as actionable selectors.
+
+When `datasource.schema` is allowed, the audit requests indexed field properties and calculated-field formulas.
+If `lineage.pull` is also allowed, the audit requests referenced fields and downstream sheets.
+The audit records omitted relationship counts and any policy limitation.
+The CLI fixtures verify the GraphQL request on the checkout session, indexed fields outside the TDS selection, redacted output, partial pages and absence of shared schema cache writes. [Audit CLI fixtures](../../internal/app/tds_audit_e2e_test.go)
 
 ## Evidence needed for activation
 

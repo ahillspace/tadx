@@ -208,7 +208,8 @@ func (c *remoteContentCommands) inspectAndExport(ctx context.Context, conn tdsCo
 			if err := c.runtime.checkManagedCapability("datasource.schema"); err != nil {
 				inspect.MetadataWarning = "Published datasource Metadata API enrichment is denied by managed policy."
 			} else {
-				metadata, err := conn.metadataAssets.DatasourceFieldDescriptions(ctx, target.DatasourceLUID)
+				includeLineage := c.runtime.checkManagedCapability("lineage.pull") == nil
+				metadata, err := conn.metadataAssets.DatasourceAuditFields(ctx, target.DatasourceLUID, includeLineage)
 				switch {
 				case metadata.Identity.MetadataID == "" || metadata.Identity.LUID != target.DatasourceLUID:
 					inspect.MetadataWarning = "Published datasource Metadata API enrichment was unavailable."
@@ -218,6 +219,9 @@ func (c *remoteContentCommands) inspectAndExport(ctx context.Context, conn tdsCo
 				default:
 					inspect.SourceMetadata = &metadata
 					inspect.MetadataWarning = ""
+				}
+				if inspect.SourceMetadata != nil && !includeLineage {
+					inspect.MetadataWarning = strings.TrimSpace(inspect.MetadataWarning + " Managed policy denies lineage.pull. Calculation dependencies and downstream sheets were omitted.")
 				}
 			}
 		}
