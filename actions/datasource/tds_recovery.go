@@ -36,23 +36,24 @@ func DescribeTDSAttempts(environment string, records []value.TDSAttempt, more bo
 
 func (o TDSAttemptsOutput) CompactOutput() any {
 	type entry struct {
-		ID           string   `json:"attempt_id"`
-		Operation    string   `json:"operation"`
-		Status       string   `json:"submit_status"`
-		Outcome      string   `json:"submission_outcome"`
-		Source       string   `json:"source_luid,omitempty"`
-		Copy         string   `json:"work_copy_luid,omitempty"`
-		Published    string   `json:"published_luid,omitempty"`
-		Reported     string   `json:"provider_reported_luid,omitempty"`
-		Unexpected   string   `json:"additional_provider_reported_luid,omitempty"`
-		Verification string   `json:"verification,omitempty"`
-		SupersededBy string   `json:"acknowledged_by_attempt,omitempty"`
-		Help         []string `json:"help,omitempty"`
+		ProvenanceOnly bool     `json:"checkout_provenance_only,omitempty"`
+		ID             string   `json:"attempt_id,omitempty"`
+		Operation      string   `json:"operation"`
+		Status         string   `json:"submit_status"`
+		Outcome        string   `json:"submission_outcome"`
+		Source         string   `json:"source_luid,omitempty"`
+		Copy           string   `json:"work_copy_luid,omitempty"`
+		Published      string   `json:"published_luid,omitempty"`
+		Reported       string   `json:"provider_reported_luid,omitempty"`
+		Unexpected     string   `json:"additional_provider_reported_luid,omitempty"`
+		Verification   string   `json:"verification,omitempty"`
+		SupersededBy   string   `json:"acknowledged_by_attempt,omitempty"`
+		Help           []string `json:"help,omitempty"`
 	}
 	n := min(len(o.Attempts), 10)
 	compact := make([]entry, n)
 	for i, r := range o.Attempts[:n] {
-		compact[i] = entry{r.ID, r.Operation, r.Status, r.Outcome, r.SourceLUID, r.WorkCopyLUID, r.PublishedLUID, r.ReportedLUID, r.UnexpectedIdentity, r.Verification, r.SupersededBy, r.Help}
+		compact[i] = entry{r.ProvenanceOnly, r.ID, r.Operation, r.Status, r.Outcome, r.SourceLUID, r.WorkCopyLUID, r.PublishedLUID, r.ReportedLUID, r.UnexpectedIdentity, r.Verification, r.SupersededBy, r.Help}
 	}
 	return struct {
 		Attempts []entry `json:"attempts"`

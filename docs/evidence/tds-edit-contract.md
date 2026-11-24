@@ -53,11 +53,18 @@ Tags on Catalog upstream columns have their own asset identity and are already s
 | [TDS HTTP adapter](../../internal/tableau/datasource/tds_test.go) and [REST negotiation](rest-version-negotiation-contract.md) | Negotiated route, method, payload, response envelope, named absence, failed records and malformed acknowledgement. |
 | [Edit actions](../../actions/datasource/tds_edit_test.go) | Field and table descriptions, each column property, element removal, preflight, stale tokens and stale later edits, per-entry verification and interrupted responses. |
 | [Workspace exports](../../actions/datasource/tds_files_test.go) | Inert YAML, multiple activated examples, verified target binding, constrained workspace paths, output conflicts, partial export and concurrent no-replace creation. |
-| [Lifecycle](../../actions/datasource/tds_lifecycle_test.go) and [local attempt store](../../internal/operationrun/tds_attempt_test.go) | Checkout and save admission, identity preservation and interrupted attempts against simulated provider and local state. |
+| [Lifecycle](../../actions/datasource/tds_lifecycle_test.go) and [local attempt store](../../internal/operationrun/tds_attempt_test.go) | Checkout and save admission, preview of all affected guard scopes, and recovery after process exit with a simulated provider. |
+| [Journal retention and migration](../../internal/operationrun/tds_retention_test.go) | Concurrent checkout and save receipts against near-capacity legacy history, exact caller-scoped provenance after history expiry, interrupted migration and rollback of a failed acknowledgement link. |
 | [Tag actions](../../actions/datasource/tags_test.go) and [wire requests](../../internal/tableau/datasource/tags_test.go) | Exact membership, preflight and readback, refusal, mismatches and response loss. |
 
 The [CLI workflow fixtures](../../internal/app/tds_workflow_e2e_test.go) exercise command entry points with a disposable HTTP server and a fixture-scoped provider.
 The [session redaction tests](../../internal/auth/session_redaction_test.go) cover environment credentials, a simulated native credential store, saved session adoption and renewed session tokens.
+A checkout or save acknowledgement preview includes each matched attempt ID, operation, submit status and guard resource.
+An overwrite can clear an earlier overwrite's guard on a different work copy of the same original.
+The private journal commits the fresh pending attempt with every acknowledgement link in one transaction.
+A lifecycle fixture starts with 24,780 acknowledged checkout attempts older than 30 days in a 16,776,733-byte legacy journal and recovers the newly allocated copy by source and attempt ID after reopening the store.
+The same fixture resolves an older copy's original source and revision after its attempt history has expired.
+
 An acknowledged checkout receipt retains the exact source LUID, observed name and project, source observation time and acknowledgement time.
 A later audit labels those historical observations separately from its current TDS read and optional Metadata API observations of the published source.
 Receiptless copies can still identify their own observed fields and export candidates.
@@ -72,8 +79,12 @@ Bindings containing protected values cannot be exported as actionable selectors.
 
 When `datasource.schema` is allowed, the audit requests indexed field properties and calculated-field formulas.
 If `lineage.pull` is also allowed, the audit requests referenced fields and downstream sheets.
-The audit records omitted relationship counts and any policy limitation.
-The CLI fixtures verify the GraphQL request on the checkout session, indexed fields outside the TDS selection, redacted output, partial pages and absence of shared schema cache writes. [Audit CLI fixtures](../../internal/app/tds_audit_e2e_test.go)
+The audit reads one page of up to 100 indexed fields, with up to 100 upstream columns, referenced fields and downstream sheets per field.
+It records each requested connection's reported total, next-page flag and count of omitted identities.
+Missing coverage is shown as unknown, and a provider failure remains visible alongside independently observed data.
+Explicit starter fields reuse exact column and description rows from the TDS collections.
+When those observations are missing, the CLI uses named reads, including a named absence response for a missing explicit description.
+The CLI fixtures verify the GraphQL request on the checkout session, indexed fields outside the TDS selection, redacted output, projected limits, partial responses and absence of shared schema cache writes. [Audit CLI fixtures](../../internal/app/tds_audit_e2e_test.go)
 
 ## Evidence needed for activation
 

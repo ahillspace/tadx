@@ -79,33 +79,3 @@ func TestTDSAuditRedactsCredentialsAndContainsMarkup(t *testing.T) {
 		t.Fatalf("unsafe audit %q", data)
 	}
 }
-
-func TestTDSAuditBoundsIndexedSourceFieldsAndLineage(t *testing.T) {
-	fields := make([]value.FieldDescription, maxTDSElements+1)
-	fields[0].UpstreamColumns = make([]value.MetadataColumn, maxTDSElements+2)
-	fields[0].ReferencedFields = make([]value.MetadataIdentity, maxTDSElements+3)
-	fields[0].Sheets = make([]value.MetadataIdentity, maxTDSElements+4)
-	fields[0].ReferencedFields[0].Name = "visible-reference"
-	fields[0].ReferencedFields[maxTDSElements].Name = "omitted-reference"
-	fields[0].Sheets[0].Name = "visible-sheet"
-	fields[0].Sheets[maxTDSElements].Name = "omitted-sheet"
-	fields[0].UpstreamColumns[0].Name = "visible-column"
-	fields[0].UpstreamColumns[maxTDSElements].Name = "omitted-column"
-	fields[maxTDSElements].Name = "omitted-field"
-	metadata := value.MetadataDatasourceDescriptions{Complete: true, Fields: fields}
-	inspect := CopyInspection{EditTarget: editTarget, SourceMetadata: &metadata}
-	audit, err := editAudit(inspect, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"visible-reference", "visible-sheet", "visible-column", `"referenced_fields_omitted": 3`, `"sheets_omitted": 4`, `"fields_omitted": 1`, `"upstream_columns_omitted": 2`, `"provider_complete": true`} {
-		if !strings.Contains(string(audit), want) {
-			t.Errorf("missing %q", want)
-		}
-	}
-	for _, omit := range []string{"omitted-reference", "omitted-sheet", "omitted-column", "omitted-field"} {
-		if strings.Contains(string(audit), omit) {
-			t.Errorf("included %q", omit)
-		}
-	}
-}

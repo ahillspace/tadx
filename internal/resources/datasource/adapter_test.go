@@ -84,6 +84,15 @@ func TestAdapterResolvesDatasourceByAuthoritativeLUID(t *testing.T) {
 	}
 }
 
+func TestTDSResolverPreservesOpaqueDatasourceLUIDCase(t *testing.T) {
+	c := &client{metadata: tableaudatasource.Datasource{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops"}}
+	resolver := resourcedatasource.TDSResolver{Adapter: resourcedatasource.NewAdapter(c)}
+	_, err := resolver.ResolveDatasource(t.Context(), identity.Selector{LUID: "DS-1"})
+	if err == nil || !reflect.DeepEqual(c.calls, []string{"get:DS-1"}) {
+		t.Fatalf("opaque datasource lookup changed identity: calls=%v error=%v", c.calls, err)
+	}
+}
+
 func TestAdapterListsOneRichDatasourcePage(t *testing.T) {
 	size := int64(42)
 	c := &client{pages: map[int]tableaudatasource.Page{1: {

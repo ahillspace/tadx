@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"slices"
 	"strings"
 
 	ds "github.com/ahillspace/tadx/actions/datasource"
@@ -16,6 +15,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/operationrun"
+	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	"github.com/ahillspace/tadx/internal/tableau"
 	"github.com/ahillspace/tadx/internal/value"
 )
@@ -71,6 +71,9 @@ func (c *remoteContentCommands) editFiles(ctx context.Context, env string, f con
 	return ws.Root, doc, nil
 }
 func (c *remoteContentCommands) ValidateChanges(ctx context.Context, in contentcli.EditFiles) (any, error) {
+	if strings.TrimSpace(in.FromChanges) == "" {
+		return nil, errs.New(errs.KindUsage, "--from-changes requires a workspace-relative input file.")
+	}
 	_, doc, err := c.editFiles(ctx, "", in)
 	if err != nil {
 		return nil, err
@@ -171,7 +174,7 @@ func (c *remoteContentCommands) CheckoutDatasource(ctx context.Context, in conte
 	}
 	input.Eligibility = conn.tds.TDSPrerequisites("datasource.checkout")
 	input.Scope, input.Environment = conn.scope, conn.environment.Alias
-	var resolver ds.Resolver = conn.datasources
+	var resolver ds.Resolver = resourcedatasource.TDSResolver{Adapter: conn.datasources}
 	if revisions, ok := c.saveProvider.(ds.SourceRevisionReader); ok {
 		resolver = struct {
 			ds.Resolver
@@ -228,11 +231,8 @@ func (c *remoteContentCommands) inspectAndExport(ctx context.Context, conn tdsCo
 	}
 	// Named reads can reach an explicitly requested example outside the audit's
 	// bounded collection. Preserve the original audit scope.
-	for _, field := range f.TemplateFields {
-		if slices.Contains(fields, field) {
-			continue
-		}
-		named, e := ds.InspectTDSElements(ctx, conn.tds, "workcopy", target, conn.environment.Alias, []string{field}, nil)
+	if missing := inspect.UnobservedTemplateFields(f.TemplateFields); len(missing) > 0 {
+		named, e := ds.InspectTDSElements(ctx, conn.tds, "workcopy", target, conn.environment.Alias, missing, nil)
 		inspect.Observations = append(inspect.Observations, named.Observations...)
 		inspect.Complete = inspect.Complete && named.Complete
 		readErr = errors.Join(readErr, e)
@@ -310,7 +310,7 @@ func (c *remoteContentCommands) InspectElements(ctx context.Context, in contentc
 			return nil, errs.New(errs.KindOperation, "No matching attempt in the authenticated scope.")
 		}
 		if in.Verify {
-			return ds.VerifySaveAttempt(ctx, conn.datasources, conn.tds, records[0])
+			return ds.VerifySaveAttempt(ctx, resourcedatasource.TDSResolver{Adapter: conn.datasources}, conn.tds, records[0])
 		}
 		return ds.DescribeTDSAttempts(conn.environment.Alias, records, more), nil
 	}

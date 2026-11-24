@@ -33,15 +33,15 @@ type CopyInspection struct {
 	Files               *EditExports              `json:"files,omitempty"`
 	OmittedObservations int                       `json:"omitted_observations,omitempty"`
 	EditTarget
-	Environment     string                                `json:"environment"`
-	TargetKind      string                                `json:"target_kind"`
-	ObservedAt      string                                `json:"observed_at"`
-	Complete        bool                                  `json:"complete"`
-	Observations    []EditObservation                     `json:"observations"`
-	SourceMetadata  *value.MetadataDatasourceDescriptions `json:"-"`
-	MetadataWarning string                                `json:"metadata_warning,omitempty"`
-	Details         string                                `json:"details,omitempty"`
-	Help            []string                              `json:"help,omitempty"`
+	Environment     string                         `json:"environment"`
+	TargetKind      string                         `json:"target_kind"`
+	ObservedAt      string                         `json:"observed_at"`
+	Complete        bool                           `json:"complete"`
+	Observations    []EditObservation              `json:"observations"`
+	SourceMetadata  *value.MetadataDatasourceAudit `json:"-"`
+	MetadataWarning string                         `json:"metadata_warning,omitempty"`
+	Details         string                         `json:"details,omitempty"`
+	Help            []string                       `json:"help,omitempty"`
 }
 
 func InspectTDSElements(ctx context.Context, reader TDSReader, kind string, target EditTarget, env string, fields, tables []string) (CopyInspection, error) {

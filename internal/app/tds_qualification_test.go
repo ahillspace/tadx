@@ -155,3 +155,26 @@ func TestTDSRevokedConsentPreservesVerifiedPrefixAtDispatch(t *testing.T) {
 		t.Fatalf("remote writes: %v", h.fixture.writes)
 	}
 }
+
+func TestTDSValidateChangesRequiresNonemptyInputFile(t *testing.T) {
+	h := newTDSWorkflowCLI(t)
+	for _, flags := range [][]string{{"--from-changes="}, {"--from-changes", ""}, {"--fch="}, {"--from-changes=", "--workspace", "work"}} {
+		var stdout bytes.Buffer
+		args := append([]string{"content", "datasource", "validate-changes", "--json"}, flags...)
+		code := Run(t.Context(), args, &stdout, h.options)
+		if code == 0 || !json.Valid(stdout.Bytes()) || !strings.Contains(stdout.String(), "--from-changes") || strings.Contains(stdout.String(), `"status":"valid"`) {
+			t.Errorf("flags %q, exit %d: %s", flags, code, &stdout)
+		}
+	}
+	// A real starter has a binding and an empty active list. Report the step
+	// needed to activate it once it has actually been read.
+	inert := fmt.Sprintf("target:\n  server: %s\n  site_luid: %s\n  work_copy_luid: %s\nchanges: []\n", h.server.URL, fixtureTDSSite, fixtureTDSCopy)
+	if err := os.WriteFile(filepath.Join(h.ws, "starter.yaml"), []byte(inert), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	code := Run(t.Context(), []string{"content", "datasource", "validate-changes", "--json", "--workspace", "work", "--from-changes", "starter.yaml"}, &stdout, h.options)
+	if code == 0 || !json.Valid(stdout.Bytes()) || !strings.Contains(stdout.String(), "Activate one to 50 entries") {
+		t.Fatalf("inert starter exit %d: %s", code, &stdout)
+	}
+}

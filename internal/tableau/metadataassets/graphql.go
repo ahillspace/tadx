@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -141,7 +142,7 @@ func (c *Client) graph(ctx context.Context, query string, variables map[string]a
 	}
 	var out graphEnvelope
 	if e = json.Unmarshal(r.Body, &out); e != nil {
-		return out, r, protocol("catalog.metadata.read", r, e)
+		return graphEnvelope{}, r, protocol("catalog.metadata.read", r, e)
 	}
 	if e = graphIssues(out.Errors, out.Warnings); e != nil {
 		return out, r, protocol("catalog.metadata.read", r, e)
@@ -408,16 +409,7 @@ func (c *Client) datasourcePage(ctx context.Context, luid, connection, fields, c
 		}
 		*budget++
 	}
-	parentFields := "luid"
-	if connection == "fieldsConnection" {
-		parentFields = "id luid name description " + graphTagFields
-	}
-	query := `query DatasourceUpstream($parent:String!,$first:Int!,$after:String){parents:publishedDatasourcesConnection(filter:{luid:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + parentFields + ` items:` + connection + `(first:$first,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + fields + `}}}}}`
-	var after any
-	if cursor != "" {
-		after = cursor
-	}
-	env, r, e := c.graph(ctx, query, map[string]any{"parent": luid, "first": 100, "after": after})
+	env, r, e := c.datasourceGraph(ctx, luid, connection, fields, cursor)
 	if e != nil {
 		return nil, graphNode{}, r, e
 	}
@@ -430,6 +422,20 @@ func (c *Client) datasourcePage(ctx context.Context, luid, connection, fields, c
 	}
 	return p, env.Data.Parents.Nodes[0], r, nil
 }
+
+func (c *Client) datasourceGraph(ctx context.Context, luid, connection, fields, cursor string) (graphEnvelope, tableau.Response, error) {
+	parentFields := "luid"
+	if connection == "fieldsConnection" {
+		parentFields = "id luid name description " + graphTagFields
+	}
+	query := `query DatasourceUpstream($parent:String!,$first:Int!,$after:String){parents:publishedDatasourcesConnection(filter:{luid:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{` + parentFields + ` items:` + connection + `(first:$first,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + fields + `}}}}}`
+	var after any
+	if cursor != "" {
+		after = cursor
+	}
+	return c.graph(ctx, query, map[string]any{"parent": luid, "first": maxPageSize, "after": after})
+}
+
 func (c *Client) DatasourceUpstream(ctx context.Context, luid string) (DatasourceUpstream, error) {
 	return c.datasourceUpstream(ctx, luid, nil)
 }
@@ -494,38 +500,17 @@ func (c *Client) datasourceUpstream(ctx context.Context, luid string, budget *in
 	return out, nil
 }
 
-type publishedFieldView uint8
-
-const (
-	fieldProvenance publishedFieldView = iota
-	fieldSchema
-	fieldLineage
-)
-
 func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (DatasourceDescriptions, error) {
-	return c.datasourceFieldDescriptions(ctx, luid, nil, fieldProvenance)
+	return c.datasourceFieldDescriptions(ctx, luid, nil, false)
 }
 
-// DatasourceAuditFields includes scalar schema metadata such as calculations.
-// Additional field references and downstream sheets require lineage read access.
-func (c *Client) DatasourceAuditFields(ctx context.Context, luid string, includeLineage bool) (DatasourceDescriptions, error) {
-	view := fieldSchema
-	if includeLineage {
-		view = fieldLineage
-	}
-	return c.datasourceFieldDescriptions(ctx, luid, nil, view)
-}
-
-func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, budget *int, view publishedFieldView) (DatasourceDescriptions, error) {
+func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, budget *int, includeLineage bool) (DatasourceDescriptions, error) {
 	out := DatasourceDescriptions{LUID: luid, Fields: []value.FieldDescription{}, ObservedAt: time.Now().UTC().Format(time.RFC3339)}
 	if e := exact(luid); e != nil {
 		return out, e
 	}
 	fields := fieldProvenanceFields
-	switch view {
-	case fieldSchema:
-		fields = fieldSchemaFields
-	case fieldLineage:
+	if includeLineage {
 		fields = fieldDescriptionFields
 	}
 	cursor := ""
@@ -572,7 +557,7 @@ func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, b
 			pending = append(pending, n)
 		}
 		start := len(out.Fields)
-		if e := observeFieldPage(pending, &out.Fields, &totalColumns, view == fieldLineage); e != nil {
+		if e := observeFieldPage(pending, &out.Fields, &totalColumns, includeLineage); e != nil {
 			if _, ok := errors.AsType[*ConstraintError](e); ok {
 				return out, e
 			}
@@ -581,7 +566,7 @@ func (c *Client) datasourceFieldDescriptions(ctx context.Context, luid string, b
 		if pageErr != nil {
 			return out, pageErr
 		}
-		if e := c.enrichFieldPage(ctx, luid, pending, out.Fields[start:], &totalColumns, &requests, false, budget, view == fieldLineage); e != nil {
+		if e := c.enrichFieldPage(ctx, luid, pending, out.Fields[start:], &totalColumns, &requests, false, budget, includeLineage); e != nil {
 			return out, e
 		}
 		if e := coverage.Page(*p.Total, len(seen), !*p.Info.More); e != nil {
@@ -651,26 +636,42 @@ func initialFieldRows(page *graphPage) ([]graphNode, error) {
 	if err := validatePage(page, 100, ""); err != nil {
 		return nil, err
 	}
-	rows := make([]graphNode, 0, len(page.Nodes))
-	seen := make(map[string]graphNode)
-	for _, n := range page.Nodes {
-		if n.ID == "" || n.Name == "" {
-			return nil, errors.New("field relation identity incomplete")
-		}
-		if old, ok := seen[n.ID]; ok {
-			if !reflect.DeepEqual(old, n) {
-				return nil, errors.New("conflicting field relation identity")
-			}
-			continue
-		}
-		seen[n.ID] = n
-		rows = append(rows, n)
+	rows, err := distinctFieldRows(page.Nodes)
+	if err != nil {
+		return nil, err
 	}
 	var coverage graphCoverage
 	if err := coverage.Page(*page.Total, len(rows), !*page.Info.More); err != nil {
 		return nil, err
 	}
 	return rows, nil
+}
+
+// Repeated identical nodes count once. A malformed or conflicting identity
+// cannot invalidate independent inline observations on the same page.
+func distinctFieldRows(nodes []graphNode) ([]graphNode, error) {
+	rows := make([]graphNode, 0, len(nodes))
+	seen := make(map[string]int, len(nodes))
+	var problem error
+	for _, n := range nodes {
+		if n.ID == "" || n.Name == "" {
+			problem = errors.New("field relation identity incomplete")
+			continue
+		}
+		if i, ok := seen[n.ID]; ok {
+			if !reflect.DeepEqual(rows[i], n) {
+				problem = errors.New("conflicting field relation identity")
+				rows[i] = graphNode{}
+			}
+			continue
+		}
+		seen[n.ID] = len(rows)
+		rows = append(rows, n)
+	}
+	if problem != nil {
+		rows = slices.DeleteFunc(rows, func(n graphNode) bool { return n.ID == "" })
+	}
+	return rows, problem
 }
 
 func (c *Client) enrichFieldPage(ctx context.Context, datasource string, nodes []graphNode, fields []value.FieldDescription, totalColumns, requests *int, embedded bool, budget *int, extended bool) error {

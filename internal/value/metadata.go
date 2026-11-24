@@ -40,6 +40,33 @@ type MetadataDatasourceDescriptions struct {
 	TableauRequestID string
 }
 
+// MetadataAuditCoverage describes one bounded connection in the published-source
+// audit. Unknown provider coverage is encoded as null rather than zero.
+type MetadataAuditCoverage struct {
+	TotalCount  *int  `json:"total_count"`
+	HasNextPage *bool `json:"has_next_page"`
+	Omitted     *int  `json:"omitted"`
+}
+
+type MetadataAuditField struct {
+	FieldDescription
+	UpstreamColumnsCoverage  MetadataAuditCoverage  `json:"upstream_columns_coverage"`
+	ReferencedFieldsCoverage *MetadataAuditCoverage `json:"referenced_fields_coverage,omitempty"`
+	SheetsCoverage           *MetadataAuditCoverage `json:"sheets_coverage,omitempty"`
+}
+
+type MetadataDatasourceAudit struct {
+	Identity         MetadataIdentity      `json:"datasource"`
+	Description      *string               `json:"description,omitempty"`
+	Tags             []string              `json:"tags,omitempty"`
+	TagsObserved     bool                  `json:"tags_observed"`
+	Fields           []MetadataAuditField  `json:"fields"`
+	FieldsCoverage   MetadataAuditCoverage `json:"fields_coverage"`
+	Complete         bool                  `json:"provider_complete"`
+	ObservedAt       string                `json:"observed_at"`
+	TableauRequestID string                `json:"tableau_request_id,omitempty"`
+}
+
 type MetadataPage[T any] struct {
 	Items            []T
 	NextCursor       string

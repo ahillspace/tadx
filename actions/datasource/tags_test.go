@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/value"
@@ -60,6 +61,9 @@ func TestPublishedTagMembership(t *testing.T) {
 			out, err := ChangeDatasourceTag(t.Context(), f, TagInput{DatasourceLUID: id, Environment: "dev", Tag: "sales", Add: tc.add}, tc.preview)
 			if (err != nil) != tc.failed || out.Status != tc.want || len(f.writes) != tc.writes {
 				t.Fatalf("out=%+v writes=%v err=%v", out, f.writes, err)
+			}
+			if out.PresentBefore == nil || *out.PresentBefore != slices.Contains(tc.observations[0], "sales") {
+				t.Errorf("lost observed membership: %+v", out)
 			}
 			if tc.name == "lost response despite observed effect" && (out.Observed == nil || !*out.Observed || out.TableauRequestID != "request") {
 				t.Fatal(out)

@@ -1,13 +1,12 @@
 package operationrun
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,8 +21,8 @@ import (
 )
 
 // TDSJournal coordinates work-copy lifecycle attempts across config files and
-// workspaces. A site's small ledger commits a pending submission and all its
-// acknowledgement links with one rename. Resource locks outlive that commit
+// workspaces. A site transaction commits a pending submission and all its
+// acknowledgement links together. Resource locks outlive that commit
 // and stay with the action through the remote response and verification.
 type TDSJournal struct{ Directory string }
 
@@ -68,131 +67,71 @@ func (s TDSJournal) directory(sc value.TDSScope) (string, error) {
 	return d, nil
 }
 
-const ledgerLimit = 16 << 20
-
-// withLedger keeps I/O and admission atomic without holding a site-wide lock
-// during a Tableau request. Corrupt or oversized state fails closed.
-func (s TDSJournal) withLedger(ctx context.Context, sc value.TDSScope, write bool, fn func(*[]value.TDSAttempt) error) error {
-	d, err := s.directory(sc)
-	if err != nil {
-		return err
-	}
-	l, err := lock.AcquireContext(ctx, filepath.Join(d, "ledger.lock"))
-	if err != nil {
-		return err
-	}
-	defer l.Release()
-	path := filepath.Join(d, "attempts.json")
-	var records []value.TDSAttempt
-	if info, err := os.Lstat(path); err == nil {
-		if !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0) {
-			return errors.New("invalid TDS journal file permissions or type")
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	file, err := os.Open(path)
-	if err == nil {
-		data, rerr := io.ReadAll(io.LimitReader(file, ledgerLimit+1))
-		cerr := file.Close()
-		if err := errors.Join(rerr, cerr); err != nil {
-			return err
-		}
-		if len(data) > ledgerLimit {
-			return ErrRecordTooLarge
-		}
-		dec := json.NewDecoder(bytes.NewReader(data))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&records); err != nil {
-			return err
-		}
-		if records == nil || dec.Decode(new(any)) != io.EOF {
-			return errors.New("invalid TDS attempt ledger")
-		}
-		for _, a := range records {
-			if a.Scope.Server != sc.Server || !strings.EqualFold(a.Scope.SiteLUID, sc.SiteLUID) || a.Scope.CallerLUID == "" || a.ID == "" || a.UpdatedAt.IsZero() {
-				return errors.New("TDS attempt identity is incomplete")
-			}
-			switch a.Operation {
-			case "datasource.checkout", "datasource.save.overwrite", "datasource.save.as-new":
-			default:
-				return errors.New("invalid TDS attempt operation")
-			}
-			switch a.Status {
-			case "acknowledged", "pending", "unknown", "not_applied", "not_attempted":
-			default:
-				return errors.New("invalid TDS submit status")
-			}
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-	beforePrune := len(records)
-	records = slices.DeleteFunc(records, func(a value.TDSAttempt) bool {
-		return a.UpdatedAt.Before(cutoff) && !blocking(a) && !(a.Operation == "datasource.checkout" && a.WorkCopyLUID != "" && a.Status == "acknowledged")
-	})
-	if err := fn(&records); err != nil {
-		return err
-	}
-	if !write && beforePrune == len(records) {
-		return nil
-	}
-	data, err := json.Marshal(records)
-	if err != nil {
-		return err
-	}
-	if len(data) > ledgerLimit {
-		return ErrRecordTooLarge
-	}
-	return installRecord(path, data)
-}
-
-func blocking(a value.TDSAttempt) bool {
-	return (a.Status == "pending" || a.Status == "unknown") && a.SupersededBy == ""
-}
-func tdsGuards(a value.TDSAttempt) []string {
+func tdsGuards(a value.TDSAttempt) []value.TDSAttemptGuard {
 	switch a.Operation {
 	case "datasource.checkout":
-		return []string{tdsKey("checkout", strings.ToLower(a.Scope.CallerLUID), strings.ToLower(a.SourceLUID))}
+		return []value.TDSAttemptGuard{{Kind: "checkout", ResourceLUID: a.SourceLUID, CallerLUID: a.Scope.CallerLUID}}
 	case "datasource.save.overwrite":
-		return []string{tdsKey("workcopy", strings.ToLower(a.WorkCopyLUID)), tdsKey("overwrite", strings.ToLower(a.SourceLUID))}
+		return []value.TDSAttemptGuard{{Kind: "workcopy", ResourceLUID: a.WorkCopyLUID}, {Kind: "overwrite", ResourceLUID: a.SourceLUID}}
 	default:
-		return []string{tdsKey("workcopy", strings.ToLower(a.WorkCopyLUID))}
+		return []value.TDSAttemptGuard{{Kind: "workcopy", ResourceLUID: a.WorkCopyLUID}}
 	}
 }
 
-// admission selects the full blocker set. Another caller's blocker remains
-// effective without exposing its attempt ID or scope in the diagnostic.
-func admission(records []value.TDSAttempt, draft value.TDSAttempt, acks []string) ([]string, error) {
-	desired := tdsGuards(draft)
-	guards := slices.Clone(desired)
+func guardKey(g value.TDSAttemptGuard) string {
+	if g.Kind == "checkout" {
+		return tdsKey(g.Kind, strings.ToLower(g.CallerLUID), strings.ToLower(g.ResourceLUID))
+	}
+	return tdsKey(g.Kind, strings.ToLower(g.ResourceLUID))
+}
+
+// admission reads the same active guards used by Begin and by the preview. A
+// match on one guard releases every guard of the acknowledged attempt.
+func admission(ctx context.Context, tx *sql.Tx, draft value.TDSAttempt, acks []string) ([]string, []value.TDSAcknowledgement, error) {
+	if err := validateTDSOperation(draft.Operation); err != nil {
+		return nil, nil, err
+	}
+	var keys []string
+	for _, guard := range tdsGuards(draft) {
+		keys = append(keys, guardKey(guard))
+	}
+	first, second := keys[0], keys[len(keys)-1]
+	rows, err := tx.QueryContext(ctx, `SELECT id, caller, source, work_copy, operation, status
+		FROM receipts WHERE superseded='' AND (guard1 IN (?,?) OR guard2 IN (?,?)) ORDER BY id`, first, second, first, second)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
 	var needed []string
-	for _, a := range records {
-		if !blocking(a) {
-			continue
-		}
-		keys := tdsGuards(a)
-		if !slices.ContainsFunc(keys, func(k string) bool { return slices.Contains(desired, k) }) {
-			continue
+	var matches []value.TDSAcknowledgement
+	for rows.Next() {
+		var a value.TDSAttempt
+		if err := rows.Scan(&a.ID, &a.Scope.CallerLUID, &a.SourceLUID, &a.WorkCopyLUID, &a.Operation, &a.Status); err != nil {
+			return nil, nil, err
 		}
 		if !strings.EqualFold(a.Scope.CallerLUID, draft.Scope.CallerLUID) {
-			return nil, errors.New("another caller has an unresolved submission affecting this resource")
+			return nil, nil, errors.New("another caller has an unresolved submission affecting this resource")
 		}
+		guards := tdsGuards(a)
+		matches = append(matches, value.TDSAcknowledgement{AttemptID: a.ID, Operation: a.Operation, Status: a.Status, Guards: guards})
 		needed = append(needed, a.ID)
-		guards = append(guards, keys...)
+		for _, g := range guards {
+			keys = append(keys, guardKey(g))
+		}
 	}
-	sort.Strings(needed)
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
 	given := slices.Clone(acks)
 	sort.Strings(given)
 	if !slices.Equal(given, needed) {
 		if len(needed) > 0 {
-			return nil, fmt.Errorf("unresolved attempts %s must all be explicitly acknowledged; a new request can duplicate a prior submission", strings.Join(needed, ", "))
+			return nil, nil, fmt.Errorf("unresolved attempts %s must all be explicitly acknowledged; a new request can duplicate a prior submission", strings.Join(needed, ", "))
 		}
-		return nil, errors.New("acknowledgements do not match any unresolved submissions")
+		return nil, nil, errors.New("acknowledgements do not match any unresolved submissions")
 	}
-	sort.Strings(guards)
-	return slices.Compact(guards), nil
+	sort.Strings(keys)
+	return slices.Compact(keys), matches, nil
 }
 
 func guardFiles(d string, keys []string) (func() error, error) {
@@ -229,111 +168,166 @@ func (s TDSJournal) LockCopy(ctx context.Context, sc value.TDSScope, copyID stri
 	return guardFiles(d, []string{tdsKey("workcopy", strings.ToLower(copyID))})
 }
 
-func (s TDSJournal) LockLifecycle(ctx context.Context, draft value.TDSAttempt, acks []string) (func() error, error) {
-	d, err := s.directory(draft.Scope)
-	if err != nil {
-		return nil, err
-	}
+func (s TDSJournal) LockLifecycle(ctx context.Context, draft value.TDSAttempt, acks []string) (func() error, []value.TDSAcknowledgement, error) {
 	var release func() error
-	err = s.withLedger(ctx, draft.Scope, false, func(r *[]value.TDSAttempt) error {
-		keys, err := admission(*r, draft, acks)
+	var matches []value.TDSAcknowledgement
+	err := s.withLedger(ctx, draft.Scope, func(tx *sql.Tx, dir string) error {
+		keys, matched, err := admission(ctx, tx, draft, acks)
 		if err != nil {
 			return err
 		}
-		release, err = guardFiles(d, keys)
+		release, err = guardFiles(dir, keys)
+		if err == nil {
+			matches = matched
+		}
 		return err
 	})
 	if err != nil && release != nil {
-		return nil, errors.Join(err, release())
+		return nil, nil, errors.Join(err, release())
 	}
-	return release, err
+	return release, matches, err
 }
 
 func (s TDSJournal) Begin(ctx context.Context, draft value.TDSAttempt, acks []string) (value.TDSAttempt, error) {
-	err := s.withLedger(ctx, draft.Scope, true, func(records *[]value.TDSAttempt) error {
-		if _, err := admission(*records, draft, acks); err != nil {
+	err := s.withLedger(ctx, draft.Scope, func(tx *sql.Tx, _ string) error {
+		if _, _, err := admission(ctx, tx, draft, acks); err != nil {
 			return err
 		}
 		id, err := newID()
 		if err != nil {
 			return err
 		}
-		draft.ID = id
-		draft.Status = "pending"
-		draft.UpdatedAt = time.Now().UTC()
-		for i := range *records {
-			a := &(*records)[i]
-			if slices.Contains(acks, a.ID) {
-				a.SupersededBy = id
-				a.UpdatedAt = draft.UpdatedAt
+		draft.ID, draft.Status, draft.UpdatedAt = id, "pending", time.Now().UTC()
+		if err := storeTDSAttempt(ctx, tx, draft, admitSubmission); err != nil {
+			return err
+		}
+		for _, prior := range acks {
+			if _, err := tx.ExecContext(ctx, `UPDATE receipts SET superseded=?, updated=? WHERE id=?`, id, draft.UpdatedAt.UnixNano(), prior); err != nil {
+				return err
 			}
 		}
-		*records = append(*records, draft)
 		return nil
 	})
 	return draft, err
 }
 
 func (s TDSJournal) Record(ctx context.Context, a value.TDSAttempt) error {
-	return s.withLedger(ctx, a.Scope, true, func(records *[]value.TDSAttempt) error {
-		for i, old := range *records {
-			if old.ID == a.ID && sameTDSScope(old.Scope, a.Scope) && old.Operation == a.Operation {
-				if old.SupersededBy != "" {
-					return errors.New("attempt has been superseded")
-				}
-				a.UpdatedAt = time.Now().UTC()
-				// A stopped local request did not spend the user's acknowledgement on a
-				// fresh submit. Restore the original blockers in the same ledger commit.
-				if a.Status == "not_attempted" {
-					for n := range *records {
-						prior := &(*records)[n]
-						if prior.SupersededBy == a.ID {
-							prior.SupersededBy = ""
-							prior.UpdatedAt = a.UpdatedAt
-						}
-					}
-				}
-				(*records)[i] = a
-				return nil
-			}
+	return s.withLedger(ctx, a.Scope, func(tx *sql.Tx, _ string) error {
+		var superseded, status string
+		err := tx.QueryRowContext(ctx, `SELECT superseded,status FROM receipts WHERE id=? AND caller=? AND operation=? AND attempt IS NOT NULL`, a.ID, a.Scope.CallerLUID, a.Operation).Scan(&superseded, &status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
 		}
-		return ErrNotFound
+		if err != nil {
+			return err
+		}
+		if superseded != "" {
+			return errors.New("attempt has been superseded")
+		}
+		if status == "acknowledged" && a.Status != "acknowledged" {
+			return errors.New("cannot replace an acknowledged submission with an uncertain outcome")
+		}
+		a.UpdatedAt = time.Now().UTC()
+		if err := storeTDSAttempt(ctx, tx, a, retainOutcome); err != nil {
+			return err
+		}
+		// If nothing was dispatched the original guards become active together.
+		if a.Status == "not_attempted" {
+			_, err = tx.ExecContext(ctx, `UPDATE receipts SET superseded='',updated=? WHERE superseded=?`, a.UpdatedAt.UnixNano(), a.ID)
+		}
+		return err
 	})
 }
 
 func (s TDSJournal) Attempts(ctx context.Context, sc value.TDSScope, id, sourceID, copyID string) ([]value.TDSAttempt, bool, error) {
 	matches := []value.TDSAttempt{}
-	err := s.withLedger(ctx, sc, false, func(records *[]value.TDSAttempt) error {
-		for _, a := range slices.Backward(*records) {
-			if sameTDSScope(a.Scope, sc) && (id == "" || a.ID == id) && (sourceID == "" || strings.EqualFold(a.SourceLUID, sourceID)) && (copyID == "" || strings.EqualFold(a.WorkCopyLUID, copyID)) {
-				matches = append(matches, a)
+	more := false
+	err := s.withLedger(ctx, sc, func(tx *sql.Tx, _ string) error {
+		query := `SELECT COALESCE(attempt,origin),attempt IS NULL,superseded,updated FROM receipts WHERE caller=?`
+		args := []any{sc.CallerLUID}
+		if id != "" {
+			query += " AND id=? AND attempt IS NOT NULL"
+			args = append(args, id)
+		}
+		if sourceID != "" {
+			query += " AND source=?"
+			args = append(args, sourceID)
+		}
+		if copyID != "" {
+			query += " AND work_copy=?"
+			args = append(args, copyID)
+		}
+		rows, err := tx.QueryContext(ctx, query+" ORDER BY updated DESC, rowid DESC LIMIT 101", args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		var size int
+		for rows.Next() {
+			if len(matches) == 100 {
+				more = true
+				break
 			}
+			var data []byte
+			var provenanceOnly bool
+			var superseded string
+			var updated int64
+			if err := rows.Scan(&data, &provenanceOnly, &superseded, &updated); err != nil {
+				return err
+			}
+			if len(matches) > 0 && size+len(data) > ledgerLimit {
+				more = true
+				break
+			}
+			size += len(data)
+			var a value.TDSAttempt
+			if err := json.Unmarshal(data, &a); err != nil {
+				return err
+			}
+			if !sameTDSScope(a.Scope, sc) {
+				return errors.New("invalid TDS receipt scope")
+			}
+			a.SupersededBy, a.UpdatedAt = superseded, time.Unix(0, updated).UTC()
+			if provenanceOnly {
+				a.ProvenanceOnly = true
+				a.ID = ""
+			}
+			matches = append(matches, a)
 		}
-		if id != "" && len(matches) == 0 {
-			return ErrNotFound
-		}
-		return nil
+		return rows.Err()
 	})
-	slices.SortStableFunc(matches, func(a, b value.TDSAttempt) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
-	if len(matches) > 100 {
-		return matches[:100], true, err
+	if err == nil && id != "" && len(matches) == 0 {
+		err = ErrNotFound
 	}
-	return matches, false, err
+	return matches, more, err
 }
 
 func (s TDSJournal) Origin(ctx context.Context, sc value.TDSScope, copyID string) (value.TDSAttempt, error) {
-	var result value.TDSAttempt
-	err := s.withLedger(ctx, sc, false, func(records *[]value.TDSAttempt) error {
-		for _, a := range *records {
-			if !sameTDSScope(a.Scope, sc) || a.Operation != "datasource.checkout" || a.Status != "acknowledged" || !strings.EqualFold(a.WorkCopyLUID, copyID) {
-				continue
-			}
-			if result.ID != "" && !strings.EqualFold(result.SourceLUID, a.SourceLUID) {
-				return errors.New("checkout records disagree about the source")
-			}
-			result = a
+	var origin value.TDSAttempt
+	err := s.withLedger(ctx, sc, func(tx *sql.Tx, _ string) error {
+		var data []byte
+		err := tx.QueryRowContext(ctx, `SELECT origin FROM receipts WHERE caller=? AND work_copy=? AND origin IS NOT NULL ORDER BY updated DESC, rowid DESC LIMIT 1`, sc.CallerLUID, copyID).Scan(&data)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
 		}
-		return nil
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(data, &origin); err != nil {
+			return err
+		}
+		if !sameTDSScope(origin.Scope, sc) || !strings.EqualFold(origin.WorkCopyLUID, copyID) {
+			return errors.New("invalid TDS checkout provenance scope")
+		}
+		var conflict bool
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM receipts WHERE caller=? AND work_copy=? AND source<>? AND origin IS NOT NULL)`, sc.CallerLUID, copyID, origin.SourceLUID).Scan(&conflict)
+		if err == nil && conflict {
+			return errors.New("checkout records disagree about the source")
+		}
+		return err
 	})
-	return result, err
+	if err != nil {
+		return value.TDSAttempt{}, err
+	}
+	return origin, nil
 }

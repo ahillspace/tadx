@@ -159,14 +159,10 @@ func (c *Client) workbookPublishedDescriptions(ctx context.Context, out *value.M
 	out.Datasources = append(out.Datasources, published...)
 	complete := true
 	var failures []error
-	view := fieldProvenance
-	if extended {
-		view = fieldLineage
-	}
 	for index := publishedStart; index < len(out.Datasources); index++ {
 		target := &out.Datasources[index]
 		p := target.Identity
-		d, fieldErr := c.datasourceFieldDescriptions(ctx, p.LUID, requests, view)
+		d, fieldErr := c.datasourceFieldDescriptions(ctx, p.LUID, requests, extended)
 		if d.TableauRequestID != "" {
 			out.TableauRequestID = d.TableauRequestID
 		}

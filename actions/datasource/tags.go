@@ -29,7 +29,7 @@ type TagOutput struct {
 	Environment      string   `json:"environment"`
 	DatasourceLUID   string   `json:"datasource_luid"`
 	Tag              string   `json:"tag"`
-	PresentBefore    bool     `json:"present_before"`
+	PresentBefore    *bool    `json:"present_before,omitempty"`
 	Desired          bool     `json:"desired_present"`
 	Status           string   `json:"status"`
 	Observed         *bool    `json:"observed_present,omitempty"`
@@ -59,29 +59,36 @@ func ChangeDatasourceTag(ctx context.Context, client DatasourceTags, in TagInput
 	if in.Add {
 		op = "datasource.add-tag"
 	}
+	out := TagOutput{Environment: in.Environment, DatasourceLUID: in.DatasourceLUID, Tag: in.Tag, Desired: in.Add}
+	fail := func(status, mutationStatus, summary string, cause error) (TagOutput, error) {
+		hint := commandhint.Environment(in.Environment, "content", "datasource", strings.TrimPrefix(op, "datasource."), "--id", in.DatasourceLUID, "--tag", in.Tag, "--preview")
+		out.Status = status
+		out.Help = []string{hint}
+		return out, errs.MutationFailure(errs.Error{ID: op + ".failed", Kind: errs.KindOperation, Operation: op, Environment: in.Environment, Resource: in.DatasourceLUID, Summary: summary, Cause: cause, TableauRequestID: out.TableauRequestID, CorrectiveAction: hint}, mutationStatus)
+	}
 	read := func() (bool, error) {
 		labels, err := client.ReadDatasourceTags(ctx, in.DatasourceLUID)
 		return slices.Contains(labels, in.Tag), err
 	}
 	before, err := read()
 	if err != nil {
-		return TagOutput{}, err
+		return fail("not_attempted", "not_attempted", "Could not read the selected tag membership.", err)
 	}
-	out := TagOutput{Environment: in.Environment, DatasourceLUID: in.DatasourceLUID, Tag: in.Tag, PresentBefore: before, Desired: in.Add, Status: "preview"}
+	out.PresentBefore = &before
 	if before == in.Add {
 		out.Status = "already_current"
 		return out, nil
 	}
 	if preview {
+		out.Status = "preview"
 		return out, nil
 	}
 	fresh, err := read()
 	if err != nil {
-		return out, err
+		return fail("not_attempted", "not_attempted", "Could not recheck the selected tag membership before submission.", err)
 	}
 	if fresh != before {
-		out.Status = "stale"
-		return out, &errs.Error{Kind: errs.KindOperation, Operation: op, Summary: "The selected tag membership changed during preflight.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: new(false)}
+		return fail("stale", "not_attempted", "The selected tag membership changed during preflight.", nil)
 	}
 	var receipt value.TDSReceipt
 	if in.Add {
@@ -90,12 +97,6 @@ func ChangeDatasourceTag(ctx context.Context, client DatasourceTags, in TagInput
 		receipt, err = client.DeleteDatasourceTag(ctx, in.DatasourceLUID, in.Tag)
 	}
 	out.TableauRequestID = receipt.TableauRequestID
-	hint := commandhint.Environment(in.Environment, "content", "datasource", strings.TrimPrefix(op, "datasource."), "--id", in.DatasourceLUID, "--tag", in.Tag, "--preview")
-	fail := func(status, mutationStatus, summary string, cause error) (TagOutput, error) {
-		out.Status = status
-		out.Help = []string{hint}
-		return out, errs.MutationFailure(errs.Error{Kind: errs.KindOperation, Operation: op, Environment: in.Environment, Resource: in.DatasourceLUID, Summary: summary, Cause: cause, TableauRequestID: receipt.TableauRequestID, CorrectiveAction: hint}, mutationStatus)
-	}
 	if receipt.Status == "rejected" {
 		return fail("rejected", "not_applied", "Tableau rejected the tag change.", err)
 	}

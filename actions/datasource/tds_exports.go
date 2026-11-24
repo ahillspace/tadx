@@ -18,7 +18,6 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/pathspec"
-	"github.com/ahillspace/tadx/internal/value"
 	"gopkg.in/yaml.v3"
 )
 
@@ -151,7 +150,7 @@ func createEditFile(workspace, rel string, body []byte) error {
 	return dir.Link(tmp, name)
 }
 
-func editableDescriptionFields(inspect CopyInspection) map[string]bool {
+func (inspect CopyInspection) editableDescriptionFields(allowCollectionAbsence bool) map[string]bool {
 	// An exact column name can supply an example if its description was
 	// observable. An explicit named observation supersedes the earlier collection.
 	eligible := map[string]bool{}
@@ -170,7 +169,7 @@ func editableDescriptionFields(inspect CopyInspection) map[string]bool {
 			}
 		case "FieldDescription":
 			if q.Name == "" {
-				completeDescriptions = q.Complete
+				completeDescriptions = q.Complete && allowCollectionAbsence
 			} else {
 				descriptions[q.Name] = q.Complete && q.Absent
 			}
@@ -188,8 +187,32 @@ func editableDescriptionFields(inspect CopyInspection) map[string]bool {
 	return eligible
 }
 
+// UnobservedTemplateFields selects explicit examples that still need an exact
+// named read. A present row can come from a collection. For an absent explicit
+// description, retain the named provider response that establishes absence.
+func (inspect CopyInspection) UnobservedTemplateFields(requested []string) []string {
+	if len(requested) == 0 {
+		return nil
+	}
+	observed := inspect.editableDescriptionFields(false)
+	for _, q := range inspect.Observations {
+		// An explicitly inspected field already had its named reads, including
+		// any refusal or missing column. Preserve that outcome without retrying.
+		if q.ElementType == "Column" && q.Name != "" {
+			observed[q.Name] = true
+		}
+	}
+	var missing []string
+	for _, name := range requested {
+		if !observed[name] {
+			missing = append(missing, name)
+		}
+	}
+	return missing
+}
+
 func editTemplate(inspect CopyInspection, fields []string, redact func(string) string) ([]byte, error) {
-	eligible := editableDescriptionFields(inspect)
+	eligible := inspect.editableDescriptionFields(len(fields) == 0)
 	if len(fields) == 0 {
 		for name := range eligible {
 			fields = append(fields, name)
@@ -286,7 +309,7 @@ func editAudit(inspect CopyInspection, redact func(string) string) ([]byte, erro
 	}
 	doc.WriteString("## Edit support\n\nUse exact TDS column names for field descriptions and column edits. Table descriptions use exact TDS table names. The template contains inactive field-description examples. Review capability availability before applying changes.\n\n")
 	names := []string{}
-	for name := range editableDescriptionFields(inspect) {
+	for name := range inspect.editableDescriptionFields(true) {
 		names = append(names, name)
 	}
 	slices.Sort(names)
@@ -296,43 +319,9 @@ func editAudit(inspect CopyInspection, redact func(string) string) ([]byte, erro
 	doc.WriteString("These selectors have readable TDS columns and description observations in this audit. Missing, omitted or failed observations leave other fields unqualified. Tableau checks permissions, entitlement and source eligibility independently for each request.\n\n")
 	reason := inspect.MetadataWarning
 	if metadata := inspect.SourceMetadata; metadata != nil {
-		// Keep indexed fields independent of the TDS selectors and report any
-		// omissions from the audit's own projection of provider observations.
-		type auditField struct {
-			value.FieldDescription
-			UpstreamOmitted   int `json:"upstream_columns_omitted,omitempty"`
-			ReferencesOmitted int `json:"referenced_fields_omitted,omitempty"`
-			SheetsOmitted     int `json:"sheets_omitted,omitempty"`
-		}
-		limit := min(len(metadata.Fields), maxTDSElements)
-		fields := make([]auditField, 0, limit)
-		for _, field := range metadata.Fields[:limit] {
-			row := auditField{FieldDescription: field}
-			row.UpstreamColumns = field.UpstreamColumns[:min(len(field.UpstreamColumns), maxTDSElements)]
-			row.ReferencedFields = field.ReferencedFields[:min(len(field.ReferencedFields), maxTDSElements)]
-			row.Sheets = field.Sheets[:min(len(field.Sheets), maxTDSElements)]
-			row.UpstreamOmitted = len(field.UpstreamColumns) - len(row.UpstreamColumns)
-			row.ReferencesOmitted = len(field.ReferencedFields) - len(row.ReferencedFields)
-			row.SheetsOmitted = len(field.Sheets) - len(row.Sheets)
-			fields = append(fields, row)
-		}
-		view := struct {
-			Identity         value.MetadataIdentity `json:"datasource"`
-			Description      *string                `json:"description,omitempty"`
-			Tags             []string               `json:"tags,omitempty"`
-			TagsObserved     bool                   `json:"tags_observed"`
-			Fields           []auditField           `json:"fields"`
-			FieldsOmitted    int                    `json:"fields_omitted"`
-			ProviderComplete bool                   `json:"provider_complete"`
-			ObservedAt       string                 `json:"observed_at"`
-			TableauRequestID string                 `json:"tableau_request_id,omitempty"`
-		}{
-			Identity: metadata.Identity, Description: metadata.Description, Tags: metadata.Tags,
-			TagsObserved: metadata.TagsObserved, Fields: fields, FieldsOmitted: len(metadata.Fields) - limit,
-			ProviderComplete: metadata.Complete, ObservedAt: metadata.ObservedAt, TableauRequestID: metadata.TableauRequestID,
-		}
-		if err := section("Published datasource Metadata API context", view); err != nil {
-			reason = "The indexed metadata could not be included in the bounded audit."
+		doc.WriteString("The audit requests the first page of up to 100 indexed fields and up to 100 items per field relationship. A true has_next_page identifies a continuation outside the audit. Each omitted count is the provider's total minus the identities shown. Null indicates unavailable coverage. A false provider_complete indicates a provider or validation failure within the requested projection.\n\n")
+		if err := section("Published datasource Metadata API context", metadata); err != nil {
+			reason = strings.TrimSpace(reason + " The indexed metadata could not be included in the bounded audit.")
 		}
 	} else if reason == "" {
 		reason = "Published datasource metadata was unavailable for this inspection."

@@ -111,13 +111,17 @@ func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveW
 		return out, lifecycleFailure(op, in.WorkCopyLUID, "Overwrite requires a verified source and its checkout revision.", errs.PhaseValidation, errs.OutcomeNotAttempted, nil)
 	}
 	draft := value.TDSAttempt{Operation: op, Scope: in.Scope, SourceLUID: origin.SourceLUID, SourceRevision: origin.SourceRevision, WorkCopyLUID: in.WorkCopyLUID, CompareDescription: in.Description != nil, CompleteCollection: !in.FromChanges && len(in.Fields) == 0}
-	release, err := j.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
+	release, matches, err := j.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
 	if err != nil {
 		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
 	}
 	defer release()
+	if err := checkAcknowledgementScopes(matches, in.Redact); err != nil {
+		return out, lifecycleFailure(op, in.WorkCopyLUID, "Acknowledgement scopes contain protected credential material.", errs.PhaseValidation, errs.OutcomeNotAttempted, err)
+	}
+	out.AcknowledgementScopes = matches
 	if len(in.AcknowledgeUnknown) > 0 {
-		out.Warnings = append(out.Warnings, "A previously submitted save may still take effect.")
+		out.Warnings = append(out.Warnings, "A previously submitted save may still take effect. A fresh request can publish again.")
 	}
 	out.Coverage = "exact fields"
 	if in.FromChanges {

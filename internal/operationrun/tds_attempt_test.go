@@ -17,7 +17,7 @@ func TestTDSAdmissionSurvivesAnInterruptedOwner(t *testing.T) {
 	store := operationrun.TDSJournal{Directory: filepath.Join(t.TempDir(), "tds-attempts")}
 	scope := value.TDSScope{Server: "https://example.test", SiteLUID: "site", CallerLUID: "caller"}
 	draft := value.TDSAttempt{Scope: scope, Operation: "datasource.checkout", SourceLUID: "source"}
-	unlock, err := store.LockLifecycle(ctx, draft, nil)
+	unlock, _, err := store.LockLifecycle(ctx, draft, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,16 +25,16 @@ func TestTDSAdmissionSurvivesAnInterruptedOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.LockLifecycle(ctx, draft, []string{pending.ID}); err == nil {
+	if _, _, err := store.LockLifecycle(ctx, draft, []string{pending.ID}); err == nil {
 		t.Fatal("admitted while first process still owns checkout")
 	}
 	if err := unlock(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.LockLifecycle(ctx, draft, nil); err == nil {
+	if _, _, err := store.LockLifecycle(ctx, draft, nil); err == nil {
 		t.Fatal("lost pending blocker after interruption")
 	}
-	release, err := store.LockLifecycle(ctx, draft, []string{pending.ID})
+	release, _, err := store.LockLifecycle(ctx, draft, []string{pending.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,19 +65,19 @@ func TestTDSAcknowledgesAllOverlappingUnknownsOrNone(t *testing.T) {
 	}
 	draft := value.TDSAttempt{Scope: sc, Operation: b.Operation, WorkCopyLUID: a.WorkCopyLUID, SourceLUID: b.SourceLUID}
 	for _, ack := range [][]string{nil, {a.ID}, {b.ID}, {b.ID, b.ID}, {a.ID, b.ID, "extra"}} {
-		if _, err := s.LockLifecycle(ctx, draft, ack); err == nil {
+		if _, _, err := s.LockLifecycle(ctx, draft, ack); err == nil {
 			t.Fatalf("accepted acknowledgements %v", ack)
 		}
 	}
 	other := draft
 	other.Scope.CallerLUID = "other"
-	if _, err := s.LockLifecycle(ctx, other, []string{a.ID, b.ID}); err == nil || strings.Contains(err.Error(), a.ID) || strings.Contains(err.Error(), b.ID) {
+	if _, matches, err := s.LockLifecycle(ctx, other, []string{a.ID, b.ID}); err == nil || len(matches) != 0 || strings.Contains(err.Error(), a.ID) || strings.Contains(err.Error(), b.ID) {
 		t.Fatalf("foreign blocker exposed or ignored: %v", err)
 	}
 	if _, _, err := s.Attempts(ctx, other.Scope, a.ID, "", ""); err == nil {
 		t.Fatal("foreign lookup succeeded")
 	}
-	release, err := s.LockLifecycle(ctx, draft, []string{a.ID, b.ID})
+	release, _, err := s.LockLifecycle(ctx, draft, []string{a.ID, b.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,10 +88,10 @@ func TestTDSAcknowledgesAllOverlappingUnknownsOrNone(t *testing.T) {
 	if err := release(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LockLifecycle(ctx, draft, nil); err == nil {
+	if _, _, err := s.LockLifecycle(ctx, draft, nil); err == nil {
 		t.Fatal("lost previous blockers before new pending commit")
 	}
-	release, err = s.LockLifecycle(ctx, draft, []string{a.ID, b.ID})
+	release, _, err = s.LockLifecycle(ctx, draft, []string{a.ID, b.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestTDSJournalIgnoresProfileAndUUIDCase(t *testing.T) {
 	req.SourceLUID = "eeff"
 	req.Scope.CallerLUID = "aaaa"
 	req.Scope.SiteLUID = "dead-beef"
-	if _, err := other.LockLifecycle(ctx, req, nil); err == nil || !strings.Contains(err.Error(), a.ID) {
+	if _, _, err := other.LockLifecycle(ctx, req, nil); err == nil || !strings.Contains(err.Error(), a.ID) {
 		t.Fatal("UUID case variation escaped the original blocker", err)
 	}
 	rows, _, err := other.Attempts(ctx, req.Scope, "", "eeff", "")
@@ -165,6 +165,18 @@ func TestTDSJournalRejectsLinkedStateAndWorldReadableReceipts(t *testing.T) {
 	}
 	if _, _, err := store.Attempts(ctx, sc, a.ID, "", ""); err == nil {
 		t.Fatal("accepted exposed ledger")
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "outside"), path+"-journal"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Attempts(ctx, sc, a.ID, "", ""); err == nil {
+		t.Fatal("accepted linked database journal")
+	}
+	if err := os.Remove(path + "-journal"); err != nil {
+		t.Fatal(err)
 	}
 	alt := filepath.Join(t.TempDir(), "state")
 	if err := os.Symlink(store.Directory, alt); err != nil {

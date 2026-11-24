@@ -29,9 +29,25 @@ type TDSCheckoutContext struct {
 	AcknowledgedAt    string         `json:"acknowledged_at,omitempty"`
 }
 
+// TDSAttemptGuard identifies a coordination scope released by acknowledging a
+// previous submit. Checkout guards include the caller; save guards span callers.
+type TDSAttemptGuard struct {
+	Kind         string `json:"kind"`
+	ResourceLUID string `json:"resource_luid"`
+	CallerLUID   string `json:"caller_luid,omitempty"`
+}
+
+type TDSAcknowledgement struct {
+	AttemptID string            `json:"attempt_id"`
+	Operation string            `json:"operation"`
+	Status    string            `json:"submit_status"`
+	Guards    []TDSAttemptGuard `json:"guards"`
+}
+
 type TDSAttempt struct {
+	ProvenanceOnly     bool                `json:"checkout_provenance_only,omitempty"`
 	Checkout           *TDSCheckoutContext `json:"checkout_receipt,omitempty"`
-	ID                 string              `json:"attempt_id"`
+	ID                 string              `json:"attempt_id,omitempty"`
 	Scope              TDSScope            `json:"scope"`
 	Operation          string              `json:"operation"`
 	Status             string              `json:"submit_status"`

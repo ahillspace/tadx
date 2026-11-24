@@ -136,35 +136,34 @@ func TestTDSAuditReadsOnlyIndexedSourceFieldsInSameSession(t *testing.T) {
 				if relations {
 					extras += `"referencedFields":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"ColumnField","id":"cost-id","name":"Unit cost"}]},"relatedSheets":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"__typename":"Sheet","id":"sheet-id","name":"Profit overview"}]},`
 				}
-				// The second page fails. The successfully identified first field remains useful.
-				if mode == "unavailable" || graph > 1 {
+				// The indexed field remains useful when the provider flags partial results.
+				if mode == "unavailable" {
 					w.WriteHeader(403)
 					io.WriteString(w, `{"error":{"code":"403004","summary":"Unavailable"}}`)
 					return true
 				}
-				more := mode == "partial"
-				total := 1
-				if more {
-					total++
+				issues := ""
+				if mode == "partial" {
+					issues = `"errors":[{"message":"Provider returned partial observations"}],`
 				}
-				fmt.Fprintf(w, `{"data":{"parents":{"nodes":[{
+				fmt.Fprintf(w, `{%s"data":{"parents":{"nodes":[{
  "id":"source-graph","luid":%q,"name":"Indexed source","description":"Protected: test-secret",
  "tagsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},
- "items":{"totalCount":%d,"pageInfo":{"hasNextPage":%t,"endCursor":"more"},"nodes":[{
+ "items":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{
    "id":"index-only","name":"Index only","fullyQualifiedName":"[Only in the index]",
    %s"description":"Session: secret-token","descriptionInherited":[],
    "upstreamColumnsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{
      "id":"upstream-only","luid":"column-id","name":"Physical only","description":"PAT: test-name"
    }]}
  }]}
-}]}}}`, fixtureTDSOriginal, total, more, extras)
+}]}}}`, issues, fixtureTDSOriginal, extras)
 				return true
 			}
 			h.ds(true, "checkout", "--id", fixtureTDSOriginal, "--workspace", "work", "--audit-file", "audit.md", "--changes-file", "draft.yaml")
 			h.fixture.mu.Lock()
 			actualSignIns, actualGraph, actualVDS := signIns, graph, vdscalls
 			h.fixture.mu.Unlock()
-			expected := map[string]int{"complete": 1, "schema-only": 1, "denied": 0, "unavailable": 1, "partial": 2}[mode]
+			expected := map[string]int{"complete": 1, "schema-only": 1, "denied": 0, "unavailable": 1, "partial": 1}[mode]
 			if actualSignIns != 1 || actualGraph != expected || actualVDS != 0 {
 				t.Fatalf("sign-ins %d, Metadata requests %d, VDS requests %d", actualSignIns, actualGraph, actualVDS)
 			}
@@ -238,5 +237,278 @@ func verifyAuditSchemaCacheEmpty(t *testing.T, root string) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTDSExplicitTemplateFieldsReuseCollectionEvidence(t *testing.T) {
+	h := newTDSWorkflowCLI(t)
+	h.options = withSiteMutationConsent(t, h.options, true)
+	var selectors []string
+	for i := range 50 {
+		name := fmt.Sprintf("Field %02d", i)
+		h.fixture.source[tdsEntryKey("Column", name)] = value.TDSElement{Name: name, Column: &value.TDSColumn{Caption: new(name)}}
+		h.fixture.source[tdsEntryKey("FieldDescription", name)] = value.TDSElement{Name: name, Description: new("Observed")}
+		selectors = append(selectors, "--template-field", name)
+	}
+	var reads []string
+	h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method == "GET" && strings.Contains(r.URL.Path, "/workcopy/") {
+			q := r.URL.Query()
+			reads = append(reads, q.Get("elementType")+"/"+q.Get("name"))
+		}
+		return false
+	}
+	h.ds(true, append([]string{"checkout", "--id", fixtureTDSOriginal, "--workspace", "work", "--audit-file", "audit.md", "--changes-file", "template.yaml"}, selectors...)...)
+	h.fixture.mu.Lock()
+	got := strings.Join(reads, ",")
+	h.fixture.mu.Unlock()
+	if got != "Column/,FieldDescription/,TableDescription/" {
+		t.Errorf("expected just the three collection reads, got %s", got)
+	}
+	template, err := os.ReadFile(filepath.Join(h.ws, "template.yaml"))
+	if err != nil || strings.Count(string(template), "#     - op: set-field-description") != 50 {
+		t.Fatalf("generated examples: %v, %s", err, template)
+	}
+}
+
+func TestTDSTemplateNamedFallbackForOmittedField(t *testing.T) {
+	h := newTDSWorkflowCLI(t)
+	h.options = withSiteMutationConsent(t, h.options, true)
+	const selected = "Outside projection"
+	h.fixture.source[tdsEntryKey("Column", selected)] = value.TDSElement{Name: selected, Column: &value.TDSColumn{Caption: new(selected)}}
+	var reads []string
+	h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method != "GET" || !strings.Contains(r.URL.Path, "/workcopy/") {
+			return false
+		}
+		q := r.URL.Query()
+		reads = append(reads, q.Get("elementType")+"/"+q.Get("name"))
+		if q.Get("elementType") != "Column" || q.Get("name") != "" {
+			return false
+		}
+		var rows []value.TDSElement
+		for i := range 100 {
+			name := fmt.Sprintf("Other %03d", i)
+			rows = append(rows, value.TDSElement{Name: name, Column: &value.TDSColumn{Caption: new(name)}})
+		}
+		rows = append(rows, h.fixture.source[tdsEntryKey("Column", selected)])
+		if err := json.NewEncoder(w).Encode(map[string]any{"tdsElementList": rows}); err != nil {
+			t.Error(err)
+		}
+		return true
+	}
+	h.ds(true, "checkout", "--id", fixtureTDSOriginal)
+	h.ds(true, "work-copy", "--work-copy", fixtureTDSCopy, "--workspace", "work", "--audit-file", "audit.md", "--changes-file", "template.yaml", "--template-field", selected)
+	h.fixture.mu.Lock()
+	got := strings.Join(reads, ",")
+	h.fixture.mu.Unlock()
+	if got != "Column/,FieldDescription/,TableDescription/,Column/"+selected+",FieldDescription/"+selected {
+		t.Errorf("unexpected named reads: %s", got)
+	}
+	for _, path := range []string{"audit.md", "template.yaml"} {
+		file, err := os.ReadFile(filepath.Join(h.ws, path))
+		if err != nil || !strings.Contains(string(file), selected) {
+			t.Fatalf("missing verified selector in %s: %v", path, err)
+		}
+	}
+}
+
+func TestTDSAuditLimitsMetadataAcquisitionAndReportsCoverage(t *testing.T) {
+	for _, mode := range []string{"lineage", "schema-only", "partial"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newTDSWorkflowCLI(t)
+			h.options = withSiteMutationConsent(t, h.options, true)
+			if mode == "schema-only" {
+				delete(h.options.managedPolicy.(fixtureManagedPolicy).allowed, "lineage.pull")
+			}
+			requests := 0
+			h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+				if !strings.Contains(r.URL.Path, "metadata") {
+					return false
+				}
+				requests++
+				var body struct {
+					Query     string
+					Variables map[string]any
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+					w.WriteHeader(http.StatusBadRequest)
+					return true
+				}
+				if requests != 1 || body.Variables["first"] != float64(100) || body.Variables["parent"] != fixtureTDSOriginal || body.Variables["after"] != nil {
+					w.WriteHeader(http.StatusForbidden)
+					return true
+				}
+				if strings.Contains(body.Query, "referencedFields:fieldsConnection") != (mode != "schema-only") || !strings.Contains(body.Query, "formula") {
+					t.Errorf("unexpected audit query: %s", body.Query)
+				}
+				page := func(rows []any, total int) map[string]any {
+					return map[string]any{"nodes": rows, "totalCount": total, "pageInfo": map[string]any{"hasNextPage": total > len(rows), "endCursor": "outside-audit"}}
+				}
+				var fields []any
+				for i := range 100 {
+					name := fmt.Sprintf("field-%02d", i)
+					field := map[string]any{"id": name, "name": name, "fullyQualifiedName": "[" + name + "]", "__typename": "CalculatedField", "formula": "1+2", "descriptionInherited": []any{}}
+					for _, rel := range []struct {
+						key   string
+						extra int
+					}{{"upstreamColumnsConnection", 3}, {"referencedFields", 4}, {"relatedSheets", 5}} {
+						if mode == "schema-only" && rel.key != "upstreamColumnsConnection" {
+							continue
+						}
+						rows := []any{}
+						total := 0
+						if i == 0 {
+							for j := range 100 {
+								label := fmt.Sprintf("%s-%02d", rel.key, j)
+								rows = append(rows, map[string]any{"id": label, "name": label})
+							}
+							total = len(rows) + rel.extra
+						}
+						field[rel.key] = page(rows, total)
+					}
+					if mode == "partial" && i == 1 {
+						field["relatedSheets"] = nil
+						field["descriptionInherited"] = []any{map[string]any{"value": "missing provenance"}}
+						field["referencedFields"] = map[string]any{"nodes": []any{map[string]any{"id": "visible", "name": "Identified reference"}}, "pageInfo": map[string]any{"hasNextPage": false}}
+					}
+					fields = append(fields, field)
+				}
+				node := map[string]any{"id": "source", "luid": fixtureTDSOriginal, "name": "Source", "items": page(fields, 102)}
+				if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"parents": map[string]any{"nodes": []any{node}}}}); err != nil {
+					t.Error(err)
+				}
+				return true
+			}
+			h.ds(true, "checkout", "--id", fixtureTDSOriginal, "--workspace", "work", "--audit-file", "audit.md")
+			h.fixture.mu.Lock()
+			gotRequests := requests
+			h.fixture.mu.Unlock()
+			if gotRequests != 1 {
+				t.Errorf("Metadata requests = %d, want one bounded query", gotRequests)
+			}
+			audit, err := os.ReadFile(filepath.Join(h.ws, "audit.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, section, found := strings.Cut(string(audit), "## Published datasource Metadata API context\n\n")
+			if !found {
+				t.Fatal("missing indexed datasource observation")
+			}
+			section, _, _ = strings.Cut(section, "\n\n")
+			type coverage struct {
+				Total   *int  `json:"total_count"`
+				More    *bool `json:"has_next_page"`
+				Omitted *int  `json:"omitted"`
+			}
+			var result struct {
+				ProviderComplete bool     `json:"provider_complete"`
+				FieldsCoverage   coverage `json:"fields_coverage"`
+				Fields           []struct {
+					value.FieldDescription
+					Columns       coverage  `json:"upstream_columns_coverage"`
+					References    *coverage `json:"referenced_fields_coverage"`
+					SheetCoverage *coverage `json:"sheets_coverage"`
+				} `json:"fields"`
+			}
+			if err = json.Unmarshal([]byte(section), &result); err != nil {
+				t.Fatal(err)
+			}
+			check := func(name string, got *coverage, total, omitted int) {
+				t.Helper()
+				if got == nil || got.Total == nil || *got.Total != total || got.More == nil || !*got.More || got.Omitted == nil || *got.Omitted != omitted {
+					t.Errorf("missing %s coverage (%d total, %d omitted): %+v", name, total, omitted, got)
+				}
+			}
+			check("fields", &result.FieldsCoverage, 102, 2)
+			if len(result.Fields) != 100 {
+				t.Fatalf("retained fields %d", len(result.Fields))
+			}
+			field := result.Fields[0]
+			if field.Formula != "1+2" || len(field.UpstreamColumns) != 100 {
+				t.Fatalf("missing indexed formula or columns")
+			}
+			check("columns", &field.Columns, 103, 3)
+			if mode == "schema-only" {
+				if field.References != nil || field.SheetCoverage != nil || len(field.ReferencedFields) != 0 || len(field.Sheets) != 0 {
+					t.Fatal("lineage scope included in schema-only response")
+				}
+			} else {
+				check("references", field.References, 104, 4)
+				check("sheets", field.SheetCoverage, 105, 5)
+				if len(field.ReferencedFields) != 100 || field.ReferencedFields[99].Name != "referencedFields-99" || len(field.Sheets) != 100 || field.Sheets[99].Name != "relatedSheets-99" {
+					t.Fatal("the projected references or sheets were lost")
+				}
+			}
+			if result.ProviderComplete != (mode != "partial") {
+				t.Fatalf("provider success conflated with projected truncation")
+			}
+			if mode == "partial" {
+				missing := result.Fields[1].SheetCoverage
+				if missing == nil || missing.Total != nil || missing.More != nil || missing.Omitted != nil || result.Fields[1].Formula != "1+2" || result.Fields[1].InheritedObserved || result.Fields[99].Name != "field-99" {
+					t.Fatalf("partial response claimed unknown counts or dropped valid observations")
+				}
+				refs := result.Fields[1].References
+				if refs == nil || refs.Total != nil || refs.Omitted != nil || refs.More == nil || *refs.More || len(result.Fields[1].ReferencedFields) != 1 || result.Fields[1].ReferencedFields[0].Name != "Identified reference" {
+					t.Fatal("missing total dropped independent identities or known page information")
+				}
+				if !strings.Contains(section, `"omitted": null`) || !strings.Contains(string(audit), "partial published datasource observations") || !strings.Contains(string(audit), "continuation outside the audit") {
+					t.Fatal("provider failure not reported")
+				}
+			}
+			verifyAuditSchemaCacheEmpty(t, filepath.Dir(h.ws))
+		})
+	}
+}
+
+func TestTDSTemplateFallbackPreservesReadFailures(t *testing.T) {
+	for _, mode := range []string{"ambiguous-column", "failed-description", "unconfirmed-absence"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newTDSWorkflowCLI(t)
+			h.options = withSiteMutationConsent(t, h.options, true)
+			var named []string
+			h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+				if r.Method != http.MethodGet || !strings.Contains(r.URL.Path, "/workcopy/") {
+					return false
+				}
+				q := r.URL.Query()
+				kind := q.Get("elementType")
+				if q.Get("name") != "" {
+					named = append(named, kind+"/"+q.Get("name"))
+					if mode == "unconfirmed-absence" && kind == "FieldDescription" {
+						w.WriteHeader(http.StatusNotFound)
+						io.WriteString(w, `{"error":{"code":"404000","summary":"Work copy unavailable"}}`)
+						return true
+					}
+					return false
+				}
+				switch {
+				case mode == "ambiguous-column" && kind == "Column":
+					io.WriteString(w, `{"tdsElementList":[{"name":"Sales","column":{"caption":"First"}},{"name":"Sales","column":{"caption":"Second"}}]}`)
+				case mode == "failed-description" && kind == "FieldDescription":
+					io.WriteString(w, `{"tdsElementList":[{"name":"Sales","error":{"code":7,"message":"Denied"}}]}`)
+				default:
+					return false
+				}
+				return true
+			}
+			got := h.ds(false, "checkout", "--id", fixtureTDSOriginal, "--workspace", "work", "--changes-file", "draft.yaml", "--audit-file", "audit.md", "--template-field", "Sales")
+			requireTDSJSON(t, got, fixtureTDSCopy, `"audit_file":"audit.md"`)
+			h.fixture.mu.Lock()
+			reads := strings.Join(named, ",")
+			h.fixture.mu.Unlock()
+			if reads != "Column/Sales,FieldDescription/Sales" {
+				t.Errorf("unexpected fallback reads %s", reads)
+			}
+			draft, err := os.ReadFile(filepath.Join(h.ws, "draft.yaml"))
+			if mode == "unconfirmed-absence" {
+				if !os.IsNotExist(err) || !strings.Contains(got, "--changes-file") {
+					t.Fatal("template accepted an unconfirmed absence or omitted its recovery command")
+				}
+			} else if err != nil || !strings.Contains(string(draft), "field: Sales") {
+				t.Fatalf("confirmed named observations lost after collection failure: %v", err)
+			}
+		})
 	}
 }

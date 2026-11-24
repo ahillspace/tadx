@@ -255,27 +255,51 @@ func (a *Adapter) findExact(ctx context.Context, values []string, filter func([]
 	return result, nil
 }
 
+// TDSResolver resolves datasource metadata for work-copy operations, which use
+// project LUIDs and need canonical paths only when selecting a datasource by name.
+type TDSResolver struct {
+	Adapter *Adapter
+}
+
+func (r TDSResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (Datasource, error) {
+	if luid := string(selector.LUID); luid != "" {
+		if value.ValidTDSLUID(luid) {
+			luid = strings.ToLower(luid)
+		}
+		return r.Adapter.getDatasource(ctx, luid)
+	}
+	return r.Adapter.ResolveDatasource(ctx, selector)
+}
+
+func (a *Adapter) getDatasource(ctx context.Context, luid string) (Datasource, error) {
+	item, err := a.client.Get(ctx, luid)
+	if err != nil {
+		return Datasource{}, err
+	}
+	if strings.TrimSpace(item.LUID) != luid {
+		return Datasource{}, fmt.Errorf("datasource response returned LUID %q, expected %q", item.LUID, luid)
+	}
+	if err := validateDatasourceIdentity(item); err != nil {
+		return Datasource{}, err
+	}
+	return normalizeDatasource(item, ""), nil
+}
+
 // ResolveDatasource resolves one authoritative LUID or exact name and canonical project path.
 func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selector) (Datasource, error) {
 	if a == nil || a.client == nil || a.projects == nil {
 		return Datasource{}, errors.New("datasource resource adapter is not configured for identity resolution")
 	}
 	if selector.LUID != "" {
-		item, err := a.client.Get(ctx, string(selector.LUID))
+		item, err := a.getDatasource(ctx, string(selector.LUID))
 		if err != nil {
 			return Datasource{}, err
 		}
-		if strings.TrimSpace(item.LUID) != string(selector.LUID) {
-			return Datasource{}, fmt.Errorf("datasource response returned LUID %q, expected %q", item.LUID, selector.LUID)
-		}
-		if err := validateDatasourceIdentity(item); err != nil {
-			return Datasource{}, err
-		}
-		path, err := a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
+		item.ProjectPath, err = a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
 		if err != nil {
 			return Datasource{}, err
 		}
-		return normalizeDatasource(item, path), nil
+		return item, nil
 	}
 	if strings.TrimSpace(selector.Name) == "" || (strings.TrimSpace(selector.ProjectPath) == "" && strings.TrimSpace(string(selector.ProjectLUID)) == "") {
 		return Datasource{}, errors.New("datasource selection requires a LUID or exact name and project path or project LUID")

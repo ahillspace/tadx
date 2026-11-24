@@ -188,7 +188,7 @@ func TestWorkbookParentConnectionPagesIndependently(t *testing.T) {
 func TestWorkbookPublishedReadsShareAggregateRequestBudget(t *testing.T) {
 	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) { t.Fatalf("request exceeded workbook budget: %s", r.URL) })
 	budget := 400
-	_, err := c.datasourceFieldDescriptions(t.Context(), "ds-1", &budget, fieldLineage)
+	_, err := c.datasourceFieldDescriptions(t.Context(), "ds-1", &budget, true)
 	if err == nil || budget != 400 {
 		t.Fatalf("budget %d, error %v", budget, err)
 	}

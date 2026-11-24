@@ -31,6 +31,11 @@ The composition root supplies explicit conversions between these contracts; ever
 Datasource work-copy editing uses a separate REST resource from native TDS/TDSX uploads.
 The datasource actions own typed element intent, exact preflight and readback, and ordered partial results.
 The private attempt journal coordinates checkout and publication across configuration paths for one OS account.
+Each site uses SQLite transactions to commit the complete set of acknowledgement links with the newly admitted attempt, and to retain a provider receipt with its checkout provenance.
+The first access upgrades a legacy JSON ledger by replacing it atomically at its historical `attempts.json` path.
+The journal keeps unresolved attempts until acknowledged and prunes terminal or superseded attempt history 30 days after the last change.
+The scoped checkout provenance remains available for exact origin and revision lookup, and a history listing marks copies whose attempt details have expired.
+A live Tableau read establishes current work-copy availability.
 Published datasource tags use the ordinary datasource item resource.
 The [TDS Edit evidence record](../evidence/tds-edit-contract.md) identifies the production gates for these operations.
 

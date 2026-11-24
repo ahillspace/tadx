@@ -496,7 +496,7 @@ func TestFieldContinuationFailurePreservesCurrentPageEvidence(t *testing.T) {
 					got, readErr := c.WorkbookDatasources(t.Context(), "wb-1")
 					fields, complete, err = got.Datasources[0].Fields, got.Complete, readErr
 				} else {
-					got, readErr := c.DatasourceAuditFields(t.Context(), "ds-1", true)
+					got, readErr := c.datasourceFieldDescriptions(t.Context(), "ds-1", nil, true)
 					fields, complete, err = got.Fields, got.Complete, readErr
 				}
 				if err == nil || complete || continuations != 1 || len(fields) != 2 {

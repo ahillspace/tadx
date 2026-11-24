@@ -27,7 +27,7 @@ type SourceRevisionReader interface {
 }
 
 type TDSJournal interface {
-	LockLifecycle(context.Context, value.TDSAttempt, []string) (func() error, error)
+	LockLifecycle(context.Context, value.TDSAttempt, []string) (func() error, []value.TDSAcknowledgement, error)
 	Begin(context.Context, value.TDSAttempt, []string) (value.TDSAttempt, error)
 	Record(context.Context, value.TDSAttempt) error
 	Origin(context.Context, value.TDSScope, string) (value.TDSAttempt, error)
@@ -43,41 +43,42 @@ type CheckoutInput struct {
 }
 
 type LifecycleOutput struct {
-	Eligibility          value.TDSEligibility      `json:"eligibility,omitzero"`
-	Checkout             *value.TDSCheckoutContext `json:"checkout_receipt,omitempty"`
-	Files                *EditExports              `json:"files,omitempty"`
-	ObservationsComplete *bool                     `json:"observations_complete,omitempty"`
-	MetadataWarning      string                    `json:"metadata_warning,omitempty"`
-	ExportHelp           []string                  `json:"export_help,omitempty"`
-	Operation            string                    `json:"operation"`
-	Mode                 string                    `json:"mode"`
-	Status               string                    `json:"status"`
-	Environment          string                    `json:"environment,omitempty"`
-	SiteLUID             string                    `json:"site_luid,omitempty"`
-	SourceLUID           string                    `json:"source_luid,omitempty"`
-	WorkCopyLUID         string                    `json:"work_copy_luid,omitempty"`
-	PublishedLUID        string                    `json:"published_luid,omitempty"`
-	UnexpectedIdentity   string                    `json:"additional_provider_reported_luid,omitempty"`
-	ReportedLUID         string                    `json:"provider_reported_luid,omitempty"`
-	Name                 string                    `json:"name,omitempty"`
-	ProjectLUID          string                    `json:"project_luid,omitempty"`
-	Description          *string                   `json:"requested_description,omitempty"`
-	PublishedName        string                    `json:"published_name,omitempty"`
-	PublishedProjectLUID string                    `json:"published_project_luid,omitempty"`
-	DestinationMatch     *bool                     `json:"destination_matches,omitempty"`
-	WorkCopyAfterSave    string                    `json:"work_copy_after_save,omitempty"`
-	AttemptID            string                    `json:"attempt_id,omitempty"`
-	Acknowledges         []string                  `json:"acknowledges_unknown_attempts,omitempty"`
-	RequestID            string                    `json:"tableau_request_id,omitempty"`
-	PreviewToken         string                    `json:"preview_token,omitempty"`
-	RevisionKnown        bool                      `json:"source_revision_known"`
-	Verification         string                    `json:"verification,omitempty"`
-	Coverage             string                    `json:"verification_scope,omitempty"`
-	Observations         []SaveObservation         `json:"observations,omitempty"`
-	OmittedObservations  int                       `json:"omitted_observations,omitempty"`
-	Warnings             []string                  `json:"warnings,omitempty"`
-	Details              string                    `json:"details,omitempty"`
-	Help                 []string                  `json:"help,omitempty"`
+	Eligibility           value.TDSEligibility       `json:"eligibility,omitzero"`
+	Checkout              *value.TDSCheckoutContext  `json:"checkout_receipt,omitempty"`
+	Files                 *EditExports               `json:"files,omitempty"`
+	ObservationsComplete  *bool                      `json:"observations_complete,omitempty"`
+	MetadataWarning       string                     `json:"metadata_warning,omitempty"`
+	ExportHelp            []string                   `json:"export_help,omitempty"`
+	Operation             string                     `json:"operation"`
+	Mode                  string                     `json:"mode"`
+	Status                string                     `json:"status"`
+	Environment           string                     `json:"environment,omitempty"`
+	SiteLUID              string                     `json:"site_luid,omitempty"`
+	SourceLUID            string                     `json:"source_luid,omitempty"`
+	WorkCopyLUID          string                     `json:"work_copy_luid,omitempty"`
+	PublishedLUID         string                     `json:"published_luid,omitempty"`
+	UnexpectedIdentity    string                     `json:"additional_provider_reported_luid,omitempty"`
+	ReportedLUID          string                     `json:"provider_reported_luid,omitempty"`
+	Name                  string                     `json:"name,omitempty"`
+	ProjectLUID           string                     `json:"project_luid,omitempty"`
+	Description           *string                    `json:"requested_description,omitempty"`
+	PublishedName         string                     `json:"published_name,omitempty"`
+	PublishedProjectLUID  string                     `json:"published_project_luid,omitempty"`
+	DestinationMatch      *bool                      `json:"destination_matches,omitempty"`
+	WorkCopyAfterSave     string                     `json:"work_copy_after_save,omitempty"`
+	AttemptID             string                     `json:"attempt_id,omitempty"`
+	Acknowledges          []string                   `json:"acknowledges_unknown_attempts,omitempty"`
+	AcknowledgementScopes []value.TDSAcknowledgement `json:"acknowledgement_scopes,omitempty"`
+	RequestID             string                     `json:"tableau_request_id,omitempty"`
+	PreviewToken          string                     `json:"preview_token,omitempty"`
+	RevisionKnown         bool                       `json:"source_revision_known"`
+	Verification          string                     `json:"verification,omitempty"`
+	Coverage              string                     `json:"verification_scope,omitempty"`
+	Observations          []SaveObservation          `json:"observations,omitempty"`
+	OmittedObservations   int                        `json:"omitted_observations,omitempty"`
+	Warnings              []string                   `json:"warnings,omitempty"`
+	Details               string                     `json:"details,omitempty"`
+	Help                  []string                   `json:"help,omitempty"`
 }
 
 func lifecycleFailure(op, resource, summary string, phase errs.Phase, outcome errs.Outcome, cause error) error {
@@ -132,13 +133,17 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 		return out, lifecycleFailure(op, source.LUID, "Checkout requires Tableau REST API 3.30 or later.", errs.PhaseSetup, errs.OutcomeNotAttempted, nil)
 	}
 	draft := value.TDSAttempt{Checkout: &value.TDSCheckoutContext{Eligibility: in.Eligibility, SourceName: source.Name, SourceProjectLUID: source.ProjectLUID, SourceObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}, Scope: in.Scope, SourceLUID: source.LUID, Operation: op, IntentDigest: lifecycleDigest([]string{op, source.LUID})}
-	release, err := journal.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
+	release, matches, err := journal.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
 	if err != nil {
 		return out, lifecycleFailure(op, source.LUID, "Checkout admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
 	}
 	defer release()
+	if err := checkAcknowledgementScopes(matches, redact); err != nil {
+		return out, lifecycleFailure(op, source.LUID, "Acknowledgement scopes contain protected credential material.", errs.PhaseValidation, errs.OutcomeNotAttempted, err)
+	}
+	out.AcknowledgementScopes = matches
 	if len(in.AcknowledgeUnknown) > 0 {
-		out.Warnings = append(out.Warnings, "A previously submitted checkout may still allocate another copy.")
+		out.Warnings = append(out.Warnings, "The earlier checkout may still take effect. A fresh request can allocate another work copy.")
 	}
 	revisions, hasRevisions := resolver.(SourceRevisionReader)
 	if hasRevisions {
@@ -288,6 +293,20 @@ func checkLifecycleMetadata(redact func(string) string, values ...string) error 
 		for _, v := range values {
 			if v != "" && redact(v) != v {
 				return errors.New("provider metadata contains protected credential material")
+			}
+		}
+	}
+	return nil
+}
+
+func checkAcknowledgementScopes(matches []value.TDSAcknowledgement, redact func(string) string) error {
+	for _, m := range matches {
+		if err := checkLifecycleMetadata(redact, m.AttemptID); err != nil {
+			return err
+		}
+		for _, guard := range m.Guards {
+			if err := checkLifecycleMetadata(redact, guard.ResourceLUID, guard.CallerLUID); err != nil {
+				return err
 			}
 		}
 	}

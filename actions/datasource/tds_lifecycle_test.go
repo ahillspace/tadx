@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	ds "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -573,5 +574,163 @@ func TestCheckoutProtectsSourceMetadataBeforeReceipt(t *testing.T) {
 	attempts, _, err := j.Attempts(t.Context(), tdsScope, "", "", "")
 	if err != nil || len(attempts) != 0 {
 		t.Fatal("credential-bearing attempt reached journal")
+	}
+}
+
+func TestAcknowledgementPreviewIdentifiesEveryReleasedGuard(t *testing.T) {
+	ctx := t.Context()
+	j := operationrun.TDSJournal{Directory: filepath.Join(t.TempDir(), "attempts")}
+	f := &lifecycleFixture{revision: "v1", destName: "Report"}
+	pending := func(op, source, copy string) string {
+		t.Helper()
+		a, err := j.Begin(ctx, value.TDSAttempt{Operation: op, Scope: tdsScope, SourceLUID: source, WorkCopyLUID: copy}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a.ID
+	}
+	check := func(out ds.LifecycleOutput, ids []string, resources map[string][]string) {
+		t.Helper()
+		for _, view := range []any{out.FullOutput(), out.CompactOutput()} {
+			data, err := json.Marshal(view)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				IDs     []string `json:"acknowledges_unknown_attempts"`
+				Matches []struct {
+					ID        string `json:"attempt_id"`
+					Operation string `json:"operation"`
+					Status    string `json:"submit_status"`
+					Guards    []struct {
+						Kind     string `json:"kind"`
+						Resource string `json:"resource_luid"`
+						Caller   string `json:"caller_luid"`
+					} `json:"guards"`
+				} `json:"acknowledgement_scopes"`
+			}
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got.IDs, ids) || len(got.Matches) != len(ids) {
+				t.Fatalf("acknowledgement scopes missing: %s", data)
+			}
+			for _, m := range got.Matches {
+				var observed []string
+				for _, g := range m.Guards {
+					observed = append(observed, g.Kind+" "+g.Resource+" "+g.Caller)
+				}
+				if m.Status != "pending" || m.Operation == "" || !slices.Equal(observed, resources[m.ID]) {
+					t.Fatalf("wrong summary for %s: %+v", m.ID, m)
+				}
+			}
+		}
+	}
+	in := checkoutIn()
+	id := pending("datasource.checkout", sourceUUID, "")
+	in.AcknowledgeUnknown = []string{id}
+	pv, err := ds.Checkout(ctx, f, f, j, in, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(pv, in.AcknowledgeUnknown, map[string][]string{id: {"checkout " + sourceUUID + " " + tdsScope.CallerLUID}})
+	if _, err = ds.Checkout(ctx, f, f, j, in, false); err != nil {
+		t.Fatal(err)
+	}
+	first := pending("datasource.save.as-new", "", copyUUID)
+	second := pending("datasource.save.overwrite", sourceUUID, alternateCopyUUID)
+	save := saveIn("overwrite")
+	save.AcknowledgeUnknown = []string{second, first}
+	pv, err = ds.SaveWorkCopy(ctx, f, j, save, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(pv, save.AcknowledgeUnknown, map[string][]string{first: {"workcopy " + copyUUID + " "}, second: {"workcopy " + alternateCopyUUID + " ", "overwrite " + sourceUUID + " "}})
+	save.Redact = strings.NewReplacer(alternateCopyUUID, "[redacted]").Replace
+	private, err := ds.SaveWorkCopy(ctx, f, j, save, true)
+	if err == nil || len(private.AcknowledgementScopes) != 0 || strings.Contains(err.Error(), alternateCopyUUID) {
+		t.Fatalf("protected resource escaped acknowledgement preview: %+v %v", private, err)
+	}
+	if f.publishCalls != 0 {
+		t.Fatal("preview published a save")
+	}
+}
+
+func TestCheckoutRecoversWithAFullLegacyJournalOfExpiredAttempts(t *testing.T) {
+	const count = 24780
+	const legacyBytes = 16776733
+	j := operationrun.TDSJournal{Directory: filepath.Join(t.TempDir(), "journal")}
+	// Create the shared site directory through the same account-level API.
+	release, err := j.LockCopy(t.Context(), tdsScope, copyUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	dirs, err := os.ReadDir(j.Directory)
+	if err != nil || len(dirs) != 1 {
+		t.Fatalf("site directory: %v %v", dirs, err)
+	}
+	path := filepath.Join(j.Directory, dirs[0].Name(), "attempts.json")
+	old := time.Now().UTC().Add(-31 * 24 * time.Hour)
+	records := make([]value.TDSAttempt, count)
+	for i := range records {
+		records[i] = value.TDSAttempt{
+			ID: fmt.Sprintf("run-%032x", i), Scope: tdsScope, Operation: "datasource.checkout", Status: "acknowledged", SourceLUID: sourceUUID,
+			WorkCopyLUID: fmt.Sprintf("55555555-5555-5555-5555-%012d", i), SourceRevision: "old-v1",
+			Checkout: &value.TDSCheckoutContext{SourceName: "Source", AcknowledgedAt: old.Format(time.RFC3339Nano)}, UpdatedAt: old,
+		}
+	}
+	data, err := json.Marshal(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	padding := legacyBytes - len(data)
+	if padding < 0 {
+		t.Fatalf("legacy fixture too large: %d", len(data))
+	}
+	namePadding := strings.Repeat("x", padding/count)
+	for i := range records {
+		records[i].Checkout.SourceName += namePadding
+	}
+	records[0].Checkout.SourceName += strings.Repeat("x", padding%count)
+	data, err = json.Marshal(records)
+	if err != nil || len(data) != legacyBytes {
+		t.Fatalf("legacy bytes %d: %v", len(data), err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	f := &lifecycleFixture{revision: "v1", destName: "Source"}
+	checked, err := ds.Checkout(t.Context(), f, f, j, checkoutIn(), false)
+	if err != nil || checked.WorkCopyLUID != copyUUID || f.copyCreateCalls != 1 {
+		t.Fatalf("checkout: %+v %v", checked, err)
+	}
+	reopened := operationrun.TDSJournal{Directory: j.Directory}
+	// The newest source-scoped lookup recovers the identity without the
+	// command's attempt notification, output, or a second Tableau request.
+	recent, more, err := reopened.Attempts(t.Context(), tdsScope, "", sourceUUID, "")
+	if err != nil || !more || len(recent) != 100 || recent[0].WorkCopyLUID != copyUUID || recent[0].ID != checked.AttemptID {
+		t.Fatalf("recent records=%d more=%t err=%v", len(recent), more, err)
+	}
+	exact, _, err := reopened.Attempts(t.Context(), tdsScope, checked.AttemptID, "", "")
+	if err != nil || len(exact) != 1 || exact[0].Status != "acknowledged" || exact[0].WorkCopyLUID != copyUUID {
+		t.Fatalf("exact receipt %+v %v", exact, err)
+	}
+	first := records[0]
+	if _, _, err := reopened.Attempts(t.Context(), tdsScope, first.ID, "", ""); !errors.Is(err, operationrun.ErrNotFound) {
+		t.Fatalf("expired attempt still readable: %v", err)
+	}
+	origin, err := reopened.Origin(t.Context(), tdsScope, first.WorkCopyLUID)
+	if err != nil || origin.SourceLUID != sourceUUID || origin.SourceRevision != "old-v1" {
+		t.Fatalf("lost older checkout provenance: %+v %v", origin, err)
+	}
+	for _, view := range []any{ds.DescribeTDSAttempts("dev", recent, more).CompactOutput(), ds.DescribeTDSAttempts("dev", recent, more).FullOutput()} {
+		rendered, err := json.Marshal(view)
+		if err != nil || !bytes.Contains(rendered, []byte(`"checkout_provenance_only":true`)) || !bytes.Contains(rendered, []byte("--work-copy")) {
+			t.Fatalf("missing active copy recovery: %v", err)
+		}
 	}
 }
