@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -208,11 +209,14 @@ type session struct {
 	credentials PATCredentials
 	mu          sync.RWMutex
 	token       string
-	siteLUID    string
-	userLUID    string
-	renewal     renewal
-	renewMu     sync.Mutex
-	flight      *renewalFlight
+	// Successful observations may refer to an earlier token from this session.
+	// Keep retired tokens only in memory for redaction during this command.
+	retiredTokens []string
+	siteLUID      string
+	userLUID      string
+	renewal       renewal
+	renewMu       sync.Mutex
+	flight        *renewalFlight
 }
 
 // renewalFlight shares one attempt among callers already waiting for it.
@@ -302,6 +306,9 @@ func (s *session) replace(response SignInResponse) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.token != response.Token && !slices.Contains(s.retiredTokens, s.token) {
+		s.retiredTokens = append(s.retiredTokens, s.token)
+	}
 	s.token = response.Token
 	return nil
 }

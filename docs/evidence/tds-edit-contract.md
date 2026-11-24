@@ -77,7 +77,9 @@ The CLI retains known refusal reasons and leaves ambiguous 403 and 429 responses
 The [eligibility fixtures](../../internal/app/tds_eligibility_test.go) exercise these distinctions with simulated responses.
 
 Direct edits and saves check the retained source fields they use against the current session's credentials before building the target or save plan. [Rotated credential fixtures](../../internal/app/datasource_edit_credentials_test.go)
-A checkout preview's exact datasource lookup preserves safe refusal diagnostics and redacts credentials from command output and the saved command receipt. [Native lookup diagnostic fixture](../../internal/app/tds_read_diagnostics_test.go)
+Checkout preserves redacted refusal diagnostics in command output and the saved command receipt.
+After a successful lookup under a renewed session, checkout rejects a source name containing the retired token before creating an attempt or allocating a work copy.
+The audit masks tokens used earlier in the same command when exporting indexed field descriptions. [Checkout and audit redaction fixtures](../../internal/app/tds_read_diagnostics_test.go)
 
 Audit and template exports use the authenticated session's redactor.
 Bindings containing protected values cannot be exported as actionable selectors.

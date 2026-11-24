@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -43,18 +44,28 @@ func TestSessionMetadataRedactionAcrossCredentialSourcesAndRenewal(t *testing.T)
 			if fmt.Sprintf("%#v", session) != session.String() {
 				t.Fatal("debug formatting exposed session internals")
 			}
-			redact := SessionRedactor(session)
-			if err = session.Renew(t.Context(), rejectedWith(session)); err != nil {
-				t.Fatal(err)
+			redactors := []func(string) string{SessionRedactor(session)}
+			for range 2 {
+				if err = session.Renew(t.Context(), rejectedWith(session)); err != nil {
+					t.Fatal(err)
+				}
+				redactors = append(redactors, SessionRedactor(session))
 			}
-			for _, secret := range []string{"agent-name", "highly-secret", "token-1", "token-2"} {
-				if redact("prefix "+secret+" suffix") != Redact("prefix "+secret+" suffix", secret) {
-					t.Fatal("secret not redacted")
+			for i, redact := range redactors {
+				for _, secret := range []string{"agent-name", "highly-secret", "token-1", "token-2", "token-3"} {
+					if redact("prefix "+secret+" suffix") != Redact("prefix "+secret+" suffix", secret) {
+						t.Errorf("redactor created after %d renewals exposed a credential", i)
+					}
+				}
+				if v := "  Expected value\n"; redact(v) != v {
+					t.Fatal("altered an ordinary metadata value")
 				}
 			}
-			if v := "  Expected value\n"; redact(v) != v {
-				t.Fatal("altered an ordinary metadata value")
-			}
 		}()
+		for _, record := range fixture.backend.entries {
+			if strings.Contains(record, "token-1") || strings.Contains(record, "token-2") {
+				t.Fatal("retired session token persisted in the credential store")
+			}
+		}
 	}
 }

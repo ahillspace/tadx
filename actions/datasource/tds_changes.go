@@ -154,7 +154,7 @@ func editUsage(message string) error {
 func LoadEditDocument(workspace, path string) (EditDocument, error) {
 	data, err := readEditFile(workspace, path)
 	if err != nil {
-		return EditDocument{}, editUsage(errs.WithWorkspaceRelativePaths(err, workspace).Error())
+		return EditDocument{}, editFileUsage("--from-changes", err)
 	}
 	return parseEditDocument(data)
 }
@@ -162,15 +162,15 @@ func LoadEditDocument(workspace, path string) (EditDocument, error) {
 func parseEditDocument(data []byte) (EditDocument, error) {
 	var doc EditDocument
 	if len(data) > maxEditBytes || !utf8.Valid(data) {
-		return doc, editUsage("The changes file must be UTF-8 and at most 256 KiB.")
+		return doc, editUsage("The --from-changes file must be UTF-8 and at most 256 KiB.")
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	var tree yaml.Node
 	if err := decoder.Decode(&tree); err != nil {
-		return doc, editUsage("Expected one YAML mapping in the changes file.")
+		return doc, editUsage("The --from-changes file must contain one YAML mapping.")
 	}
 	if err := decoder.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
-		return doc, editUsage("The changes file must contain one YAML document.")
+		return doc, editUsage("The --from-changes file must contain one YAML document.")
 	}
 	if err := checkEditNode(&tree, 0); err != nil {
 		return doc, err
@@ -178,19 +178,22 @@ func parseEditDocument(data []byte) (EditDocument, error) {
 	decoder = yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&doc); err != nil {
-		return EditDocument{}, editUsage("The changes file contains an unknown or duplicate key, or an invalid structure.")
+		return EditDocument{}, editUsage("The --from-changes file contains an unknown or duplicate key, or an invalid structure.")
 	}
 	server, err := config.CanonicalMutationServer(doc.Target.Server)
 	if err != nil || !value.ValidTDSLUID(doc.Target.SiteLUID) || !value.ValidTDSLUID(doc.Target.WorkCopyLUID) || (doc.Target.DatasourceLUID != "" && !value.ValidTDSLUID(doc.Target.DatasourceLUID)) {
-		return doc, editUsage("The target requires an HTTPS server and valid site and work-copy LUIDs, plus a valid source LUID if specified.")
+		return EditDocument{}, editUsage("The --from-changes target requires an HTTPS server and valid site and work-copy LUIDs, plus a valid source LUID if specified.")
 	}
 	doc.Target.Server = server
-	return doc, ValidateEditChanges(doc.Changes)
+	if err := ValidateEditChanges(doc.Changes); err != nil {
+		return EditDocument{}, err
+	}
+	return doc, nil
 }
 
 func checkEditNode(n *yaml.Node, depth int) error {
 	if depth > 6 || n.Anchor != "" || n.Kind == yaml.AliasNode || n.Style&yaml.TaggedStyle != 0 || n.Kind == yaml.ScalarNode && (n.ShortTag() != "!!str" || n.Value == "") {
-		return editUsage("Changes must use plain mappings, lists and nonempty text. Explicit tags, aliases, anchors and typed scalar values are unsupported.")
+		return editUsage("The --from-changes document must use plain mappings, lists and nonempty text. Explicit tags, aliases, anchors and typed scalar values are unsupported.")
 	}
 	for _, child := range n.Content {
 		if err := checkEditNode(child, depth+1); err != nil {

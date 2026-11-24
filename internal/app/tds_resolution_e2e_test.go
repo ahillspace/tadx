@@ -89,3 +89,49 @@ func TestTDSCheckoutCanonicalUUID(t *testing.T) {
 		t.Fatal("checkout identity preview submitted a write")
 	}
 }
+
+func TestTDSCheckoutByNameAndProjectIDWithoutProjectInventory(t *testing.T) {
+	const target = "abcdef12-1234-1234-abcd-123456789abc"
+	for _, tc := range []struct {
+		name, requested, firstProject, lastProject, firstID, wantError string
+	}{
+		{"canonical", target, fixtureTDSProject, target, fixtureTDSOriginal, ""},
+		{"uppercase selector", strings.ToUpper(target), fixtureTDSProject, target, fixtureTDSOriginal, ""},
+		{"uppercase provider", target, fixtureTDSProject, strings.ToUpper(target), fixtureTDSOriginal, ""},
+		{"ambiguous across pages", target, target, target, fixtureTDSOriginal, "matches LUIDs [" + fixtureTDSOriginal + ", " + fixtureTDSPublished + "]"},
+		{"conflicting records across pages", target, fixtureTDSProject, target, fixtureTDSPublished, "conflicting records for LUID"},
+		{"wrong project", target, fixtureTDSProject, fixtureTDSProject, fixtureTDSOriginal, "no resource matches"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newTDSWorkflowCLI(t)
+			denyTDSProjectInventory(h)
+			h.fixture.mu.Lock()
+			denyProjects := h.fixture.auditProbe
+			h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+				if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/datasources") {
+					return denyProjects(w, r)
+				}
+				if f := r.URL.Query().Get("filter"); f != "name:eq:Sales" {
+					t.Errorf("unexpected datasource filter %q", f)
+				}
+				page := r.URL.Query().Get("pageNumber")
+				id, project := tc.firstID, tc.firstProject
+				if page == "2" {
+					id, project = fixtureTDSPublished, tc.lastProject
+				}
+				fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="1" totalAvailable="2"/><datasources><datasource id="%s" name="Sales"><project id="%s" name="Shared"/></datasource></datasources></tsResponse>`, page, id, project)
+				return true
+			}
+			h.fixture.mu.Unlock()
+			result := h.ds(tc.wantError == "", "checkout", "--name", "Sales", "--project-id", tc.requested, "--preview")
+			if tc.wantError != "" {
+				requireTDSJSON(t, result, tc.wantError, `"outcome":"not_attempted"`)
+			} else {
+				requireTDSJSON(t, result, `"source_luid":"`+fixtureTDSPublished+`"`, `"project_luid":"`+target+`"`, `"status":"preview"`)
+			}
+			if h.fixture.writeCount() != 0 {
+				t.Fatal("checkout preview submitted a write")
+			}
+		})
+	}
+}

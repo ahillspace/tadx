@@ -1,7 +1,6 @@
 package datasource
 
 import (
-	"errors"
 	"os"
 	"syscall"
 
@@ -30,7 +29,7 @@ func openEditInput(dir *os.Root, name string, expected os.FileInfo) (*os.File, e
 	}
 	if attrs.NumberOfLinks != 1 || attrs.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || !actual.Mode().IsRegular() || !os.SameFile(expected, actual) {
 		f.Close()
-		return nil, errors.New("changes input must be one unaliased regular file")
+		return nil, editFileProblem("must identify one unaliased regular file")
 	}
 	return f, nil
 }

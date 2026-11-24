@@ -55,7 +55,23 @@ func (c *remoteContentCommands) editFiles(ctx context.Context, env string, f con
 	}
 	ws, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, f.Workspace, env)
 	if err != nil {
-		return "", doc, err
+		if ctx.Err() != nil {
+			return "", doc, ctx.Err()
+		}
+		// The resolver's resource, cause and recovery hint can contain a
+		// selector or filesystem path. No session redactor is available here.
+		setup := &errs.Error{
+			ID: "workspace.resolve", Operation: "workspace.resolve", Kind: errs.KindOperation,
+			Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: new(false),
+			Summary:          "The workspace for the requested edit file could not be resolved.",
+			CorrectiveAction: "Check available registrations with tadx workspace list and select one with --workspace.",
+		}
+		if problem, ok := errors.AsType[*errs.Error](err); ok && problem.ID == "configuration.load" {
+			setup.ID, setup.Operation = "configuration.load", "configuration"
+			setup.Summary = "CLI settings for the edit workspace could not be loaded."
+			setup.CorrectiveAction = "Check that the selected configuration file is readable and valid."
+		}
+		return "", doc, setup
 	}
 	if f.FromChanges != "" {
 		doc, err = ds.LoadEditDocument(ws.Root, f.FromChanges)

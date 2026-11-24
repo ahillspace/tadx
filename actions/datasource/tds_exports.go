@@ -26,21 +26,39 @@ type EditExports struct {
 	ChangesFile string `json:"changes_file,omitempty"`
 }
 
+// Only fixed diagnostics may cross the offline file-validation boundary.
+// Filesystem errors can carry the leaf, a parent, or a workspace root.
+type editFileProblem string
+
+func (p editFileProblem) Error() string { return "The selected path " + string(p) + "." }
+
+func editFileUsage(flag string, err error) error {
+	reason := "could not be accessed"
+	if problem, ok := errors.AsType[editFileProblem](err); ok {
+		reason = string(problem)
+	} else if errors.Is(err, fs.ErrNotExist) {
+		reason = "does not exist"
+	} else if errors.Is(err, fs.ErrPermission) {
+		reason = "could not be accessed with the current file permissions"
+	}
+	return editUsage("The " + flag + " path " + reason + ".")
+}
+
 // editParent pins each checked directory before opening the next component.
 // Callers operate on one leaf in its parent, including the final no-replace link.
 func editParent(workspace, rel string) (*os.Root, string, error) {
 	if workspace == "" || !fs.ValidPath(rel) || rel == "." || pathspec.IsAbs(rel) || strings.ContainsAny(rel, "\\:") {
-		return nil, "", errors.New("expected a workspace-relative path with forward slashes")
+		return nil, "", editFileProblem("must be workspace-relative and use forward slashes")
 	}
 	parts := strings.Split(rel, "/")
 	for _, part := range parts {
 		if strings.HasPrefix(part, ".") || !filepath.IsLocal(part) || strings.HasSuffix(part, " ") || strings.HasSuffix(part, ".") {
-			return nil, "", errors.New("workspace file paths cannot contain hidden or aliased components")
+			return nil, "", editFileProblem("cannot include hidden or aliased components")
 		}
 	}
 	info, err := os.Lstat(workspace)
 	if err != nil || !editDirectory(info) {
-		return nil, "", errors.New("the selected workspace root is unavailable or linked")
+		return nil, "", editFileProblem("requires an available, unlinked workspace root")
 	}
 	root, err := os.OpenRoot(workspace)
 	if err != nil {
@@ -49,13 +67,13 @@ func editParent(workspace, rel string) (*os.Root, string, error) {
 	pinned, err := root.Stat(".")
 	if err != nil || !os.SameFile(info, pinned) {
 		root.Close()
-		return nil, "", errors.New("workspace root changed while opening")
+		return nil, "", editFileProblem("could not be opened because the workspace root changed")
 	}
 	for _, dir := range parts[:len(parts)-1] {
 		info, err := root.Lstat(dir)
 		if err != nil || !editDirectory(info) {
 			root.Close()
-			return nil, "", fmt.Errorf("workspace subdirectory %q is unavailable or linked", dir)
+			return nil, "", editFileProblem("contains an unavailable or linked parent directory")
 		}
 		next, err := root.OpenRoot(dir)
 		root.Close()
@@ -65,7 +83,7 @@ func editParent(workspace, rel string) (*os.Root, string, error) {
 		pinned, err := next.Stat(".")
 		if err != nil || !os.SameFile(info, pinned) {
 			next.Close()
-			return nil, "", errors.New("workspace subdirectory changed while opening")
+			return nil, "", editFileProblem("could not be opened because a parent directory changed")
 		}
 		root = next
 	}
@@ -83,7 +101,7 @@ func readEditFile(workspace, rel string) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxEditBytes {
-		return nil, errors.New("changes file must be a regular file of at most 256 KiB")
+		return nil, editFileProblem("must identify a regular file of at most 256 KiB")
 	}
 	f, err := openEditInput(dir, name, info)
 	if err != nil {
@@ -92,30 +110,30 @@ func readEditFile(workspace, rel string) ([]byte, error) {
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxEditBytes+1))
 	if len(data) > maxEditBytes {
-		return nil, errors.New("changes file exceeds 256 KiB")
+		return nil, editFileProblem("identifies a file larger than 256 KiB")
 	}
 	return data, err
 }
 
 func ValidateEditExports(workspace, audit, changes string) error {
 	if audit != "" && strings.EqualFold(audit, changes) {
-		return editUsage("Choose two distinct workspace-relative output paths.")
+		return editUsage("Choose distinct workspace-relative output paths for --audit-file and --changes-file.")
 	}
-	for _, p := range []string{audit, changes} {
-		if p == "" {
+	for _, output := range []struct{ flag, path string }{{"--audit-file", audit}, {"--changes-file", changes}} {
+		if output.path == "" {
 			continue
 		}
-		dir, name, err := editParent(workspace, p)
+		dir, name, err := editParent(workspace, output.path)
 		if err != nil {
-			return editUsage(errs.WithWorkspaceRelativePaths(err, workspace).Error())
+			return editFileUsage(output.flag, err)
 		}
 		_, err = dir.Lstat(name)
 		dir.Close()
 		if err == nil {
-			return editUsage("Output already exists: " + p)
+			return editUsage("The " + output.flag + " destination already exists. Choose a new output file.")
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return editUsage(errs.WithWorkspaceRelativePaths(err, workspace).Error())
+			return editFileUsage(output.flag, err)
 		}
 	}
 	return nil

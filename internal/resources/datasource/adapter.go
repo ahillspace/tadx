@@ -255,20 +255,28 @@ func (a *Adapter) findExact(ctx context.Context, values []string, filter func([]
 	return result, nil
 }
 
-// TDSResolver resolves datasource metadata for work-copy operations, which use
-// project LUIDs and need canonical paths only when selecting a datasource by name.
+// TDSResolver resolves work-copy targets using the project hierarchy only
+// when the caller supplies a project path.
 type TDSResolver struct {
 	Adapter *Adapter
 }
 
 func (r TDSResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (Datasource, error) {
 	if luid := string(selector.LUID); luid != "" {
-		if value.ValidTDSLUID(luid) {
-			luid = strings.ToLower(luid)
-		}
-		return r.Adapter.getDatasource(ctx, luid)
+		return r.Adapter.getDatasource(ctx, canonicalTDSLUID(luid))
+	}
+	if project := string(selector.ProjectLUID); project != "" && selector.ProjectPath == "" {
+		selector.ProjectLUID = identity.LUID(canonicalTDSLUID(project))
+		return r.Adapter.resolveNamedDatasource(ctx, selector, false)
 	}
 	return r.Adapter.ResolveDatasource(ctx, selector)
+}
+
+func canonicalTDSLUID(luid string) string {
+	if value.ValidTDSLUID(luid) {
+		return strings.ToLower(luid)
+	}
+	return luid
 }
 
 func (a *Adapter) getDatasource(ctx context.Context, luid string) (Datasource, error) {
@@ -301,6 +309,10 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 		}
 		return item, nil
 	}
+	return a.resolveNamedDatasource(ctx, selector, true)
+}
+
+func (a *Adapter) resolveNamedDatasource(ctx context.Context, selector identity.Selector, includeProjectPath bool) (Datasource, error) {
 	if strings.TrimSpace(selector.Name) == "" || (strings.TrimSpace(selector.ProjectPath) == "" && strings.TrimSpace(string(selector.ProjectLUID)) == "") {
 		return Datasource{}, errors.New("datasource selection requires a LUID or exact name and project path or project LUID")
 	}
@@ -340,12 +352,18 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 			if item.Name != selector.Name {
 				continue
 			}
+			if !includeProjectPath {
+				item.ProjectLUID = canonicalTDSLUID(item.ProjectLUID)
+			}
 			if selector.ProjectLUID != "" && item.ProjectLUID != string(selector.ProjectLUID) {
 				continue
 			}
-			path, err := a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
-			if err != nil {
-				return Datasource{}, err
+			var path string
+			if includeProjectPath {
+				path, err = a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
+				if err != nil {
+					return Datasource{}, err
+				}
 			}
 			if selector.ProjectLUID != "" || path == selector.ProjectPath {
 				normalized := normalizeDatasource(item, path)
