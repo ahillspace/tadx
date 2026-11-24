@@ -116,7 +116,7 @@ func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveW
 	draft := value.TDSAttempt{Operation: op, Scope: in.Scope, SourceLUID: origin.SourceLUID, SourceRevision: origin.SourceRevision, WorkCopyLUID: in.WorkCopyLUID, CompareDescription: in.Description != nil, CompleteCollection: !in.FromChanges && len(in.Fields) == 0}
 	release, matches, err := j.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
 	if err != nil {
-		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
+		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, lifecycleCause(err, in.Redact))
 	}
 	defer release()
 	if err := checkAcknowledgementScopes(matches, in.Redact); err != nil {
@@ -134,7 +134,7 @@ func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveW
 	}
 	dest, err := planTDSSave(ctx, p, in, &draft, &out)
 	if err != nil {
-		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save preflight failed.", errs.PhaseValidation, errs.OutcomeNotAttempted, err)
+		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save preflight failed.", errs.PhaseValidation, errs.OutcomeNotAttempted, lifecycleCause(err, in.Redact))
 	}
 	token := draft.IntentDigest
 	if in.ExpectPreview != "" && in.ExpectPreview != token {
@@ -148,13 +148,13 @@ func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveW
 	out.Mode = "execute"
 	dest, err = planTDSSave(ctx, p, in, &draft, &out)
 	if err != nil || token != draft.IntentDigest {
-		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save preconditions changed before submission.", errs.PhaseValidation, errs.OutcomeNotAttempted, err)
+		return out, lifecycleFailure(op, in.WorkCopyLUID, "Save preconditions changed before submission.", errs.PhaseValidation, errs.OutcomeNotAttempted, lifecycleCause(err, in.Redact))
 	}
 	a, err := j.Begin(ctx, draft, in.AcknowledgeUnknown)
 	if err != nil {
 		out.AttemptID = a.ID
 		out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "work-copy", "--attempts", "--work-copy", in.WorkCopyLUID)}
-		return out, lifecycleFailure(op, in.WorkCopyLUID, "Could not retain the pending save.", errs.PhasePersistence, errs.OutcomeNotAttempted, err)
+		return out, lifecycleFailure(op, in.WorkCopyLUID, "Could not retain the pending save.", errs.PhasePersistence, errs.OutcomeNotAttempted, lifecycleCause(err, in.Redact))
 	}
 	out.AttemptID = a.ID
 	out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "work-copy", "--attempt", a.ID, "--verify")}
@@ -325,7 +325,7 @@ func verifySaveAttempt(ctx context.Context, r Resolver, p TDSReader, a value.TDS
 	}
 	actual, err := r.ResolveDatasource(ctx, identity.Selector{LUID: identity.LUID(id)})
 	if err != nil || !strings.EqualFold(id, actual.LUID) {
-		return fail("Could not verify the exact published identity.", err)
+		return fail("Could not verify the exact published identity.", lifecycleCause(err, redact))
 	}
 	if err := checkLifecycleMetadata(redact, actual.LUID, actual.Name, actual.ProjectLUID, actual.Description); err != nil {
 		return fail("Published destination metadata contains protected credential material.", nil)

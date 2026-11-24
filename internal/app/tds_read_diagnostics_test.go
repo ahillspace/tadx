@@ -61,7 +61,7 @@ func TestTDSCheckoutPreviewRedactsExactLookupDiagnostics(t *testing.T) {
 				}
 			}
 		}
-		requireTDSJSON(t, last, "Denied [REDACTED]", "Reason [REDACTED] [REDACTED]")
+		requireTDSJSON(t, last, "Denied [REDACTED]", "Reason [REDACTED] [REDACTED]", `"upstream_status":403`, `"retryable":false`, "Verify the PAT permissions")
 	}
 }
 
@@ -160,5 +160,79 @@ func TestTDSAuditRedactsRetiredTokenInIndexedField(t *testing.T) {
 	}
 	if h.fixture.writeCount() != 1 {
 		t.Fatalf("expected one checkout, got %d writes", h.fixture.writeCount())
+	}
+}
+
+func TestTDSCheckoutRedactsLocallyReportedCandidateIDs(t *testing.T) {
+	const marker = "abcdefabcd"
+	const candidate = "12345678-abcd-4567-89ab-" + marker + "12"
+	for _, mode := range []string{"ambiguous", "conflicting"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newTDSWorkflowCLI(t)
+			h.options = withSiteMutationConsent(t, h.options, true)
+			t.Setenv("TADX_FIXTURE_SECRET", marker)
+			h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+				if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/datasources") {
+					return false
+				}
+				page := r.URL.Query().Get("pageNumber")
+				id, project := candidate, fixtureTDSProject
+				if page == "2" {
+					if mode == "ambiguous" {
+						id = fixtureTDSOriginal
+					} else {
+						project = fixtureTDSSite
+					}
+				}
+				fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="1" totalAvailable="2"/><datasources><datasource id="%s" name="Sales"><project id="%s" name="Test"/></datasource></datasources></tsResponse>`, page, id, project)
+				return true
+			}
+			for _, full := range []bool{false, true} {
+				args := []string{"content", "datasource", "checkout", "--name", "Sales", "--project-id", fixtureTDSProject, "--json"}
+				if full {
+					args = append(args, "--full")
+				}
+				cmd := h.process(args...)
+				out, err := cmd.CombinedOutput()
+				if err == nil {
+					t.Fatal("unresolved checkout succeeded")
+				}
+				for _, data := range []string{string(out), h.command(true, "last")} {
+					if strings.Contains(data, marker) || !strings.Contains(data, "12345678-abcd-4567-89ab-[REDACTED]12") {
+						t.Error("candidate diagnostic failed to mask the protected substring")
+					}
+					if !strings.Contains(data, mode) || mode == "ambiguous" && !strings.Contains(data, fixtureTDSOriginal) {
+						t.Error("safe candidate context missing from checkout failure")
+					}
+				}
+			}
+			if h.fixture.writeCount() != 0 {
+				t.Fatal("unresolved checkout dispatched a write")
+			}
+		})
+	}
+}
+
+func TestTDSCheckoutRedactsUnresolvedAttemptDiagnostic(t *testing.T) {
+	h := newTDSWorkflowCLI(t)
+	h.options = withSiteMutationConsent(t, h.options, true)
+	j, err := operationrun.DefaultTDSJournal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := value.TDSScope{Server: h.server.URL, SiteLUID: fixtureTDSSite, CallerLUID: "user-luid"}
+	prior, err := j.Begin(t.Context(), value.TDSAttempt{Scope: scope, Operation: "datasource.checkout", SourceLUID: fixtureTDSOriginal}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TADX_FIXTURE_SECRET", prior.ID)
+	out := h.ds(false, "checkout", "--id", fixtureTDSOriginal)
+	for _, data := range []string{out, h.command(true, "last")} {
+		if strings.Contains(data, prior.ID) || !strings.Contains(data, "unresolved attempts [REDACTED]") {
+			t.Error("admission failed to redact the protected attempt identifier")
+		}
+	}
+	if h.fixture.writeCount() != 0 {
+		t.Fatal("blocked admission dispatched a write")
 	}
 }

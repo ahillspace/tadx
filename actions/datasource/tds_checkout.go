@@ -85,6 +85,27 @@ func lifecycleFailure(op, resource, summary string, phase errs.Phase, outcome er
 	return &errs.Error{ID: op + ".failed", Kind: errs.KindOperation, Operation: op, Resource: resource, Phase: phase, Outcome: outcome, Summary: summary, Retryable: new(false), Cause: cause, TableauRequestID: errs.TableauRequestID(cause)}
 }
 
+// Provider diagnostics are protected at the transport. Resolution and admission
+// can build new messages from candidate LUIDs and historical attempt IDs.
+func lifecycleCause(err error, redact func(string) string) error {
+	if err == nil || redact == nil {
+		return err
+	}
+	message := err.Error()
+	if safe := redact(message); safe != message {
+		return &lifecycleDiagnostic{cause: err, message: safe}
+	}
+	return err
+}
+
+type lifecycleDiagnostic struct {
+	cause   error
+	message string
+}
+
+func (e *lifecycleDiagnostic) Error() string { return e.message }
+func (e *lifecycleDiagnostic) Unwrap() error { return e.cause }
+
 func ValidateCheckoutInput(in CheckoutInput) error {
 	s := in.Selector
 	if s.LUID != "" {
@@ -114,16 +135,16 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 	if err := ValidateCheckoutInput(in); err != nil {
 		return out, err
 	}
-	source, err := resolver.ResolveDatasource(ctx, in.Selector)
-	if err != nil {
-		return out, lifecycleFailure(op, "", "Could not resolve the checkout source.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
-	}
-	if !value.ValidTDSLUID(source.LUID) || (in.Selector.LUID != "" && !strings.EqualFold(source.LUID, string(in.Selector.LUID))) {
-		return out, lifecycleFailure(op, "", "Tableau did not establish the requested datasource identity.", errs.PhaseSetup, errs.OutcomeNotAttempted, nil)
-	}
 	var redact func(string) string
 	if provider, ok := creator.(interface{ TDSRedactor() func(string) string }); ok {
 		redact = provider.TDSRedactor()
+	}
+	source, err := resolver.ResolveDatasource(ctx, in.Selector)
+	if err != nil {
+		return out, lifecycleFailure(op, "", "Could not resolve the checkout source.", errs.PhaseSetup, errs.OutcomeNotAttempted, lifecycleCause(err, redact))
+	}
+	if !value.ValidTDSLUID(source.LUID) || (in.Selector.LUID != "" && !strings.EqualFold(source.LUID, string(in.Selector.LUID))) {
+		return out, lifecycleFailure(op, "", "Tableau did not establish the requested datasource identity.", errs.PhaseSetup, errs.OutcomeNotAttempted, nil)
 	}
 	if err := checkLifecycleMetadata(redact, source.LUID, source.Name, source.ProjectLUID, source.UpdatedAt); err != nil {
 		return out, lifecycleFailure(op, "", "Checkout source metadata contains protected credential material.", errs.PhaseValidation, errs.OutcomeNotAttempted, nil)
@@ -135,7 +156,7 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 	draft := value.TDSAttempt{Checkout: &value.TDSCheckoutContext{Eligibility: in.Eligibility, SourceName: source.Name, SourceProjectLUID: source.ProjectLUID, SourceObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}, Scope: in.Scope, SourceLUID: source.LUID, Operation: op, IntentDigest: lifecycleDigest([]string{op, source.LUID})}
 	release, matches, err := journal.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
 	if err != nil {
-		return out, lifecycleFailure(op, source.LUID, "Checkout admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
+		return out, lifecycleFailure(op, source.LUID, "Checkout admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, lifecycleCause(err, redact))
 	}
 	defer release()
 	if err := checkAcknowledgementScopes(matches, redact); err != nil {
@@ -165,7 +186,7 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 	if err != nil {
 		out.AttemptID = a.ID
 		out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "work-copy", "--attempts", "--id", source.LUID)}
-		return out, lifecycleFailure(op, source.LUID, "Could not retain the checkout attempt.", errs.PhasePersistence, errs.OutcomeNotAttempted, err)
+		return out, lifecycleFailure(op, source.LUID, "Could not retain the checkout attempt.", errs.PhasePersistence, errs.OutcomeNotAttempted, lifecycleCause(err, redact))
 	}
 	out.AttemptID = a.ID
 	out.RevisionKnown = false
