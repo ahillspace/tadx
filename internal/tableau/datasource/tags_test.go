@@ -61,3 +61,13 @@ func TestPublishedDatasourceTagRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestDatasourceTagReadbackAcceptsEquivalentUUID(t *testing.T) {
+	const id = "A0000000-0000-4000-8000-000000000001"
+	c := tdsFixture(t, "3.30", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `<tsResponse><datasource id="a0000000-0000-4000-8000-000000000001"><tags/></datasource></tsResponse>`)
+	})
+	if _, err := c.ReadDatasourceTags(t.Context(), id); err != nil {
+		t.Fatal(err)
+	}
+}

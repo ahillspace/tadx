@@ -169,9 +169,7 @@ func (c *remoteContentCommands) CheckoutDatasource(ctx context.Context, in conte
 	if err := checkTDSEditInputs(conn.tds.TDSRedactor(), in.EditFiles, ds.EditDocument{}, append([]string{in.Environment, in.ID, in.Name, in.Project, in.ProjectID}, in.Acknowledge...)...); err != nil {
 		return nil, err
 	}
-	if err := conn.tds.CheckTDSVersion(); err != nil {
-		return nil, err
-	}
+	input.Eligibility = conn.tds.TDSPrerequisites("datasource.checkout")
 	input.Scope, input.Environment = conn.scope, conn.environment.Alias
 	var resolver ds.Resolver = conn.datasources
 	if revisions, ok := c.saveProvider.(ds.SourceRevisionReader); ok {
@@ -208,14 +206,18 @@ func (c *remoteContentCommands) inspectAndExport(ctx context.Context, conn tdsCo
 		inspect.MetadataWarning = "Published source identity is unknown."
 		if target.DatasourceLUID != "" {
 			if err := c.runtime.checkManagedCapability("datasource.schema"); err != nil {
-				inspect.MetadataWarning = "Published schema enrichment is denied by managed policy."
+				inspect.MetadataWarning = "Published datasource Metadata API enrichment is denied by managed policy."
 			} else {
-				schema, err := c.GetDatasourceSchema(ctx, ds.SchemaInput{Environment: conn.environment.Alias, DatasourceLUID: target.DatasourceLUID, Descriptions: true, Limit: 100})
-				if err == nil {
-					inspect.SourceMetadata = &schema
+				metadata, err := conn.metadataAssets.DatasourceFieldDescriptions(ctx, target.DatasourceLUID)
+				switch {
+				case metadata.Identity.MetadataID == "" || metadata.Identity.LUID != target.DatasourceLUID:
+					inspect.MetadataWarning = "Published datasource Metadata API enrichment was unavailable."
+				case err != nil || !metadata.Complete:
+					inspect.SourceMetadata = &metadata
+					inspect.MetadataWarning = "The Metadata API returned partial published datasource observations."
+				default:
+					inspect.SourceMetadata = &metadata
 					inspect.MetadataWarning = ""
-				} else {
-					inspect.MetadataWarning = "Published schema enrichment was unavailable."
 				}
 			}
 		}
@@ -374,7 +376,19 @@ func (c *remoteContentCommands) ApplyEdits(ctx context.Context, in contentcli.Ap
 		defer func() { resultErr = errors.Join(resultErr, release()) }()
 	}
 	ctx = c.tdsWriteContext(ctx, op, conn.environment, in.Preview)
-	return ds.Edit(ctx, conn.tds, target, conn.environment.Alias, doc.Changes, in.Preview, in.ExpectPreview)
+	out, err := ds.Edit(ctx, conn.tds, target, conn.environment.Alias, doc.Changes, in.Preview, in.ExpectPreview)
+	for i := range out.Items {
+		row := &out.Items[i]
+		if row.Eligibility.Operation == "" {
+			operation := "datasource." + row.Op
+			switch row.Action {
+			case "add", "update", "delete":
+				operation = "datasource.tds." + row.Action
+			}
+			row.Eligibility = conn.tds.TDSPrerequisites(operation)
+		}
+	}
+	return out, err
 }
 
 func (c *remoteContentCommands) SaveCopy(ctx context.Context, in contentcli.SaveOptions) (any, error) {
@@ -401,6 +415,9 @@ func (c *remoteContentCommands) SaveCopy(ctx context.Context, in contentcli.Save
 	}
 	if err := checkTDSEditInputs(redact, in.EditFiles, doc, fields...); err != nil {
 		return nil, err
+	}
+	if in.Mode == "as-new" {
+		input.Eligibility = conn.tds.TDSPrerequisites("datasource.save.as-new")
 	}
 	input.Redact = redact
 	if in.FromChanges != "" {

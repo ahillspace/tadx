@@ -33,7 +33,7 @@ func (f *tagFixture) DeleteDatasourceTag(_ context.Context, _, label string) (va
 }
 
 func TestPublishedTagMembership(t *testing.T) {
-	const id = "11111111-1111-4111-8111-111111111111"
+	const id = "datasource-1"
 	for _, tc := range []struct {
 		name         string
 		add, preview bool

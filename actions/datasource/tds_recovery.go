@@ -69,7 +69,7 @@ func CheckRetainedAttempt(a value.TDSAttempt, redact func(string) string) error 
 		return err
 	}
 	if a.Checkout != nil {
-		if err := checkLifecycleMetadata(redact, a.Checkout.SourceName, a.Checkout.SourceProjectLUID); err != nil {
+		if err := checkLifecycleMetadata(redact, a.Checkout.SourceName, a.Checkout.SourceProjectLUID, a.Checkout.Eligibility.RESTVersion); err != nil {
 			return err
 		}
 	}

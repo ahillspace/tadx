@@ -287,14 +287,30 @@ Work-copy existence, permissions and current values require Tableau observations
 | `set-column-type` | `field` and `type` |
 | `delete-column` | `field` |
 
-The work-copy workflow separates direct description changes and ordered file edits from publication.
-An audit reports observed metadata and its coverage.
+A qualified installation uses the following sequence to preview a field description and set it on the same copy.
+Use the copy LUID returned by checkout and the token returned by preview.
+
+```sh
+tadx content datasource checkout --environment dev --id "$SOURCE_LUID"
+tadx content datasource set-field-description --environment dev --work-copy "$COPY_LUID" --field Sales --description "Gross invoiced amount" --preview
+tadx content datasource set-field-description --environment dev --work-copy "$COPY_LUID" --field Sales --description "Gross invoiced amount" --expect-preview "$TOKEN"
+tadx content datasource work-copy --environment dev --work-copy "$COPY_LUID" --field Sales
+```
+
+Tableau publishes the entire work copy when an eligible save completes.
+The field edit above changes only the selected work copy.
+For a reviewed file, use `apply-changes --from-changes changes.yaml --preview` and inspect the ordered intended effects before execution.
+An audit reports current TDS observations and separate Metadata API context from the published source when the exact source is known and the managed `datasource.schema` capability is allowed.
+The audit includes up to 100 indexed fields and 100 upstream columns per field, reports omissions and retains observations from a partial metadata read.
 A changes template starts with an empty list and commented examples using observed fields.
-Explicit save modes protect the original datasource and any existing destination.
+Save modes remain gated until their destination and concurrency guarantees are verified.
 Native TDS/TDSX publication remains available through `tadx content datasource publish`.
 
 Tags have a different target.
 `datasource.add-tag` and `datasource.remove-tag` target membership on the published datasource.
+For example, `tadx content datasource add-tag --environment dev --id "$SOURCE_LUID" --tag Finance --preview` checks current membership on a qualified installation.
+Omitting `--preview` submits the change when consent and policy allow it.
+Use `remove-tag` with the same published LUID and label for removal.
 Use `tadx catalog column update --help` for tagging a physical upstream column by its Catalog identity.
 Tableau's TDS element schema provides no direct field-tag write contract.
 

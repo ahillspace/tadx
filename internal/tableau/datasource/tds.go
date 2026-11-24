@@ -13,15 +13,13 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-// CheckTDSVersion verifies negotiated eligibility without allocating a work copy.
-func (c *Client) CheckTDSVersion() error {
+func (c *Client) checkTDSVersion() error {
 	if err := c.validate(); err != nil {
 		return err
 	}
-	version := c.transport.APIVersion()
-	supported, err := tableau.APIVersionAtLeast(version, 3, 30)
-	if err != nil || !supported {
-		return fmt.Errorf("TDS Edit requires Tableau REST API 3.30 or later (negotiated %q)", version)
+	e := c.TDSPrerequisites("")
+	if e.RESTStatus != "supported" {
+		return fmt.Errorf("TDS Edit requires Tableau REST API 3.30 or later (negotiated %q)", e.RESTVersion)
 	}
 	return nil
 }
@@ -29,7 +27,7 @@ func (c *Client) CheckTDSVersion() error {
 // doTDS binds the authenticated site and negotiated version. The caller supplies only
 // fixed route components and an exact datasource/work-copy UUID.
 func (c *Client) doTDS(ctx context.Context, kind, id, suffix string, req tableau.Request) (tableau.Response, error) {
-	if err := c.CheckTDSVersion(); err != nil {
+	if err := c.checkTDSVersion(); err != nil {
 		return tableau.Response{}, err
 	}
 	if !value.ValidTDSLUID(id) {
@@ -47,8 +45,9 @@ func (c *Client) doTDS(ctx context.Context, kind, id, suffix string, req tableau
 	return c.transport.Do(ctx, c.session, req)
 }
 
-func (c *Client) CreateWorkCopy(ctx context.Context, sourceID string) (value.TDSReceipt, error) {
+func (c *Client) CreateWorkCopy(ctx context.Context, sourceID string) (result value.TDSReceipt, resultErr error) {
 	const op = "datasource.checkout"
+	defer func() { c.qualifyTDSReceipt(op, &result, resultErr) }()
 	response, err := c.doTDS(ctx, "datasource", sourceID, "/workcopy", tableau.Request{Method: http.MethodPost, Operation: op})
 	if err != nil {
 		return failedReceipt(err), err
@@ -58,8 +57,9 @@ func (c *Client) CreateWorkCopy(ctx context.Context, sourceID string) (value.TDS
 
 // PublishWorkCopy sends only the documented datasource properties. Destination
 // admission and verification belong to the action.
-func (c *Client) PublishWorkCopy(ctx context.Context, copyID, name string, description *string) (value.TDSReceipt, error) {
+func (c *Client) PublishWorkCopy(ctx context.Context, copyID, name string, description *string) (result value.TDSReceipt, resultErr error) {
 	const op = "datasource.save.as-new"
+	defer func() { c.qualifyTDSReceipt(op, &result, resultErr) }()
 	if strings.TrimSpace(name) == "" {
 		return value.TDSReceipt{Status: "not_attempted"}, errors.New("publishing a work copy requires a nonblank datasource name")
 	}
@@ -130,7 +130,10 @@ func tdsElementType(kind string) bool {
 
 // ReadTDSElements uses named reads for verification. A missing named element
 // has its own Tableau sub-code; a missing datasource or work copy is an error.
-func (c *Client) ReadTDSElements(ctx context.Context, targetKind, id, elementType, name string) (value.TDSRead, error) {
+func (c *Client) ReadTDSElements(ctx context.Context, targetKind, id, elementType, name string) (result value.TDSRead, resultErr error) {
+	defer func() {
+		result.Eligibility = c.observedTDS("datasource.tds.read."+targetKind, resultErr == nil, nil, resultErr)
+	}()
 	const op = "datasource.tds.read"
 	if targetKind != "workcopy" && targetKind != "datasource" {
 		return value.TDSRead{}, errors.New("expected a workcopy or datasource TDS target")
@@ -201,7 +204,11 @@ func protectedElement(response tableau.Response, el value.TDSElement) bool {
 
 // EditTDSElement dispatches one property at a time. An edit response contains
 // only failures; a successful acknowledgement still needs exact readback.
-func (c *Client) EditTDSElement(ctx context.Context, copyID, verb string, element value.TDSElement) (value.TDSReceipt, error) {
+func (c *Client) EditTDSElement(ctx context.Context, copyID, verb string, element value.TDSElement) (result value.TDSReceipt, resultErr error) {
+	op := "datasource.tds." + verb
+	defer func() {
+		c.qualifyTDSReceipt(op, &result, resultErr)
+	}()
 	if !tdsElementType(element.ElementType) || element.Name == "" || element.Error != nil {
 		return value.TDSReceipt{}, errors.New("invalid TDS edit element")
 	}
@@ -237,7 +244,6 @@ func (c *Client) EditTDSElement(ctx context.Context, copyID, verb string, elemen
 	if err != nil {
 		return value.TDSReceipt{}, err
 	}
-	op := "datasource.tds." + verb
 	response, err := c.doTDS(ctx, "workcopy", copyID, "", tableau.Request{Method: method, Operation: op, Body: body})
 	if err != nil {
 		got := failedReceipt(err)

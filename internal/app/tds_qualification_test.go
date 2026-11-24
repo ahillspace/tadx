@@ -133,10 +133,17 @@ func TestTDSRevokedConsentPreservesVerifiedPrefixAtDispatch(t *testing.T) {
 	}
 	var result struct {
 		Output ds.EditOutput
-		Error  struct{ Outcome string }
+		Error  struct {
+			Outcome   string
+			Completed []string
+			Failed    string
+		}
 	}
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.Error.Outcome != "not_attempted" || len(result.Output.Items) != 2 {
 		t.Fatalf("incomplete command evidence: %s", &out)
+	}
+	if len(result.Error.Completed) != 1 || result.Error.Completed[0] != "1: set-field-description" || result.Error.Failed != "2: set-table-description" {
+		t.Fatalf("structured failure lost the completed prefix: %s", &out)
 	}
 	first, second := result.Output.Items[0], result.Output.Items[1]
 	if first.Op != "set-field-description" || first.Status != "verified" || first.Observed == nil || first.Observed.Value != "Gross sales" || second.Op != "set-table-description" || second.Submission != "not_attempted" || second.Status != "unattempted" {

@@ -16,15 +16,16 @@ import (
 const maxTDSElements = 100
 
 type EditObservation struct {
-	DisplayOmitted   int                `json:"display_omitted,omitempty"`
-	ElementType      string             `json:"element_type"`
-	Name             string             `json:"name,omitempty"`
-	Absent           bool               `json:"absent,omitempty"`
-	Elements         []value.TDSElement `json:"elements"`
-	Omitted          int                `json:"omitted"`
-	Complete         bool               `json:"complete"`
-	Problem          string             `json:"problem,omitempty"`
-	TableauRequestID string             `json:"tableau_request_id,omitempty"`
+	Eligibility      value.TDSEligibility `json:"eligibility,omitzero"`
+	DisplayOmitted   int                  `json:"display_omitted,omitempty"`
+	ElementType      string               `json:"element_type"`
+	Name             string               `json:"name,omitempty"`
+	Absent           bool                 `json:"absent,omitempty"`
+	Elements         []value.TDSElement   `json:"elements"`
+	Omitted          int                  `json:"omitted"`
+	Complete         bool                 `json:"complete"`
+	Problem          string               `json:"problem,omitempty"`
+	TableauRequestID string               `json:"tableau_request_id,omitempty"`
 }
 
 type CopyInspection struct {
@@ -32,15 +33,15 @@ type CopyInspection struct {
 	Files               *EditExports              `json:"files,omitempty"`
 	OmittedObservations int                       `json:"omitted_observations,omitempty"`
 	EditTarget
-	Environment     string            `json:"environment"`
-	TargetKind      string            `json:"target_kind"`
-	ObservedAt      string            `json:"observed_at"`
-	Complete        bool              `json:"complete"`
-	Observations    []EditObservation `json:"observations"`
-	SourceMetadata  *SchemaOutput     `json:"-"`
-	MetadataWarning string            `json:"metadata_warning,omitempty"`
-	Details         string            `json:"details,omitempty"`
-	Help            []string          `json:"help,omitempty"`
+	Environment     string                                `json:"environment"`
+	TargetKind      string                                `json:"target_kind"`
+	ObservedAt      string                                `json:"observed_at"`
+	Complete        bool                                  `json:"complete"`
+	Observations    []EditObservation                     `json:"observations"`
+	SourceMetadata  *value.MetadataDatasourceDescriptions `json:"-"`
+	MetadataWarning string                                `json:"metadata_warning,omitempty"`
+	Details         string                                `json:"details,omitempty"`
+	Help            []string                              `json:"help,omitempty"`
 }
 
 func InspectTDSElements(ctx context.Context, reader TDSReader, kind string, target EditTarget, env string, fields, tables []string) (CopyInspection, error) {
@@ -82,7 +83,7 @@ func InspectTDSElements(ctx context.Context, reader TDSReader, kind string, targ
 	var problems []error
 	for _, q := range queries {
 		response, err := reader.ReadTDSElements(ctx, kind, id, q.typ, q.name)
-		obs := EditObservation{ElementType: q.typ, Name: q.name, Absent: response.Absent, Complete: err == nil, TableauRequestID: response.TableauRequestID}
+		obs := EditObservation{Eligibility: response.Eligibility, ElementType: q.typ, Name: q.name, Absent: response.Absent, Complete: err == nil, TableauRequestID: response.TableauRequestID}
 		for _, e := range response.Elements {
 			if e.Error != nil {
 				obs.Complete = false

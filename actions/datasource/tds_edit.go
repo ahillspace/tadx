@@ -22,17 +22,18 @@ type TDSEditor interface {
 }
 
 type EditItem struct {
-	Failure          *value.TDSStatus `json:"failure,omitempty"`
-	Index            int              `json:"index"`
-	Op               string           `json:"op"`
-	Target           EditSelector     `json:"target"`
-	Before           EditState        `json:"before"`
-	Intended         EditState        `json:"intended"`
-	Observed         *EditState       `json:"observed,omitempty"`
-	Action           string           `json:"action,omitempty"`
-	Status           string           `json:"status"`
-	Submission       string           `json:"submission,omitempty"`
-	TableauRequestID string           `json:"tableau_request_id,omitempty"`
+	Eligibility      value.TDSEligibility `json:"eligibility,omitzero"`
+	Failure          *value.TDSStatus     `json:"failure,omitempty"`
+	Index            int                  `json:"index"`
+	Op               string               `json:"op"`
+	Target           EditSelector         `json:"target"`
+	Before           EditState            `json:"before"`
+	Intended         EditState            `json:"intended"`
+	Observed         *EditState           `json:"observed,omitempty"`
+	Action           string               `json:"action,omitempty"`
+	Status           string               `json:"status"`
+	Submission       string               `json:"submission,omitempty"`
+	TableauRequestID string               `json:"tableau_request_id,omitempty"`
 }
 type EditOutput struct {
 	Mode        string `json:"mode"`
@@ -43,41 +44,39 @@ type EditOutput struct {
 	Help         []string   `json:"help,omitempty"`
 }
 
-func exactTDS(ctx context.Context, reader TDSReader, kind, id, typ, name string) (value.TDSElement, bool, error) {
+func exactTDS(ctx context.Context, reader TDSReader, kind, id, typ, name string) (value.TDSRead, error) {
 	r, err := reader.ReadTDSElements(ctx, kind, id, typ, name)
-	if err != nil {
-		return value.TDSElement{}, false, err
-	}
-	if r.Absent {
-		return value.TDSElement{}, false, nil
+	if err != nil || r.Absent {
+		return r, err
 	}
 	if len(r.Elements) != 1 || r.Elements[0].Name != name || r.Elements[0].Error != nil {
-		return value.TDSElement{}, false, errors.New("exact TDS observation is incomplete or ambiguous")
+		return r, errors.New("exact TDS observation is incomplete or ambiguous")
 	}
-	return r.Elements[0], true, nil
+	return r, nil
 }
 
-// ObserveEdit returns a value only from its named TDS element, including when
+// observeEdit returns a value only from its named TDS element, including when
 // the surrounding collection is incomplete. Only provider-confirmed absence
 // has absence semantics. The empty description is a present value.
-func ObserveEdit(ctx context.Context, reader TDSReader, kind, id string, s EditSelector) (EditState, error) {
+func observeEdit(ctx context.Context, reader TDSReader, kind, id string, s EditSelector) (EditState, value.TDSEligibility, error) {
 	unknown := EditState{Presence: "unknown"}
 	if s.ElementType == "FieldDescription" {
-		col, found, err := exactTDS(ctx, reader, kind, id, "Column", s.Name)
+		col, err := exactTDS(ctx, reader, kind, id, "Column", s.Name)
 		if err != nil {
-			return unknown, err
+			return unknown, col.Eligibility, err
 		}
-		if !found || col.Column == nil {
-			return unknown, errors.New("field has no exact observable TDS column")
+		if col.Absent || col.Elements[0].Column == nil {
+			return unknown, col.Eligibility, errors.New("field has no exact observable TDS column")
 		}
 	}
-	e, found, err := exactTDS(ctx, reader, kind, id, s.ElementType, s.Name)
+	r, err := exactTDS(ctx, reader, kind, id, s.ElementType, s.Name)
 	if err != nil {
-		return unknown, err
+		return unknown, r.Eligibility, err
 	}
-	if !found {
-		return EditState{Presence: "absent"}, nil
+	if r.Absent {
+		return EditState{Presence: "absent"}, r.Eligibility, nil
 	}
+	e := r.Elements[0]
 	var setting *string
 	if s.ElementType == "Column" && e.Column != nil {
 		switch s.Property {
@@ -90,17 +89,17 @@ func ObserveEdit(ctx context.Context, reader TDSReader, kind, id string, s EditS
 		case "element":
 			data, err := json.Marshal(e.Column)
 			if err != nil {
-				return unknown, err
+				return unknown, r.Eligibility, err
 			}
-			return EditState{"present", string(data)}, nil
+			return EditState{"present", string(data)}, r.Eligibility, nil
 		}
 	} else if s.Property == "description" {
 		setting = e.Description
 	}
 	if setting == nil {
-		return unknown, errors.New("TDS omitted the required property from the exact observation")
+		return unknown, r.Eligibility, errors.New("TDS omitted the required property from the exact observation")
 	}
-	return EditState{"present", *setting}, nil
+	return EditState{"present", *setting}, r.Eligibility, nil
 }
 
 func editItem(c EditChange, i int) EditItem {
@@ -150,7 +149,23 @@ func (o EditOutput) inspectCommand(item EditItem) string {
 }
 
 func (o EditOutput) failure(item EditItem, summary string, cause error, phase errs.Phase, outcome errs.Outcome) error {
-	return &errs.Error{ID: "datasource.tds." + item.Status, Kind: errs.KindOperation, Operation: "datasource." + item.Op, Environment: o.Environment, Site: o.SiteLUID, Resource: o.WorkCopyLUID, Selector: item.Target.Name, Summary: summary, Cause: cause, Phase: phase, Outcome: outcome, Retryable: new(false), TableauRequestID: item.TableauRequestID, CorrectiveAction: o.inspectCommand(item)}
+	failure := &errs.Error{
+		ID: "datasource.tds." + item.Status, Kind: errs.KindOperation,
+		Operation: "datasource." + item.Op, Selector: item.Target.Name,
+		Environment: o.Environment, Site: o.SiteLUID, Resource: o.WorkCopyLUID,
+		Summary: summary, Cause: cause, Phase: phase, Outcome: outcome,
+		Retryable: new(false), TableauRequestID: item.TableauRequestID,
+		CorrectiveAction: o.inspectCommand(item),
+	}
+	if o.Mode == "execute" && len(o.Items) > 1 {
+		failure.Failed = fmt.Sprintf("%d: %s", item.Index, item.Op)
+		for _, previous := range o.Items[:item.Index-1] {
+			if previous.Status == "verified" || previous.Status == "unchanged" {
+				failure.Completed = append(failure.Completed, fmt.Sprintf("%d: %s", previous.Index, previous.Op))
+			}
+		}
+	}
+	return failure
 }
 
 // Edit uses one prepared set of changes for both direct and file entry points.
@@ -172,7 +187,7 @@ func Edit(ctx context.Context, client TDSEditor, target EditTarget, env string, 
 	}
 	for i := range out.Items {
 		row := &out.Items[i]
-		before, err := ObserveEdit(ctx, client, "workcopy", target.WorkCopyLUID, row.Target)
+		before, _, err := observeEdit(ctx, client, "workcopy", target.WorkCopyLUID, row.Target)
 		row.Before = before
 		if err == nil {
 			row.Action, err = itemAction(*row)
@@ -204,7 +219,7 @@ func Edit(ctx context.Context, client TDSEditor, target EditTarget, env string, 
 	}
 	for i := range out.Items {
 		row := &out.Items[i]
-		before, err := ObserveEdit(ctx, client, "workcopy", target.WorkCopyLUID, row.Target)
+		before, _, err := observeEdit(ctx, client, "workcopy", target.WorkCopyLUID, row.Target)
 		if err != nil || before != row.Before {
 			row.Observed = &before
 			row.Status = "stale"
@@ -217,6 +232,7 @@ func Edit(ctx context.Context, client TDSEditor, target EditTarget, env string, 
 			continue
 		}
 		receipt, submitErr := client.EditTDSElement(ctx, target.WorkCopyLUID, row.Action, elementForEdit(*row))
+		row.Eligibility = receipt.Eligibility
 		row.Failure = receipt.Failure
 		row.Submission = receipt.Status
 		row.TableauRequestID = receipt.TableauRequestID
@@ -232,7 +248,7 @@ func Edit(ctx context.Context, client TDSEditor, target EditTarget, env string, 
 			out.Help = []string{out.inspectCommand(*row)}
 			return out, out.failure(*row, "Tableau edit did not complete.", submitErr, phase, outcome)
 		}
-		observed, readErr := ObserveEdit(ctx, client, "workcopy", target.WorkCopyLUID, row.Target)
+		observed, _, readErr := observeEdit(ctx, client, "workcopy", target.WorkCopyLUID, row.Target)
 		row.Observed = &observed
 		if submitErr != nil || receipt.Status != "acknowledged" {
 			row.Status = "unknown"
@@ -258,7 +274,8 @@ func ReviewEdits(ctx context.Context, reader TDSReader, target EditTarget, env s
 	var first error
 	for i, c := range changes {
 		item := editItem(c, i)
-		current, err := ObserveEdit(ctx, reader, "workcopy", target.WorkCopyLUID, item.Target)
+		current, eligibility, err := observeEdit(ctx, reader, "workcopy", target.WorkCopyLUID, item.Target)
+		item.Eligibility = eligibility
 		item.Before = current
 		item.Observed = &current
 		switch {

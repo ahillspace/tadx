@@ -32,6 +32,7 @@ type TDSDestination struct {
 	SourceRevision string `json:"source_revision,omitempty"`
 }
 type SaveWorkCopyInput struct {
+	Eligibility                           value.TDSEligibility
 	Redact                                func(string) string
 	Scope                                 value.TDSScope
 	Environment, WorkCopyLUID, Mode, Name string
@@ -87,9 +88,12 @@ func ValidateSaveWorkCopyInput(in SaveWorkCopyInput) error {
 
 func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveWorkCopyInput, preview bool) (LifecycleOutput, error) {
 	op := "datasource.save." + in.Mode
-	out := LifecycleOutput{Operation: op, Mode: "preview", Status: "not_attempted", WorkCopyLUID: in.WorkCopyLUID, Environment: in.Environment, SiteLUID: in.Scope.SiteLUID, Acknowledges: in.AcknowledgeUnknown, Description: in.Description, Warnings: []string{"Tableau publishes the entire work copy. Verification covers only the reported scope."}}
+	out := LifecycleOutput{Eligibility: in.Eligibility, Operation: op, Mode: "preview", Status: "not_attempted", WorkCopyLUID: in.WorkCopyLUID, Environment: in.Environment, SiteLUID: in.Scope.SiteLUID, Acknowledges: in.AcknowledgeUnknown, Description: in.Description, Warnings: []string{"Tableau publishes the entire work copy. Verification covers only the reported scope."}}
 	if err := ValidateSaveWorkCopyInput(in); err != nil {
 		return out, err
+	}
+	if in.Eligibility.RESTStatus == "unsupported" || in.Eligibility.RESTStatus == "unknown" {
+		return out, lifecycleFailure(op, in.WorkCopyLUID, "Work-copy publication requires Tableau REST API 3.30 or later.", errs.PhaseSetup, errs.OutcomeNotAttempted, nil)
 	}
 	if p == nil {
 		reason := "Save as new requires verified destination placement and create-only behavior under a concurrent name collision."
@@ -151,12 +155,19 @@ func SaveWorkCopy(ctx context.Context, p TDSSaveProvider, j TDSJournal, in SaveW
 		return out, abortUndispatched(ctx, j, a, err)
 	}
 	receipt, submitErr := p.SubmitTDSSave(ctx, in.Mode, in.WorkCopyLUID, dest, in.Description)
+	if receipt.Eligibility.Operation != "" {
+		out.Eligibility = receipt.Eligibility
+	}
 	a.Status = receiptStatus(receipt, submitErr)
 	a.RequestID = receipt.TableauRequestID
 	id := receipt.DatasourceLUID
 	if a.Status == "acknowledged" && (!value.ValidTDSLUID(id) || receipt.WorkCopyLUID != "" || strings.EqualFold(id, in.WorkCopyLUID) || (in.Mode == "overwrite" && !strings.EqualFold(id, a.SourceLUID)) || (in.Mode == "as-new" && strings.EqualFold(id, a.SourceLUID))) {
 		a.Status = "unknown"
 		submitErr = errors.New("the returned identity contradicts the selected save mode")
+		out.Eligibility = in.Eligibility
+		if out.Eligibility.Operation != "" {
+			out.Eligibility.Reason = "identity_unconfirmed"
+		}
 	}
 	if a.Status == "acknowledged" {
 		a.PublishedLUID = id
@@ -265,7 +276,7 @@ func readSaveScope(ctx context.Context, p TDSReader, kind, id string, selectors 
 		return obs, nil
 	}
 	for _, s := range selectors {
-		state, err := ObserveEdit(ctx, p, kind, id, s)
+		state, _, err := observeEdit(ctx, p, kind, id, s)
 		o := SaveObservation{Selector: s, State: state, Status: "observed"}
 		if err != nil || state.Presence == "unknown" {
 			o.Status = "unknown"

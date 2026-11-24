@@ -18,6 +18,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/pathspec"
+	"github.com/ahillspace/tadx/internal/value"
 	"gopkg.in/yaml.v3"
 )
 
@@ -279,7 +280,7 @@ func editAudit(inspect CopyInspection, redact func(string) string) ([]byte, erro
 	default:
 		doc.WriteString("Source provenance is unknown.\n\n")
 	}
-	doc.WriteString("The observations below come from the work copy at " + inspect.ObservedAt + ". Each group reports its own coverage.\n\n")
+	doc.WriteString("The observations below come from the work copy at " + inspect.ObservedAt + ". Each group reports its own read eligibility and coverage. Write eligibility requires evidence from the corresponding write operation.\n\n")
 	if err := section("Tableau TDS observations", inspect.Observations); err != nil {
 		return nil, err
 	}
@@ -293,15 +294,44 @@ func editAudit(inspect CopyInspection, redact func(string) string) ([]byte, erro
 		return nil, err
 	}
 	doc.WriteString("These selectors have readable TDS columns and description observations in this audit. Missing, omitted or failed observations leave other fields unqualified. Tableau checks permissions, entitlement and source eligibility independently for each request.\n\n")
-	if inspect.SourceMetadata != nil {
-		if err := section("Published datasource Metadata API context", inspect.SourceMetadata.FullOutput()); err != nil {
-			return nil, err
+	reason := inspect.MetadataWarning
+	if metadata := inspect.SourceMetadata; metadata != nil {
+		// Keep indexed fields independent of the TDS selectors and report any
+		// omissions from the audit's own projection of provider observations.
+		type auditField struct {
+			value.FieldDescription
+			UpstreamOmitted int `json:"upstream_columns_omitted,omitempty"`
 		}
-	} else {
-		reason := inspect.MetadataWarning
-		if reason == "" {
-			reason = "Published datasource metadata was unavailable for this inspection."
+		limit := min(len(metadata.Fields), maxTDSElements)
+		fields := make([]auditField, 0, limit)
+		for _, field := range metadata.Fields[:limit] {
+			count := min(len(field.UpstreamColumns), maxTDSElements)
+			omitted := len(field.UpstreamColumns) - count
+			field.UpstreamColumns = field.UpstreamColumns[:count]
+			fields = append(fields, auditField{field, omitted})
 		}
+		view := struct {
+			Identity         value.MetadataIdentity `json:"datasource"`
+			Description      *string                `json:"description,omitempty"`
+			Tags             []string               `json:"tags,omitempty"`
+			TagsObserved     bool                   `json:"tags_observed"`
+			Fields           []auditField           `json:"fields"`
+			FieldsOmitted    int                    `json:"fields_omitted"`
+			ProviderComplete bool                   `json:"provider_complete"`
+			ObservedAt       string                 `json:"observed_at"`
+			TableauRequestID string                 `json:"tableau_request_id,omitempty"`
+		}{
+			Identity: metadata.Identity, Description: metadata.Description, Tags: metadata.Tags,
+			TagsObserved: metadata.TagsObserved, Fields: fields, FieldsOmitted: len(metadata.Fields) - limit,
+			ProviderComplete: metadata.Complete, ObservedAt: metadata.ObservedAt, TableauRequestID: metadata.TableauRequestID,
+		}
+		if err := section("Published datasource Metadata API context", view); err != nil {
+			reason = "The indexed metadata could not be included in the bounded audit."
+		}
+	} else if reason == "" {
+		reason = "Published datasource metadata was unavailable for this inspection."
+	}
+	if reason != "" {
 		if err := section("Published datasource Metadata API coverage", reason); err != nil {
 			return nil, err
 		}

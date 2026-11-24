@@ -1,8 +1,12 @@
 package app
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,5 +87,136 @@ func TestTDSAuditRetainsHistoricalSourceAndBoundedExport(t *testing.T) {
 	}
 	if h.fixture.writeCount() != 1 {
 		t.Fatal("re-export created another copy")
+	}
+}
+
+func TestTDSAuditReadsOnlyIndexedSourceFieldsInSameSession(t *testing.T) {
+	for _, mode := range []string{"complete", "partial", "unavailable", "denied"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newTDSWorkflowCLI(t)
+			h.options = withSiteMutationConsent(t, h.options, true)
+			if mode == "denied" {
+				delete(h.options.managedPolicy.(fixtureManagedPolicy).allowed, "datasource.schema")
+			}
+			signIns, graph, vdscalls := 0, 0, 0
+			h.fixture.auditProbe = func(w http.ResponseWriter, r *http.Request) bool {
+				if strings.HasSuffix(r.URL.Path, "/auth/signin") {
+					signIns++
+					return false
+				}
+				if strings.Contains(r.URL.Path, "vizql") {
+					vdscalls++
+					return false
+				}
+				if !strings.Contains(r.URL.Path, "metadata") {
+					return false
+				}
+				graph++
+				var in struct {
+					Query     string
+					Variables map[string]any
+				}
+				if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+					t.Error(err)
+				}
+				if r.Header.Get("X-Tableau-Auth") != "secret-token" || in.Variables["parent"] != fixtureTDSOriginal || !strings.Contains(in.Query, "fieldsConnection") {
+					t.Error("invalid source enrichment session, selector or query")
+				}
+				// The second page fails. The successfully identified first field remains useful.
+				if mode == "unavailable" || graph > 1 {
+					w.WriteHeader(403)
+					io.WriteString(w, `{"error":{"code":"403004","summary":"Unavailable"}}`)
+					return true
+				}
+				more := mode == "partial"
+				total := 1
+				if more {
+					total++
+				}
+				fmt.Fprintf(w, `{"data":{"parents":{"nodes":[{
+ "id":"source-graph","luid":%q,"name":"Indexed source","description":"Protected: test-secret",
+ "tagsConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]},
+ "items":{"totalCount":%d,"pageInfo":{"hasNextPage":%t,"endCursor":"more"},"nodes":[{
+   "id":"index-only","name":"Index only","fullyQualifiedName":"[Only in the index]",
+   "description":"Session: secret-token","descriptionInherited":[],
+   "upstreamColumnsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{
+     "id":"upstream-only","luid":"column-id","name":"Physical only","description":"PAT: test-name"
+   }]}
+ }]}
+}]}}}`, fixtureTDSOriginal, total, more)
+				return true
+			}
+			h.ds(true, "checkout", "--id", fixtureTDSOriginal, "--workspace", "work", "--audit-file", "audit.md", "--changes-file", "draft.yaml")
+			h.fixture.mu.Lock()
+			actualSignIns, actualGraph, actualVDS := signIns, graph, vdscalls
+			h.fixture.mu.Unlock()
+			expected := map[string]int{"complete": 1, "denied": 0, "unavailable": 1, "partial": 2}[mode]
+			if actualSignIns != 1 || actualGraph != expected || actualVDS != 0 {
+				t.Fatalf("sign-ins %d, Metadata requests %d, VDS requests %d", actualSignIns, actualGraph, actualVDS)
+			}
+			audit, err := os.ReadFile(filepath.Join(h.ws, "audit.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			draft, err := os.ReadFile(filepath.Join(h.ws, "draft.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "complete", "partial":
+				for _, name := range []string{"Index only", "upstream-only", "Physical only", "Protected: [REDACTED]", "Session: [REDACTED]", "PAT: *********"} {
+					if !strings.Contains(string(audit), name) {
+						t.Fatalf("missing redacted Metadata API observation %q", name)
+					}
+				}
+				if !strings.Contains(string(audit), fmt.Sprintf(`"provider_complete": %t`, mode == "complete")) {
+					t.Fatal("incorrect Metadata API coverage")
+				}
+			case "denied":
+				if !strings.Contains(string(audit), "denied by managed policy") {
+					t.Fatal("policy omission hidden")
+				}
+			case "unavailable":
+				if !strings.Contains(string(audit), "Metadata API enrichment was unavailable.") {
+					t.Fatal("missing index access was hidden")
+				}
+			}
+			for _, secret := range []string{"secret-token", "test-name", "test-secret"} {
+				if strings.Contains(string(audit), secret) {
+					t.Fatal("credential in audit")
+				}
+			}
+			if strings.Contains(string(draft), "Index only") {
+				t.Fatal("metadata-only name escaped into edit target template")
+			}
+			// The hermetic checkout can populate inventory infrastructure. It must never
+			// populate cached datasource schema as a side effect of an audit.
+			verifyAuditSchemaCacheEmpty(t, filepath.Dir(h.ws))
+		})
+	}
+}
+
+func verifyAuditSchemaCacheEmpty(t *testing.T, root string) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.Name() != "catalog.sqlite" {
+			return err
+		}
+		db, err := sql.Open("sqlite", path+"?mode=ro")
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		var count int
+		if err = db.QueryRow("SELECT COUNT(*) FROM resource_entries WHERE kind IN ('datasource_schema','datasource_schema_metadata')").Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			t.Errorf("audit cached %d published schema observations", count)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -22,10 +22,11 @@ type TDSProjection struct {
 // received Tableau's checkout acknowledgement. Later source changes do not
 // update these historical observations.
 type TDSCheckoutContext struct {
-	SourceName        string `json:"source_name,omitempty"`
-	SourceProjectLUID string `json:"source_project_luid,omitempty"`
-	SourceObservedAt  string `json:"source_observed_at"`
-	AcknowledgedAt    string `json:"acknowledged_at,omitempty"`
+	Eligibility       TDSEligibility `json:"eligibility,omitzero"`
+	SourceName        string         `json:"source_name,omitempty"`
+	SourceProjectLUID string         `json:"source_project_luid,omitempty"`
+	SourceObservedAt  string         `json:"source_observed_at"`
+	AcknowledgedAt    string         `json:"acknowledged_at,omitempty"`
 }
 
 type TDSAttempt struct {

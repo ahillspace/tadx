@@ -1,22 +1,25 @@
 package datasource
 
+import "github.com/ahillspace/tadx/internal/value"
+
 // Compact output retains all decisions, values and ordered outcomes. The full
 // projection also carries per-request evidence, including failed-element status.
 func (out EditOutput) CompactOutput() any {
 	type item struct {
-		Index      int          `json:"index"`
-		Op         string       `json:"op"`
-		Target     EditSelector `json:"target"`
-		Action     string       `json:"action,omitempty"`
-		Status     string       `json:"status"`
-		Before     EditState    `json:"before"`
-		Intended   EditState    `json:"intended"`
-		Observed   *EditState   `json:"observed,omitempty"`
-		Submission string       `json:"submission,omitempty"`
+		Eligibility value.TDSEligibility `json:"eligibility,omitzero"`
+		Index       int                  `json:"index"`
+		Op          string               `json:"op"`
+		Target      EditSelector         `json:"target"`
+		Action      string               `json:"action,omitempty"`
+		Status      string               `json:"status"`
+		Before      EditState            `json:"before"`
+		Intended    EditState            `json:"intended"`
+		Observed    *EditState           `json:"observed,omitempty"`
+		Submission  string               `json:"submission,omitempty"`
 	}
 	rows := make([]item, len(out.Items))
 	for i, r := range out.Items {
-		rows[i] = item{r.Index, r.Op, r.Target, r.Action, r.Status, r.Before, r.Intended, r.Observed, r.Submission}
+		rows[i] = item{r.Eligibility, r.Index, r.Op, r.Target, r.Action, r.Status, r.Before, r.Intended, r.Observed, r.Submission}
 	}
 	return struct {
 		Mode        string `json:"mode"`

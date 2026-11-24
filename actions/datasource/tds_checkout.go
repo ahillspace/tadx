@@ -34,6 +34,7 @@ type TDSJournal interface {
 }
 
 type CheckoutInput struct {
+	Eligibility        value.TDSEligibility
 	Scope              value.TDSScope
 	Environment        string
 	Selector           identity.Selector
@@ -42,6 +43,7 @@ type CheckoutInput struct {
 }
 
 type LifecycleOutput struct {
+	Eligibility          value.TDSEligibility      `json:"eligibility,omitzero"`
 	Checkout             *value.TDSCheckoutContext `json:"checkout_receipt,omitempty"`
 	Files                *EditExports              `json:"files,omitempty"`
 	ObservationsComplete *bool                     `json:"observations_complete,omitempty"`
@@ -104,7 +106,10 @@ func lifecycleDigest(v any) string {
 
 func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, journal TDSJournal, in CheckoutInput, preview bool) (LifecycleOutput, error) {
 	const op = "datasource.checkout"
-	out := LifecycleOutput{Operation: op, Mode: "preview", Status: "not_attempted", Environment: in.Environment, SiteLUID: in.Scope.SiteLUID, Acknowledges: in.AcknowledgeUnknown}
+	out := LifecycleOutput{Eligibility: in.Eligibility, Operation: op, Mode: "execute", Status: "not_attempted", Environment: in.Environment, SiteLUID: in.Scope.SiteLUID, Acknowledges: in.AcknowledgeUnknown}
+	if preview {
+		out.Mode = "preview"
+	}
 	if err := ValidateCheckoutInput(in); err != nil {
 		return out, err
 	}
@@ -123,13 +128,15 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 		return out, lifecycleFailure(op, "", "Checkout source metadata contains protected credential material.", errs.PhaseValidation, errs.OutcomeNotAttempted, nil)
 	}
 	out.SourceLUID, out.Name, out.ProjectLUID = source.LUID, source.Name, source.ProjectLUID
-	draft := value.TDSAttempt{Checkout: &value.TDSCheckoutContext{SourceName: source.Name, SourceProjectLUID: source.ProjectLUID, SourceObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}, Scope: in.Scope, SourceLUID: source.LUID, Operation: op, IntentDigest: lifecycleDigest([]string{op, source.LUID})}
+	if in.Eligibility.RESTStatus == "unsupported" || in.Eligibility.RESTStatus == "unknown" {
+		return out, lifecycleFailure(op, source.LUID, "Checkout requires Tableau REST API 3.30 or later.", errs.PhaseSetup, errs.OutcomeNotAttempted, nil)
+	}
+	draft := value.TDSAttempt{Checkout: &value.TDSCheckoutContext{Eligibility: in.Eligibility, SourceName: source.Name, SourceProjectLUID: source.ProjectLUID, SourceObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}, Scope: in.Scope, SourceLUID: source.LUID, Operation: op, IntentDigest: lifecycleDigest([]string{op, source.LUID})}
 	release, err := journal.LockLifecycle(ctx, draft, in.AcknowledgeUnknown)
 	if err != nil {
 		return out, lifecycleFailure(op, source.LUID, "Checkout admission failed.", errs.PhaseSetup, errs.OutcomeNotAttempted, err)
 	}
 	defer release()
-	out.Warnings = []string{"Tableau checks licensing, source eligibility, permissions and the open-copy quota at submission."}
 	if len(in.AcknowledgeUnknown) > 0 {
 		out.Warnings = append(out.Warnings, "A previously submitted checkout may still allocate another copy.")
 	}
@@ -145,7 +152,6 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 		out.Status = "preview"
 		return out, nil
 	}
-	out.Mode = "execute"
 	// A checkout response must be durable immediately. Establish the baseline
 	// separately after re-reading the source, never by trusting the pre-read.
 	before := draft.SourceRevision
@@ -165,10 +171,18 @@ func Checkout(ctx context.Context, resolver Resolver, creator WorkCopyCreator, j
 	receipt, submitErr := creator.CreateWorkCopy(ctx, source.LUID)
 	a.RequestID = receipt.TableauRequestID
 	a.Status = receiptStatus(receipt, submitErr)
+	if receipt.Eligibility.Operation != "" {
+		out.Eligibility = receipt.Eligibility
+	}
 	if a.Status == "acknowledged" && (!value.ValidTDSLUID(receipt.WorkCopyLUID) || strings.EqualFold(receipt.WorkCopyLUID, source.LUID) || receipt.DatasourceLUID != "") {
 		a.Status = "unknown"
 		submitErr = errors.New("checkout response contains an invalid or contradictory identity")
+		out.Eligibility = in.Eligibility
+		if out.Eligibility.Operation != "" {
+			out.Eligibility.Reason = "identity_unconfirmed"
+		}
 	}
+	a.Checkout.Eligibility = out.Eligibility
 	if a.Status == "acknowledged" {
 		a.WorkCopyLUID = receipt.WorkCopyLUID
 		a.Checkout.AcknowledgedAt = time.Now().UTC().Format(time.RFC3339Nano)

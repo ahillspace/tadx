@@ -46,6 +46,7 @@ func (tdsFixtureSession) SiteLUID() string { return fixtureTDSSite }
 // This server implements the documented JSON TDS and XML datasource routes.
 // Its occupied-name rule is a fixture assumption used only behind the save gate.
 type tdsWorkflowServer struct {
+	auditProbe              func(http.ResponseWriter, *http.Request) bool
 	blockCheckout           chan struct{}
 	t                       *testing.T
 	mu                      sync.Mutex
@@ -64,6 +65,9 @@ func newTDSWorkflowServer(t *testing.T) *tdsWorkflowServer {
 func (f *tdsWorkflowServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.auditProbe != nil && f.auditProbe(w, r) {
+		return
+	}
 	w.Header().Set("X-Request-Id", "request-fixture")
 	const dsPath = "/api/3.30/sites/" + fixtureTDSSite + "/datasources/"
 	const wcPath = "/api/3.30/tds/sites/" + fixtureTDSSite + "/workcopy/" + fixtureTDSCopy

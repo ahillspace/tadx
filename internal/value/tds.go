@@ -27,17 +27,33 @@ type TDSElement struct {
 	Error       *TDSStatus `json:"error,omitempty"`
 }
 
+// TDSEligibility describes the evidence for this operation on this target and caller.
+// An accepted operation does not identify a license SKU or establish future access.
+type TDSEligibility struct {
+	Operation     string `json:"operation"`
+	Status        string `json:"status"`
+	Reason        string `json:"reason"`
+	RESTVersion   string `json:"negotiated_rest_version,omitempty"`
+	RESTStatus    string `json:"rest_version_status"`
+	Permission    string `json:"permission"`
+	Entitlement   string `json:"entitlement"`
+	SourceType    string `json:"source_type,omitempty"`
+	OpenCopyQuota string `json:"open_copy_quota,omitempty"`
+}
+
 type TDSRead struct {
-	Elements         []TDSElement `json:"elements"`
-	Absent           bool         `json:"absent,omitempty"`
-	TableauRequestID string       `json:"tableau_request_id,omitempty"`
+	Eligibility      TDSEligibility `json:"eligibility,omitzero"`
+	Elements         []TDSElement   `json:"elements"`
+	Absent           bool           `json:"absent,omitempty"`
+	TableauRequestID string         `json:"tableau_request_id,omitempty"`
 }
 
 // TDSReceipt retains provider-reported identities even when a response is contradictory.
 type TDSReceipt struct {
-	Status           string     `json:"status"`
-	WorkCopyLUID     string     `json:"work_copy_luid,omitempty"`
-	DatasourceLUID   string     `json:"datasource_luid,omitempty"`
-	TableauRequestID string     `json:"tableau_request_id,omitempty"`
-	Failure          *TDSStatus `json:"failure,omitempty"`
+	Eligibility      TDSEligibility `json:"eligibility,omitzero"`
+	Status           string         `json:"status"`
+	WorkCopyLUID     string         `json:"work_copy_luid,omitempty"`
+	DatasourceLUID   string         `json:"datasource_luid,omitempty"`
+	TableauRequestID string         `json:"tableau_request_id,omitempty"`
+	Failure          *TDSStatus     `json:"failure,omitempty"`
 }

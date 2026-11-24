@@ -59,8 +59,15 @@ Tags on Catalog upstream columns have their own asset identity and are already s
 The [CLI workflow fixtures](../../internal/app/tds_workflow_e2e_test.go) exercise command entry points with a disposable HTTP server and a fixture-scoped provider.
 The [session redaction tests](../../internal/auth/session_redaction_test.go) cover environment credentials, a simulated native credential store, saved session adoption and renewed session tokens.
 An acknowledged checkout receipt retains the exact source LUID, observed name and project, source observation time and acknowledgement time.
-A later audit labels those historical observations separately from its current TDS read and optional published-source schema enrichment.
+A later audit labels those historical observations separately from its current TDS read and optional Metadata API observations of the published source.
+The [audit fixtures](../../internal/app/tds_audit_e2e_test.go) exercise direct GraphQL reads on the checkout session, retention of indexed fields and upstream columns outside the TDS results, partial pagination, denied enrichment and redaction of credential values without writing a schema cache entry.
 Receiptless copies can still identify their own observed fields and export candidates.
+The checkout preview reports the negotiated REST version.
+Entitlement, permission, source compatibility and quota stay unknown until a provider response supplies evidence for that specific request.
+Named and collection reads report their own scope.
+The CLI retains known refusal reasons and leaves ambiguous 403 and 429 responses unclassified when the provider supplies insufficient evidence.
+The [eligibility fixtures](../../internal/app/tds_eligibility_test.go) exercise these distinctions with simulated responses.
+
 Audit and template exports use the authenticated session's redactor.
 Bindings containing protected values cannot be exported as actionable selectors.
 

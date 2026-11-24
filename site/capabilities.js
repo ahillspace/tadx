@@ -32,7 +32,6 @@ const behaviorFilters = {
 const effectLabel = cap => cap.remote_mutation ? "Remote write" : cap.local_write ? "Local write" : "Read only";
 const yesNo = value => value ? "Yes" : "No";
 const normalize = value => value.toLowerCase().trim().replace(/\s+/g, " ");
-const partOf = (cap, index) => cap.command_path?.[index] ?? cap.id.split(".")[index];
 const preferredDomains = ["content", "search", "catalog", "pulse", "admin"];
 const domainsInOrder = (a, b) => {
   const rank = value => preferredDomains.includes(value) ? preferredDomains.indexOf(value) : preferredDomains.length;
@@ -46,6 +45,7 @@ const text = (tag, value, className) => {
 };
 
 function defaultBehavior(cap) {
+  if (cap.verification === "blocked") return cap.validation;
   if (cap.remote_mutation) return "Remote writes require saved consent for the selected server and exact site, managed policy permission, and Tableau authorization. Supported previews are read-only and still require permission for their capability IDs.";
   if (cap.id.endsWith(".pull")) return cap.supports_preview
     ? "Retrieves from Tableau and writes a managed artifact by default. Use --preview to inspect the planned write."
@@ -152,13 +152,16 @@ async function init() {
     return;
   }
 
-  const capabilities = inventory.map(cap => ({
-    ...cap,
-    domain: partOf(cap, 0),
-    resource: cap.command_path?.length > 2 ? partOf(cap, 1) : "",
-    cache: /(?:^|\s)--cache(?:\s|[;,]|$)/i.test([cap.selectors, cap.safety_guard, cap.outcome].join(" ")),
-    searchText: normalize(Object.values(cap).join(" ") + " " + effectLabel(cap)),
-  }));
+  const capabilities = inventory.map(cap => {
+    const path = cap.command_path?.length ? cap.command_path : cap.surface.split(/\s+/).slice(1);
+    return {
+      ...cap,
+      domain: path[0],
+      resource: path.length > 2 ? path[1] : "",
+      cache: /(?:^|\s)--cache(?:\s|[;,]|$)/i.test([cap.selectors, cap.safety_guard, cap.outcome].join(" ")),
+      searchText: normalize(Object.values(cap).join(" ") + " " + effectLabel(cap)),
+    };
+  });
   const domains = [...new Set(capabilities.map(cap => cap.domain))].sort(domainsInOrder);
   const domainSelect = controls.elements.namedItem("domain");
   for (const domain of domains) domainSelect.add(new Option(domain, domain));

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -37,8 +38,9 @@ type TagOutput struct {
 }
 
 func (in TagInput) Validate() error {
-	if !value.ValidTDSLUID(in.DatasourceLUID) {
-		return errs.New(errs.KindUsage, "Provide an exact published datasource UUID with --id.")
+	id := in.DatasourceLUID
+	if identity.ValidateLUIDShape("datasource", id) != nil || strings.TrimSpace(id) != id || id == "." || id == ".." {
+		return errs.New(errs.KindUsage, "Provide an exact published datasource LUID with --id.")
 	}
 	if strings.TrimSpace(in.Tag) == "" || !utf8.ValidString(in.Tag) || strings.ContainsFunc(in.Tag, unicode.IsControl) {
 		return errs.New(errs.KindUsage, "Provide one nonblank UTF-8 tag without control characters.")

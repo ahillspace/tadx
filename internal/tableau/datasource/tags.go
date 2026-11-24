@@ -51,8 +51,12 @@ func (c *Client) ReadDatasourceTags(ctx context.Context, id string) ([]string, e
 			Tags []tagList `xml:"tags"`
 		} `xml:"datasource"`
 	}
-	if response.StatusCode != http.StatusOK || xml.Unmarshal(response.Body, &body) != nil || len(body.Datasources) != 1 || body.Datasources[0].ID != id {
+	if response.StatusCode != http.StatusOK || xml.Unmarshal(response.Body, &body) != nil || len(body.Datasources) != 1 {
 		return nil, tableau.NewProtocolError(op, response, errors.New("tag read did not return the exact datasource"), true)
+	}
+	got := body.Datasources[0].ID
+	if got != id && !(value.ValidTDSLUID(id) && strings.EqualFold(got, id)) {
+		return nil, tableau.NewProtocolError(op, response, errors.New("tag read returned a different datasource identity"), true)
 	}
 	labels, err := tagLabels(response, body.Datasources[0].Tags)
 	if err != nil {
