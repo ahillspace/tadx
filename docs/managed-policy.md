@@ -154,6 +154,17 @@ An administrator deploys a policy to the protected system location.
 Protect the file and its TADX directory before checking status; Unix platforms also require protected ancestors.
 Keep the prior policy in a protected backup outside the fixed path until the replacement is confirmed.
 
+### Refresh a standard template
+
+Run `tadx policy install --template superuser` with the TADX executable whose capability registry the machine will use.
+For an existing custom install location, pass its directory with `--output`.
+Installation replaces the machine-wide allowlist, so first check that other TADX executables on the machine recognize the new IDs.
+Older executables fail closed when the policy contains an ID they do not recognize.
+To check compatibility before installation, generate the candidate with `policy samples` using the new executable and run `policy validate` against it with each executable that will remain in use.
+For a customized allowlist, update the candidate and use the manual deployment steps instead of reinstalling a template.
+Use `tadx policy status --full` after installation to confirm the active policy.
+Provider qualification is enforced independently of the allowlist.
+
 ### Install on Windows
 
 Run the installer from an ordinary terminal or agent session:

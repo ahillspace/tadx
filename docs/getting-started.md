@@ -247,11 +247,15 @@ Choose a supported Tableau site role and use the site's identity configuration f
 
 ## Prepare datasource semantic edits
 
-Use `tadx content datasource validate-changes` to check a changes file locally.
-This build exposes remote work-copy and datasource tag operations in help and capability discovery while they await live qualification.
-Their availability and evidence requirements are listed in the [TDS Edit contract](evidence/tds-edit-contract.md).
+### Validate a changes file locally
 
-Save the following as `changes.yaml` in a registered workspace.
+Use `tadx content datasource validate-changes` to check a changes file without signing in to Tableau.
+The machine's managed policy must allow `datasource.validate-changes`.
+If an existing standard superuser policy predates this build, refresh it with the branch executable after checking [policy compatibility](managed-policy.md#refresh-a-standard-template).
+Use `tadx capability get datasource.validate-changes --full` to confirm the validator is enabled.
+Use an existing registered workspace or run `tadx workspace create demo --full` to create one and see its root.
+
+Save the following example as `changes.yaml` in the workspace root.
 Use the canonical server, signed-in site LUID, work-copy LUID and exact TDS element names when preparing a real intent file.
 A known original datasource LUID can be added as `datasource_luid` under `target`.
 
@@ -270,12 +274,13 @@ changes:
 ```
 
 ```text
-tadx content datasource validate-changes --workspace demo --from-changes changes.yaml
-tadx capability get datasource.set-field-description --full
+tadx content datasource validate-changes --workspace demo --from-changes changes.yaml --json
 ```
 
-The validator accepts one document up to 256 KiB and one to 50 distinct edits.
-A successful check establishes local syntax, target shape and edit consistency.
+If you used an existing workspace, replace `demo` with its registered name.
+The validator accepts one UTF-8 YAML document up to 256 KiB with one to 50 edits.
+It rejects unknown keys, duplicate edits and conflicting edits.
+A successful check returns status `valid`, the parsed target and the operation names in file order.
 Work-copy existence, permissions and current values require Tableau observations.
 
 | YAML operation | Entry properties after `op` |
@@ -287,7 +292,18 @@ Work-copy existence, permissions and current values require Tableau observations
 | `set-column-type` | `field` and `type` |
 | `delete-column` | `field` |
 
-A qualified installation uses the following sequence to preview a field description and set it on the same copy.
+### Check remote workflow availability
+
+Remote work-copy commands and published datasource tag changes await live qualification.
+On this build, direct invocations of those commands, including `--preview` where supported, stop before Tableau access with `datasource.evidence_required`.
+Use `tadx capability get datasource.checkout --full` or the specific capability ID to inspect its gate.
+Refreshing the superuser allowlist can admit local validation while remote commands still require provider qualification.
+From a source checkout, run `go test ./internal/app -run '^TestTDS' -count=1` to exercise the CLI against a disposable local HTTP fixture and confirm the production gate.
+See the [TDS Edit contract](evidence/tds-edit-contract.md) for the provider requirements and remaining live checks.
+
+### Review the workflow for a qualified build
+
+Once checkout, the field edit and work-copy reads are qualified, the following sequence previews and sets a field description on the same copy.
 Use the copy LUID returned by checkout and the token returned by preview.
 
 ```sh
@@ -303,7 +319,8 @@ For a reviewed file, use `apply-changes --from-changes changes.yaml --preview` a
 An audit reports current TDS observations and separate Metadata API context from the published source when the exact source is known and the managed `datasource.schema` capability is allowed.
 The audit includes up to 100 indexed fields and 100 upstream columns per field, reports omissions and retains observations from a partial metadata read.
 A changes template starts with an empty list and commented examples using observed fields.
-Save modes remain gated until their destination and concurrency guarantees are verified.
+Save as new needs verified project placement and create-only behavior.
+Save overwrite needs a documented request that preserves the original datasource LUID and a revision check that covers its full definition.
 Native TDS/TDSX publication remains available through `tadx content datasource publish`.
 
 Tags have a different target.

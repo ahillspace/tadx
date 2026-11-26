@@ -77,10 +77,11 @@ A TDS work copy has its own LUID and retains draft edits until publication.
 Published datasource tags belong to the published item and take effect on that item directly.
 Catalog column tags belong to the physical upstream column and require its exact Catalog identity.
 
-Consult capability availability for the specific operation.
-This build can validate typed intent locally.
-Remote TDS editing and published datasource tag changes require outstanding provider qualification.
-Use a fresh named read for a field outside a bounded inventory or after a lost response.
+Run `tadx content datasource validate-changes --workspace <name> --from-changes <relative-path>` to validate typed intent locally when managed policy allows it.
+Use `tadx capability get <capability-id> --full` to check availability for the exact operation.
+Remote TDS work-copy operations and published datasource tag changes await live qualification.
+Direct invocations, including supported preview forms, return `datasource.evidence_required` before Tableau access.
+Once a named read is qualified, use it for a field outside a bounded inventory or after a lost response.
 A matching value shows what is observable now and leaves an uncertain submission unattributed.
 
 ## Document structure
