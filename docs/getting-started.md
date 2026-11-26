@@ -292,25 +292,33 @@ Work-copy existence, permissions and current values require Tableau observations
 | `set-column-type` | `field` and `type` |
 | `delete-column` | `field` |
 
-### Check remote workflow availability
+### Test the remote workflow from source
 
-Remote work-copy commands and published datasource tag changes await live qualification.
-On this build, direct invocations of those commands, including `--preview` where supported, stop before Tableau access with `datasource.evidence_required`.
-Use `tadx capability get datasource.checkout --full` or the specific capability ID to inspect its gate.
-Refreshing the superuser allowlist can admit local validation while remote commands still require provider qualification.
-From a source checkout, run `go test ./internal/app -run '^TestTDS' -count=1` to exercise the CLI against a disposable local HTTP fixture and confirm the production gate.
+Build the CLI with the `tds_qualification` tag from the TDS feature checkout.
+
+```sh
+go build -tags tds_qualification -trimpath -o ./bin/ ./cmd/tadx
+./bin/tadx capability get datasource.elements --full
+```
+
+Use `bin/tadx.exe` on Windows.
+This build exposes checkout, published and work-copy reads, description edits, `apply-changes`, and published datasource tags for live verification.
+Use an authorized test site and a disposable datasource.
+Managed policy, saved exact-site mutation consent, and Tableau authorization still apply.
+If an existing standard superuser policy predates the branch, [check compatibility and refresh it](managed-policy.md#refresh-a-standard-template) with the branch executable.
+Both save modes and remote TDS commands in standard builds return `datasource.evidence_required`.
+Run `go test ./internal/app -run '^TestTDS' -count=1` to exercise the CLI against a disposable local HTTP fixture.
 See the [TDS Edit contract](evidence/tds-edit-contract.md) for the provider requirements and remaining live checks.
 
-### Review the workflow for a qualified build
-
-Once checkout, the field edit and work-copy reads are qualified, the following sequence previews and sets a field description on the same copy.
+The following sequence previews checkout, creates a copy, and sets a field description on that copy.
 Use the copy LUID returned by checkout and the token returned by preview.
 
 ```sh
-tadx content datasource checkout --environment dev --id "$SOURCE_LUID"
-tadx content datasource set-field-description --environment dev --work-copy "$COPY_LUID" --field Sales --description "Gross invoiced amount" --preview
-tadx content datasource set-field-description --environment dev --work-copy "$COPY_LUID" --field Sales --description "Gross invoiced amount" --expect-preview "$TOKEN"
-tadx content datasource work-copy --environment dev --work-copy "$COPY_LUID" --field Sales
+./bin/tadx content datasource checkout --environment dev --id "$SOURCE_LUID" --preview
+./bin/tadx content datasource checkout --environment dev --id "$SOURCE_LUID"
+./bin/tadx content datasource set-field-description --environment dev --work-copy "$COPY_LUID" --field Sales --description "Gross invoiced amount" --preview
+./bin/tadx content datasource set-field-description --environment dev --work-copy "$COPY_LUID" --field Sales --description "Gross invoiced amount" --expect-preview "$TOKEN"
+./bin/tadx content datasource work-copy --environment dev --work-copy "$COPY_LUID" --field Sales
 ```
 
 Tableau publishes the entire work copy when an eligible save completes.
@@ -325,7 +333,7 @@ Native TDS/TDSX publication remains available through `tadx content datasource p
 
 Tags have a different target.
 `datasource.add-tag` and `datasource.remove-tag` target membership on the published datasource.
-For example, `tadx content datasource add-tag --environment dev --id "$SOURCE_LUID" --tag Finance --preview` checks current membership on a qualified installation.
+For example, `./bin/tadx content datasource add-tag --environment dev --id "$SOURCE_LUID" --tag Finance --preview` checks current membership.
 Omitting `--preview` submits the change when consent and policy allow it.
 Use `remove-tag` with the same published LUID and label for removal.
 Use `tadx catalog column update --help` for tagging a physical upstream column by its Catalog identity.

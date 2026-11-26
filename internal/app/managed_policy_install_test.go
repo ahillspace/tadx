@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	policyops "github.com/ahillspace/tadx/actions/policy"
+	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 )
@@ -17,7 +18,7 @@ func TestPolicyInstallIsAlwaysARecoveryOperation(t *testing.T) {
 		t.Fatal("policy.install is subject to the policy it must be able to repair")
 	}
 	runtime := &runtimeDependencies{managedPolicy: fixtureManagedPolicy{state: managedpolicy.StateError}}
-	discovery, ok := (registrySource{runtime: runtime}).Get(t.Context(), "policy.install")
+	discovery, ok := (registrySource{runtime: runtime, definitions: capability.All()}).Get(t.Context(), "policy.install")
 	if !ok || discovery.PolicyDenied {
 		t.Fatalf("recovery discovery=%+v exists=%t", discovery, ok)
 	}

@@ -20,6 +20,34 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
+func enableTDSQualificationCommands(definitions []capability.Definition) {
+	for i := range definitions {
+		d := &definitions[i]
+		verb, datasource := strings.CutPrefix(d.ID, "datasource.")
+		if !datasource || d.Blocker != capability.BlockerProviderQualification {
+			continue
+		}
+		switch verb {
+		case "checkout", "elements", "work-copy", "set-field-description", "remove-field-description", "set-table-description", "remove-table-description", "apply-changes", "add-tag", "remove-tag":
+			d.CommandPath = []string{"content", "datasource", verb}
+			d.Implementation = capability.ImplementationImplemented
+		case "set-column-caption", "set-column-role", "set-column-type", "delete-column":
+			// These are policy-checked edits within apply-changes, with no direct binding.
+			d.Implementation = capability.ImplementationPlanned
+		default:
+			continue
+		}
+		d.Verification = capability.VerificationReady
+		d.Blocker = ""
+		d.Availability = strings.TrimSuffix(d.Availability, "; provider qualification pending") + "; TDS qualification build, live verification pending"
+		if d.RemoteMutation {
+			d.SafetyGuard = "Exact target, managed policy, saved site consent, fresh preflight and readback"
+		} else {
+			d.SafetyGuard = "Exact identities, managed policy and independent scope checks"
+		}
+	}
+}
+
 func (c *remoteContentCommands) tdsBlocker(id string) string {
 	defs := c.tdsDefinitions
 	if defs == nil {

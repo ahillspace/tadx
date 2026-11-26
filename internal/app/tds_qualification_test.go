@@ -81,6 +81,53 @@ func TestTDSProductionQualificationStopsBeforeProviderAccess(t *testing.T) {
 	}
 }
 
+func TestTDSQualificationBuildUsesProviderAndEnforcesPolicy(t *testing.T) {
+	h := newTDSWorkflowCLI(t)
+	h.options.TDSQualification = true
+	h.options.HTTPClient = h.server.Client()
+	run := func(wantCode int, args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		if code := Run(t.Context(), append(args, "--json", "--full"), &out, h.options); code != wantCode {
+			t.Fatalf("%v returned %d, want %d: %s", args, code, wantCode, &out)
+		}
+		return out.String()
+	}
+	datasource := func(wantCode int, args ...string) string {
+		t.Helper()
+		return run(wantCode, append([]string{"content", "datasource"}, args...)...)
+	}
+	get := run(0, "capability", "get", "datasource.elements")
+	requireTDSJSON(t, get, `"execution_enabled":true`, "TDS qualification build, live verification pending")
+	requireTDSJSON(t, datasource(0, "elements", "--id", fixtureTDSOriginal, "--field", "Sales"), "Sales")
+
+	checkout := []string{"checkout", "--id", fixtureTDSOriginal}
+	requireTDSJSON(t, datasource(1, checkout...), "mutation.disabled")
+	datasource(0, append(checkout, "--preview")...)
+	if h.fixture.writeCount() != 0 {
+		t.Fatal("consent refusal or preview allocated a work copy")
+	}
+
+	h.options = withSiteMutationConsent(t, h.options, true)
+	requireTDSJSON(t, datasource(0, checkout...), fixtureTDSCopy)
+	plan := fmt.Sprintf("target:\n  server: %s\n  site_luid: %s\n  work_copy_luid: %s\nchanges:\n  - op: set-column-caption\n    field: Sales\n    caption: Gross sales\n", h.server.URL, fixtureTDSSite, fixtureTDSCopy)
+	if err := os.WriteFile(filepath.Join(h.ws, "intent.yaml"), []byte(plan), 0600); err != nil {
+		t.Fatal(err)
+	}
+	policy := h.options.managedPolicy.(fixtureManagedPolicy)
+	delete(policy.allowed, "datasource.set-column-caption")
+	apply := []string{"apply-changes", "--workspace", "work", "--from-changes", "intent.yaml"}
+	requireTDSJSON(t, datasource(1, append(apply, "--preview")...), "policy.denied", "datasource.set-column-caption")
+	policy.allowed["datasource.set-column-caption"] = true
+	requireTDSJSON(t, datasource(0, apply...), `"status":"verified"`, `"submission":"acknowledged"`)
+	requireTDSJSON(t, datasource(0, "work-copy", "--work-copy", fixtureTDSCopy, "--field", "Sales"), "Gross sales")
+	requireTDSJSON(t, datasource(1, "save", "as-new", "--work-copy", fixtureTDSCopy, "--name", "New"), "datasource.evidence_required")
+	requireTDSJSON(t, datasource(1, "save", "overwrite", "--work-copy", fixtureTDSCopy), "datasource.evidence_required")
+	if h.fixture.writeCount() != 2 {
+		t.Fatalf("expected one checkout and one edit, got %d writes", h.fixture.writeCount())
+	}
+}
+
 type tdsAfterRead struct {
 	http.RoundTripper
 	after func(*http.Request)

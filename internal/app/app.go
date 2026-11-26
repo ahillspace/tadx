@@ -59,6 +59,8 @@ type Options struct {
 	UserHomeDir   func() (string, error)
 	Stderr        io.Writer
 	JobDirectory  string
+	// TDSQualification exposes documented TDS operations for live verification in a qualification build.
+	TDSQualification bool
 	// PublicationWorkers enables detached workers for native publish and pull.
 	// The executable enables it; embedders may run actions inline.
 	PublicationWorkers   bool
@@ -70,7 +72,11 @@ type Options struct {
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
 func Run(ctx context.Context, args []string, stdout io.Writer, options Options) (exitCode int) {
-	return run(ctx, args, stdout, options, capability.All())
+	definitions := capability.All()
+	if options.TDSQualification {
+		enableTDSQualificationCommands(definitions)
+	}
+	return run(ctx, args, stdout, options, definitions)
 }
 
 func run(ctx context.Context, args []string, stdout io.Writer, options Options, definitions []capability.Definition) (exitCode int) {
@@ -88,7 +94,7 @@ func run(ctx context.Context, args []string, stdout io.Writer, options Options, 
 		return renderError(stdout, err, renderOptions)
 	}
 	defer runtime.Close()
-	source := registrySource{runtime: runtime}
+	source := registrySource{runtime: runtime, definitions: definitions}
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
@@ -911,11 +917,15 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookops.Publish
 
 func (a preparedPublishAdapter) Close() error { return a.prepared.Close() }
 
-type registrySource struct{ runtime *runtimeDependencies }
+type registrySource struct {
+	runtime     *runtimeDependencies
+	definitions []capability.Definition
+}
 
 func (s registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {
-	items := capability.AllDiscoveries()
-	for index := range items {
+	items := make([]capabilitylist.Capability, len(s.definitions))
+	for index, definition := range s.definitions {
+		items[index] = capability.FromDefinition(definition)
 		s.applyManagedDiscovery(&items[index])
 	}
 	return items, nil
@@ -929,11 +939,14 @@ func (registryMutationPolicy) IsRemoteMutation(id string) bool {
 }
 
 func (s registrySource) Get(_ context.Context, id string) (capabilityget.Capability, bool) {
-	item, ok := capability.LookupDiscovery(id)
-	if ok {
-		s.applyManagedDiscovery(&item)
+	for _, definition := range s.definitions {
+		if definition.ID == id {
+			item := capability.FromDefinition(definition)
+			s.applyManagedDiscovery(&item)
+			return item, true
+		}
 	}
-	return item, ok
+	return capabilityget.Capability{}, false
 }
 
 func registryUse(id string) string {

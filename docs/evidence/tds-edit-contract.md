@@ -1,7 +1,10 @@
 # TDS Edit and datasource tag contracts
 
 The local `datasource.validate-changes` capability checks a typed changes file without contacting Tableau.
-The remote capabilities below await provider qualification.
+Standard builds gate the remote capabilities below pending provider qualification.
+Build with `-tags tds_qualification` to test checkout, reads, edits, and tags with the documented provider adapters on an authorized disposable site.
+Managed policy, saved exact-site consent, and Tableau authorization apply to the qualification build.
+Both save modes remain gated in this build because they need destination and dispatch guarantees.
 The wire and action fixtures use simulated responses.
 No authorized live observation accompanies this change.
 

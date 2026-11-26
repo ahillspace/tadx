@@ -79,9 +79,10 @@ Catalog column tags belong to the physical upstream column and require its exact
 
 Run `tadx content datasource validate-changes --workspace <name> --from-changes <relative-path>` to validate typed intent locally when managed policy allows it.
 Use `tadx capability get <capability-id> --full` to check availability for the exact operation.
-Remote TDS work-copy operations and published datasource tag changes await live qualification.
-Direct invocations, including supported preview forms, return `datasource.evidence_required` before Tableau access.
-Once a named read is qualified, use it for a field outside a bounded inventory or after a lost response.
+Remote TDS operations are gated in standard builds.
+A source build with `-tags tds_qualification` exposes checkout, reads, edits, and tags for authorized live tests with normal policy and consent checks.
+Both save modes still return `datasource.evidence_required`.
+When a named read is available, use it for a field outside a bounded inventory or after a lost response.
 A matching value shows what is observable now and leaves an uncertain submission unattributed.
 
 ## Document structure

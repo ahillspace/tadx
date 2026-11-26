@@ -24,6 +24,7 @@ func main() {
 		return app.Run(ctx, os.Args[1:], os.Stdout, app.Options{
 			Stderr:             os.Stderr,
 			PublicationWorkers: true,
+			TDSQualification:   tdsQualification,
 		})
 	})
 	stop()

@@ -14,7 +14,7 @@ Respect site permissions and verify the destination after publication.
 
 Tableau documents work-copy checkout, reads, element edits, and publication in REST API 3.30.
 TADX validates typed changes files locally and exercises the remote workflow against simulated Tableau responses.
-Remote commands await live verification on a supported Tableau site.
+A qualification build exposes checkout, reads, edits, and tags for live testing on a supported Tableau site.
 Save as new requires verified project placement and create-only behavior.
 Save overwrite requires a documented way to preserve the original datasource LUID and a revision check that covers its full definition.
 See the [TDS Edit evidence record](docs/evidence/tds-edit-contract.md#evidence-needed-for-activation) for the remaining qualification steps.

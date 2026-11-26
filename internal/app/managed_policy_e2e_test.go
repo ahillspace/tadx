@@ -277,7 +277,7 @@ func TestManagedPolicyWorkerRechecksRestriction(t *testing.T) {
 
 func TestManagedPolicyDiscoveryRetainsDeniedAvailability(t *testing.T) {
 	r := &runtimeDependencies{managedPolicy: fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{"capability.get": true}, remote: true}}
-	item, ok := (registrySource{runtime: r}).Get(t.Context(), "admin.user.list")
+	item, ok := (registrySource{runtime: r, definitions: capability.All()}).Get(t.Context(), "admin.user.list")
 	if !ok || !item.PolicyDenied || item.ExecutionEnabled || item.PolicyReason == "" {
 		t.Fatalf("denied discovery lost: %+v", item)
 	}
